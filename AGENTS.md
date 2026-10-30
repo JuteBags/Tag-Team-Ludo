@@ -34,7 +34,7 @@
   - `setup.ts` pure and tested: `GameConfig`, ranking rolls, the house-picking rules (opposite / side by side)
   - `setupScreen.ts` one step per screen (no scrolling): options (houses each, bots for empty houses), roll for order (ties roll again), pick houses one by one; steps with nothing to choose are skipped
   - `avatars.ts` generated Fun Emoji avatars (CC BY 4.0, credited on the home screen); regenerate with `node tools/make-avatars.mjs`
-- `tests/` — Vitest specs: rules, turn flow, dice (incl. Monte Carlo), bot simulations, UI logic (`targets.test.ts`), and rule invariants checked on every move of hundreds of random and bot games (`invariants.test.ts`). `*.sim.ts` is the long simulation (`npm run sim`).
+- `tests/` — Vitest specs: rules, turn flow, dice (incl. Monte Carlo), bot simulations, teams (`teams.test.ts`), setup rules (`setup.test.ts`), UI logic (`targets.test.ts`), and rule invariants checked on every move of hundreds of random, bot and two-house games (`invariants.test.ts`). `tests/sim/` holds the long all-bot simulations (`npm run sim`): a shared `harness.ts`, and one `*.sim.ts` file per kind of game (`single-house.sim.ts`, `double-house.sim.ts`), each listing its setups.
 - `mockups/` — static UI mockup and its PNG screenshots.
 - `docs/` — the public website (GitHub Pages): `index.html` plus `assets/`. `docs/RULES.md` lives here too but CI leaves it out of the site.
 - `android/` — Capacitor Android project. Signing and version come from CI (`android/app/build.gradle`).
@@ -74,7 +74,11 @@ Repo: https://github.com/JuteBags/Tag-Team-Ludo · site: https://jutebags.github
 - `npm run dev` — dev server on http://localhost:5173
 - `npm run build` — typecheck + production build to `dist/`
 - `npm test` — run all tests
-- `npm run sim` — long all-bot simulation (`tests/*.sim.ts`, `SIM_GAMES=500` for a quick pass); CI runs it on every PR (`.github/workflows/sim.yml`) and compares with `main` via `tools/sim-compare.mjs`
+- `npm run sim` — all the long all-bot simulations (`tests/sim/*.sim.ts`; `SIM_GAMES=500` for a quick pass, or name one file: `npm run sim -- tests/sim/single-house.sim.ts`). CI runs every file as its own job, in parallel, on every PR (`.github/workflows/sim.yml`), compares each with `main` via `tools/sim-compare.mjs`, and joins them into one PR comment. A new kind of game gets a new `*.sim.ts` file; CI picks it up by itself.
 - `npm run typecheck` — TypeScript check
 - `npx cap sync android` — copy `dist/` into the Android project (CI does this)
 - `powershell -File tools/render-icons.ps1` — re-render app icons and splash screens
+
+## Commits and pull requests
+
+Commit messages and PR titles start with a [Conventional Commits](https://www.conventionalcommits.org/) type: `feat:` (a new feature for players), `fix:` (a bug fix), `ci:` (workflows, builds, releases), `test:` (tests and simulations), `docs:`, `refactor:`, `perf:`, `chore:`. Add a scope when it helps (`feat(setup): ...`) and `!` for a breaking change. PRs say which issue they close (`Closes #5`).

@@ -1,32 +1,29 @@
-// Event statistics from all-bot games, weighted dice vs fair dice: classic 2/3/4-player games, and 2-player
-// games with two houses each (opposite, and side by side). Run with `npm run sim` (not part of `npm test`:
-// 3000 games per setup takes minutes). SIM_GAMES=500 npm run sim for a quick pass.
-// Prints a table and checks the dice still do what src/engine/dice.ts says. It also prints one line
-// "SIM_JSON {...}" with every metric as a number, which CI compares between main and a pull request
-// (tools/sim-compare.mjs).
+// Shared harness for the all-bot simulations in tests/sim/*.sim.ts (npm run sim). Each file lists its
+// setups and calls runSimulation; CI runs every file in parallel, on main and on the pull request, and
+// tools/sim-compare.mjs turns the "SIM_JSON {...}" line each file prints into one section of the PR comment.
+// Every setup is played with the game's weighted dice and with fair dice, so the effect of the weighting
+// is visible, and checked: every game ends and the dice behave as src/engine/dice.ts says.
 import { describe, expect, it } from 'vitest';
-import { BASE, analyzeDice, chooseMove, createGame, move, newGame, ownerRanking, roll, sampleFace, seeded, type Color, type GameState } from '../src/engine';
+import { BASE, analyzeDice, chooseMove, move, ownerRanking, roll, sampleFace, seeded, type Color, type GameState } from '../../src/engine';
 
 // No @types/node in this project, so reach the env through globalThis.
 const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
-const GAMES = Number(env.SIM_GAMES ?? 3000);
+export const GAMES = Number(env.SIM_GAMES ?? 3000);
 const MAX_ROLLS = 5000;
 const FAIR = [1, 1, 1, 1, 1, 1].map((x) => x / 6);
-/** The human's seat is Blue. Every seat is a bot here, but the person playing Blue (and their second house,
- * if any) is watched as "the player's view". */
+/**
+ * The seat a human plays. Every seat is a bot here, but the person playing Blue (both of their houses,
+ * with two each) is watched as "the player's view".
+ */
 const SEAT: Color = 'blue';
 
-/** A 2-player game where person 0 has `mine` and person 1 the other two houses. */
-const twoHouses = (mine: Color[]) => () =>
-  createGame((['blue', 'green', 'red', 'yellow'] as const).map((color) => ({ color, owner: mine.includes(color) ? 0 : 1, bot: true })));
-
-const SETUPS: { name: string; seed: number; make: () => GameState }[] = [
-  { name: '2p', seed: 2 * 31, make: () => newGame(2, []) },
-  { name: '3p', seed: 3 * 31, make: () => newGame(3, []) },
-  { name: '4p', seed: 4 * 31, make: () => newGame(4, []) },
-  { name: '2p·2h opposite', seed: 1001, make: twoHouses(['blue', 'red']) },
-  { name: '2p·2h side', seed: 1003, make: twoHouses(['blue', 'green']) },
-];
+export interface Setup {
+  /** Column name in the report, e.g. "2p". */
+  name: string;
+  /** Seed offset, so setups don't share games. */
+  seed: number;
+  make: () => GameState;
+}
 
 interface Stats {
   games: number; unfinished: number; rolls: number; sixes: number; tripleSix: number; noMove: number;
@@ -38,7 +35,7 @@ interface Stats {
   seatWins: number; seatPlaceSum: number; seatIdleStreak: number;
 }
 
-function simulate(setup: (typeof SETUPS)[number], weighted: boolean): Stats {
+function simulate(setup: Setup, weighted: boolean): Stats {
   const s: Stats = {
     games: GAMES, unfinished: 0, rolls: 0, sixes: 0, tripleSix: 0, noMove: 0, kills: 0, pairKills: 0, lostProgress: 0,
     pairMoves: 0, moves: 0, killChance: 0, killHit: 0, escChance: 0, escHit: 0, finChance: 0, finHit: 0, maxRolls: 0,
@@ -126,35 +123,39 @@ export const METRICS: { key: string; label: string; pct?: boolean; f: (s: Stats)
   { key: 'seatIdleStreak', label: 'Player: longest run of turns without a move', f: (s) => s.seatIdleStreak },
 ];
 
-describe(`simulation: ${GAMES} all-bot games per setup`, () => {
-  const results: Record<string, Stats> = {};
+/** Plays every setup with game dice and fair dice, checks them, and prints the table and the SIM_JSON line. */
+export function runSimulation(title: string, setups: Setup[]) {
+  describe(`${title}: ${GAMES} all-bot games per setup`, () => {
+    const results: Record<string, Stats> = {};
 
-  for (const setup of SETUPS) {
-    it(setup.name, { timeout: 1_800_000 }, () => {
-      const w = (results[`${setup.name} weighted`] = simulate(setup, true));
-      const f = (results[`${setup.name} fair`] = simulate(setup, false));
-      for (const s of [w, f]) {
-        expect(s.unfinished).toBe(0); // every game ends
-        expect(s.sixes / s.rolls).toBeGreaterThan(0.15);
-        expect(s.sixes / s.rolls).toBeLessThan(0.19);
-      }
-      // The weighting must favour kills and escapes and hold back exact finishes.
-      expect(w.killHit / w.killChance).toBeGreaterThan(f.killHit / f.killChance);
-      expect(w.escHit / w.escChance).toBeGreaterThan(f.escHit / f.escChance);
-      expect(w.finHit / w.finChance).toBeLessThan(f.finHit / f.finChance);
+    for (const setup of setups) {
+      it(setup.name, { timeout: 1_800_000 }, () => {
+        const w = (results[`${setup.name} weighted`] = simulate(setup, true));
+        const f = (results[`${setup.name} fair`] = simulate(setup, false));
+        for (const s of [w, f]) {
+          expect(s.unfinished).toBe(0); // every game ends
+          expect(s.sixes / s.rolls).toBeGreaterThan(0.15);
+          expect(s.sixes / s.rolls).toBeLessThan(0.19);
+        }
+        // The weighting must favour kills and escapes and hold back exact finishes.
+        expect(w.killHit / w.killChance).toBeGreaterThan(f.killHit / f.killChance);
+        expect(w.escHit / w.escChance).toBeGreaterThan(f.escHit / f.escChance);
+        expect(w.finHit / w.finChance).toBeLessThan(f.finHit / f.finChance);
+      });
+    }
+
+    it('prints the table and the numbers for CI', () => {
+      const cols = Object.keys(results);
+      const show = (m: (typeof METRICS)[number], v: number) => (m.pct ? `${(100 * v).toFixed(1)}%` : v.toFixed(1));
+      const line = (cells: string[]) => cells.map((c, i) => c.padEnd(i ? Math.max(14, c.length + 2) : 44)).join('');
+      console.log(['', title, line(['metric', ...cols]), ...METRICS.map((m) => line([m.label, ...cols.map((c) => show(m, m.f(results[c]!)))]))].join('\n'));
+      const json = {
+        title,
+        games: GAMES,
+        metrics: METRICS.map(({ key, label, pct }) => ({ key, label, pct: !!pct })),
+        setups: Object.fromEntries(cols.map((c) => [c, Object.fromEntries(METRICS.map((m) => [m.key, m.f(results[c]!)]))])),
+      };
+      console.log(`SIM_JSON ${JSON.stringify(json)}`);
     });
-  }
-
-  it('prints the table and the numbers for CI', () => {
-    const cols = Object.keys(results);
-    const show = (m: (typeof METRICS)[number], v: number) => (m.pct ? `${(100 * v).toFixed(1)}%` : v.toFixed(1));
-    const line = (cells: string[]) => cells.map((c, i) => c.padEnd(i ? 14 : 44)).join('');
-    console.log(['', line(['metric', ...cols]), ...METRICS.map((m) => line([m.label, ...cols.map((c) => show(m, m.f(results[c]!)))]))].join('\n'));
-    const json = {
-      games: GAMES,
-      metrics: METRICS.map(({ key, label, pct }) => ({ key, label, pct: !!pct })),
-      setups: Object.fromEntries(cols.map((c) => [c, Object.fromEntries(METRICS.map((m) => [m.key, m.f(results[c]!)]))])),
-    };
-    console.log(`SIM_JSON ${JSON.stringify(json)}`);
   });
-});
+}
