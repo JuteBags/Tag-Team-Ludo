@@ -7,9 +7,9 @@ import { nearest, type Target } from './targets';
 
 const NS = 'http://www.w3.org/2000/svg';
 const HOP_MS = 150;
-const BASE_SCALE = 1.42;
-/** A lone pawn on the track: a little over a cell wide reads better on a phone. */
-const TRACK_SCALE = 1.14;
+const BASE_SCALE = 1.45;
+/** A lone pawn on the track: as big as fits inside a square reads best on a phone. */
+const TRACK_SCALE = 1.22;
 /** Tap radius in board units (the board is 600 wide): about 20px on a phone, well over a 40px target. */
 const HIT = 34;
 const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -17,9 +17,9 @@ const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Offsets and scale for 1-4 pawns sharing a square. */
 const STACK: Record<number, { o: Pt[]; s: number }> = {
   1: { o: [[0, 0]], s: TRACK_SCALE },
-  2: { o: [[-7, 4], [7, 0]], s: 0.9 },
-  3: { o: [[-8, 5], [8, 5], [0, -3]], s: 0.76 },
-  4: { o: [[-8, 6], [8, 6], [-8, -4], [8, -4]], s: 0.7 },
+  2: { o: [[-6, 2], [6, -1]], s: 1.05 },
+  3: { o: [[-8, 4], [8, 4], [0, -4]], s: 0.8 },
+  4: { o: [[-8, 5], [8, 5], [-8, -5], [8, -5]], s: 0.72 },
 };
 
 /** Position, scale, squash (+ wide/short, - tall/thin) and spin of a pawn. */
@@ -154,7 +154,7 @@ export class BoardView {
       const stack = STACK[Math.min(list.length, 4)]!;
       list.forEach((it, j) => {
         const [ox, oy] = inBase ? [0, 0] : stack.o[Math.min(j, 3)]!;
-        this.set(it.key, { x: it.pt[0] + ox, y: it.pt[1] + oy + 3, s: inBase ? BASE_SCALE : stack.s });
+        this.set(it.key, { x: it.pt[0] + ox, y: it.pt[1] + oy, s: inBase ? BASE_SCALE : stack.s });
       });
       if (!gk.startsWith('t') || list.length < 2) continue;
       const block = !isSafe(Number(gk.slice(1)));
@@ -168,7 +168,7 @@ export class BoardView {
         doubled = true;
         if (block) {
           // A locked double: gold ring and a padlock.
-          deco += `<ellipse cx="${x}" cy="${y + 15}" rx="20" ry="7" fill="#ffd23f" opacity=".65"/><ellipse cx="${x}" cy="${y + 15}" rx="20" ry="7" fill="none" stroke="#fff3b0" stroke-width="1.5"/>`;
+          deco += `<ellipse cx="${x}" cy="${y + 12}" rx="19" ry="6.5" fill="#ffd23f" opacity=".65"/><ellipse cx="${x}" cy="${y + 12}" rx="19" ry="6.5" fill="none" stroke="#fff3b0" stroke-width="1.5"/>`;
           badges += `<g transform="translate(${bx} ${by})"><circle r="10" fill="#ffd23f" stroke="#7a4200" stroke-width="1.8"/><path d="M-3.4,-1 V-3.2 a3.4,3.4 0 0 1 6.8,0 V-1" fill="none" stroke="#5a2d00" stroke-width="1.8"/><rect x="-5" y="-1.5" width="10" height="7.5" rx="1.8" fill="#5a2d00"/></g>`;
         } else {
           // A pair on a star: split, it can move together or one at a time.
@@ -242,7 +242,7 @@ export class BoardView {
       // One of your own pawns that can't move: say why.
       const color = this.targets[0]?.move.color;
       const own = [...this.pawns.keys()].filter((k) => color && k.startsWith(color) && !this.pawns.get(k)!.classList.contains('movable'));
-      const stuck = nearest(own.map((k) => ({ k, pt: [this.placed.get(k)!.x, this.placed.get(k)!.y - 6] as Pt })), at, HIT);
+      const stuck = nearest(own.map((k) => ({ k, pt: [this.placed.get(k)!.x, this.placed.get(k)!.y] as Pt })), at, HIT);
       if (stuck) {
         sfx.tick();
         this.onStuck?.(stuck.k);
@@ -271,7 +271,7 @@ export class BoardView {
   /** Nearest movable pawn or landing spot. A pawn wins a near-tie: its marker may sit on another pawn. */
   private hit(at: Pt): { pawn: string } | { target: Target } | null {
     const keys = [...new Set((this.selected ? this.targetsOf(this.selected) : this.targets).flatMap((t) => t.pawns))];
-    const pawn = nearest(keys.map((k) => ({ k, pt: [this.placed.get(k)!.x, this.placed.get(k)!.y - 6] as Pt })), at, HIT);
+    const pawn = nearest(keys.map((k) => ({ k, pt: [this.placed.get(k)!.x, this.placed.get(k)!.y] as Pt })), at, HIT);
     const pool = this.selected ? this.targetsOf(this.selected) : this.targets;
     const dest = nearest(pool.map((t) => ({ t, pt: t.dest })), at, HIT);
     if (pawn && (!dest || Math.hypot(pawn.pt[0] - at[0], pawn.pt[1] - at[1]) <= Math.hypot(dest.pt[0] - at[0], dest.pt[1] - at[1]) + 6)) return { pawn: pawn.k };
@@ -287,12 +287,12 @@ export class BoardView {
     let s = '';
     for (const k of new Set(shown.flatMap((t) => t.pawns))) {
       const p = this.placed.get(k)!;
-      s += `<circle class="glow" cx="${p.x}" cy="${p.y - 4}" r="${24 * p.s}"/><circle class="pulse" cx="${p.x}" cy="${p.y - 4}" r="${24 * p.s}"/>`;
+      s += `<circle class="glow" cx="${p.x}" cy="${p.y}" r="${21 * p.s}"/><circle class="pulse" cx="${p.x}" cy="${p.y}" r="${21 * p.s}"/>`;
     }
     // Path previews for the focused moves, under the markers.
     for (const t of on) {
       const from = this.placed.get(t.pawns[0]!)!;
-      const pts = [[from.x, from.y - 4], ...stepPoints(t.move.color, t.move.from, t.move.to)];
+      const pts = [[from.x, from.y], ...stepPoints(t.move.color, t.move.from, t.move.to)];
       pts[pts.length - 1] = t.dest;
       s += `<polyline class="trail" points="${pts.map((p) => p.join(',')).join(' ')}"/>`;
     }
@@ -342,7 +342,7 @@ export class BoardView {
     const kill = m.captures.length > 0;
     for (const [i, pt] of pts.entries()) {
       const last = i === pts.length - 1;
-      const to = offs.map(([ox, oy]) => ({ x: pt[0] + ox, y: pt[1] + oy + 3, s }));
+      const to = offs.map(([ox, oy]) => ({ x: pt[0] + ox, y: pt[1] + oy, s }));
       // The killing hop is a big leap that slams down.
       await this.hop(keys, from, to, ((m.from < 0 ? 2 : 1) * HOP_MS * (last && kill ? 2.2 : 1)) / speed, last && kill ? 46 : 14);
       if (!(last && kill)) sfx.hop();
@@ -363,7 +363,7 @@ export class BoardView {
           const { pt } = spot(c.color, -1, c.token);
           this.pieces.appendChild(this.pawns.get(k)!);
           const start = this.placed.get(k)!;
-          return this.hop([k], [{ ...start, r: 0 }], [{ x: pt[0], y: pt[1] + 3, s: BASE_SCALE, r: (j ? -1 : 1) * 720 }], (760 + j * 80) / speed, 150).then(() => {
+          return this.hop([k], [{ ...start, r: 0 }], [{ x: pt[0], y: pt[1], s: BASE_SCALE, r: (j ? -1 : 1) * 720 }], (760 + j * 80) / speed, 150).then(() => {
             this.pop(pt[0], pt[1], PALETTE[c.color].l);
             return this.squash([k], 0.3, 220 / speed);
           });
