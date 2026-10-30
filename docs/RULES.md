@@ -57,6 +57,15 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1). The engine in `sr
 33. The finishing order is the ranking.
 34. The game ends as soon as you finish all 4 tokens, or when only one player is left. Anyone still playing is ranked by how far their tokens have travelled.
 
+## H. Modes, setup and two houses
+
+35. There are two modes, and both play offline. **vs Computer:** one person against 1-3 bots. **With friends:** 2-4 people on one device, every seat a person; each rolls and moves on their own turn, then passes the device on.
+36. Before a game everyone rolls once. The highest roll picks a house first and plays first. People who tie roll again among themselves until every place is decided.
+37. Houses are picked one by one in that order.
+38. In a 2-player game each person has either 1 house or 2 houses, chosen before rolling. With 2 houses, a person's two houses are either opposite each other or side by side, also chosen before rolling. A second pick has to match the first, and no pick may leave someone without a matching house.
+39. A person's two houses are one side. They never capture each other and never block each other. Each colour still takes its own turn in clockwise order, and a pair is always two tokens of one colour.
+40. A person is done when all their tokens (4, or 8 with two houses) are home. With friends, play continues for the other places until only one person still has tokens out, and that person comes last. vs Computer, the game ends for you once all your tokens are home.
+
 ## Known risks (accepted for v1, revisit after playtests)
 
 - A pair parked on a normal square holds back enemy singles until they land on it exactly, and a locked pair can sit stuck through a run of odd rolls.

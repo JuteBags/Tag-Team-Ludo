@@ -14,10 +14,15 @@ export function countAt(players: PlayerState[], color: Color, square: number): n
   return p ? p.tokens.filter((t) => squareOf(color, t) === square).length : 0;
 }
 
-/** True when an enemy of `mover` has a double (2+ tokens) on a non-star square. */
+/** True when colours `a` and `b` belong to the same person (a person with two houses is one side). */
+export function sameSide(players: PlayerState[], a: Color, b: Color): boolean {
+  return playerOf(players, a).owner === playerOf(players, b).owner;
+}
+
+/** True when an enemy of `mover` (another person) has a double (2+ tokens) on a non-star square. */
 export function isBlockedFor(players: PlayerState[], square: number, mover: Color): boolean {
   if (isSafe(square)) return false;
-  return players.some((p) => p.color !== mover && countAt(players, p.color, square) >= 2);
+  return players.some((p) => !sameSide(players, p.color, mover) && countAt(players, p.color, square) >= 2);
 }
 
 /** True when `color`'s tokens at `progress` are all locked in doubles: a normal square holding an even count. */
@@ -45,7 +50,7 @@ function walk(players: PlayerState[], color: Color, from: number, steps: number,
   const sq = squareOf(color, to);
   if (sq !== null && !isSafe(sq)) {
     for (const p of players) {
-      if (p.color === color) continue;
+      if (sameSide(players, p.color, color)) continue;
       const here = p.tokens.flatMap((t, i) => (squareOf(p.color, t) === sq ? [i] : []));
       const hit = pair ? (here.length >= 2 ? here.slice(0, 2) : []) : here.length % 2 === 1 ? [here[here.length - 1]!] : [];
       for (const i of hit) captures.push({ color: p.color, token: i });
@@ -109,7 +114,7 @@ export function isThreatened(players: PlayerState[], color: Color, progress: num
   if (sq === null || isSafe(sq)) return false;
   const mine = playerOf(players, color).tokens;
   for (const p of players) {
-    if (p.color === color) continue;
+    if (sameSide(players, p.color, color)) continue;
     // Only rolls that reach the square: d for a single d squares behind, 2d for a pair.
     const rolls = new Set<number>();
     for (const e of p.tokens) {

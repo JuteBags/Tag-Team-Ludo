@@ -30,6 +30,7 @@ export function starPath(cx: number, cy: number, R: number, r: number): string {
 
 export const icons = {
   menu: `<svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>`,
+  back: `<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   lock: `<svg viewBox="0 0 24 24"><path d="M7.5 10.5V8a4.5 4.5 0 0 1 9 0v2.5" stroke="#fff" stroke-width="2.6" fill="none"/><rect x="5" y="10" width="14" height="10.5" rx="3" fill="#fff"/><circle cx="12" cy="15" r="1.8" fill="#334"/></svg>`,
   globe: `<svg viewBox="0 0 64 64"><circle cx="32" cy="34" r="26" fill="#0b4fa8"/><circle cx="32" cy="32" r="26" fill="url(#gGlobe)"/><g fill="none" stroke="#fff" stroke-opacity=".8" stroke-width="2.5"><ellipse cx="32" cy="32" rx="11" ry="26"/><path d="M6 32h52M10 19h44M10 45h44"/></g><ellipse cx="21" cy="17" rx="9" ry="4.5" fill="#fff" opacity=".4" transform="rotate(-32 21 17)"/></svg>`,
   friends: `<svg viewBox="0 0 64 64"><circle cx="44" cy="22" r="9" fill="#f0b6ff"/><path d="M30 56c1-12 7-19 14-19s14 7 15 19z" fill="#f0b6ff"/><circle cx="24" cy="21" r="11" fill="#fff"/><path d="M4 56c0-13 9-21 20-21s20 8 20 21z" fill="#fff"/></svg>`,
