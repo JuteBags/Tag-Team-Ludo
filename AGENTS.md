@@ -53,7 +53,7 @@
 
 Repo: https://github.com/JuteBags/Tag-Team-Ludo · site: https://jutebags.github.io/Tag-Team-Ludo/
 
-- CI is manual only (`gh workflow run build.yml --ref <branch-or-tag>`); pushes and PRs trigger nothing. Run `npm test` and `npm run sim` locally first.
+- CI is manual only and needs release notes: `gh workflow run build.yml --ref <branch-or-tag> -f release_notes="..."` (or a path to a committed `.md` file). Pushes and PRs trigger nothing; empty or placeholder notes fail the run. Run `npm test` and `npm run sim` locally first.
 - Run on `main` → tests, web build, signed APK, then the Pages site is assembled from `docs/` + the game at `/play/` + the APK at `/download/tag-team-ludo.apk` (with `download/version.json`).
 - Run on a tag `vX.Y.Z` → signed APK + AAB attached to a GitHub Release (`-suffix` tags are pre-releases). Pages only deploys from `main`.
 - `versionCode` = workflow run number; never rename `build.yml` or it restarts at 1.

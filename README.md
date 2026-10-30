@@ -50,7 +50,7 @@ See [AGENTS.md](AGENTS.md) for architecture notes and conventions.
 
 ## Build and release
 
-[`.github/workflows/build.yml`](.github/workflows/build.yml) runs only when started by hand (Actions → Build and deploy → Run workflow, or `gh workflow run build.yml --ref <branch-or-tag>`). Pushes and pull requests don't trigger it. What it does depends on the branch or tag it runs on:
+[`.github/workflows/build.yml`](.github/workflows/build.yml) runs only when started by hand (Actions → Build and deploy → Run workflow), and only with **release notes**: what changed, for players. Pushes and pull requests don't trigger it. A run with empty or placeholder notes ("test", "fix") fails before anything is built. The notes go into the GitHub Release, `download/version.json` and the run summary. What it does depends on the branch or tag it runs on:
 
 | Run on | Result |
 |---|---|
@@ -63,8 +63,10 @@ To publish a version:
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
-gh workflow run build.yml --ref v0.1.0
+gh workflow run build.yml --ref v0.1.0 -f release_notes="Pairs now lock on normal squares; only a pair can cut a pair."
 ```
+
+For longer notes, commit a Markdown file and pass its path: `-f release_notes=release-notes/0.1.0.md`.
 
 Run the tests locally before pushing: `npm test`, plus `npm run sim` for the long all-bot simulation.
 
