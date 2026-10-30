@@ -89,7 +89,20 @@ export class BoardView {
   /** Markers pop in only when they first appear, not on every hover redraw. */
   private fresh = false;
 
-  constructor(players: PlayerState[], size: number) {
+  /**
+   * The one-time "you can be cut here" tip: 'unseen', the pawn key it is showing on, or 'done'.
+   * Stored, so it is shown once per install.
+   */
+  private riskTip: string;
+
+  constructor(players: PlayerState[], size: number, private human?: Color) {
+    let seen = false;
+    try {
+      seen = localStorage.getItem('ludo-tip-risk') === '1';
+    } catch {
+      // Storage blocked: the tip may show again next launch.
+    }
+    this.riskTip = seen ? 'done' : 'unseen';
     this.el = document.createElement('div');
     this.el.className = 'bframe';
     this.el.style.width = this.el.style.height = `${size}px`;
@@ -135,6 +148,7 @@ export class BoardView {
     }
     let deco = '';
     let badges = '';
+    let atRisk = false;
     for (const [gk, list] of groups) {
       const inBase = gk.startsWith('base');
       const stack = STACK[Math.min(list.length, 4)]!;
@@ -161,13 +175,28 @@ export class BoardView {
           badges += `<g transform="translate(${bx} ${by})"><circle r="10" fill="#fff" stroke="#7a4200" stroke-width="1.8"/><text y="4" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="12" fill="#5a2d00">×${n}</text></g>`;
         }
       }
-      // A single sitting on an enemy double can be cut there: warn on it.
-      if (block && doubled) {
-        for (const [c, n] of counts) {
-          if (n % 2 === 0 || ![...counts].some(([o, m]) => o !== c && m >= 2)) continue;
-          const p = this.placed.get(list.find((it) => it.color === c)!.key)!;
-          badges += `<g class="risk" transform="translate(${Math.max(p.x - 15, 12)} ${Math.max(p.y - 22, 12)})"><circle r="9" fill="#ff3b3b" stroke="#fff" stroke-width="2"/><text y="4.5" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="13" fill="#fff">!</text></g>`;
+      // A single sitting on an enemy double can be cut there. We tell the human once, on their own
+      // token, the first time it ever happens; after that spotting it is part of the game.
+      if (block && doubled && this.human && this.riskTip !== 'done') {
+        const n = counts.get(this.human) ?? 0;
+        if (n % 2 === 1 && [...counts].some(([o, m]) => o !== this.human && m >= 2)) {
+          const key = list.find((it) => it.color === this.human)!.key;
+          if (this.riskTip === 'unseen') this.riskTip = key;
+          if (this.riskTip === key) {
+            atRisk = true;
+            const p = this.placed.get(key)!;
+            badges += `<g transform="translate(${Math.max(p.x - 15, 12)} ${Math.max(p.y - 22, 12)})"><circle r="9" fill="#ff3b3b" stroke="#fff" stroke-width="2"/><text y="4.5" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="13" fill="#fff">!</text></g>`;
+          }
         }
+      }
+    }
+    // The tip goes away for good once that token is no longer at risk.
+    if (!atRisk && this.riskTip !== 'unseen' && this.riskTip !== 'done') {
+      this.riskTip = 'done';
+      try {
+        localStorage.setItem('ludo-tip-risk', '1');
+      } catch {
+        // Not saved; it may show once more next launch.
       }
     }
     this.deco.innerHTML = deco;

@@ -85,6 +85,12 @@ export const sfx = {
     const n = 7;
     for (let i = 0; i < n; i++) noise(0.045, { vol: 0.16 + Math.random() * 0.1, at: (i / n) * (ms / 1000) * 0.8, freq: 1400 + Math.random() * 1800, q: 2 });
   },
+  /** The die rattling inside a closed cup: muffled clacks against the walls. */
+  shake(ms: number) {
+    const n = 9;
+    for (let i = 0; i < n; i++) noise(0.04, { vol: 0.2 + Math.random() * 0.08, at: ((i + Math.random() * 0.4) / n) * (ms / 1000), freq: 700 + Math.random() * 600, q: 3 });
+    buzz([12, 50, 12, 50, 12]);
+  },
   /** The die landing; a six rings out. */
   land(face: number) {
     noise(0.08, { vol: 0.32, freq: 420, q: 1.2 });

@@ -31,7 +31,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .diew{position:relative;flex:none}
 .diew .dsh{position:absolute;left:8%;right:-6%;bottom:-16%;height:30%;border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.5),transparent);filter:blur(2px)}
 .die3{position:relative;transform-style:preserve-3d}
-.die3 .f{position:absolute;inset:0;border-radius:19%;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:13%;
+.die3 .f{position:absolute;inset:0;border-radius:30%;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:13%;
   background:radial-gradient(130% 130% at 28% 18%,#ffffff 0%,#f7f2e8 45%,#e0d5c1 100%);
   box-shadow:inset 0 0 0 1px rgba(90,70,40,.10),inset -2px -3px 6px rgba(120,95,60,.22);backface-visibility:hidden}
 .die3 .f.tp{filter:brightness(1.05)}
@@ -39,6 +39,12 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .die3 .f i{display:block;margin:auto;width:78%;height:78%;border-radius:50%}
 .die3 .f i.p{background:radial-gradient(circle at 46% 40%,#4b4b4b,#0f0f0f 72%);box-shadow:inset 0 1.5px 1.5px rgba(0,0,0,.75),0 .6px 0 rgba(255,255,255,.95)}
 .die3 .f i.p.r{background:radial-gradient(circle at 46% 40%,#ff6262,#b10000 72%)}
+/* The inner core fills the gaps that the rounded corners leave at the edges. */
+.die3 .c{position:absolute;inset:6%;background:#e6dcc8;backface-visibility:hidden}
+/* The face that counts gets a thin gold rim. */
+.die3 .f.win{box-shadow:inset 0 0 0 2px #ffc21a,inset 0 0 6px rgba(255,190,40,.55),inset -2px -3px 6px rgba(120,95,60,.22)}
+.dbox .cup{position:absolute;left:50%;top:50%;width:40px;height:44px;margin:-30px 0 0 -20px;transform-origin:50% 92%;z-index:2;pointer-events:none}
+.dbox .cup svg{display:block;width:100%;height:100%;filter:drop-shadow(0 3px 3px rgba(0,0,0,.45))}
 
 /* board */
 .bframe{position:relative;padding:9px;border-radius:22px;
@@ -232,8 +238,3 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 @media (prefers-reduced-motion: reduce){
   .mark,.mark .ring,.trail,.pulse,.fx .glow,.pawn.movable .pawn-art,.dbox.can-roll,.dbox.six{animation:none}
 }
-
-/* A single sitting on an enemy double: it can be cut there. */
-.risk{animation:riskBeat .8s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:center}
-@keyframes riskBeat{from{scale:.9}to{scale:1.12}}
-@media (prefers-reduced-motion: reduce){.risk{animation:none}}

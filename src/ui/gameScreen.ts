@@ -3,13 +3,15 @@ import { chooseMove, cryptoRng, finalRanking, move, newGame, roll, tokensHome, t
 import { PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
 import { dieMarkup, rollDie } from './dice';
+import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
 import { moveTargets, whyStuck, type Target } from './targets';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
 const DIE = 38;
-const ROLL_MS = 860;
+const ROLL_MS = 1150;
 const PLACES = ['', '1ST', '2ND', '3RD', '4TH'];
+const faceLabel = () => (settings.diceFace === 'top' ? 'DICE: TOP FACE' : 'DICE: FRONT FACE');
 
 export type Exit = 'home' | 'again';
 
@@ -23,6 +25,8 @@ export class GameScreen {
   private paused = false;
   private waiting: (() => void)[] = [];
   private disposed = false;
+  /** Last face each player rolled, to redraw the resting dice when the setting changes. */
+  private lastFace = new Map<Color, number>();
 
   constructor(count: 2 | 3 | 4, private exit: (to: Exit) => void, private rng: Rng = cryptoRng) {
     this.state = newGame(count);
@@ -34,7 +38,7 @@ export class GameScreen {
       <div class="gboard"></div>
       <div class="hint"><span class="tw"></span><span><b></b><small></small></span></div>
       <div class="toasts"></div>`;
-    this.view = new BoardView(this.state.players, 370);
+    this.view = new BoardView(this.state.players, 370, this.state.players.find((p) => !p.bot)?.color);
     this.el.querySelector('.gboard')!.appendChild(this.view.el);
     this.el.querySelector('[data-act=menu]')!.addEventListener('click', () => this.openMenu());
     void this.run();
@@ -104,6 +108,7 @@ export class GameScreen {
     this.state = roll(this.state, this.rng, this.forced.shift());
     const box = this.diceBox(c);
     await rollDie(box, this.state.dice!, DIE, ROLL_MS / this.speed);
+    this.lastFace.set(c, this.state.dice!);
     const ev = this.state.event;
     if (this.state.dice === 6 && ev?.type !== 'three-sixes') {
       box.classList.remove('six');
@@ -220,12 +225,20 @@ export class GameScreen {
     this.paused = true;
     const ov = document.createElement('div');
     ov.className = 'menu-ov';
-    ov.innerHTML = `<div class="box"><h2>Paused</h2><button class="b3 green disp" data-act="resume">RESUME</button><button class="b3 blue disp" data-act="sound">${sfx.muted ? 'SOUND: OFF' : 'SOUND: ON'}</button><button class="b3 blue disp" data-act="quit">QUIT TO HOME</button></div>`;
+    ov.innerHTML = `<div class="box"><h2>Paused</h2><button class="b3 green disp" data-act="resume">RESUME</button><button class="b3 blue disp" data-act="face">${faceLabel()}</button><button class="b3 blue disp" data-act="sound">${sfx.muted ? 'SOUND: OFF' : 'SOUND: ON'}</button><button class="b3 blue disp" data-act="quit">QUIT TO HOME</button></div>`;
     ov.addEventListener('click', (e) => {
       const act = (e.target as Element).closest('button')?.dataset.act;
       if (act === 'resume') {
         ov.remove();
         this.resume();
+      } else if (act === 'face') {
+        saveSetting('diceFace', settings.diceFace === 'top' ? 'front' : 'top');
+        (e.target as Element).closest('button')!.textContent = faceLabel();
+        // Redraw the resting dice with the new counting face.
+        this.el.querySelectorAll<HTMLElement>('.pl').forEach((pl) => {
+          const box = pl.querySelector<HTMLElement>('.dbox')!;
+          box.innerHTML = dieMarkup(this.lastFace.get(pl.dataset.c as Color) ?? 6, DIE);
+        });
       } else if (act === 'sound') {
         sfx.setMuted(!sfx.muted);
         (e.target as Element).closest('button')!.textContent = sfx.muted ? 'SOUND: OFF' : 'SOUND: ON';
