@@ -32,7 +32,8 @@
   - `gameScreen.ts` turn loop, bot pacing, human move choice (via landing markers), banners, pause menu, result screen
   - `homeScreen.ts` home screen: VS COMPUTER and WITH FRIENDS (both offline), player count; Online/Private tiles are locked placeholders
   - `setup.ts` pure and tested: `GameConfig`, ranking rolls, the house-picking rules (opposite / side by side)
-  - `setupScreen.ts` houses each (2 players), roll for order (ties roll again), pick houses one by one, start
+  - `setupScreen.ts` one step per screen (no scrolling): options (houses each, bots for empty houses), roll for order (ties roll again), pick houses one by one; steps with nothing to choose are skipped
+  - `avatars.ts` generated Fun Emoji avatars (CC BY 4.0, credited on the home screen); regenerate with `node tools/make-avatars.mjs`
 - `tests/` — Vitest specs: rules, turn flow, dice (incl. Monte Carlo), bot simulations, UI logic (`targets.test.ts`), and rule invariants checked on every move of hundreds of random and bot games (`invariants.test.ts`). `*.sim.ts` is the long simulation (`npm run sim`).
 - `mockups/` — static UI mockup and its PNG screenshots.
 - `docs/` — the public website (GitHub Pages): `index.html` plus `assets/`. `docs/RULES.md` lives here too but CI leaves it out of the site.

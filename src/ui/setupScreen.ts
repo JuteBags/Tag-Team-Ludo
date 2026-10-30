@@ -1,7 +1,8 @@
-// Setup before a game: houses per person (2-player games), a roll for order, then picking houses one by
-// one in that order. The highest roller picks first and plays first. Rules live in setup.ts.
+// Setup before a game, one step per screen: options (houses each in 2-player games, bots for empty houses
+// in With friends), a roll for order, then picking houses one by one in that order. The highest roller
+// picks first and plays first. Steps with nothing to choose are skipped. Rules live in setup.ts.
 import { COLORS, type Color, type Seat } from '../engine';
-import { PALETTE, PROFILES, cssVars, icons, pawnSVG } from './art';
+import { PROFILES, cssVars, icons, pawnSVG } from './art';
 import { dieMarkup, rollDie } from './dice';
 import { pickSequence, pickable, rankRolls, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
 
@@ -13,29 +14,46 @@ const BOT_NAMES = (['green', 'red', 'yellow'] as const).map((c) => PROFILES[c].n
 /** Where each house sits, as on the board. */
 const GRID: Color[] = ['green', 'red', 'blue', 'yellow'];
 
+type Step = 'opts' | 'roll' | 'pick';
 interface Person {
   name: string;
   bot: boolean;
 }
 
 export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameConfig) => void, onBack: () => void): HTMLElement {
-  const people: Person[] = Array.from({ length: count }, (_, i) =>
-    mode === 'pvp' ? { name: `Player ${i + 1}`, bot: false } : i === 0 ? { name: 'You', bot: false } : { name: `Bot ${i}`, bot: true },
-  );
   const rules: PickRules = { houses: 1, pairing: 'opposite' };
+  /** With friends: bots added to houses nobody plays. */
+  let addedBots = 0;
+  const emptyHouses = () => 4 - count * rules.houses;
+  /** Is there anything to choose before rolling? Houses each (2 players), or bots (With friends, empty houses). */
+  const hasOptions = count === 2 || (mode === 'pvp' && count < 4);
+  const steps: Step[] = hasOptions ? ['opts', 'roll', 'pick'] : ['roll', 'pick'];
+  /** Everyone in the game: the people (or you and the bots), then any added bots. Bots keep one name throughout. */
+  const makePeople = (): Person[] => {
+    const humans = mode === 'pvp' ? count : 1;
+    const bots = mode === 'pvp' ? addedBots : count - 1;
+    return [
+      ...Array.from({ length: humans }, (_, i) => ({ name: mode === 'pvp' ? `Player ${i + 1}` : 'You', bot: false })),
+      ...Array.from({ length: bots }, (_, i) => ({ name: BOT_NAMES[i]!, bot: true })),
+    ];
+  };
+  let people = makePeople();
   /** Every roll each person has made (shown next to them). */
-  const rolls: number[][] = people.map(() => []);
+  let rolls: number[][] = [];
   /**
    * People in order so far, as groups. A group of more than one is a tie: its members each roll once
    * more, and that round's results split it. Starts as one group with everyone.
    */
-  let groups: number[][] = [people.map((_, i) => i)];
+  let groups: number[][] = [];
   /** This round's roll for each member of the group being decided. */
   const round = new Map<number, number>();
-  const picks: Picks = {};
   let order: number[] = [];
-  let step: 'roll' | 'pick' | 'ready' = 'roll';
+  let picks: Picks = {};
+  let turn = 0;
+  let step: Step = steps[0]!;
   let busy = false;
+  /** Bumped on every reset, so a pending bot action from before it does nothing. */
+  let epoch = 0;
   const rand = () => {
     const a = new Uint32Array(1);
     crypto.getRandomValues(a);
@@ -47,35 +65,103 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
   el.innerHTML = `
     <div class="gtop"><button class="rbtn" data-act="back" aria-label="Back">${icons.back}</button>
       <div class="mode"><small>${mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}</small><b>${count} PLAYERS</b></div><span class="rbtn-space"></span></div>
-    ${count === 2 ? `<section class="sp opts">
-      <div class="row2"><span class="lbl">Houses each</span><div class="tg" data-k="houses"><button data-v="1" class="on">1 house</button><button data-v="2">2 houses</button></div></div>
-      <div class="row2 pairs" hidden><span class="lbl">Pairs</span><div class="tg" data-k="pairing"><button data-v="opposite" class="on">Opposite</button><button data-v="adjacent">Side by side</button></div></div>
+    <ol class="steps">${steps.map((s) => `<li data-s="${s}"><i></i><span>${{ opts: 'Options', roll: 'Order', pick: 'Houses' }[s]}</span></li>`).join('')}</ol>
+    ${hasOptions ? `<section class="wiz" data-step="opts">
+      <h3 class="disp">Game options</h3><p class="sub">Set these before rolling</p>
+      <div class="sp opts">
+        ${count === 2 ? `<div class="row2"><span class="lbl">Houses each</span><div class="tg" data-k="houses"><button data-v="1" class="on">1 house</button><button data-v="2">2 houses</button></div></div>
+        <div class="row2 pairs" hidden><span class="lbl">Pairs</span><div class="tg" data-k="pairing"><button data-v="opposite" class="on">Opposite</button><button data-v="adjacent">Side by side</button></div></div>` : ''}
+        ${mode === 'pvp' ? `<div class="row2 bots"><span class="lbl">Add bots</span><div class="tg" data-k="bots"></div></div>` : ''}
+      </div>
+      <p class="note"></p>
+      <button class="b3 green disp go" data-act="to-roll">ROLL FOR ORDER</button>
     </section>` : ''}
-    <section class="sp roll"><h3 class="disp">Roll for order</h3><p class="sub">Highest roll picks first and plays first</p><div class="people"></div></section>
-    <section class="sp pick" hidden><h3 class="disp"></h3><p class="sub"></p><div class="houses">${GRID.map((c) => `<button class="house" data-c="${c}" style="${cssVars(c)}"><span class="pw">${pawnSVG(c)}</span><b></b></button>`).join('')}</div></section>
-    <button class="b3 green disp start" hidden>START GAME</button>`;
+    <section class="wiz" data-step="roll">
+      <h3 class="disp">Roll for order</h3><p class="sub">Highest roll picks first and plays first</p>
+      <div class="sp people"></div>
+      <button class="b3 green disp go" data-act="to-pick" hidden>PICK HOUSES</button>
+    </section>
+    <section class="wiz" data-step="pick">
+      <h3 class="disp"></h3><p class="sub"></p>
+      <div class="houses">${GRID.map((c) => `<button class="house" data-c="${c}" style="${cssVars(c)}"><span class="pw">${pawnSVG(c)}</span><b></b></button>`).join('')}</div>
+      <button class="b3 green disp go" data-act="start" hidden>START GAME</button>
+    </section>`;
 
   const q = <T extends Element>(s: string) => el.querySelector<T & HTMLElement>(s)!;
-  el.querySelector('[data-act=back]')!.addEventListener('click', onBack);
 
-  // ----- houses each (2 players) -----
+  /** Shows one step and marks progress. */
+  const show = (s: Step) => {
+    step = s;
+    el.querySelectorAll<HTMLElement>('.wiz').forEach((w) => (w.hidden = w.dataset.step !== s));
+    const at = steps.indexOf(s);
+    el.querySelectorAll<HTMLElement>('.steps li').forEach((li, i) => {
+      li.classList.toggle('on', i === at);
+      li.classList.toggle('done', i < at);
+    });
+  };
+
+  // Back goes one step back (clearing what that step decided); from the first step, home.
+  el.querySelector('[data-act=back]')!.addEventListener('click', () => {
+    if (busy) return;
+    const at = steps.indexOf(step);
+    if (at === 0) return onBack();
+    if (step === 'pick') {
+      resetPicks();
+      show('roll');
+    } else {
+      resetRoll();
+      show(steps[at - 1]!);
+    }
+  });
+
+  // ----- step 1: options -----
+  /** The "Add bots" choice: 0 up to the number of empty houses; hidden when none are empty. */
+  const drawOptions = () => {
+    const tg = el.querySelector<HTMLElement>('.tg[data-k=bots]');
+    if (tg) {
+      addedBots = Math.min(addedBots, emptyHouses());
+      tg.innerHTML = Array.from({ length: emptyHouses() + 1 }, (_, n) => `<button data-v="${n}"${n === addedBots ? ' class="on"' : ''}>${n}</button>`).join('');
+      q('.bots').hidden = emptyHouses() === 0;
+    }
+    const pairs = el.querySelector<HTMLElement>('.pairs');
+    if (pairs) pairs.hidden = rules.houses === 1;
+    const total = count * rules.houses + (mode === 'pvp' ? addedBots : 0);
+    const note = el.querySelector('.note');
+    if (note) note.textContent = rules.houses === 2 ? 'All four houses in play: two each' : `${total} of 4 houses in play${mode === 'pvp' && addedBots ? `, ${addedBots} played by bots` : ''}`;
+  };
   el.querySelectorAll<HTMLElement>('.tg').forEach((tg) =>
     tg.addEventListener('click', (e) => {
       const b = (e.target as Element).closest<HTMLButtonElement>('button');
-      if (!b || step !== 'roll') return;
+      if (!b) return;
       tg.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
-      if (tg.dataset.k === 'houses') {
-        rules.houses = Number(b.dataset.v) as 1 | 2;
-        q('.pairs').hidden = rules.houses === 1;
-      } else rules.pairing = b.dataset.v as Pairing;
+      if (tg.dataset.k === 'houses') rules.houses = Number(b.dataset.v) as 1 | 2;
+      else if (tg.dataset.k === 'bots') addedBots = Number(b.dataset.v);
+      else rules.pairing = b.dataset.v as Pairing;
+      drawOptions();
     }),
   );
+  el.querySelector('[data-act=to-roll]')?.addEventListener('click', () => {
+    resetRoll();
+    show('roll');
+  });
 
-  // ----- roll for order -----
+  // ----- step 2: roll for order -----
   const peopleEl = q('.people');
-  peopleEl.innerHTML = people
-    .map((p, i) => `<div class="prow" data-p="${i}"><span class="chip disp">${i + 1}</span><b>${p.name}</b><span class="st"></span><button class="dbox" style="${NEUTRAL}" aria-label="Roll">${dieMarkup(6, DIE)}</button></div>`)
-    .join('');
+  /** Starts the roll over with the current options. */
+  const resetRoll = () => {
+    epoch++;
+    busy = false;
+    people = makePeople();
+    rolls = people.map(() => []);
+    groups = [people.map((_, i) => i)];
+    round.clear();
+    order = [];
+    q('[data-act=to-pick]').hidden = true;
+    peopleEl.innerHTML = people
+      .map((p, i) => `<div class="prow" data-p="${i}"><span class="chip disp">${i + 1}</span><b>${p.name}</b><span class="st"></span><button class="dbox" style="${NEUTRAL}" aria-label="Roll">${dieMarkup(6, DIE)}</button></div>`)
+      .join('');
+    refreshRoll();
+  };
 
   /** The tie being decided now (the first group of more than one), if any. */
   const deciding = () => groups.find((g) => g.length > 1);
@@ -94,20 +180,24 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     });
     if (!deciding()) return finishRoll();
     // Bots roll by themselves once only bots are left to roll this round.
-    if (now.length && now.every((i) => people[i]!.bot) && !busy) void rollFor(now[0]!);
+    if (now.length && now.every((i) => people[i]!.bot) && !busy) {
+      const e = epoch;
+      setTimeout(() => e === epoch && void rollFor(now[0]!), 250);
+    }
   };
 
   const rollFor = async (i: number) => {
     if (busy || step !== 'roll' || !due().includes(i)) return;
     busy = true;
-    el.querySelector('.opts')?.classList.add('locked');
+    const e = epoch;
     const v = rand();
     const box = peopleEl.querySelector<HTMLElement>(`.prow[data-p="${i}"] .dbox`)!;
     box.classList.remove('can-roll');
     await rollDie(box, v, DIE, ROLL_MS);
+    if (e !== epoch) return;
+    busy = false;
     rolls[i]!.push(v);
     round.set(i, v);
-    busy = false;
     // When everyone in the tie has rolled, split it by this round's rolls (highest first).
     const g = deciding()!;
     if (g.every((m) => round.has(m))) {
@@ -131,16 +221,20 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       row.classList.add('ranked');
       row.style.order = String(order.indexOf(i));
     });
-    step = 'pick';
-    setTimeout(startPick, 700);
+    q('[data-act=to-pick]').hidden = false;
   };
+  q('[data-act=to-pick]').addEventListener('click', () => {
+    resetPicks();
+    show('pick');
+  });
 
-  // ----- pick houses one by one -----
-  let turn = 0;
+  // ----- step 3: pick houses one by one -----
   const sequence = () => pickSequence(order, rules.houses);
-  const startPick = () => {
-    q('.pick').hidden = false;
-    q('.pick').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const resetPicks = () => {
+    epoch++;
+    picks = {};
+    turn = 0;
+    q('[data-act=start]').hidden = true;
     refreshPick();
   };
 
@@ -158,10 +252,13 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     });
     if (picker === undefined) return ready();
     const second = rules.houses === 2 && COLORS.some((c) => picks[c] === picker);
-    q('.pick h3').textContent = `${people[picker]!.name}: pick ${second ? 'your second house' : 'a house'}`;
-    q('.pick .sub').textContent = second ? (rules.pairing === 'opposite' ? 'It must be opposite your first' : 'It must be next to your first') : `${seq.length - turn} picks left`;
+    q('.wiz[data-step=pick] h3').textContent = `${people[picker]!.name}: pick ${second ? 'your second house' : 'a house'}`;
+    q('.wiz[data-step=pick] .sub').textContent = second ? (rules.pairing === 'opposite' ? 'It must be opposite your first' : 'It must be next to your first') : `${seq.length - turn} picks left`;
     // Bots pick by themselves; a pick with only one option fills itself in.
-    if (people[picker]!.bot || options.length === 1) setTimeout(() => choose(options[Math.floor(Math.random() * options.length)]!), 650);
+    if (people[picker]!.bot || options.length === 1) {
+      const e = epoch;
+      setTimeout(() => e === epoch && choose(options[Math.floor(Math.random() * options.length)]!), 650);
+    }
   };
 
   const choose = (c: Color) => {
@@ -171,36 +268,27 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     turn++;
     refreshPick();
   };
-  el.querySelector('.houses')!.addEventListener('click', (e) => {
+  q('.houses').addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLButtonElement>('.house');
     const picker = sequence()[turn];
     if (b && picker !== undefined && !people[picker]!.bot) choose(b.dataset.c as Color);
   });
 
   const ready = () => {
-    step = 'ready';
     const first = COLORS.find((c) => picks[c] === order[0])!;
-    // Bots take the name of their first house, so a bot with two houses has one name.
-    // A bot takes its first house's character name; Blue's is "You", so it takes a free one instead.
-    const used = new Set<string>();
-    const names = people.map((p, i) => {
-      if (!p.bot) return p.name;
-      const own = PROFILES[COLORS.find((c) => picks[c] === i)!].name;
-      const name = BOT_NAMES.includes(own) && !used.has(own) ? own : BOT_NAMES.find((n) => !used.has(n))!;
-      used.add(name);
-      return name;
-    });
-    q('.pick h3').textContent = `${names[order[0]!]} plays first`;
-    q('.pick .sub').textContent = 'Houses are set';
-    const start = q<HTMLButtonElement>('.start');
+    const names = people.map((p) => p.name);
+    q('.wiz[data-step=pick] h3').textContent = `${names[order[0]!]} plays first`;
+    q('.wiz[data-step=pick] .sub').textContent = 'Houses are set';
+    const start = q<HTMLButtonElement>('[data-act=start]');
     start.hidden = false;
-    start.style.setProperty('--first', PALETTE[first].m);
     start.onclick = () => {
       const seats: Seat[] = COLORS.filter((c) => picks[c] !== undefined).map((c) => ({ color: c, owner: picks[c]!, bot: people[picks[c]!]!.bot }));
       onStart({ mode, seats, first, names });
     };
   };
 
-  refreshRoll();
+  drawOptions();
+  resetRoll();
+  show(steps[0]!);
   return el;
 }

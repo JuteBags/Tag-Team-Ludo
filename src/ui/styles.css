@@ -252,35 +252,44 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .mcard b{font-size:21px;line-height:1.05;text-shadow:0 2px 0 rgba(0,0,0,.3)}
 .mcard small{font-size:12px;font-weight:900;opacity:.92}
 
-/* Setup: houses, roll for order, pick houses. */
-.setup{display:flex;flex-direction:column;gap:14px;padding:76px 20px 24px;overflow-y:auto}
-.setup .gtop{position:absolute}
-.sp{border-radius:22px;padding:14px 16px;background:linear-gradient(180deg,rgba(14,38,104,.92),rgba(7,21,64,.92));border:1.5px solid rgba(255,214,90,.45)}
-.sp h3{font-size:21px;font-weight:400;color:#ffd65a}
-.sp .sub{font-size:12.5px;font-weight:800;opacity:.8;margin:2px 0 10px}
-.opts.locked{opacity:.55;pointer-events:none}
+/* Setup: one step per screen (options, roll for order, pick houses), nothing scrolls. */
+.setup .steps{position:absolute;top:78px;left:24px;right:24px;display:flex;justify-content:center;gap:8px;list-style:none}
+.setup .steps li{display:flex;align-items:center;gap:6px;padding:5px 12px 5px 6px;border-radius:14px;background:rgba(0,0,0,.22);font-weight:900;font-size:12px;letter-spacing:.6px;opacity:.6}
+.setup .steps i{width:18px;height:18px;border-radius:50%;border:2px solid #ffd65a}
+.setup .steps li.on{opacity:1;background:rgba(255,214,90,.16);box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.6)}
+.setup .steps li.on i{background:#ffd65a;box-shadow:0 0 10px rgba(255,214,90,.8)}
+.setup .steps li.done{opacity:.9}
+.setup .steps li.done i{background:#57ff98;border-color:#57ff98}
+.wiz{position:absolute;top:126px;left:20px;right:20px;bottom:0;display:flex;flex-direction:column}
+.wiz h3{font-size:28px;font-weight:400;color:#ffd65a;text-align:center;line-height:1.1}
+.wiz .sub{font-size:14px;font-weight:800;opacity:.85;text-align:center;margin:6px 0 18px}
+.wiz .go{position:absolute;left:4px;right:4px;bottom:34px}
+.wiz .note{margin-top:14px;text-align:center;font-weight:800;font-size:13px;opacity:.8}
+.sp{border-radius:22px;padding:16px;background:linear-gradient(180deg,rgba(14,38,104,.92),rgba(7,21,64,.92));border:1.5px solid rgba(255,214,90,.45)}
 .row2{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.row2+.row2{margin-top:10px}
+.row2+.row2{margin-top:14px}
 .row2 .lbl{font-weight:900;font-size:12px;letter-spacing:1px;text-transform:uppercase;opacity:.8}
 .tg{display:flex;gap:6px;padding:4px;border-radius:14px;background:rgba(0,0,0,.25)}
-.tg button{min-height:40px;padding:0 14px;border-radius:11px;font-family:'Lilita One';font-size:15px;color:rgba(255,255,255,.7)}
+.tg button{min-height:44px;min-width:48px;padding:0 14px;border-radius:11px;font-family:'Lilita One';font-size:15px;color:rgba(255,255,255,.7)}
 .tg button.on{background:linear-gradient(180deg,#5795ff,#2459d6);color:#fff;box-shadow:inset 0 2px 0 rgba(255,255,255,.4),0 3px 0 #10307e}
-.people{display:flex;flex-direction:column;gap:8px}
-.prow{display:flex;align-items:center;gap:10px;min-height:54px;padding:4px 6px 4px 8px;border-radius:16px;background:rgba(255,255,255,.06);transition:background .2s}
+.people{display:flex;flex-direction:column;gap:10px;padding:12px}
+.prow{display:flex;align-items:center;gap:12px;min-height:64px;padding:6px 8px 6px 10px;border-radius:18px;background:rgba(255,255,255,.06);transition:background .2s}
 .prow.due{background:rgba(255,214,90,.14);box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.6)}
-.prow .chip{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:#0c2a74;border:2px solid #ffd65a;font-size:15px;flex:none}
+.prow .chip{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#0c2a74;border:2px solid #ffd65a;font-size:16px;flex:none}
 .prow.ranked .chip{background:#ffd65a;color:#5a2d00}
-.prow b{font-size:16px}
-.prow .st{margin-left:auto;font-size:12px;font-weight:800;opacity:.85}
-.prow .dbox{width:48px;height:48px;border-radius:14px;flex:none}
-.houses{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.house{position:relative;height:96px;border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-  background:linear-gradient(160deg,var(--l),var(--m) 55%,var(--d));box-shadow:inset 0 3px 0 rgba(255,255,255,.4),0 5px 0 var(--d);opacity:.45;transition:opacity .2s,transform .1s}
-.house .pw svg{width:42px;height:46px}
-.house b{font-family:'Lilita One';font-weight:400;font-size:15px;text-shadow:0 2px 0 rgba(0,0,0,.3);min-height:18px}
-.house.can{opacity:1;box-shadow:inset 0 3px 0 rgba(255,255,255,.4),0 5px 0 var(--d),0 0 0 3px #fff,0 0 22px rgba(255,255,255,.5)}
+.prow b{font-size:18px}
+.prow .st{margin-left:auto;font-size:12.5px;font-weight:800;opacity:.85;text-align:right}
+.prow .dbox{width:52px;height:52px;border-radius:15px;flex:none}
+.houses{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.house{position:relative;height:150px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  background:linear-gradient(160deg,var(--l),var(--m) 55%,var(--d));box-shadow:inset 0 3px 0 rgba(255,255,255,.4),0 6px 0 var(--d);opacity:.45;transition:opacity .2s,transform .1s}
+.house .pw svg{width:58px;height:64px;filter:drop-shadow(0 3px 2px rgba(0,0,0,.3))}
+.house b{font-family:'Lilita One';font-weight:400;font-size:19px;text-shadow:0 2px 0 rgba(0,0,0,.3);min-height:22px}
+.house.can{opacity:1;box-shadow:inset 0 3px 0 rgba(255,255,255,.4),0 6px 0 var(--d),0 0 0 3px #fff,0 0 24px rgba(255,255,255,.5)}
 .house.can:active{transform:translateY(3px)}
 .house.taken{opacity:1}
-.setup .start{width:100%;flex:none;margin-top:auto}
 /* "With friends": whose turn it is, in their colour, when the phone changes hands. */
 .toast.turn{font-size:34px;background:linear-gradient(180deg,var(--l),var(--m) 60%,var(--d));box-shadow:0 5px 0 var(--d),0 14px 30px rgba(0,0,0,.45)}
+.foot small{display:block;margin-top:4px;font-size:10px;letter-spacing:.3px;opacity:.85}
+/* The hidden attribute must win over component display rules (e.g. .row2{display:flex}). */
+[hidden]{display:none!important}

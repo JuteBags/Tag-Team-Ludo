@@ -79,3 +79,7 @@ Every pull request also plays all-bot games on `main` and on the PR with the sam
 Run the tests locally before pushing: `npm test`, plus `npm run sim` for the long all-bot simulation.
 
 The APK is signed with the release key stored in the repository secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_PASSWORD` and `KEY_ALIAS`. Without them CI builds a debug APK instead.
+
+## Credits
+
+- Avatars: [Fun Emoji](https://www.figma.com/community/file/968125295144990435) by Davis Uche, licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), generated with [DiceBear](https://www.dicebear.com) (`tools/make-avatars.mjs`).

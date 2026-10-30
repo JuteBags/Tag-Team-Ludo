@@ -1,18 +1,32 @@
-// Event statistics from all-bot games, weighted dice vs fair dice. Run with `npm run sim` (not part of
-// `npm test`: 3000 games per setup takes minutes). SIM_GAMES=500 npm run sim for a quick pass.
+// Event statistics from all-bot games, weighted dice vs fair dice: classic 2/3/4-player games, and 2-player
+// games with two houses each (opposite, and side by side). Run with `npm run sim` (not part of `npm test`:
+// 3000 games per setup takes minutes). SIM_GAMES=500 npm run sim for a quick pass.
 // Prints a table and checks the dice still do what src/engine/dice.ts says. It also prints one line
 // "SIM_JSON {...}" with every metric as a number, which CI compares between main and a pull request
 // (tools/sim-compare.mjs).
 import { describe, expect, it } from 'vitest';
-import { BASE, analyzeDice, chooseMove, move, newGame, roll, sampleFace, seeded, type GameState } from '../src/engine';
+import { BASE, analyzeDice, chooseMove, createGame, move, newGame, ownerRanking, roll, sampleFace, seeded, type Color, type GameState } from '../src/engine';
 
 // No @types/node in this project, so reach the env through globalThis.
 const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
 const GAMES = Number(env.SIM_GAMES ?? 3000);
 const MAX_ROLLS = 5000;
 const FAIR = [1, 1, 1, 1, 1, 1].map((x) => x / 6);
-/** The seat a human plays. Every seat is a bot here, but this one is watched as "the player's view". */
-const SEAT = 'blue';
+/** The human's seat is Blue. Every seat is a bot here, but the person playing Blue (and their second house,
+ * if any) is watched as "the player's view". */
+const SEAT: Color = 'blue';
+
+/** A 2-player game where person 0 has `mine` and person 1 the other two houses. */
+const twoHouses = (mine: Color[]) => () =>
+  createGame((['blue', 'green', 'red', 'yellow'] as const).map((color) => ({ color, owner: mine.includes(color) ? 0 : 1, bot: true })));
+
+const SETUPS: { name: string; seed: number; make: () => GameState }[] = [
+  { name: '2p', seed: 2 * 31, make: () => newGame(2, []) },
+  { name: '3p', seed: 3 * 31, make: () => newGame(3, []) },
+  { name: '4p', seed: 4 * 31, make: () => newGame(4, []) },
+  { name: '2p·2h opposite', seed: 1001, make: twoHouses(['blue', 'red']) },
+  { name: '2p·2h side', seed: 1003, make: twoHouses(['blue', 'green']) },
+];
 
 interface Stats {
   games: number; unfinished: number; rolls: number; sixes: number; tripleSix: number; noMove: number;
@@ -24,15 +38,17 @@ interface Stats {
   seatWins: number; seatPlaceSum: number; seatIdleStreak: number;
 }
 
-function simulate(players: 2 | 3 | 4, weighted: boolean): Stats {
+function simulate(setup: (typeof SETUPS)[number], weighted: boolean): Stats {
   const s: Stats = {
     games: GAMES, unfinished: 0, rolls: 0, sixes: 0, tripleSix: 0, noMove: 0, kills: 0, pairKills: 0, lostProgress: 0,
     pairMoves: 0, moves: 0, killChance: 0, killHit: 0, escChance: 0, escHit: 0, finChance: 0, finHit: 0, maxRolls: 0,
     seatRolls: 0, seatNoMove: 0, seatAllHome: 0, seatKills: 0, seatLost: 0, seatWins: 0, seatPlaceSum: 0, seatIdleStreak: 0,
   };
   for (let g = 0; g < GAMES; g++) {
-    const rng = seeded(g * 7919 + players * 31 + (weighted ? 1 : 0));
-    let st: GameState = newGame(players, []);
+    const rng = seeded(g * 7919 + setup.seed + (weighted ? 1 : 0));
+    let st: GameState = setup.make();
+    const me = st.players.find((p) => p.color === SEAT)!.owner;
+    const mine = (c: Color) => st.players.find((p) => p.color === c)!.owner === me;
     let rolls = 0;
     let idle = 0;
     while (st.phase !== 'over' && rolls < MAX_ROLLS) {
@@ -46,7 +62,7 @@ function simulate(players: 2 | 3 | 4, weighted: boolean): Stats {
         if (why.kill.length) { s.killChance++; if (why.kill.includes(face)) s.killHit++; }
         if (why.escape.length) { s.escChance++; if (why.escape.includes(face)) s.escHit++; }
         if (why.finish.length) { s.finChance++; if (why.finish.includes(face)) s.finHit++; }
-        const seat = color === SEAT;
+        const seat = mine(color);
         if (seat) {
           s.seatRolls++;
           if (st.players[st.current]!.tokens.every((t) => t === BASE)) s.seatAllHome++;
@@ -63,20 +79,20 @@ function simulate(players: 2 | 3 | 4, weighted: boolean): Stats {
       } else {
         const m = chooseMove(st, rng);
         s.moves++;
-        if (color === SEAT) idle = 0;
+        if (mine(color)) idle = 0;
         if (m.kind === 'pair') s.pairMoves++;
         s.kills += m.captures.length;
         if (m.kind === 'pair') s.pairKills += m.captures.length;
-        if (color === SEAT) s.seatKills += m.captures.length;
+        if (mine(color)) s.seatKills += m.captures.length;
         for (const c of m.captures) {
           s.lostProgress += st.players.find((p) => p.color === c.color)!.tokens[c.token]!;
-          if (c.color === SEAT) s.seatLost++;
+          if (mine(c.color)) s.seatLost++;
         }
         st = move(st, m);
       }
     }
     if (st.phase !== 'over') s.unfinished++;
-    const place = st.ranking.indexOf(SEAT) + 1 || players;
+    const place = ownerRanking(st).indexOf(me) + 1;
     if (place === 1) s.seatWins++;
     s.seatPlaceSum += place;
     s.maxRolls = Math.max(s.maxRolls, rolls);
@@ -113,10 +129,10 @@ export const METRICS: { key: string; label: string; pct?: boolean; f: (s: Stats)
 describe(`simulation: ${GAMES} all-bot games per setup`, () => {
   const results: Record<string, Stats> = {};
 
-  for (const players of [2, 3, 4] as const) {
-    it(`${players} players`, { timeout: 1_800_000 }, () => {
-      const w = (results[`${players}p weighted`] = simulate(players, true));
-      const f = (results[`${players}p fair`] = simulate(players, false));
+  for (const setup of SETUPS) {
+    it(setup.name, { timeout: 1_800_000 }, () => {
+      const w = (results[`${setup.name} weighted`] = simulate(setup, true));
+      const f = (results[`${setup.name} fair`] = simulate(setup, false));
       for (const s of [w, f]) {
         expect(s.unfinished).toBe(0); // every game ends
         expect(s.sixes / s.rolls).toBeGreaterThan(0.15);

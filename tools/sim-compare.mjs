@@ -39,8 +39,9 @@ function table(setups) {
   return [`| Metric | ${setups.map((s) => s.replace(' weighted', '').replace(' fair', '')).join(' | ')} |`, `|---|${setups.map(() => '---').join('|')}|`, ...rows].join('\n');
 }
 
-const weighted = ['2p weighted', '3p weighted', '4p weighted'];
-const fair = ['2p fair', '3p fair', '4p fair'];
+const setups = Object.keys(head.setups);
+const weighted = setups.filter((s) => s.endsWith(' weighted'));
+const fair = setups.filter((s) => s.endsWith(' fair'));
 const changed = head.metrics.some((m) => [...weighted, ...fair].some((s) => Math.abs((head.setups[s]?.[m.key] ?? 0) - (base.setups[s]?.[m.key] ?? 0)) > 1e-9));
 
 console.log(`<!-- sim-compare -->

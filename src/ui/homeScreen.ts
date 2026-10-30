@@ -29,7 +29,7 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
       <div class="tile on locked"><span class="soon">COMING SOON</span><span class="ic">${icons.globe}</span><b class="disp">ONLINE</b><small>Play the world</small><span class="lk">${icons.lock}</span></div>
       <div class="tile pr locked"><span class="soon">COMING SOON</span><span class="ic">${icons.friends}</span><b class="disp">PRIVATE</b><small>Room with friends</small><span class="lk">${icons.lock}</span></div>
     </div>
-    <div class="foot">Both modes play offline · v${__APP_VERSION__}</div>`;
+    <div class="foot">Both modes play offline · v${__APP_VERSION__}<small>Avatars: Fun Emoji by Davis Uche, CC BY 4.0</small></div>`;
   el.querySelector('.tilt')!.appendChild(new BoardView(HERO, 286).el);
   el.querySelectorAll<HTMLElement>('.mcard').forEach((b) => b.addEventListener('click', () => onPlay(b.dataset.mode as Mode)));
   el.querySelectorAll<HTMLButtonElement>('.seg .o').forEach((b) =>
