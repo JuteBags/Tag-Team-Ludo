@@ -15,7 +15,7 @@
 
 - 2, 3 or 4 player games: you against 1-3 bots, fully offline.
 - Classic rules: a 6 brings a token out and rolls again, captures send tokens home, stars are safe, exact roll to finish.
-- The pair move: on an even roll a pair moves half the roll each (4 → 2 + 2). On a normal square a pair is a block that enemies can't land on or pass.
+- The pair move: on an even roll a pair moves half the roll each (4 → 2 + 2). Single tokens can't jump an enemy pair (they can stop on it), and only a pair can cut a pair.
 - Glossy 2.5D look drawn in vector code (SVG + CSS 3D dice), so it stays sharp on any screen and the app stays small.
 
 Online play and private rooms are planned for a later update.
@@ -28,6 +28,7 @@ Needs Node 24.
 npm install
 npm run dev        # game at http://localhost:5173
 npm test           # rules, dice and bot simulation tests
+npm run sim        # 18,000 all-bot games: kills, idle rolls, game length (minutes)
 npm run build      # typecheck + production build to dist/
 ```
 
@@ -49,19 +50,24 @@ See [AGENTS.md](AGENTS.md) for architecture notes and conventions.
 
 ## Build and release
 
-[`.github/workflows/build.yml`](.github/workflows/build.yml) runs on every push:
+[`.github/workflows/build.yml`](.github/workflows/build.yml) runs only when started by hand (Actions → Build and deploy → Run workflow), and only with **release notes**: what changed, for players. Pushes and pull requests don't trigger it. A run with empty or placeholder notes ("test", "fix") fails before anything is built. The notes go into the GitHub Release, `download/version.json` and the run summary. What it does depends on the branch or tag it runs on:
 
-| Trigger | Result |
+| Run on | Result |
 |---|---|
-| Push to `main` | Tests, web build, signed APK, website deployed to GitHub Pages with the game at `/play/` and the APK at `/download/tag-team-ludo.apk` |
-| Push a tag `v1.2.3` | Signed APK + AAB attached to a GitHub Release (`v1.2.3-rc1` style tags become pre-releases) |
-| Pull request | Tests, web build and APK as a run artifact |
+| `main` | Tests, web build, signed APK, website deployed to GitHub Pages with the game at `/play/` and the APK at `/download/tag-team-ludo.apk` |
+| A tag `v1.2.3` | Signed APK + AAB attached to a GitHub Release (`v1.2.3-rc1` style tags become pre-releases) |
+| Any other branch | Tests, web build and APK as a run artifact |
 
 To publish a version:
 
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
+gh workflow run build.yml --ref v0.1.0 -f release_notes="Pairs now lock on normal squares; only a pair can cut a pair."
 ```
+
+For longer notes, commit a Markdown file and pass its path: `-f release_notes=release-notes/0.1.0.md`.
+
+Run the tests locally before pushing: `npm test`, plus `npm run sim` for the long all-bot simulation.
 
 The APK is signed with the release key stored in the repository secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_PASSWORD` and `KEY_ALIAS`. Without them CI builds a debug APK instead.

@@ -1,4 +1,20 @@
-// Weighted dice. Weights are in eighteenths; see "Weighted dice" in docs/RULES.md.
+// Weighted dice: the only spec of how a roll is made. Keep this out of every .md file and the website.
+//
+// Rules (weights in eighteenths; everyone gets them, bots included):
+//  1. Before each roll, every face starts at 3/18 (16.7%).
+//  2. A face that would capture an enemy token ("kill"), a pair capturing a pair included, goes up to 4/18 (22.2%).
+//  3. A face that would take a threatened token or pair to a star or into the home column ("escape")
+//     goes up to 4/18. Threatened = some enemy could capture it with one roll of 1-6 (see isThreatened).
+//  4. At most 2 faces are boosted per roll: kills first, then escapes; ties are picked at random.
+//  5. A face that would finish a token exactly goes down to 2/18 (11.1%).
+//  6. A face that is both boosted and lowered stays at 3/18.
+//  7. Bringing a token out of base is not a reason to boost the 6.
+//  8. The untouched faces share the difference equally, so the six faces always add up to 1.
+//  9. No face goes below 2/18 or above 5/18.
+//
+// Known risks: bots get the kill boost too, so they hit the human a little more often. The repo is
+// public, so anyone who reads this file can find the weighting; we never advertise "fair dice".
+// `npm run sim` measures what the weighting does to kills, escapes and game length.
 import type { Color } from './board';
 import { isEscape, legalMoves } from './rules';
 import type { PlayerState, Rng } from './types';

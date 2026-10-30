@@ -1,6 +1,6 @@
 # Tag Team Ludo — game rules (v1)
 
-Approved 2026-10-30. The engine in `src/engine/` and the game screen implement exactly these rules; tests in `tests/` check them. This file stays off the public website because of section F (weighted dice).
+Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1). The engine in `src/engine/` and the game screen implement exactly these rules; tests in `tests/` check them. This file stays off the public website.
 
 ## A. Setup
 
@@ -29,44 +29,34 @@ Approved 2026-10-30. The engine in `src/engine/` and the game screen implement e
 
 15. Landing on a single enemy token on a normal square captures it: it goes back to its base.
 16. There are 8 safe stars: each colour's start square and the square 8 steps after it.
-17. Nobody can be captured on a star; tokens of any colour can share it.
+17. Nobody can be captured on a star or in a home column; tokens of any colour can share a star.
 
 ## E. Pairs (jodi)
 
-18. Two of your tokens on the same track square are a **pair**. This includes two tokens brought out onto your start square.
-19. On an even roll a pair can move together, each token moving half the roll: 2 → 1 + 1, 4 → 2 + 2, 6 → 3 + 3 (plus the extra roll for the 6).
-20. On an odd roll a pair can't move as a pair.
-21. Moving as a pair is optional: you can always move one token alone, which breaks the pair.
-22. A pair on a normal (non-star) square is a **block**.
-23. No enemy token, single or pair, can land on a block or pass it.
-24. Your own tokens can pass your own block.
-25. A pair on a star doesn't block: enemies can land on it or pass it, and nobody is captured there.
-26. A pair can never be captured: on a normal square it is a block, and on a star it is safe.
-27. A pair that lands on a single enemy token on a normal square captures it.
-28. A block has no time limit.
-29. Three or more of your tokens on one square also block; a pair move takes two of them.
-30. There are no pairs in the home column.
+18. Two of your tokens on the same track square are a **pair**. Your single landing on your own single makes one, on any square, and so do two tokens brought out onto your start square.
+19. A pair moves only on an even roll, each token moving half the roll: 2 → 1 + 1, 4 → 2 + 2, 6 → 3 + 3 (plus the extra roll for the 6).
+20. On a normal (non-star) square a pair is **locked**: neither token can move alone, so on an odd roll it can't move at all.
+21. A pair splits only on a star or in the home column. On a star it is just two single tokens: on an even roll you choose to move both as a pair or one token alone (the full roll); on an odd roll only one token can move.
+22. A pair that lands on a star or moves into the home column splits there. There are no pairs in the home column.
+23. There are no triples: a colour's tokens on one normal square are pairs in twos plus at most one single (3 tokens = a pair + a single that can move alone; 4 tokens = two pairs).
+24. **Passing.** A single token can pass single tokens and your own pairs, but not an enemy pair on a normal square. A pair can pass anything, enemy pairs included.
+25. **Stopping on a pair.** A single token may land exactly on an enemy pair on a normal square. Nobody is captured. From there it can move on past that pair with any later roll; if the pair moves ahead of it again, it has to land on the pair again before it can get past.
+26. A single sitting on an enemy pair is not safe: any other single that lands there captures it, including a single of the pair's own colour.
+27. **Pairs capture only pairs.** A pair that lands on an enemy pair on a normal square captures both of its tokens. A single can never capture a pair.
+28. A pair never captures a single: it can land on a square with enemy singles and they all stay. If a pair lands on an enemy pair with a single sitting on it, only the pair is captured.
+29. On a star nobody is captured, pairs don't block, and any token can land on or pass a pair there.
+30. A pair has no time limit.
 
-## F. Weighted dice (everyone, bots included)
+## F. Dice
 
-31. Before each roll, every face starts at **3/18** (16.7%).
-32. A face that would capture an enemy token (**kill**) goes up to **4/18** (22.2%).
-33. A face that would take a threatened token to a star or into the home column (**escape**) goes up to **4/18**. A token is threatened when an enemy could capture it with a single roll of 1–6.
-34. At most **2 faces** are boosted per roll: kills first, then escapes; ties are picked at random.
-35. A face that would finish a token exactly goes down to **2/18** (11.1%).
-36. A face that is both boosted and lowered stays at 3/18.
-37. Bringing a token out of base is not a reason to boost the 6.
-38. The untouched faces share the difference equally, so the six faces always add up to 1.
-39. No face goes below **2/18** or above **5/18**.
+31. Every player, bots included, rolls the same dice. How a roll is made is defined in `src/engine/dice.ts`.
 
 ## G. Winning and ranking
 
-40. A player is done when all 4 of their tokens reach the centre.
-41. The finishing order is the ranking.
-42. The game ends as soon as you finish all 4 tokens, or when only one player is left. Anyone still playing is ranked by how far their tokens have travelled.
+32. A player is done when all 4 of their tokens reach the centre.
+33. The finishing order is the ranking.
+34. The game ends as soon as you finish all 4 tokens, or when only one player is left. Anyone still playing is ranked by how far their tokens have travelled.
 
 ## Known risks (accepted for v1, revisit after playtests)
 
-- Bots get the kill boost too, so they hit you a little more often.
-- A block parked on a normal square can hold an opponent back for a long time.
-- The weighting is hidden. The repo is public, so anyone who reads the code can find it; we never advertise "fair dice".
+- A pair parked on a normal square holds back enemy singles until they land on it exactly, and a locked pair can sit stuck through a run of odd rolls.

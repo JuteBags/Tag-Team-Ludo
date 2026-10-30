@@ -1,11 +1,16 @@
-# Builds everything on every push.
+# Builds everything, but only when started by hand, and only with release notes:
+#   Actions -> Build and deploy -> Run workflow, or
+#   gh workflow run build.yml --ref <branch-or-tag> -f release_notes="What changed, for players"
+#   gh workflow run build.yml --ref v1.2.3 -f release_notes=release-notes/1.2.3.md   (a Markdown file)
+# Pushes and pull requests don't trigger it. Empty or placeholder notes ("test", "fix") fail the run
+# before anything is built. The notes go into the GitHub Release, download/version.json and the run summary.
+# What it does depends on the branch or tag picked in "Use workflow from":
 #
-#   Push to main        -> tests, HTML5 game, signed APK, website deployed to GitHub Pages
+#   main                -> tests, HTML5 game, signed APK, website deployed to GitHub Pages
 #                          (game at /play/, APK at /download/tag-team-ludo.apk, site from docs/).
-#   Push a tag v1.2.3   -> tests, HTML5 game, signed APK + AAB, GitHub Release "v1.2.3".
+#   a tag v1.2.3        -> tests, HTML5 game, signed APK + AAB, GitHub Release "v1.2.3".
 #                          A tag with a suffix (v1.2.3-rc1) becomes a pre-release.
-#   Pull request        -> tests, HTML5 game, APK as a run artifact (no deploy).
-#   Actions -> Build and deploy -> Run workflow: same as a push on that branch.
+#   any other branch    -> tests, HTML5 game, APK as a run artifact (no deploy).
 #
 # APK signing uses these repository secrets (without them a debug APK is built):
 #   KEYSTORE_BASE64  the .jks file, base64-encoded
@@ -17,11 +22,14 @@
 name: Build and deploy
 
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
-  pull_request:
   workflow_dispatch:
+    inputs:
+      release_notes:
+        description: 'Release notes (required): what changed, for players. Text, or a path like release-notes/1.2.3.md'
+        required: true
+        type: string
+
+run-name: "${{ github.ref_name }}: ${{ inputs.release_notes }}"
 
 permissions:
   contents: read
@@ -31,8 +39,38 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  notes:
+    name: Check the release notes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read and check the notes
+        env:
+          NOTES: ${{ inputs.release_notes }}
+        run: |
+          notes="$NOTES"
+          # A path to a Markdown file in the repo means "use that file".
+          if [[ "$notes" =~ ^[A-Za-z0-9._/-]+\.md$ ]]; then
+            [ -f "$notes" ] || { echo "::error::Release notes file $notes does not exist"; exit 1; }
+            notes="$(cat "$notes")"
+          fi
+          trimmed="$(printf '%s' "$notes" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
+          placeholder='^(test(ing)?|wip|tmp|update[sd]?|fix(es|ed)?|changes?|misc|build|release|n/?a|none|todo|[-.]+)$'
+          if [ ${#trimmed} -lt 20 ] || [[ "${trimmed,,}" =~ $placeholder ]]; then
+            echo "::error::Release notes are required: at least 20 characters saying what changed for players (got '$trimmed')"
+            exit 1
+          fi
+          printf '%s\n' "$notes" > release-notes.md
+          { echo "## Release notes"; echo; cat release-notes.md; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: release-notes.md
+          retention-days: 30
+
   web:
     name: Test and build the HTML5 game
+    needs: notes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -72,6 +110,10 @@ jobs:
         with:
           name: web
           path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/notes
 
       - name: Work out the version
         id: version
@@ -147,8 +189,9 @@ jobs:
             jarsigner -verify "$out/tag-team-ludo.aab" | grep -q "jar verified" || { echo "::error::The AAB is not signed"; exit 1; }
           fi
           size=$(stat -c %s "$out/tag-team-ludo.apk")
-          printf '{"version":"%s","code":%s,"size":%s,"signed":%s,"commit":"%s"}\n' \
-            "$NAME" "$CODE" "$size" "${SIGNED:-false}" "${GITHUB_SHA::7}" > "$out/version.json"
+          jq -n --arg version "$NAME" --argjson code "$CODE" --argjson size "$size" --argjson signed "${SIGNED:-false}" \
+            --arg commit "${GITHUB_SHA::7}" --rawfile notes "$RUNNER_TEMP/notes/release-notes.md" \
+            '{version: $version, code: $code, size: $size, signed: $signed, commit: $commit, notes: $notes}' > "$out/version.json"
           cat "$out/version.json"
           rm -f "$RUNNER_TEMP/release.jks" "$RUNNER_TEMP/keystore.properties"
 
@@ -160,7 +203,7 @@ jobs:
 
   pages:
     name: Deploy the website
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main'
     needs: [web, android]
     runs-on: ubuntu-latest
     permissions:
@@ -182,7 +225,7 @@ jobs:
       - name: Assemble the site
         run: |
           cp -r docs/. _site/
-          # The rules spec includes the dice weighting, which stays off the public site.
+          # The internal rules spec and the AAB stay off the public site.
           rm -f _site/RULES.md _site/download/*.aab
           find _site -maxdepth 2 | sort
       - uses: actions/configure-pages@v6
@@ -204,6 +247,10 @@ jobs:
         with:
           name: android
           path: apk
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+          path: notes
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -212,6 +259,7 @@ jobs:
           mv apk/tag-team-ludo.apk "apk/tag-team-ludo-$VERSION.apk"
           files=("apk/tag-team-ludo-$VERSION.apk")
           [ -f apk/tag-team-ludo.aab ] && mv apk/tag-team-ludo.aab "apk/tag-team-ludo-$VERSION.aab" && files+=("apk/tag-team-ludo-$VERSION.aab")
-          flags=(--title "Tag Team Ludo $VERSION" --generate-notes --verify-tag)
+          # Our notes first, then GitHub's list of merged PRs.
+          flags=(--title "Tag Team Ludo $VERSION" --notes-file notes/release-notes.md --generate-notes --verify-tag)
           [[ "$VERSION" == *-* ]] && flags+=(--prerelease) || flags+=(--latest)
           gh release create "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" "${flags[@]}"

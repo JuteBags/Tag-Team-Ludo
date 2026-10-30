@@ -14,29 +14,41 @@ export function countAt(players: PlayerState[], color: Color, square: number): n
   return p ? p.tokens.filter((t) => squareOf(color, t) === square).length : 0;
 }
 
-/** True when an enemy of `mover` has a block (2+ tokens) on a non-star square. */
+/** True when an enemy of `mover` has a double (2+ tokens) on a non-star square. */
 export function isBlockedFor(players: PlayerState[], square: number, mover: Color): boolean {
   if (isSafe(square)) return false;
   return players.some((p) => p.color !== mover && countAt(players, p.color, square) >= 2);
 }
 
-/** Walks a token forward; null if it overshoots or meets an enemy block on the way or at the end. */
-function walk(players: PlayerState[], color: Color, from: number, steps: number): { to: number; captures: Capture[] } | null {
+/** True when `color`'s tokens at `progress` are all locked in doubles: a normal square holding an even count. */
+function isLocked(players: PlayerState[], color: Color, progress: number): boolean {
+  const sq = squareOf(color, progress);
+  return sq !== null && !isSafe(sq) && countAt(players, color, sq) % 2 === 0;
+}
+
+/**
+ * Walks a token (or a double) forward; null if it overshoots or a single would pass an enemy double.
+ * A single may stop on an enemy double. On a normal square a single kills an enemy single and a
+ * double kills an enemy double; a colour's tokens there are doubles in twos plus at most one single.
+ */
+function walk(players: PlayerState[], color: Color, from: number, steps: number, pair: boolean): { to: number; captures: Capture[] } | null {
   if (from === BASE) return null;
   const to = from + steps;
   if (to > FINISHED) return null;
-  for (let p = from + 1; p <= to; p++) {
-    const sq = squareOf(color, p);
-    if (sq !== null && isBlockedFor(players, sq, color)) return null;
+  if (!pair) {
+    for (let p = from + 1; p < to; p++) {
+      const sq = squareOf(color, p);
+      if (sq !== null && isBlockedFor(players, sq, color)) return null;
+    }
   }
   const captures: Capture[] = [];
   const sq = squareOf(color, to);
   if (sq !== null && !isSafe(sq)) {
     for (const p of players) {
       if (p.color === color) continue;
-      p.tokens.forEach((t, i) => {
-        if (squareOf(p.color, t) === sq) captures.push({ color: p.color, token: i });
-      });
+      const here = p.tokens.flatMap((t, i) => (squareOf(p.color, t) === sq ? [i] : []));
+      const hit = pair ? (here.length >= 2 ? here.slice(0, 2) : []) : here.length % 2 === 1 ? [here[here.length - 1]!] : [];
+      for (const i of hit) captures.push({ color: p.color, token: i });
     }
   }
   return { to, captures };
@@ -55,11 +67,13 @@ export function legalMoves(players: PlayerState[], color: Color, roll: number): 
   }
 
   // Tokens on the same square give identical single moves; offer one of them.
+  // Tokens locked in a double on a normal square can't move alone.
   const seen = new Set<number>();
   me.tokens.forEach((t, i) => {
     if (t === BASE || t === FINISHED || seen.has(t)) return;
     seen.add(t);
-    const w = walk(players, color, t, roll);
+    if (isLocked(players, color, t)) return;
+    const w = walk(players, color, t, roll, false);
     if (w) moves.push({ kind: 'single', color, tokens: [i], from: t, to: w.to, steps: roll, captures: w.captures, finishes: w.to === FINISHED ? 1 : 0 });
   });
 
@@ -74,7 +88,7 @@ export function legalMoves(players: PlayerState[], color: Color, roll: number): 
     });
     for (const [t, idx] of groups) {
       if (idx.length < 2) continue;
-      const w = walk(players, color, t, half);
+      const w = walk(players, color, t, half, true);
       if (w) moves.push({ kind: 'pair', color, tokens: idx.slice(0, 2), from: t, to: w.to, steps: half, captures: w.captures, finishes: w.to === FINISHED ? 2 : 0 });
     }
   }
@@ -89,25 +103,35 @@ export function applyMove(players: PlayerState[], move: Move): PlayerState[] {
   return next;
 }
 
-/** Could some enemy capture `color`'s token at `progress` with a single roll of 1-6? */
+/** Could some enemy capture `color`'s token(s) at `progress` with a single roll of 1-6? */
 export function isThreatened(players: PlayerState[], color: Color, progress: number): boolean {
   const sq = squareOf(color, progress);
-  if (sq === null || isSafe(sq) || countAt(players, color, sq) >= 2) return false;
+  if (sq === null || isSafe(sq)) return false;
+  const mine = playerOf(players, color).tokens;
   for (const p of players) {
     if (p.color === color) continue;
+    // Only rolls that reach the square: d for a single d squares behind, 2d for a pair.
+    const rolls = new Set<number>();
     for (const e of p.tokens) {
       if (e < 0 || e > LAST_TRACK) continue;
       for (let d = 1; d <= 6 && e + d <= LAST_TRACK; d++) {
-        if (squareOf(p.color, e + d) === sq && walk(players, p.color, e, d)) return true;
+        if (squareOf(p.color, e + d) !== sq) continue;
+        rolls.add(d);
+        if (d <= 3) rolls.add(2 * d);
+      }
+    }
+    for (const d of rolls) {
+      for (const m of legalMoves(players, p.color, d)) {
+        if (m.captures.some((c) => c.color === color && mine[c.token] === progress)) return true;
       }
     }
   }
   return false;
 }
 
-/** A move that takes a threatened single token to a star or into the home column. */
+/** A move that takes a threatened token or double to a star or into the home column. */
 export function isEscape(players: PlayerState[], move: Move): boolean {
-  if (move.kind !== 'single' || !isThreatened(players, move.color, move.from)) return false;
+  if (move.kind === 'release' || !isThreatened(players, move.color, move.from)) return false;
   if (move.to >= HOME_FIRST) return true;
   const sq = squareOf(move.color, move.to);
   return sq !== null && isSafe(sq);
