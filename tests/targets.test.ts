@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { legalMoves } from '../src/engine';
-import { TURNS, centerOf, spot } from '../src/ui/geometry';
+import { TIPS, TURNS, centerOf, spot } from '../src/ui/geometry';
 import { moveTargets, nearest, whyStuck } from '../src/ui/targets';
 import { B, mk, prog } from './helpers';
 
@@ -12,6 +12,11 @@ describe('track turns', () => {
       expect(Math.abs(from[1] - to[1])).toBe(1);
     }
     expect(TURNS[0]).toEqual({ from: [5, 6], to: [6, 5] });
+  });
+
+  it('finds the U-turn at the outer tip of each arm', () => {
+    expect(TIPS.map((t) => t.mid)).toEqual([[7, 0], [14, 7], [7, 14], [0, 7]]);
+    expect(TIPS[0]).toEqual({ from: [6, 0], mid: [7, 0], to: [8, 0] });
   });
 });
 

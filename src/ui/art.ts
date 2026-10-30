@@ -1,6 +1,6 @@
 // Vector art shared by all screens. Ported from mockups/index.html.
 import { COLORS, SAFE_SQUARES, START, type Color } from '../engine';
-import { ARROW, CELL as S, CORNER, HOME_COL, SLOT, TRACK, TURNS, centerOf } from './geometry';
+import { ARROW, CELL as S, CORNER, HOME_COL, SLOT, TIPS, TRACK, TURNS, centerOf } from './geometry';
 
 export const PALETTE: Record<Color, { l: string; m: string; d: string; t: string }> = {
   blue: { l: '#7cc0ff', m: '#1f7bff', d: '#0a3c9c', t: '#dcecff' },
@@ -102,22 +102,48 @@ function base(c: Color): string {
   return s;
 }
 
-/** Curved arrows where the track jumps diagonally into the next arm, bowed away from the centre. */
+// Path arrows in a printed-board style: thin ink lines with open arrowheads.
+const INK = '#3b2a17';
+const head = (x: number, y: number, ang: number, size = 7) =>
+  `<path d="M${-size},${-size * 0.75} L0,0 L${-size},${size * 0.75}" fill="none" stroke="${INK}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${ang.toFixed(1)})"/>`;
+const deg = (dx: number, dy: number) => (Math.atan2(dy, dx) * 180) / Math.PI;
+const line = (d: string) => `<path d="${d}" fill="none" stroke="${INK}" stroke-width="3" stroke-linecap="round"/>`;
+
+/** A short diagonal arrow across each inner corner, where the track jumps into the next arm. */
 function turnArrows(): string {
   let s = '';
   for (const { from, to } of TURNS) {
     const [ax, ay] = centerOf(from), [bx, by] = centerOf(to);
-    // The two cells meet at a corner of the centre square; bow the curve outward from it.
-    const cx = Math.max(from[0], to[0]) * S, cy = Math.max(from[1], to[1]) * S;
-    const kx = cx + Math.sign(cx - 300) * 15, ky = cy + Math.sign(cy - 300) * 15;
-    const ang = (Math.atan2(by - ky, bx - kx) * 180) / Math.PI;
-    const d = `M${ax + (kx - ax) * 0.25},${ay + (ky - ay) * 0.25} Q${kx},${ky} ${bx + (kx - bx) * 0.32},${by + (ky - by) * 0.32}`;
-    const [hx, hy] = [bx + (kx - bx) * 0.32, by + (ky - by) * 0.32];
-    const head = `transform="translate(${hx} ${hy}) rotate(${ang})"`;
-    s += `<g class="turn"><path d="${d}" fill="none" stroke="#5a3a10" stroke-width="11" stroke-linecap="round" opacity=".7"/>
-      <path d="M-8,-10 L9,0 L-8,10Z" fill="#5a3a10" opacity=".7" stroke="#5a3a10" stroke-width="3" stroke-linejoin="round" ${head}/>
-      <path d="${d}" fill="none" stroke="#ffd23f" stroke-width="6" stroke-linecap="round"/>
-      <path d="M-7,-8.5 L8,0 L-7,8.5Z" fill="#ffd23f" stroke="#ffd23f" stroke-width="1.5" stroke-linejoin="round" ${head}/></g>`;
+    const [sx, sy] = [ax + (bx - ax) * 0.2, ay + (by - ay) * 0.2], [ex, ey] = [ax + (bx - ax) * 0.8, ay + (by - ay) * 0.8];
+    s += `<g class="turn" opacity=".8">${line(`M${sx},${sy} L${ex},${ey}`)}${head(ex, ey, deg(bx - ax, by - ay))}</g>`;
+  }
+  return s;
+}
+
+/** A curved U-turn arrow over the outer tip of each arm, bowed toward the board edge. */
+function tipArrows(): string {
+  let s = '';
+  for (const { from, mid, to } of TIPS) {
+    const [mx, my] = centerOf(mid);
+    const n = [Math.sign(mx - 300), Math.sign(my - 300)] as const; // outward
+    const [ax, ay] = centerOf(from), [bx, by] = centerOf(to);
+    const p0 = [ax + n[0] * 3, ay + n[1] * 3], p2 = [bx + n[0] * 3, by + n[1] * 3], c = [mx + n[0] * 27, my + n[1] * 27];
+    s += `<g class="tip" opacity=".8">${line(`M${p0[0]},${p0[1]} Q${c[0]},${c[1]} ${p2[0]},${p2[1]}`)}${head(p2[0]!, p2[1]!, deg(p2[0]! - c[0]!, p2[1]! - c[1]!))}</g>`;
+  }
+  return s;
+}
+
+/** ">>>" on the square after each start, pointing the way round. */
+function startChevrons(): string {
+  let s = '';
+  for (const c of COLORS) {
+    const a = TRACK[START[c] + 1]!, b = TRACK[START[c] + 2]!;
+    const [x, y] = centerOf(a);
+    const ang = deg(b[0] - a[0], b[1] - a[1]);
+    for (const k of [-8, 0, 8]) {
+      const dx = Math.cos((ang * Math.PI) / 180) * k, dy = Math.sin((ang * Math.PI) / 180) * k;
+      s += `<path d="M-3.5,-5 L1.5,0 L-3.5,5" fill="none" stroke="${INK}" stroke-opacity=".55" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" transform="translate(${(x + dx).toFixed(1)} ${(y + dy).toFixed(1)}) rotate(${ang})"/>`;
+    }
   }
   return s;
 }
@@ -125,8 +151,12 @@ function turnArrows(): string {
 /** A bold arrow on each colour's entry square pointing into its home lane, plus chevrons up the lane. */
 function homeArrows(c: Color): string {
   const [x, y, rot] = ARROW[c];
-  const at = (px: number, py: number) => `translate(${px * S + 20} ${py * S + 20}) rotate(${rot})`;
-  let s = `<path d="M-11,-12 L13,0 L-11,12 L-5,0Z" fill="${PALETTE[c].m}" stroke="#fff" stroke-width="2.5" stroke-linejoin="round" transform="${at(x, y)}"/>`;
+  const at = (px: number, py: number, inward = 0) => {
+    const r = (rot * Math.PI) / 180;
+    return `translate(${(px * S + 20 + Math.cos(r) * inward).toFixed(1)} ${(py * S + 20 + Math.sin(r) * inward).toFixed(1)}) rotate(${rot})`;
+  };
+  // Nudged inward so the U-turn arrow over the arm tip has room.
+  let s = `<path d="M-9,-10 L11,0 L-9,10 L-4,0Z" fill="${PALETTE[c].m}" stroke="#fff" stroke-width="2.5" stroke-linejoin="round" transform="${at(x, y, 6)}"/>`;
   for (const [hx, hy] of HOME_COL[c].slice(0, 4)) {
     s += `<path d="M-4,-6 L3,0 L-4,6" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" transform="${at(hx, hy)}"/>`;
   }
@@ -153,7 +183,7 @@ export function boardSVG(): string {
     const st = starts.has(i);
     s += `<path d="${starPath(x * S + 20, y * S + 21, 12, 5.2)}" fill="${st ? '#fff' : '#cbbfa9'}" ${st ? 'fill-opacity=".92"' : ''}/>`;
   }
-  s += turnArrows();
+  s += turnArrows() + tipArrows() + startChevrons();
   for (const c of COLORS) s += homeArrows(c);
   for (const c of COLORS) s += base(c);
   s += `<polygon points="240,240 240,360 300,300" fill="url(#base-green)"/><polygon points="240,240 360,240 300,300" fill="url(#base-red)"/>
