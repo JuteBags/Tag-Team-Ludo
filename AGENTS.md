@@ -1,6 +1,6 @@
 # AGENTS.md
 
-**Tag Team Ludo**: an HTML5 Ludo game for web and Android (APK via Capacitor) from one codebase. v1 is one human against 1-3 bots, offline. Multiplayer (online and private rooms) comes in a later update.
+**Tag Team Ludo**: an HTML5 Ludo game for web and Android (APK via Capacitor) from one codebase. Two offline modes: vs Computer (one human against 1-3 bots) and With friends (2-4 people passing one device). In 2-player games a person can have two houses. Online play and private rooms come in a later update.
 
 ## Stack
 
@@ -18,11 +18,11 @@
   - `board.ts` constants and progress → square mapping
   - `rules.ts` legal moves, pairs/blocks, captures, threats
   - `dice.ts` the dice: the full spec lives in its header comment
-  - `game.ts` turn flow (`newGame`, `roll`, `move`, `finalRanking`)
+  - `game.ts` turn flow (`createGame` from seats, `newGame` for the classic game, `roll`, `move`, `finalRanking`, `ownerRanking` for people)
   - `bot.ts` single-level heuristic bot (`chooseMove`, `botStep`)
   - `rng.ts` seeded RNG for tests, `cryptoRng` for real play
 - `src/ui/` — the game UI (DOM + SVG), driven by the engine:
-  - `app.ts` fixed 390 x 844 stage scaled to fit any screen, routing home ↔ game
+  - `app.ts` fixed 390 x 844 stage scaled to fit any screen, routing home → setup → game
   - `art.ts` all vector art (board, pawns, avatars, trophy) and the shared SVG `<defs>`
   - `geometry.ts` board cell coordinates and the four track turns; track order must match `src/engine/board.ts`
   - `targets.ts` pure: one landing marker per legal move, nearest-tap picking, why a token can't move (tested)
@@ -30,8 +30,11 @@
   - `sfx.ts` sounds synthesised with Web Audio (no audio files) and vibration; mute is in the pause menu
   - `dice.ts` CSS 3D die and roll animation
   - `gameScreen.ts` turn loop, bot pacing, human move choice (via landing markers), banners, pause menu, result screen
-  - `homeScreen.ts` home screen (Online/Private tiles are locked placeholders)
-- `tests/` — Vitest specs: rules, turn flow, dice (incl. Monte Carlo), bot simulations, UI logic (`targets.test.ts`), and rule invariants checked on every move of hundreds of random and bot games (`invariants.test.ts`). `tests/sim/` holds the long all-bot simulations (`npm run sim`): a shared `harness.ts`, and one `*.sim.ts` file per kind of game (e.g. `single-house.sim.ts`), each listing its setups.
+  - `homeScreen.ts` home screen: VS COMPUTER and WITH FRIENDS (both offline), player count; Online/Private tiles are locked placeholders
+  - `setup.ts` pure and tested: `GameConfig`, ranking rolls, the house-picking rules (opposite / side by side)
+  - `setupScreen.ts` one step per screen (no scrolling): options (houses each, bots for empty houses), roll for order (ties roll again), pick houses one by one; steps with nothing to choose are skipped
+  - `avatars.ts` generated Fun Emoji avatars (CC BY 4.0, credited on the home screen); regenerate with `node tools/make-avatars.mjs`
+- `tests/` — Vitest specs: rules, turn flow, dice (incl. Monte Carlo), bot simulations, teams (`teams.test.ts`), setup rules (`setup.test.ts`), UI logic (`targets.test.ts`), and rule invariants checked on every move of hundreds of random, bot and two-house games (`invariants.test.ts`). `tests/sim/` holds the long all-bot simulations (`npm run sim`): a shared `harness.ts`, and one `*.sim.ts` file per kind of game (`single-house.sim.ts`, `double-house.sim.ts`), each listing its setups.
 - `mockups/` — static UI mockup and its PNG screenshots.
 - `docs/` — the public website (GitHub Pages): `index.html` plus `assets/`. `docs/RULES.md` lives here too but CI leaves it out of the site.
 - `android/` — Capacitor Android project. Signing and version come from CI (`android/app/build.gradle`).
@@ -41,6 +44,7 @@
 
 - State is immutable: every function returns a new `GameState`/`PlayerState[]`.
 - A token is a single number, its **progress**: `-1` base, `0-50` track, `51-55` home column, `56` finished. `squareOf(color, progress)` gives the shared track square.
+- Each `PlayerState` is one colour with an `owner` (the person). Colours with the same owner are one side: "enemy" always means another owner (`sameSide`), never just another colour.
 - Randomness is always injected (`Rng`), so tests and replays are deterministic.
 - The dice treat every player the same, bots included.
 

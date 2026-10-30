@@ -2,7 +2,7 @@ import { COLORS, START, newGame, type Color, type GameState, type PlayerState } 
 
 /** Players for the given colours, in turn order. */
 export function mk(tokens: Partial<Record<Color, number[]>>): PlayerState[] {
-  return COLORS.filter((c) => tokens[c]).map((c) => ({ color: c, bot: true, tokens: [...tokens[c]!] }));
+  return COLORS.filter((c) => tokens[c]).map((c, owner) => ({ color: c, owner, bot: true, tokens: [...tokens[c]!] }));
 }
 
 /** Progress a `color` token needs to stand on absolute square `sq`. */

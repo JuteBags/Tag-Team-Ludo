@@ -13,6 +13,8 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.0",
+    "@dicebear/core": "^9.4.2",
+    "@dicebear/fun-emoji": "^9.4.2",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"

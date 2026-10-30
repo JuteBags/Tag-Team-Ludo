@@ -2,6 +2,8 @@
 import { globalDefs } from './art';
 import { GameScreen } from './gameScreen';
 import { homeScreen } from './homeScreen';
+import type { GameConfig, Mode } from './setup';
+import { setupScreen } from './setupScreen';
 
 const W = 390;
 const H = 844;
@@ -19,9 +21,11 @@ export function mountApp(root: HTMLElement) {
   new ResizeObserver(fit).observe(safe);
 
   let count: 2 | 3 | 4 = 4;
-  const home = () => stage.replaceChildren(homeScreen(count, (n) => (count = n), play));
-  const play = () => {
-    const game = new GameScreen(count, (to) => (to === 'home' ? home() : play()));
+  const home = () => stage.replaceChildren(homeScreen(count, (n) => (count = n), setup));
+  // Home -> setup (houses, roll for order, pick houses) -> game. Play again keeps the same houses.
+  const setup = (mode: Mode) => stage.replaceChildren(setupScreen(mode, count, play, home));
+  const play = (cfg: GameConfig) => {
+    const game = new GameScreen(cfg, (to) => (to === 'home' ? home() : play(cfg)));
     stage.replaceChildren(game.el);
     if (import.meta.env.DEV) (window as unknown as { __ludo: GameScreen }).__ludo = game;
   };

@@ -4,14 +4,17 @@
 // Every setup is played with the game's weighted dice and with fair dice, so the effect of the weighting
 // is visible, and checked: every game ends and the dice behave as src/engine/dice.ts says.
 import { describe, expect, it } from 'vitest';
-import { BASE, analyzeDice, chooseMove, move, roll, sampleFace, seeded, type Color, type GameState } from '../../src/engine';
+import { BASE, analyzeDice, chooseMove, move, ownerRanking, roll, sampleFace, seeded, type Color, type GameState } from '../../src/engine';
 
 // No @types/node in this project, so reach the env through globalThis.
 const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
 export const GAMES = Number(env.SIM_GAMES ?? 3000);
 const MAX_ROLLS = 5000;
 const FAIR = [1, 1, 1, 1, 1, 1].map((x) => x / 6);
-/** The seat a human plays. Every seat is a bot here, but this one is watched as "the player's view". */
+/**
+ * The seat a human plays. Every seat is a bot here, but the person playing Blue (both of their houses,
+ * with two each) is watched as "the player's view".
+ */
 const SEAT: Color = 'blue';
 
 export interface Setup {
@@ -41,7 +44,8 @@ function simulate(setup: Setup, weighted: boolean): Stats {
   for (let g = 0; g < GAMES; g++) {
     const rng = seeded(g * 7919 + setup.seed + (weighted ? 1 : 0));
     let st: GameState = setup.make();
-    const mine = (c: Color) => c === SEAT;
+    const me = st.players.find((p) => p.color === SEAT)!.owner;
+    const mine = (c: Color) => st.players.find((p) => p.color === c)!.owner === me;
     let rolls = 0;
     let idle = 0;
     while (st.phase !== 'over' && rolls < MAX_ROLLS) {
@@ -85,7 +89,7 @@ function simulate(setup: Setup, weighted: boolean): Stats {
       }
     }
     if (st.phase !== 'over') s.unfinished++;
-    const place = st.ranking.indexOf(SEAT) + 1 || st.players.length;
+    const place = ownerRanking(st).indexOf(me) + 1;
     if (place === 1) s.seatWins++;
     s.seatPlaceSum += place;
     s.maxRolls = Math.max(s.maxRolls, rolls);

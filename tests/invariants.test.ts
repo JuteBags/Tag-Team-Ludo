@@ -8,11 +8,13 @@ import {
   LAST_TRACK,
   chooseMove,
   countAt,
+  createGame,
   isSafe,
   legalMoves,
   move,
   newGame,
   roll,
+  sameSide,
   seeded,
   squareOf,
   type GameState,
@@ -45,11 +47,11 @@ function moveProblems(before: PlayerState[], m: Move, dice: number): string[] {
     if (m.steps !== dice) bad.push('single does not move the full roll');
     // A locked double (even count on a normal square) never splits.
     if (fromSq !== null && !isSafe(fromSq) && countAt(before, m.color, fromSq) % 2 === 0) bad.push('locked double split');
-    // A single never jumps an enemy double on a normal square.
+    // A single never jumps an enemy (another person's) double on a normal square.
     for (let p = m.from + 1; p < m.to; p++) {
       const sq = squareOf(m.color, p);
       if (sq === null || isSafe(sq)) continue;
-      if (before.some((o) => o.color !== m.color && countAt(before, o.color, sq) >= 2)) bad.push(`single jumped an enemy double at ${sq}`);
+      if (before.some((o) => !sameSide(before, o.color, m.color) && countAt(before, o.color, sq) >= 2)) bad.push(`single jumped an enemy double at ${sq}`);
     }
     if (m.captures.length > before.length - 1) bad.push('single captured more than one token per colour');
     for (const c of m.captures) if (countAt(before, c.color, toSq!) % 2 === 0) bad.push('single captured a token that is part of a double');
@@ -57,6 +59,7 @@ function moveProblems(before: PlayerState[], m: Move, dice: number): string[] {
   if (m.captures.length && (toSq === null || isSafe(toSq))) bad.push('capture on a star or in the home column');
   for (const c of m.captures) {
     if (c.color === m.color) bad.push('captured its own token');
+    if (sameSide(before, c.color, m.color)) bad.push("captured a teammate's token");
     if (squareOf(c.color, tokensOf(before, c.color)[c.token]!) !== toSq) bad.push('captured a token that is not on the landing square');
   }
   return bad;
@@ -76,13 +79,13 @@ const randomMove: Policy = (st, rng) => st.moves[Math.floor(rng() * st.moves.len
 const botMove: Policy = (st, rng) => chooseMove(st, rng);
 
 /** Plays one game and returns the first broken rule, or null. */
-function playChecked(seed: number, players: 2 | 3 | 4, policy: Policy): string | null {
+function playChecked(seed: number, players: 2 | 3 | 4, policy: Policy, start?: GameState): string | null {
   const rng = seeded(seed);
-  let st = newGame(players, []);
+  let st = start ?? newGame(players, []);
   for (let step = 0; step < 6000; step++) {
     if (st.phase === 'over') {
       const r = st.ranking;
-      if (new Set(r).size !== r.length || r.length !== players) return `step ${step}: ranking ${r.join(',')}`;
+      if (new Set(r).size !== r.length || r.length !== st.players.length) return `step ${step}: ranking ${r.join(',')}`;
       return null;
     }
     if (st.phase === 'roll') {
@@ -127,6 +130,22 @@ describe('rule invariants under bot play', () => {
   for (const players of [2, 3, 4] as const) {
     it(`${players} players: 60 games, every move checked`, { timeout: 120_000 }, () => {
       for (let g = 0; g < 60; g++) expect(playChecked(5000 * players + g, players, botMove), `seed ${5000 * players + g}`).toBeNull();
+    });
+  }
+});
+
+describe('rule invariants with two houses each', () => {
+  // Two people, each with two houses: opposite pairs, then adjacent pairs.
+  const pairs = [
+    ['blue', 'red'],
+    ['blue', 'green'],
+  ] as const;
+  for (const mine of pairs) {
+    it(`${mine.join(' + ')} vs the rest: 100 random games, every move checked`, { timeout: 120_000 }, () => {
+      for (let g = 0; g < 100; g++) {
+        const seats = (['blue', 'green', 'red', 'yellow'] as const).map((color) => ({ color, owner: (mine as readonly string[]).includes(color) ? 0 : 1, bot: true }));
+        expect(playChecked(9000 + g, 4, randomMove, createGame(seats)), `seed ${9000 + g}`).toBeNull();
+      }
     });
   }
 });

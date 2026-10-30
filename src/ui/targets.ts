@@ -1,5 +1,5 @@
 // What the human can tap after a roll: one target per legal move, with where it lands. Pure, no DOM.
-import { BASE, FINISHED, HOME_FIRST, countAt, isBlockedFor, isSafe, squareOf, type Color, type Move, type PlayerState } from '../engine';
+import { BASE, FINISHED, HOME_FIRST, countAt, isBlockedFor, isSafe, sameSide, squareOf, type Color, type Move, type PlayerState } from '../engine';
 import { spot, type Pt } from './geometry';
 
 export type TargetTag = 'kill' | 'finish' | 'home' | 'safe' | 'plain';
@@ -55,7 +55,7 @@ export function whyStuck(players: PlayerState[], color: Color, token: number, ro
   for (let p = t + 1; p < t + roll; p++) {
     const s = squareOf(color, p);
     if (s === null || !isBlockedFor(players, s, color)) continue;
-    const owner = players.find((o) => o.color !== color && countAt(players, o.color, s) >= 2)!;
+    const owner = players.find((o) => !sameSide(players, o.color, color) && countAt(players, o.color, s) >= 2)!;
     return `Blocked by ${nameOf(owner.color)}'s double`;
   }
   return "Can't move with this roll";

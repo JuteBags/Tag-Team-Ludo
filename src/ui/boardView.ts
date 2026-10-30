@@ -95,7 +95,7 @@ export class BoardView {
    */
   private riskTip: string;
 
-  constructor(players: PlayerState[], size: number, private human?: Color) {
+  constructor(players: PlayerState[], size: number, private humans: Color[] = []) {
     let seen = false;
     try {
       seen = localStorage.getItem('ludo-tip-risk') === '1';
@@ -177,10 +177,10 @@ export class BoardView {
       }
       // A single sitting on an enemy double can be cut there. We tell the human once, on their own
       // token, the first time it ever happens; after that spotting it is part of the game.
-      if (block && doubled && this.human && this.riskTip !== 'done') {
-        const n = counts.get(this.human) ?? 0;
-        if (n % 2 === 1 && [...counts].some(([o, m]) => o !== this.human && m >= 2)) {
-          const key = list.find((it) => it.color === this.human)!.key;
+      for (const human of block && doubled && this.riskTip !== 'done' ? this.humans : []) {
+        const n = counts.get(human) ?? 0;
+        if (n % 2 === 1 && [...counts].some(([o, m]) => o !== human && m >= 2)) {
+          const key = list.find((it) => it.color === human)!.key;
           if (this.riskTip === 'unseen') this.riskTip = key;
           if (this.riskTip === key) {
             atRisk = true;

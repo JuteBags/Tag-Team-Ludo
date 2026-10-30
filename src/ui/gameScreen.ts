@@ -1,10 +1,12 @@
-// Game screen: runs the turn loop, drives bots, and takes the human's taps.
-import { chooseMove, cryptoRng, finalRanking, move, newGame, roll, tokensHome, type Color, type GameState, type Move, type Rng } from '../engine';
+// Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
+// a person passing the device; a person with two houses plays both colours' turns.
+import { FINISHED, chooseMove, createGame, cryptoRng, move, ownerRanking, roll, type Color, type GameState, type Move, type Rng } from '../engine';
 import { PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
 import { dieMarkup, rollDie } from './dice';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
+import type { GameConfig } from './setup';
 import { moveTargets, whyStuck, type Target } from './targets';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
@@ -27,18 +29,21 @@ export class GameScreen {
   private disposed = false;
   /** Last face each player rolled, to redraw the resting dice when the setting changes. */
   private lastFace = new Map<Color, number>();
+  /** The person whose turn it was last, to announce a hand-over in "With friends". */
+  private lastOwner = -1;
 
-  constructor(count: 2 | 3 | 4, private exit: (to: Exit) => void, private rng: Rng = cryptoRng) {
-    this.state = newGame(count);
+  constructor(readonly config: GameConfig, private exit: (to: Exit) => void, private rng: Rng = cryptoRng) {
+    this.state = createGame(config.seats, config.first);
+    const people = config.names.length;
     this.el.className = 'screen game';
     this.el.innerHTML = `
       <div class="gtop"><button class="rbtn" data-act="menu" aria-label="Menu">${icons.menu}</button>
-        <div class="mode"><small>CLASSIC</small><b>${count} PLAYERS</b></div><span class="rbtn-space"></span></div>
+        <div class="mode"><small>${config.mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}</small><b>${people} PLAYERS</b></div><span class="rbtn-space"></span></div>
       ${this.state.players.map((p) => this.panelHTML(p.color, p.bot)).join('')}
       <div class="gboard"></div>
       <div class="hint"><span class="tw"></span><span><b></b><small></small></span></div>
       <div class="toasts"></div>`;
-    this.view = new BoardView(this.state.players, 370, this.state.players.find((p) => !p.bot)?.color);
+    this.view = new BoardView(this.state.players, 370, this.state.players.filter((p) => !p.bot).map((p) => p.color));
     this.el.querySelector('.gboard')!.appendChild(this.view.el);
     this.el.querySelector('[data-act=menu]')!.addEventListener('click', () => this.openMenu());
     void this.run();
@@ -46,7 +51,7 @@ export class GameScreen {
 
   private panelHTML(c: Color, bot: boolean) {
     return `<div class="pl ${SEAT_CLASS[c]} idle" data-c="${c}" style="${cssVars(c)}">
-      <div class="who"><div class="av">${avatarSVG(c)}</div><span class="nm">${PROFILES[c].name}</span>${bot ? '<span class="bot">BOT</span>' : ''}<span class="ptr"></span></div>
+      <div class="who"><div class="av">${avatarSVG(c)}</div><span class="nm">${this.name(c)}</span>${bot ? '<span class="bot">BOT</span>' : ''}<span class="ptr"></span></div>
       <button class="dbox" aria-label="Roll dice">${dieMarkup(6, DIE)}</button></div>`;
   }
 
@@ -55,8 +60,20 @@ export class GameScreen {
     return this.state.players[this.state.current]!;
   }
 
+  private ownerOf(c: Color) {
+    return this.state.players.find((p) => p.color === c)!.owner;
+  }
+
+  /** The person's name for a colour. */
+  private name(c: Color) {
+    return this.config.names[this.ownerOf(c)] ?? PROFILES[c].name;
+  }
+
+  /** vs Computer ends for you once all your houses are home; With friends plays on to the last place. */
   private humanDone() {
-    return this.state.players.some((p) => !p.bot && this.state.ranking.includes(p.color));
+    if (this.config.mode === 'pvp') return false;
+    const mine = this.state.players.filter((p) => !p.bot);
+    return mine.length > 0 && mine.every((p) => p.tokens.every((t) => t === FINISHED));
   }
 
   private async run() {
@@ -74,7 +91,7 @@ export class GameScreen {
   }
 
   private async botTurn(c: Color) {
-    this.setHint(c, `${PROFILES[c].name} is playing…`, 'Bot turn');
+    this.setHint(c, `${this.name(c)} is playing…`, 'Bot turn');
     await this.sleep(380);
     if (this.disposed) return;
     await this.doRoll(c);
@@ -85,7 +102,11 @@ export class GameScreen {
   }
 
   private async humanTurn(c: Color) {
-    this.setHint(c, 'Your turn', 'Tap the dice to roll');
+    const pvp = this.config.mode === 'pvp';
+    // Passing the device: announce whose turn it is when it changes hands.
+    if (pvp && this.ownerOf(c) !== this.lastOwner) this.toast(`${this.name(c)}'s turn`, c, 'turn');
+    this.lastOwner = this.ownerOf(c);
+    this.setHint(c, pvp ? `${this.name(c)}'s turn` : 'Your turn', 'Tap the dice to roll');
     await this.waitRollTap(c);
     if (this.disposed) return;
     await this.doRoll(c);
@@ -98,8 +119,9 @@ export class GameScreen {
       return;
     }
     const d = this.state.dice!;
-    if (targets.some((t) => t.move.kind === 'pair')) this.setHint(c, `Pair move! You rolled ${d}`, `Pair moves ${d / 2} + ${d / 2}. Tap a token or where it lands`, true);
-    else this.setHint(c, `You rolled ${d}`, 'Tap a token, or the spot where it lands');
+    const who = this.config.mode === 'pvp' ? this.name(c) : 'You';
+    if (targets.some((t) => t.move.kind === 'pair')) this.setHint(c, `Pair move! ${who} rolled ${d}`, `Pair moves ${d / 2} + ${d / 2}. Tap a token or where it lands`, true);
+    else this.setHint(c, `${who} rolled ${d}`, 'Tap a token, or the spot where it lands');
     const m = await this.pickMove(c, targets);
     if (!this.disposed) await this.doMove(m);
   }
@@ -163,7 +185,7 @@ export class GameScreen {
           const one = own.find((t) => t.move.kind === 'single');
           if (pair && one) this.setHint(c, 'Pair or one token?', `Tap a spot: pair moves ${pair.move.steps} + ${pair.move.steps}, one token moves ${one.move.steps}`, true);
         },
-        (pawn) => this.setHint(c, "That token can't move", whyStuck(this.state.players, c, Number(pawn.slice(c.length)), this.state.dice!, (o) => PROFILES[o].name)),
+        (pawn) => this.setHint(c, "That token can't move", whyStuck(this.state.players, c, Number(pawn.slice(c.length)), this.state.dice!, (o) => this.name(o))),
       );
     });
   }
@@ -189,13 +211,13 @@ export class GameScreen {
   }
 
   /** A banner over the board. Big moments (kill, six, home) slam in larger and tilted. */
-  private toast(text: string, c: Color, kind: 'kill' | 'six' | 'home' | 'bust' | '' = '') {
+  private toast(text: string, c: Color, kind: 'kill' | 'six' | 'home' | 'bust' | 'turn' | '' = '') {
     const t = document.createElement('div');
     t.className = `toast ${kind}`;
     t.setAttribute('style', cssVars(c));
     t.textContent = text;
     this.el.querySelector('.toasts')!.appendChild(t);
-    const big = kind === 'kill' || kind === 'six' || kind === 'home';
+    const big = kind === 'kill' || kind === 'six' || kind === 'home' || kind === 'turn';
     const tilt = kind === 'kill' ? -6 : 0;
     const a = t.animate(
       big
@@ -269,25 +291,32 @@ export class GameScreen {
   // ---------- result ----------
   private showResult() {
     this.disposed = true;
-    const order = finalRanking(this.state);
-    const human = this.state.players.find((p) => !p.bot)!.color;
+    const order = ownerRanking(this.state);
+    const pvp = this.config.mode === 'pvp';
+    const colorsOf = (o: number) => this.state.players.filter((p) => p.owner === o);
+    const human = this.state.players.find((p) => !p.bot)?.owner ?? 0;
     const place = order.indexOf(human) + 1;
-    const won = place === 1;
+    const won = pvp || place === 1;
     const rows = order
-      .map((c, i) => {
-        const p = this.state.players.find((x) => x.color === c)!;
-        const sub = i === 0 ? 'Winner' : p.bot ? 'Bot' : 'You';
-        return `<div class="row${i === 0 ? ' first' : ''}${p.bot ? '' : ' me'}"><span class="medal m${i + 1}">${i + 1}</span>
-          <span class="ra" style="${cssVars(c)}">${avatarSVG(c)}</span><span class="rn"><b>${PROFILES[c].name}</b><small>${sub}</small></span>
-          <span class="rv">${tokensHome(this.state, c)} / 4 home</span></div>`;
+      .map((o, i) => {
+        const mine = colorsOf(o);
+        const c = mine[0]!.color;
+        const bot = mine[0]!.bot;
+        const sub = i === 0 ? 'Winner' : bot ? 'Bot' : pvp ? `${PLACES[i + 1]!.toLowerCase()} place` : 'You';
+        const home = mine.reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
+        return `<div class="row${i === 0 ? ' first' : ''}${bot ? '' : ' me'}"><span class="medal m${i + 1}">${i + 1}</span>
+          <span class="ra" style="${cssVars(c)}">${avatarSVG(c)}</span><span class="rn"><b>${this.config.names[o]}</b><small>${sub}</small></span>
+          <span class="rv">${home} / ${4 * mine.length} home</span></div>`;
       })
       .join('');
+    const winner = this.config.names[order[0]!]!;
+    const title = pvp ? `${winner.toUpperCase()} WINS!` : won ? 'YOU WIN!' : `${PLACES[place]} PLACE`;
     const ov = document.createElement('div');
     ov.className = `result${won ? ' won' : ''}`;
     ov.innerHTML = `<div class="dim"></div>${won ? `<div class="rays"></div><div class="tglow"></div>${confettiHTML()}` : ''}
       <div class="trophy">${won ? trophySVG() : medalSVG(place)}</div>
       ${won ? `<div class="stars">${starBadge('s0')}${starBadge('s1')}${starBadge('s2')}</div>` : ''}
-      <div class="rescol"><div class="ribbon">${ribbonSVG()}<span class="disp">${won ? 'YOU WIN!' : `${PLACES[place]} PLACE`}</span></div>
+      <div class="rescol"><div class="ribbon">${ribbonSVG()}<span class="disp">${title}</span></div>
         <div class="rank">${rows}</div>
         <div class="wbtns"><button class="b3 blue disp" data-act="home">HOME</button><button class="b3 green disp" data-act="again">PLAY AGAIN</button></div></div>`;
     ov.addEventListener('click', (e) => {
