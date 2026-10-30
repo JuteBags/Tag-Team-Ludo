@@ -19,7 +19,12 @@ let baseNote = '';
 try {
   base = read(basePath);
 } catch {
-  baseNote = "\n\n⚠️ `main` could not be measured with this PR's simulation, so only this PR's numbers are shown.";
+  base = { setups: {} };
+}
+// A run where every setup failed still prints SIM_JSON, with no setups: that's "couldn't measure" too.
+if (Object.keys(base.setups ?? {}).length === 0) {
+  base = { setups: {} };
+  baseNote = "\n\n⚠️ `main` could not be measured with this PR's simulation (it probably needs engine changes from this PR), so only this PR's numbers are shown.";
 }
 const fmt = (m, v) => (v === undefined || Number.isNaN(v) ? '–' : m.pct ? `${(100 * v).toFixed(1)}%` : v.toFixed(1));
 
