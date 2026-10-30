@@ -1,16 +1,22 @@
-# Builds everything, but only when started by hand, and only with release notes:
-#   Actions -> Build and deploy -> Run workflow, or
-#   gh workflow run build.yml --ref <branch-or-tag> -f release_notes="What changed, for players"
-#   gh workflow run build.yml --ref v1.2.3 -f release_notes=release-notes/1.2.3.md   (a Markdown file)
-# Pushes and pull requests don't trigger it. Empty or placeholder notes ("test", "fix") fail the run
-# before anything is built. The notes go into the GitHub Release, download/version.json and the run summary.
-# What it does depends on the branch or tag picked in "Use workflow from":
+# Builds everything automatically on every push, and can also be started by hand.
+#
+#   Push to main        -> notes = the commit message
+#   Push a tag v1.2.3   -> notes = release-notes/1.2.3.md if it exists, else the commit message
+#   Pull request        -> notes = the PR title (tests and APK only, nothing deployed)
+#   By hand             -> Actions -> Build and deploy -> Run workflow, or
+#                          gh workflow run build.yml --ref <branch-or-tag> -f release_notes="What changed, for players"
+#                          gh workflow run build.yml --ref v1.2.3 -f release_notes=release-notes/1.2.3.md
+#
+# Releases need real notes: for hand-started runs and v* tags, empty or placeholder notes ("test", "fix")
+# fail the run before anything is built. The notes go into the GitHub Release, download/version.json and
+# the run summary. What it does depends on the branch or tag:
 #
 #   main                -> tests, HTML5 game, signed APK, website deployed to GitHub Pages
 #                          (game at /play/, APK at /download/tag-team-ludo.apk, site from docs/).
 #   a tag v1.2.3        -> tests, HTML5 game, signed APK + AAB, GitHub Release "v1.2.3".
 #                          A tag with a suffix (v1.2.3-rc1) becomes a pre-release.
-#   any other branch    -> tests, HTML5 game, APK as a run artifact (no deploy).
+#   pull request, or any other branch run by hand
+#                       -> tests, HTML5 game, APK as a run artifact (no deploy).
 #
 # APK signing uses these repository secrets (without them a debug APK is built):
 #   KEYSTORE_BASE64  the .jks file, base64-encoded
@@ -22,6 +28,10 @@
 name: Build and deploy
 
 on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
   workflow_dispatch:
     inputs:
       release_notes:
@@ -29,7 +39,7 @@ on:
         required: true
         type: string
 
-run-name: "${{ github.ref_name }}: ${{ inputs.release_notes }}"
+run-name: "${{ github.ref_name }}: ${{ inputs.release_notes || github.event.head_commit.message || github.event.pull_request.title }}"
 
 permissions:
   contents: read
@@ -46,20 +56,38 @@ jobs:
       - uses: actions/checkout@v7
       - name: Read and check the notes
         env:
-          NOTES: ${{ inputs.release_notes }}
+          EVENT: ${{ github.event_name }}
+          INPUT_NOTES: ${{ inputs.release_notes }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          PR_NUMBER: ${{ github.event.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          notes="$NOTES"
-          # A path to a Markdown file in the repo means "use that file".
-          if [[ "$notes" =~ ^[A-Za-z0-9._/-]+\.md$ ]]; then
-            [ -f "$notes" ] || { echo "::error::Release notes file $notes does not exist"; exit 1; }
-            notes="$(cat "$notes")"
+          # Hand-started runs and release tags must have real notes; everyday pushes and PRs use what they have.
+          strict=false
+          case "$EVENT" in
+            workflow_dispatch) notes="$INPUT_NOTES"; strict=true ;;
+            pull_request) notes="PR #$PR_NUMBER: $PR_TITLE" ;;
+            *) notes="$COMMIT_MESSAGE" ;;
+          esac
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            strict=true
+            file="release-notes/${GITHUB_REF_NAME#v}.md"
+            [ "$EVENT" = push ] && [ -f "$file" ] && notes="$file"
           fi
-          trimmed="$(printf '%s' "$notes" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
-          placeholder='^(test(ing)?|wip|tmp|update[sd]?|fix(es|ed)?|changes?|misc|build|release|n/?a|none|todo|[-.]+)$'
-          if [ ${#trimmed} -lt 20 ] || [[ "${trimmed,,}" =~ $placeholder ]]; then
-            echo "::error::Release notes are required: at least 20 characters saying what changed for players (got '$trimmed')"
-            exit 1
+          if [ "$strict" = true ]; then
+            # A path to a Markdown file in the repo means "use that file".
+            if [[ "$notes" =~ ^[A-Za-z0-9._/-]+\.md$ ]]; then
+              [ -f "$notes" ] || { echo "::error::Release notes file $notes does not exist"; exit 1; }
+              notes="$(cat "$notes")"
+            fi
+            trimmed="$(printf '%s' "$notes" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
+            placeholder='^(test(ing)?|wip|tmp|update[sd]?|fix(es|ed)?|changes?|misc|build|release|n/?a|none|todo|[-.]+)$'
+            if [ ${#trimmed} -lt 20 ] || [[ "${trimmed,,}" =~ $placeholder ]]; then
+              echo "::error::Release notes are required: at least 20 characters saying what changed for players (got '$trimmed')"
+              exit 1
+            fi
           fi
+          [ -n "$notes" ] || notes="Automatic build of ${GITHUB_SHA::7}"
           printf '%s\n' "$notes" > release-notes.md
           { echo "## Release notes"; echo; cat release-notes.md; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7

@@ -50,23 +50,27 @@ See [AGENTS.md](AGENTS.md) for architecture notes and conventions.
 
 ## Build and release
 
-[`.github/workflows/build.yml`](.github/workflows/build.yml) runs only when started by hand (Actions → Build and deploy → Run workflow), and only with **release notes**: what changed, for players. Pushes and pull requests don't trigger it. A run with empty or placeholder notes ("test", "fix") fails before anything is built. The notes go into the GitHub Release, `download/version.json` and the run summary. What it does depends on the branch or tag it runs on:
+[`.github/workflows/build.yml`](.github/workflows/build.yml) runs automatically on every push and pull request, and can also be started by hand (Actions → Build and deploy → Run workflow). Every build carries **release notes**, which go into the GitHub Release, `download/version.json` and the run summary:
 
-| Run on | Result |
-|---|---|
-| `main` | Tests, web build, signed APK, website deployed to GitHub Pages with the game at `/play/` and the APK at `/download/tag-team-ludo.apk` |
-| A tag `v1.2.3` | Signed APK + AAB attached to a GitHub Release (`v1.2.3-rc1` style tags become pre-releases) |
-| Any other branch | Tests, web build and APK as a run artifact |
+| Trigger | Result | Release notes |
+|---|---|---|
+| Push to `main` | Tests, web build, signed APK, website deployed to GitHub Pages with the game at `/play/` and the APK at `/download/tag-team-ludo.apk` | The commit message |
+| Push a tag `v1.2.3` | Signed APK + AAB attached to a GitHub Release (`v1.2.3-rc1` style tags become pre-releases) | `release-notes/1.2.3.md` if it exists, else the commit message; **required** |
+| Pull request | Tests, web build and APK as a run artifact | The PR title |
+| Run by hand | Same as the branch or tag it runs on | Typed in; **required** |
 
-To publish a version:
+Releases need real notes: for tags and hand-started runs, empty or placeholder notes ("test", "fix") fail the run before anything is built.
+
+To publish a version, commit its notes and push a tag:
 
 ```bash
+git add release-notes/0.1.0.md
+git commit -m "Release notes for 0.1.0"
 git tag v0.1.0
-git push origin v0.1.0
-gh workflow run build.yml --ref v0.1.0 -f release_notes="Pairs now lock on normal squares; only a pair can cut a pair."
+git push origin main v0.1.0
 ```
 
-For longer notes, commit a Markdown file and pass its path: `-f release_notes=release-notes/0.1.0.md`.
+To rebuild something by hand: `gh workflow run build.yml --ref main -f release_notes="Pairs now lock on normal squares; only a pair can cut a pair."`
 
 Run the tests locally before pushing: `npm test`, plus `npm run sim` for the long all-bot simulation.
 
