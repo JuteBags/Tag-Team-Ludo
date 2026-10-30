@@ -13,11 +13,11 @@
 
 ## Layout
 
-- `docs/RULES.md` — the source of truth for every game rule, including the pair (jodi) rule and the weighted dice. Change it together with the engine.
+- `docs/RULES.md` — the source of truth for every game rule, including the pair (jodi) rule. Change it together with the engine. The dice are specified only in `src/engine/dice.ts`: keep how rolls are made out of every `.md` file and the website.
 - `src/engine/` — pure rules engine, no DOM:
   - `board.ts` constants and progress → square mapping
   - `rules.ts` legal moves, pairs/blocks, captures, threats
-  - `dice.ts` weighted dice (weights in eighteenths)
+  - `dice.ts` the dice: the full spec lives in its header comment
   - `game.ts` turn flow (`newGame`, `roll`, `move`, `finalRanking`)
   - `bot.ts` single-level heuristic bot (`chooseMove`, `botStep`)
   - `rng.ts` seeded RNG for tests, `cryptoRng` for real play
@@ -31,7 +31,7 @@
   - `homeScreen.ts` home screen (Online/Private tiles are locked placeholders)
 - `tests/` — Vitest specs: rules, turn flow, dice (incl. Monte Carlo), bot simulations.
 - `mockups/` — static UI mockup and its PNG screenshots.
-- `docs/` — the public website (GitHub Pages): `index.html` plus `assets/`. `docs/RULES.md` lives here too but CI leaves it out of the site because it contains the dice weighting.
+- `docs/` — the public website (GitHub Pages): `index.html` plus `assets/`. `docs/RULES.md` lives here too but CI leaves it out of the site.
 - `android/` — Capacitor Android project. Signing and version come from CI (`android/app/build.gradle`).
 - `assets/` — app icon sources (`icon-background.svg`, `icon-foreground.svg`); `tools/render-icons.ps1` renders them into `android/.../res` with headless Edge.
 
@@ -40,7 +40,7 @@
 - State is immutable: every function returns a new `GameState`/`PlayerState[]`.
 - A token is a single number, its **progress**: `-1` base, `0-50` track, `51-55` home column, `56` finished. `squareOf(color, progress)` gives the shared track square.
 - Randomness is always injected (`Rng`), so tests and replays are deterministic.
-- The weighted dice apply to every player, bots included.
+- The dice treat every player the same, bots included.
 
 ## UI conventions
 
@@ -53,8 +53,9 @@
 
 Repo: https://github.com/JuteBags/Tag-Team-Ludo · site: https://jutebags.github.io/Tag-Team-Ludo/
 
-- Push to `main` → tests, web build, signed APK, then the Pages site is assembled from `docs/` + the game at `/play/` + the APK at `/download/tag-team-ludo.apk` (with `download/version.json`).
-- Push a tag `vX.Y.Z` → signed APK + AAB attached to a GitHub Release (`-suffix` tags are pre-releases). Pages only deploys from `main`.
+- CI is manual only (`gh workflow run build.yml --ref <branch-or-tag>`); pushes and PRs trigger nothing. Run `npm test` and `npm run sim` locally first.
+- Run on `main` → tests, web build, signed APK, then the Pages site is assembled from `docs/` + the game at `/play/` + the APK at `/download/tag-team-ludo.apk` (with `download/version.json`).
+- Run on a tag `vX.Y.Z` → signed APK + AAB attached to a GitHub Release (`-suffix` tags are pre-releases). Pages only deploys from `main`.
 - `versionCode` = workflow run number; never rename `build.yml` or it restarts at 1.
 - Release key: `~/ludo-signing/` (`ludo-release.jks`, `keystore.properties`), alias `ludo`, SHA-256 `7A:B3:6E:10:…:1A:A4`. It is PKCS12, so the key password is the same as the store password. CI reads it from the secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS`. Losing it means installed apps can never be updated.
 - The app fits its stage inside the `--safe-area-inset-*` variables Capacitor injects on Android (`.safe` in `src/ui/styles.css`).
@@ -64,6 +65,7 @@ Repo: https://github.com/JuteBags/Tag-Team-Ludo · site: https://jutebags.github
 - `npm run dev` — dev server on http://localhost:5173
 - `npm run build` — typecheck + production build to `dist/`
 - `npm test` — run all tests
+- `npm run sim` — long all-bot simulation (`tests/*.sim.ts`, `SIM_GAMES=500` for a quick pass)
 - `npm run typecheck` — TypeScript check
 - `npx cap sync android` — copy `dist/` into the Android project (CI does this)
 - `powershell -File tools/render-icons.ps1` — re-render app icons and splash screens

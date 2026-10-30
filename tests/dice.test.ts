@@ -16,10 +16,20 @@ describe('dice weights', () => {
     for (const i of [0, 2, 3, 4, 5]) expect(w[i]).toBeCloseTo(14 / 90, 10);
   });
 
+  it('boosts the face where a double kills a double', () => {
+    const { why } = analyzeDice(mk({ blue: [10, 10, -1, -1], red: [prog('red', 51), prog('red', 51), 56, 56] }), 'blue', rng);
+    expect(why.kill).toEqual([4]);
+  });
+
   it('boosts an escape to a star', () => {
     const { weights, why } = analyzeDice(mk({ blue: [5, -1, -1, -1], red: [prog('red', 41), -1, -1, -1] }), 'blue', rng);
     expect(why.escape).toEqual([3]);
     expect(weights[2]).toBeCloseTo(4 / 18, 10);
+  });
+
+  it('boosts a threatened double escaping to a star', () => {
+    const ps = mk({ blue: [5, 5, -1, -1], red: [prog('red', 41), prog('red', 41), -1, -1] });
+    expect(analyzeDice(ps, 'blue', rng).why.escape).toEqual([6]);
   });
 
   it('lowers the exact-finish face to 2/18', () => {

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tag Team Ludo — classic Ludo with the pair move</title>
-<meta name="description" content="Tag Team Ludo: play Ludo against smart bots in your browser or on Android. Classic rules plus the pair move: two tokens team up, form a block and move as twins.">
+<meta name="description" content="Tag Team Ludo: play Ludo against smart bots in your browser or on Android. Classic rules plus the pair move: two tokens team up, block the way and move as twins.">
 <meta name="theme-color" content="#0c2a74">
 <meta property="og:title" content="Tag Team Ludo — classic Ludo with the pair move">
 <meta property="og:description" content="Play in your browser or download the Android app.">
@@ -137,7 +137,7 @@ footer a{color:#cfe0ff}
   <div class="hero" id="play">
     <div>
       <h1 class="logo disp"><small data-t="TAG TEAM"><span>TAG TEAM</span></small><b data-t="LUDO"><span>LUDO</span></b></h1>
-      <p class="tag">Classic Ludo against smart bots, plus <b>the pair move</b>: two tokens team up, form a block and walk as twins.</p>
+      <p class="tag">Classic Ludo against smart bots, plus <b>the pair move</b>: two tokens team up, block the way and walk as twins.</p>
       <div class="cta">
         <a class="btn green" href="play/"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z" fill="#fff"/></svg>Play in browser</a>
         <a class="btn gold" href="download/tag-team-ludo.apk" download="tag-team-ludo.apk"><svg viewBox="0 0 24 24"><path d="M12 3v11m0 0-4.5-4.5M12 14l4.5-4.5M4 17v3h16v-3" stroke="#4a2400" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Download APK</a>
@@ -155,7 +155,7 @@ footer a{color:#cfe0ff}
     <p class="lead">Same board and rules you grew up with, rebuilt for phones, with one move people play at home that most apps leave out.</p>
     <div class="cards">
       <div class="card"><div class="ic" style="background:linear-gradient(#ffe066,#f2a20f)"><svg viewBox="-24 -26 48 46"><use href="#pawn-blue" transform="translate(7 0) scale(.9)"/><use href="#pawn-blue" transform="translate(-7 4) scale(.9)"/></svg></div>
-        <h3>Pair move</h3><p>Two of your tokens on one square move together on an even roll. A pair can't be cut by a single token.</p></div>
+        <h3>Pair move</h3><p>Two of your tokens on one square move together on an even roll. Only a pair can cut a pair.</p></div>
       <div class="card"><div class="ic" style="background:linear-gradient(#5ff2a0,#1faf4c)"><svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17l-5.9 3.3 1.3-6.5L2.5 9.3l6.6-.8z" fill="#fff"/></svg></div>
         <h3>Safe stars</h3><p>Eight star squares where nobody can be captured. Run there when someone is right behind you.</p></div>
       <div class="card"><div class="ic" style="background:linear-gradient(#ff9a90,#ee3535)"><svg viewBox="0 0 48 48"><path d="M24 4v6" stroke="#fff" stroke-width="3" stroke-linecap="round"/><rect x="8" y="10" width="32" height="26" rx="9" fill="#fff"/><rect x="12" y="15" width="24" height="14" rx="6" fill="#0f2f78"/><circle cx="19" cy="22" r="3.2" fill="#5ff2ff"/><circle cx="29" cy="22" r="3.2" fill="#5ff2ff"/></svg></div>
@@ -184,9 +184,11 @@ footer a{color:#cfe0ff}
         <h3>The pair move (jodi)</h3>
         <ul>
           <li>Two of your tokens on the same square make a <b>pair</b>.</li>
-          <li>On an even roll the pair can move together, half each: roll 4, both move 2.</li>
-          <li>On a normal square a pair is a <b>block</b>: no enemy can land on it or pass it.</li>
-          <li>On a star a pair doesn't block. You can always move just one token instead.</li>
+          <li>A pair moves on an even roll, half each: roll 4, both move 2.</li>
+          <li>On a normal square a pair is locked together: its tokens can't move alone. It splits again on a star or in your home lane.</li>
+          <li>On a star a pair is just two tokens: you choose to move both together or one on its own.</li>
+          <li>A single token can't jump an enemy pair. It can stop on it, though, and carry on from there next time.</li>
+          <li>Only a pair can cut a pair: land on one and both tokens go home. A pair can jump another pair, but it can't cut a single token.</li>
         </ul>
         <figure>
           <svg viewBox="0 0 300 92" role="img" aria-label="A red token cannot pass a blue pair">
@@ -200,7 +202,7 @@ footer a{color:#cfe0ff}
             <path d="M44 22 Q148 -14 252 22" fill="none" stroke="#ff8a80" stroke-width="3" stroke-dasharray="2 7" stroke-linecap="round"/>
             <g transform="translate(252 22)" stroke="#ff5252" stroke-width="5" stroke-linecap="round"><path d="M-9 -9L9 9M9 -9L-9 9"/></g>
           </svg>
-          <figcaption>The red token can't jump the blue pair.</figcaption>
+          <figcaption>The red token can't jump the blue pair, but it can stop on it.</figcaption>
         </figure>
       </div>
     </div>

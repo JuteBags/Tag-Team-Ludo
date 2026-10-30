@@ -93,7 +93,9 @@ export class GameScreen {
       return;
     }
     const d = this.state.dice!;
-    if (moves.some((m) => m.kind === 'pair')) this.setHint(c, `Pair move! You rolled ${d}`, `Tap your pair to move both ${d / 2} + ${d / 2}, or move one token`, true);
+    // A double on a star can also split; one locked on a normal square can't.
+    const canSplit = moves.some((m) => m.kind === 'pair' && moves.some((s) => s.kind === 'single' && s.from === m.from));
+    if (moves.some((m) => m.kind === 'pair')) this.setHint(c, `Pair move! You rolled ${d}`, `Tap your pair to move both ${d / 2} + ${d / 2}${canSplit ? ', or move one token' : ''}`, true);
     else this.setHint(c, `You rolled ${d}`, 'Tap a glowing token to move it');
     const m = await this.pickMove(c, moves);
     if (!this.disposed) await this.doMove(m);

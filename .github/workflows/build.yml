@@ -1,11 +1,12 @@
-# Builds everything on every push.
+# Builds everything, but only when started by hand: Actions -> Build and deploy -> Run workflow
+# (or `gh workflow run build.yml --ref <branch-or-tag>`). Pushes and pull requests don't trigger it.
+# What it does depends on the branch or tag picked in "Use workflow from":
 #
-#   Push to main        -> tests, HTML5 game, signed APK, website deployed to GitHub Pages
+#   main                -> tests, HTML5 game, signed APK, website deployed to GitHub Pages
 #                          (game at /play/, APK at /download/tag-team-ludo.apk, site from docs/).
-#   Push a tag v1.2.3   -> tests, HTML5 game, signed APK + AAB, GitHub Release "v1.2.3".
+#   a tag v1.2.3        -> tests, HTML5 game, signed APK + AAB, GitHub Release "v1.2.3".
 #                          A tag with a suffix (v1.2.3-rc1) becomes a pre-release.
-#   Pull request        -> tests, HTML5 game, APK as a run artifact (no deploy).
-#   Actions -> Build and deploy -> Run workflow: same as a push on that branch.
+#   any other branch    -> tests, HTML5 game, APK as a run artifact (no deploy).
 #
 # APK signing uses these repository secrets (without them a debug APK is built):
 #   KEYSTORE_BASE64  the .jks file, base64-encoded
@@ -17,10 +18,6 @@
 name: Build and deploy
 
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -182,7 +179,7 @@ jobs:
       - name: Assemble the site
         run: |
           cp -r docs/. _site/
-          # The rules spec includes the dice weighting, which stays off the public site.
+          # The internal rules spec and the AAB stay off the public site.
           rm -f _site/RULES.md _site/download/*.aab
           find _site -maxdepth 2 | sort
       - uses: actions/configure-pages@v6
