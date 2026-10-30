@@ -43,7 +43,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .die3 .c{position:absolute;inset:6%;background:#e6dcc8;backface-visibility:hidden}
 /* The face that counts gets a thin gold rim. */
 .die3 .f.win{box-shadow:inset 0 0 0 2px #ffc21a,inset 0 0 6px rgba(255,190,40,.55),inset -2px -3px 6px rgba(120,95,60,.22)}
-.dbox .cup{position:absolute;left:50%;top:50%;width:40px;height:44px;margin:-30px 0 0 -20px;transform-origin:50% 92%;z-index:2;pointer-events:none}
+.dbox .scene{position:absolute;inset:0;display:grid;place-items:center;transform-origin:50% 55%}
+.dbox .cup{position:absolute;left:50%;top:50%;width:40px;height:46px;margin:-23px 0 0 -20px;transform-origin:50% 80%;z-index:2;pointer-events:none}
 .dbox .cup svg{display:block;width:100%;height:100%;filter:drop-shadow(0 3px 3px rgba(0,0,0,.45))}
 
 /* board */
@@ -143,11 +144,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .pl.active .ptr{display:block}
 .pl.tl .ptr,.pl.bl .ptr{left:66px;border-left:11px solid #fff;border-right:0}
 .pl.tr .ptr,.pl.br .ptr{right:66px;border-right:11px solid #fff;border-left:0}
-.dbox{position:relative;width:62px;height:62px;border-radius:17px;display:grid;place-items:center;transition:width .2s,height .2s,filter .2s,opacity .2s;
+.dbox{position:relative;width:64px;height:64px;border-radius:17px;display:grid;place-items:center;transition:width .2s,height .2s,filter .2s,opacity .2s;
   background:linear-gradient(160deg,var(--l),var(--m) 50%,var(--d));
   box-shadow:inset 0 2px 0 rgba(255,255,255,.45),inset 0 -4px 0 rgba(0,0,0,.25),0 6px 12px rgba(0,0,0,.35)}
 .pl.idle .dbox{filter:saturate(.6) brightness(.8);opacity:.85}
-.pl.active .dbox{width:70px;height:70px;box-shadow:inset 0 2px 0 rgba(255,255,255,.45),inset 0 -4px 0 rgba(0,0,0,.25),0 0 0 3px #fff,0 0 26px 6px rgba(124,192,255,.85)}
+.pl.active .dbox{width:80px;height:80px;box-shadow:inset 0 2px 0 rgba(255,255,255,.45),inset 0 -4px 0 rgba(0,0,0,.25),0 0 0 3px #fff,0 0 26px 6px rgba(124,192,255,.85)}
 .dbox.can-roll{animation:nudge .9s ease-in-out infinite}
 @keyframes nudge{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
 .hint{position:absolute;top:650px;left:22px;right:22px;display:flex;gap:12px;align-items:center;padding:11px 14px;border-radius:18px;z-index:3;
