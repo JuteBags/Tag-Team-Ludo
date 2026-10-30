@@ -1,6 +1,7 @@
 # Builds everything automatically on every push, and can also be started by hand.
 #
-#   Push to main        -> notes = the commit message
+#   Push to main        -> notes = the commit message; if package.json has a new version (no tag v<version>
+#                          yet) and release-notes/<version>.md exists, this push is also that release
 #   Push a tag v1.2.3   -> notes = release-notes/1.2.3.md if it exists, else the commit message
 #   Pull request        -> notes = the PR title (tests and APK only, nothing deployed)
 #   By hand             -> Actions -> Build and deploy -> Run workflow, or
@@ -13,10 +14,14 @@
 #
 #   main                -> tests, HTML5 game, signed APK, website deployed to GitHub Pages
 #                          (game at /play/, APK at /download/tag-team-ludo.apk, site from docs/).
+#                          A new version with release notes is also published as GitHub Release "v<version>"
+#                          (the tag is created on that commit; no hand-made tag needed).
 #   a tag v1.2.3        -> tests, HTML5 game, signed APK + AAB, GitHub Release "v1.2.3".
 #                          A tag with a suffix (v1.2.3-rc1) becomes a pre-release.
 #   pull request, or any other branch run by hand
 #                       -> tests, HTML5 game, APK as a run artifact (no deploy).
+#
+# Pull requests also get .github/workflows/sim.yml: all-bot games on main and the PR, compared in a comment.
 #
 # APK signing uses these repository secrets (without them a debug APK is built):
 #   KEYSTORE_BASE64  the .jks file, base64-encoded
@@ -52,10 +57,30 @@ jobs:
   notes:
     name: Check the release notes
     runs-on: ubuntu-latest
+    outputs:
+      # The release tag this run publishes ("v1.2.3"), or empty for an everyday build.
+      release: ${{ steps.release.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
+      - name: Is this a release?
+        id: release
+        run: |
+          # A pushed v* tag is a release. So is a push to main that brings a version with no tag yet
+          # and release notes for it: merging a version bump publishes it with no hand-made tag.
+          tag=""
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="$GITHUB_REF_NAME"
+          elif [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+            version="$(node -p "require('./package.json').version")"
+            if [ -f "release-notes/$version.md" ] && ! git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+              tag="v$version"
+            fi
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Release: ${tag:-none (everyday build)}"
       - name: Read and check the notes
         env:
+          RELEASE: ${{ steps.release.outputs.tag }}
           EVENT: ${{ github.event_name }}
           INPUT_NOTES: ${{ inputs.release_notes }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
@@ -69,9 +94,9 @@ jobs:
             pull_request) notes="PR #$PR_NUMBER: $PR_TITLE" ;;
             *) notes="$COMMIT_MESSAGE" ;;
           esac
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          if [ -n "$RELEASE" ]; then
             strict=true
-            file="release-notes/${GITHUB_REF_NAME#v}.md"
+            file="release-notes/${RELEASE#v}.md"
             [ "$EVENT" = push ] && [ -f "$file" ] && notes="$file"
           fi
           if [ "$strict" = true ]; then
@@ -117,7 +142,7 @@ jobs:
 
   android:
     name: Build the Android APK
-    needs: web
+    needs: [notes, web]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     outputs:
@@ -145,9 +170,11 @@ jobs:
 
       - name: Work out the version
         id: version
+        env:
+          RELEASE: ${{ needs.notes.outputs.release }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            name="${GITHUB_REF_NAME#v}"
+          if [ -n "$RELEASE" ]; then
+            name="${RELEASE#v}"
           else
             name="$(node -p "require('./package.json').version")-build.$GITHUB_RUN_NUMBER"
           fi
@@ -265,8 +292,8 @@ jobs:
 
   release:
     name: Publish the GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: android
+    if: needs.notes.outputs.release != ''
+    needs: [notes, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -283,11 +310,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.android.outputs.version }}
+          TAG: ${{ needs.notes.outputs.release }}
         run: |
           mv apk/tag-team-ludo.apk "apk/tag-team-ludo-$VERSION.apk"
           files=("apk/tag-team-ludo-$VERSION.apk")
           [ -f apk/tag-team-ludo.aab ] && mv apk/tag-team-ludo.aab "apk/tag-team-ludo-$VERSION.aab" && files+=("apk/tag-team-ludo-$VERSION.aab")
           # Our notes first, then GitHub's list of merged PRs.
-          flags=(--title "Tag Team Ludo $VERSION" --notes-file notes/release-notes.md --generate-notes --verify-tag)
+          flags=(--title "Tag Team Ludo $VERSION" --notes-file notes/release-notes.md --generate-notes)
+          # A pushed tag already exists; a release from main creates its tag on this commit.
+          [[ "$GITHUB_REF" == refs/tags/* ]] && flags+=(--verify-tag) || flags+=(--target "$GITHUB_SHA")
           [[ "$VERSION" == *-* ]] && flags+=(--prerelease) || flags+=(--latest)
-          gh release create "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" "${flags[@]}"
+          gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" "${flags[@]}"

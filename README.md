@@ -56,21 +56,16 @@ See [AGENTS.md](AGENTS.md) for architecture notes and conventions.
 
 | Trigger | Result | Release notes |
 |---|---|---|
-| Push to `main` | Tests, web build, signed APK, website deployed to GitHub Pages with the game at `/play/` and the APK at `/download/tag-team-ludo.apk` | The commit message |
+| Push to `main` | Tests, web build, signed APK, website deployed to GitHub Pages with the game at `/play/` and the APK at `/download/tag-team-ludo.apk`. **A new version** (see below) is also published as a GitHub Release | The commit message, or `release-notes/<version>.md` for a new version |
 | Push a tag `v1.2.3` | Signed APK + AAB attached to a GitHub Release (`v1.2.3-rc1` style tags become pre-releases) | `release-notes/1.2.3.md` if it exists, else the commit message; **required** |
-| Pull request | Tests, web build and APK as a run artifact | The PR title |
+| Pull request | Tests, web build and APK as a run artifact, plus the simulation comparison comment ([`sim.yml`](.github/workflows/sim.yml)) | The PR title |
 | Run by hand | Same as the branch or tag it runs on | Typed in; **required** |
 
 Releases need real notes: for tags and hand-started runs, empty or placeholder notes ("test", "fix") fail the run before anything is built.
 
-To publish a version, commit its notes and push a tag:
+To publish a version, bump `version` in `package.json` and add `release-notes/<version>.md` in a PR. When it merges, CI publishes GitHub Release `v<version>` with the signed APK and AAB, and deploys the website, with no hand-made tag. (Pushing a `v1.2.3` tag by hand still works too.)
 
-```bash
-git add release-notes/1.0.0.md
-git commit -m "Release notes for 1.0.0"
-git tag v1.0.0
-git push origin main v1.0.0
-```
+Every pull request also plays all-bot games on `main` and on the PR with the same seeds, and comments with the difference: kills, idle rolls, game length, pair moves, and one player's view (win rate, kills, tokens lost, time stuck at home). A PR that doesn't change the game shows "No change".
 
 To rebuild something by hand: `gh workflow run build.yml --ref main -f release_notes="Pairs now lock on normal squares; only a pair can cut a pair."`
 
