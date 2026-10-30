@@ -1,6 +1,6 @@
 // Vector art shared by all screens. Ported from mockups/index.html.
 import { COLORS, SAFE_SQUARES, START, type Color } from '../engine';
-import { ARROW, CELL as S, CORNER, HOME_COL, SLOT, TRACK } from './geometry';
+import { ARROW, CELL as S, CORNER, HOME_COL, SLOT, TIPS, TRACK, TURNS, centerOf } from './geometry';
 
 export const PALETTE: Record<Color, { l: string; m: string; d: string; t: string }> = {
   blue: { l: '#7cc0ff', m: '#1f7bff', d: '#0a3c9c', t: '#dcecff' },
@@ -102,6 +102,67 @@ function base(c: Color): string {
   return s;
 }
 
+// Path arrows in a printed-board style: thin ink lines with open arrowheads.
+const INK = '#3b2a17';
+const head = (x: number, y: number, ang: number, size = 7) =>
+  `<path d="M${-size},${-size * 0.75} L0,0 L${-size},${size * 0.75}" fill="none" stroke="${INK}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${ang.toFixed(1)})"/>`;
+const deg = (dx: number, dy: number) => (Math.atan2(dy, dx) * 180) / Math.PI;
+const line = (d: string) => `<path d="${d}" fill="none" stroke="${INK}" stroke-width="3" stroke-linecap="round"/>`;
+
+/** A short diagonal arrow across each inner corner, where the track jumps into the next arm. */
+function turnArrows(): string {
+  let s = '';
+  for (const { from, to } of TURNS) {
+    const [ax, ay] = centerOf(from), [bx, by] = centerOf(to);
+    const [sx, sy] = [ax + (bx - ax) * 0.2, ay + (by - ay) * 0.2], [ex, ey] = [ax + (bx - ax) * 0.8, ay + (by - ay) * 0.8];
+    s += `<g class="turn" opacity=".8">${line(`M${sx},${sy} L${ex},${ey}`)}${head(ex, ey, deg(bx - ax, by - ay))}</g>`;
+  }
+  return s;
+}
+
+/** A curved U-turn arrow over the outer tip of each arm, bowed toward the board edge. */
+function tipArrows(): string {
+  let s = '';
+  for (const { from, mid, to } of TIPS) {
+    const [mx, my] = centerOf(mid);
+    const n = [Math.sign(mx - 300), Math.sign(my - 300)] as const; // outward
+    const [ax, ay] = centerOf(from), [bx, by] = centerOf(to);
+    const p0 = [ax + n[0] * 3, ay + n[1] * 3], p2 = [bx + n[0] * 3, by + n[1] * 3], c = [mx + n[0] * 27, my + n[1] * 27];
+    s += `<g class="tip" opacity=".8">${line(`M${p0[0]},${p0[1]} Q${c[0]},${c[1]} ${p2[0]},${p2[1]}`)}${head(p2[0]!, p2[1]!, deg(p2[0]! - c[0]!, p2[1]! - c[1]!))}</g>`;
+  }
+  return s;
+}
+
+/** ">>>" on the square after each start, pointing the way round. */
+function startChevrons(): string {
+  let s = '';
+  for (const c of COLORS) {
+    const a = TRACK[START[c] + 1]!, b = TRACK[START[c] + 2]!;
+    const [x, y] = centerOf(a);
+    const ang = deg(b[0] - a[0], b[1] - a[1]);
+    for (const k of [-8, 0, 8]) {
+      const dx = Math.cos((ang * Math.PI) / 180) * k, dy = Math.sin((ang * Math.PI) / 180) * k;
+      s += `<path d="M-3.5,-5 L1.5,0 L-3.5,5" fill="none" stroke="${INK}" stroke-opacity=".55" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" transform="translate(${(x + dx).toFixed(1)} ${(y + dy).toFixed(1)}) rotate(${ang})"/>`;
+    }
+  }
+  return s;
+}
+
+/** A bold arrow on each colour's entry square pointing into its home lane, plus chevrons up the lane. */
+function homeArrows(c: Color): string {
+  const [x, y, rot] = ARROW[c];
+  const at = (px: number, py: number, inward = 0) => {
+    const r = (rot * Math.PI) / 180;
+    return `translate(${(px * S + 20 + Math.cos(r) * inward).toFixed(1)} ${(py * S + 20 + Math.sin(r) * inward).toFixed(1)}) rotate(${rot})`;
+  };
+  // Nudged inward so the U-turn arrow over the arm tip has room.
+  let s = `<path d="M-9,-10 L11,0 L-9,10 L-4,0Z" fill="${PALETTE[c].m}" stroke="#fff" stroke-width="2.5" stroke-linejoin="round" transform="${at(x, y, 6)}"/>`;
+  for (const [hx, hy] of HOME_COL[c].slice(0, 4)) {
+    s += `<path d="M-4,-6 L3,0 L-4,6" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" transform="${at(hx, hy)}"/>`;
+  }
+  return s;
+}
+
 /** The static board plus empty layers for the board view to fill. */
 export function boardSVG(): string {
   let s = `<svg viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg"><rect width="600" height="600" fill="#d6cbb6"/>`;
@@ -122,16 +183,14 @@ export function boardSVG(): string {
     const st = starts.has(i);
     s += `<path d="${starPath(x * S + 20, y * S + 21, 12, 5.2)}" fill="${st ? '#fff' : '#cbbfa9'}" ${st ? 'fill-opacity=".92"' : ''}/>`;
   }
-  for (const c of COLORS) {
-    const [x, y, rot] = ARROW[c];
-    s += `<path d="M-8,-9 L10,0 L-8,9 L-4,0Z" fill="${PALETTE[c].m}" transform="translate(${x * S + 20} ${y * S + 20}) rotate(${rot})"/>`;
-  }
+  s += turnArrows() + tipArrows() + startChevrons();
+  for (const c of COLORS) s += homeArrows(c);
   for (const c of COLORS) s += base(c);
   s += `<polygon points="240,240 240,360 300,300" fill="url(#base-green)"/><polygon points="240,240 360,240 300,300" fill="url(#base-red)"/>
   <polygon points="360,240 360,360 300,300" fill="url(#base-yellow)"/><polygon points="240,360 360,360 300,300" fill="url(#base-blue)"/>
   <path d="M240,240 L360,360 M360,240 L240,360" stroke="#fff" stroke-opacity=".55" stroke-width="2"/>
   <circle cx="300" cy="302" r="16" fill="#000" opacity=".2"/><circle cx="300" cy="300" r="16" fill="#fffaf0"/><path d="${starPath(300, 301, 10, 4.5)}" fill="#ffc21a" stroke="#d58a06" stroke-width="1.2"/>`;
-  return s + `<g class="deco"></g><g class="fx"></g><g class="pieces"></g><g class="badges"></g></svg>`;
+  return s + `<g class="deco"></g><g class="fx"></g><g class="pieces"></g><g class="marks"></g><g class="badges"></g></svg>`;
 }
 
 // ---------- avatars ----------

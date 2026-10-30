@@ -24,10 +24,12 @@
 - `src/ui/` — the game UI (DOM + SVG), driven by the engine:
   - `app.ts` fixed 390 x 844 stage scaled to fit any screen, routing home ↔ game
   - `art.ts` all vector art (board, pawns, avatars, trophy) and the shared SVG `<defs>`
-  - `geometry.ts` board cell coordinates; track order must match `src/engine/board.ts`
-  - `boardView.ts` pawn placement, stacking, pair badges, hop/capture animations
+  - `geometry.ts` board cell coordinates and the four track turns; track order must match `src/engine/board.ts`
+  - `targets.ts` pure: one landing marker per legal move, nearest-tap picking, why a token can't move (tested)
+  - `boardView.ts` pawn placement, stacking, double badges (padlock = locked, ×2 = on a star, ! = single on an enemy double), landing markers, board-wide tap picking, hop/kill/finish effects
+  - `sfx.ts` sounds synthesised with Web Audio (no audio files) and vibration; mute is in the pause menu
   - `dice.ts` CSS 3D die and roll animation
-  - `gameScreen.ts` turn loop, bot pacing, human taps, pair chooser, pause menu, result screen
+  - `gameScreen.ts` turn loop, bot pacing, human move choice (via landing markers), banners, pause menu, result screen
   - `homeScreen.ts` home screen (Online/Private tiles are locked placeholders)
 - `tests/` — Vitest specs: rules, turn flow, dice (incl. Monte Carlo), bot simulations.
 - `mockups/` — static UI mockup and its PNG screenshots.
@@ -46,7 +48,8 @@
 
 - The UI never decides rules: it calls `roll`/`move` and animates the resulting state.
 - A game ends for the human as soon as they finish all tokens (or are the last one left); others are ranked by `finalRanking`.
-- Animations use rAF with a `setTimeout` fallback, so a stalled WebView can never hang a turn.
+- Animations use rAF with a `setTimeout` fallback, so a stalled WebView can never hang a turn. Effects animate only `transform`/`opacity` and are skipped under `prefers-reduced-motion`.
+- Taps go to the nearest movable pawn or landing marker within `HIT` board units (about 40px on a phone), never to a precise hit area.
 - Dev only: `window.__ludo` is the running `GameScreen` (`forced` dice queue, `speed` multiplier) for testing.
 
 ## Build and release

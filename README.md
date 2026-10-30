@@ -11,11 +11,13 @@
 
 ![Design mockups: home screen, a game in progress and the winner screen](docs/assets/design-showcase.png)
 
-## What's in v0.1
+## What's in v1.0
 
 - 2, 3 or 4 player games: you against 1-3 bots, fully offline.
 - Classic rules: a 6 brings a token out and rolls again, captures send tokens home, stars are safe, exact roll to finish.
 - The pair move: on an even roll a pair moves half the roll each (4 → 2 + 2). Single tokens can't jump an enemy pair (they can stop on it), and only a pair can cut a pair.
+- A board that shows the way: arrows at every turn, and after each roll a marker where every possible move lands.
+- Rolls and kills with feel: a cup throw with a camera push-in, kill impacts, banners, sounds and vibration.
 - Glossy 2.5D look drawn in vector code (SVG + CSS 3D dice), so it stays sharp on any screen and the app stays small.
 
 Online play and private rooms are planned for a later update.
@@ -64,10 +66,10 @@ Releases need real notes: for tags and hand-started runs, empty or placeholder n
 To publish a version, commit its notes and push a tag:
 
 ```bash
-git add release-notes/0.1.0.md
-git commit -m "Release notes for 0.1.0"
-git tag v0.1.0
-git push origin main v0.1.0
+git add release-notes/1.0.0.md
+git commit -m "Release notes for 1.0.0"
+git tag v1.0.0
+git push origin main v1.0.0
 ```
 
 To rebuild something by hand: `gh workflow run build.yml --ref main -f release_notes="Pairs now lock on normal squares; only a pair can cut a pair."`

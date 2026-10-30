@@ -39,4 +39,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Short haptic taps on rolls, kills and finishes (src/ui/sfx.ts). Normal permission: no prompt. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>

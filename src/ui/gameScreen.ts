@@ -1,13 +1,17 @@
 // Game screen: runs the turn loop, drives bots, and takes the human's taps.
-import { BASE, chooseMove, cryptoRng, finalRanking, move, newGame, roll, tokensHome, type Color, type GameState, type Move, type Rng } from '../engine';
+import { chooseMove, cryptoRng, finalRanking, move, newGame, roll, tokensHome, type Color, type GameState, type Move, type Rng } from '../engine';
 import { PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
 import { dieMarkup, rollDie } from './dice';
+import { saveSetting, settings } from './settings';
+import { sfx } from './sfx';
+import { moveTargets, whyStuck, type Target } from './targets';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
 const DIE = 38;
-const ROLL_MS = 620;
+const ROLL_MS = 1150;
 const PLACES = ['', '1ST', '2ND', '3RD', '4TH'];
+const faceLabel = () => (settings.diceFace === 'top' ? 'DICE: TOP FACE' : 'DICE: FRONT FACE');
 
 export type Exit = 'home' | 'again';
 
@@ -21,6 +25,8 @@ export class GameScreen {
   private paused = false;
   private waiting: (() => void)[] = [];
   private disposed = false;
+  /** Last face each player rolled, to redraw the resting dice when the setting changes. */
+  private lastFace = new Map<Color, number>();
 
   constructor(count: 2 | 3 | 4, private exit: (to: Exit) => void, private rng: Rng = cryptoRng) {
     this.state = newGame(count);
@@ -32,7 +38,7 @@ export class GameScreen {
       <div class="gboard"></div>
       <div class="hint"><span class="tw"></span><span><b></b><small></small></span></div>
       <div class="toasts"></div>`;
-    this.view = new BoardView(this.state.players, 370);
+    this.view = new BoardView(this.state.players, 370, this.state.players.find((p) => !p.bot)?.color);
     this.el.querySelector('.gboard')!.appendChild(this.view.el);
     this.el.querySelector('[data-act=menu]')!.addEventListener('click', () => this.openMenu());
     void this.run();
@@ -85,28 +91,34 @@ export class GameScreen {
     await this.doRoll(c);
     if (this.disposed || this.state.phase !== 'move') return;
 
-    const moves = this.state.moves;
-    const choices = new Set(moves.map((m) => (m.kind === 'release' ? 'release' : `${m.kind}:${m.from}`)));
-    if (choices.size === 1) {
+    const targets = moveTargets(this.state.players, this.state.moves);
+    if (targets.length === 1) {
       await this.sleep(250);
-      if (!this.disposed) await this.doMove(moves[0]!);
+      if (!this.disposed) await this.doMove(targets[0]!.move);
       return;
     }
     const d = this.state.dice!;
-    // A double on a star can also split; one locked on a normal square can't.
-    const canSplit = moves.some((m) => m.kind === 'pair' && moves.some((s) => s.kind === 'single' && s.from === m.from));
-    if (moves.some((m) => m.kind === 'pair')) this.setHint(c, `Pair move! You rolled ${d}`, `Tap your pair to move both ${d / 2} + ${d / 2}${canSplit ? ', or move one token' : ''}`, true);
-    else this.setHint(c, `You rolled ${d}`, 'Tap a glowing token to move it');
-    const m = await this.pickMove(c, moves);
+    if (targets.some((t) => t.move.kind === 'pair')) this.setHint(c, `Pair move! You rolled ${d}`, `Pair moves ${d / 2} + ${d / 2}. Tap a token or where it lands`, true);
+    else this.setHint(c, `You rolled ${d}`, 'Tap a token, or the spot where it lands');
+    const m = await this.pickMove(c, targets);
     if (!this.disposed) await this.doMove(m);
   }
 
   private async doRoll(c: Color) {
     this.state = roll(this.state, this.rng, this.forced.shift());
-    await rollDie(this.diceBox(c), this.state.dice!, DIE, ROLL_MS / this.speed);
+    const box = this.diceBox(c);
+    await rollDie(box, this.state.dice!, DIE, ROLL_MS / this.speed);
+    this.lastFace.set(c, this.state.dice!);
     const ev = this.state.event;
+    if (this.state.dice === 6 && ev?.type !== 'three-sixes') {
+      box.classList.remove('six');
+      void box.offsetWidth; // restart the flare animation
+      box.classList.add('six');
+      this.toast('SIX!', c, 'six');
+    }
     if (ev?.type === 'three-sixes') {
-      this.toast('Three 6s! Turn lost', c);
+      sfx.bust();
+      this.toast('Three 6s! Turn lost', c, 'bust');
       await this.sleep(800);
     } else if (ev?.type === 'no-move') {
       this.toast(ev.dice === 6 ? 'No moves · roll again' : 'No moves', c);
@@ -119,10 +131,10 @@ export class GameScreen {
     await this.view.animateMove(m, this.state.players, this.speed);
     const ev = this.state.event;
     const extra = ev?.type === 'moved' && ev.extraTurn;
-    const what = m.captures.length ? 'Captured!' : m.finishes ? 'Home!' : '';
     const human = !this.state.players.find((p) => p.color === m.color)!.bot;
-    const text = [what, extra && human ? 'Extra roll' : ''].filter(Boolean).join(' · ');
-    if (text) this.toast(text, m.color);
+    if (m.captures.length) this.toast(m.captures.length > 1 ? 'DOUBLE KILL!' : 'KILL!', m.color, 'kill');
+    else if (m.finishes) this.toast('HOME!', m.color, 'home');
+    if (extra && human) this.toast('Roll again', m.color);
   }
 
   // ---------- human input ----------
@@ -140,47 +152,19 @@ export class GameScreen {
     });
   }
 
-  private pickMove(c: Color, moves: Move[]): Promise<Move> {
-    const me = this.cur;
-    const keys = new Set<string>();
-    for (const m of moves) {
-      if (m.kind === 'release') keys.add(c + m.tokens[0]);
-      else me.tokens.forEach((t, i) => t === m.from && keys.add(c + i));
-    }
-    let choosing = false;
+  /** Landing markers on the board; a pair on a star shows "pair" and "one token" as two markers. */
+  private pickMove(c: Color, targets: Target[]): Promise<Move> {
     return new Promise((resolve) => {
-      this.view.setMovable([...keys], async (key) => {
-        if (choosing || this.paused) return;
-        const i = Number(key.slice(c.length));
-        const t = me.tokens[i]!;
-        const options = t === BASE ? moves.filter((m) => m.kind === 'release' && m.tokens[0] === i) : moves.filter((m) => m.kind !== 'release' && m.from === t);
-        choosing = true;
-        const m = options.length === 1 ? options[0] : await this.choose(c, options);
-        choosing = false;
-        if (m) {
-          this.view.clearMovable();
-          resolve(m);
-        }
-      });
-    });
-  }
-
-  /** Single token or pair from the same square. */
-  private choose(c: Color, options: Move[]): Promise<Move | null> {
-    const single = options.find((m) => m.kind === 'single');
-    const pair = options.find((m) => m.kind === 'pair');
-    const ov = document.createElement('div');
-    ov.className = 'chooser';
-    ov.innerHTML = `<div class="box">
-      ${single ? `<button data-k="single">${pawnSVG(c)}<b>Move one</b><small>+${single.steps} steps</small></button>` : ''}
-      ${pair ? `<button class="pr" data-k="pair">${twinsSVG(c)}<b>Move pair</b><small>+${pair.steps} each</small></button>` : ''}</div>`;
-    this.el.appendChild(ov);
-    return new Promise((resolve) => {
-      ov.addEventListener('click', (e) => {
-        const b = (e.target as Element).closest('button');
-        ov.remove();
-        resolve(!b ? null : b.dataset.k === 'pair' ? pair! : single!);
-      });
+      this.view.showTargets(
+        targets,
+        (t) => resolve(t.move),
+        (own) => {
+          const pair = own.find((t) => t.move.kind === 'pair');
+          const one = own.find((t) => t.move.kind === 'single');
+          if (pair && one) this.setHint(c, 'Pair or one token?', `Tap a spot: pair moves ${pair.move.steps} + ${pair.move.steps}, one token moves ${one.move.steps}`, true);
+        },
+        (pawn) => this.setHint(c, "That token can't move", whyStuck(this.state.players, c, Number(pawn.slice(c.length)), this.state.dice!, (o) => PROFILES[o].name)),
+      );
     });
   }
 
@@ -204,21 +188,32 @@ export class GameScreen {
     h.querySelector('small')!.textContent = sub;
   }
 
-  private toast(text: string, c: Color) {
+  /** A banner over the board. Big moments (kill, six, home) slam in larger and tilted. */
+  private toast(text: string, c: Color, kind: 'kill' | 'six' | 'home' | 'bust' | '' = '') {
     const t = document.createElement('div');
-    t.className = 'toast';
+    t.className = `toast ${kind}`;
     t.setAttribute('style', cssVars(c));
     t.textContent = text;
     this.el.querySelector('.toasts')!.appendChild(t);
+    const big = kind === 'kill' || kind === 'six' || kind === 'home';
+    const tilt = kind === 'kill' ? -6 : 0;
     const a = t.animate(
-      [
-        { opacity: 0, transform: 'scale(.6) translateY(10px)' },
-        { opacity: 1, transform: 'scale(1.06)', offset: 0.15 },
-        { opacity: 1, transform: 'scale(1)', offset: 0.25 },
-        { opacity: 1, transform: 'scale(1)', offset: 0.8 },
-        { opacity: 0, transform: 'translateY(-16px)' },
-      ],
-      { duration: 1300 / this.speed, fill: 'forwards' },
+      big
+        ? [
+            { opacity: 0, transform: `scale(2.6) rotate(${tilt * 2}deg)` },
+            { opacity: 1, transform: `scale(.92) rotate(${tilt}deg)`, offset: 0.12 },
+            { opacity: 1, transform: `scale(1.06) rotate(${tilt}deg)`, offset: 0.2 },
+            { opacity: 1, transform: `scale(1) rotate(${tilt}deg)`, offset: 0.78 },
+            { opacity: 0, transform: `scale(1.1) translateY(-22px) rotate(${tilt}deg)` },
+          ]
+        : [
+            { opacity: 0, transform: 'scale(.6) translateY(10px)' },
+            { opacity: 1, transform: 'scale(1.06)', offset: 0.15 },
+            { opacity: 1, transform: 'scale(1)', offset: 0.25 },
+            { opacity: 1, transform: 'scale(1)', offset: 0.8 },
+            { opacity: 0, transform: 'translateY(-16px)' },
+          ],
+      { duration: (big ? 1250 : 1300) / this.speed, fill: 'forwards', easing: big ? 'cubic-bezier(.16,1,.3,1)' : 'ease' },
     );
     void a.finished.finally(() => t.remove());
     setTimeout(() => t.remove(), 1400 / this.speed);
@@ -230,12 +225,23 @@ export class GameScreen {
     this.paused = true;
     const ov = document.createElement('div');
     ov.className = 'menu-ov';
-    ov.innerHTML = `<div class="box"><h2>Paused</h2><button class="b3 green disp" data-act="resume">RESUME</button><button class="b3 blue disp" data-act="quit">QUIT TO HOME</button></div>`;
+    ov.innerHTML = `<div class="box"><h2>Paused</h2><button class="b3 green disp" data-act="resume">RESUME</button><button class="b3 blue disp" data-act="face">${faceLabel()}</button><button class="b3 blue disp" data-act="sound">${sfx.muted ? 'SOUND: OFF' : 'SOUND: ON'}</button><button class="b3 blue disp" data-act="quit">QUIT TO HOME</button></div>`;
     ov.addEventListener('click', (e) => {
       const act = (e.target as Element).closest('button')?.dataset.act;
       if (act === 'resume') {
         ov.remove();
         this.resume();
+      } else if (act === 'face') {
+        saveSetting('diceFace', settings.diceFace === 'top' ? 'front' : 'top');
+        (e.target as Element).closest('button')!.textContent = faceLabel();
+        // Redraw the resting dice with the new counting face.
+        this.el.querySelectorAll<HTMLElement>('.pl').forEach((pl) => {
+          const box = pl.querySelector<HTMLElement>('.dbox')!;
+          box.innerHTML = dieMarkup(this.lastFace.get(pl.dataset.c as Color) ?? 6, DIE);
+        });
+      } else if (act === 'sound') {
+        sfx.setMuted(!sfx.muted);
+        (e.target as Element).closest('button')!.textContent = sfx.muted ? 'SOUND: OFF' : 'SOUND: ON';
       } else if (act === 'quit') {
         this.dispose();
         this.exit('home');
@@ -289,6 +295,7 @@ export class GameScreen {
       if (act === 'home' || act === 'again') this.exit(act);
     });
     this.el.appendChild(ov);
+    if (won) sfx.win();
     ov.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 350 });
     ov.querySelector('.trophy')!.animate([{ transform: 'scale(.3) rotate(-12deg)' }, { transform: 'scale(1.08)', offset: 0.7 }, { transform: 'scale(1)' }], { duration: 650, easing: 'cubic-bezier(.3,.8,.4,1.2)' });
   }

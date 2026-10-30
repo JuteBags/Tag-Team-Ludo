@@ -22,6 +22,21 @@ export const TRACK: Pt[] = (() => {
   return p;
 })();
 
+/** The four places where the track jumps diagonally from one arm into the next, in track order. */
+export const TURNS: { from: Pt; to: Pt }[] = TRACK.flatMap((a, i) => {
+  const b = TRACK[(i + 1) % TRACK.length]!;
+  return a[0] !== b[0] && a[1] !== b[1] ? [{ from: a, to: b }] : [];
+});
+
+const onEdge = ([x, y]: Pt) => x === 0 || x === 14 || y === 0 || y === 14;
+
+/** The outer tip of each arm, where the track crosses the end square and turns back, in track order. */
+export const TIPS: { from: Pt; mid: Pt; to: Pt }[] = TRACK.flatMap((mid, i) => {
+  const from = TRACK[(i + TRACK.length - 1) % TRACK.length]!, to = TRACK[(i + 1) % TRACK.length]!;
+  const across = Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) === 2 && (from[0] === to[0] || from[1] === to[1]);
+  return across && onEdge(from) && onEdge(mid) && onEdge(to) ? [{ from, mid, to }] : [];
+});
+
 export const HOME_COL: Record<Color, Pt[]> = {
   green: [[1, 7], [2, 7], [3, 7], [4, 7], [5, 7]],
   red: [[7, 1], [7, 2], [7, 3], [7, 4], [7, 5]],
