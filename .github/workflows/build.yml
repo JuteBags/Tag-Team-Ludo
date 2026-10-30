@@ -1,18 +1,22 @@
-# Builds on every push to main and every pull request, but deploys ONLY when started by hand.
+# Builds on every push to main and every pull request; deploys on a version tag or when started by hand.
 #
 #   Push to main, pull request -> tests, HTML5 game, signed APK (run artifacts). Nothing is deployed.
-#   By hand (on main)          -> the same, then deploys: website + game at /play/ + APK at
-#                                 /download/tag-team-ludo.apk on GitHub Pages. If the version in
-#                                 package.json has no tag v<version> yet and release-notes/<version>.md
-#                                 exists, it also publishes GitHub Release v<version> (signed APK + AAB),
-#                                 tagging the commit it built. Otherwise it is a redeploy, no release.
-#   By hand on another branch  -> build only, nothing deployed.
+#   Push a tag v1.2.3          -> the same, then deploys: website + game at /play/ + APK at
+#                                 /download/tag-team-ludo.apk on GitHub Pages, and publishes GitHub
+#                                 Release v1.2.3 (signed APK + AAB + Windows .exe). The tag must match
+#                                 "version" in package.json, and release-notes/1.2.3.md must exist.
+#   By hand (on main)          -> deploys the latest main, or any exact commit given as `commit`. If the
+#                                 version in package.json has no tag v<version> yet and
+#                                 release-notes/<version>.md exists, it also publishes GitHub Release
+#                                 v<version>, tagging the commit it built. Otherwise it is a redeploy.
+#   By hand on another branch  -> build only (including the Windows .exe), nothing deployed.
 #
+#   git tag v1.0.1 && git push origin v1.0.1
 #   Actions -> Build and deploy -> Run workflow (Use workflow from: main), or
 #     gh workflow run build.yml --ref main -f release_notes=release-notes/1.0.0.md
 #     gh workflow run build.yml --ref main -f release_notes="..." -f commit=<sha>   (build and deploy that exact commit)
 #
-# Hand runs need real notes (text, or the path of a committed .md file): empty or placeholder notes
+# Tags and hand runs need real notes (text, or the path of a committed .md file): empty or placeholder notes
 # ("test", "fix") fail the run before anything is built. A release always uses its release-notes file.
 # The notes go into the GitHub Release, download/version.json and the run summary.
 #
@@ -30,6 +34,7 @@ name: Build and deploy
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -58,11 +63,12 @@ jobs:
     name: Check the release notes
     runs-on: ubuntu-latest
     outputs:
-      # The exact commit every job builds, whether this run deploys, and the release tag it
-      # publishes ("v1.2.3", or empty).
+      # The exact commit every job builds, whether this run deploys, the release tag it
+      # publishes ("v1.2.3", or empty), and whether that tag was pushed (true) or is created here.
       sha: ${{ steps.plan.outputs.sha }}
       deploy: ${{ steps.plan.outputs.deploy }}
       release: ${{ steps.plan.outputs.tag }}
+      tag_pushed: ${{ steps.plan.outputs.tag_pushed }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -73,15 +79,23 @@ jobs:
           sha="$(git rev-parse HEAD)"
           deploy=false
           tag=""
-          # Only a hand-started run on main deploys. It is a release when the version is new and has notes.
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+          tag_pushed=false
+          version="$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # A pushed version tag deploys and releases the commit it points at.
             deploy=true
-            version="$(node -p "require('./package.json').version")"
+            tag="$GITHUB_REF_NAME"
+            tag_pushed=true
+            [ "$tag" = "v$version" ] || { echo "::error::Tag $tag doesn't match the package.json version $version"; exit 1; }
+            [ -f "release-notes/$version.md" ] || { echo "::error::release-notes/$version.md is missing for $tag"; exit 1; }
+          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+            # A hand-started run on main deploys. It is a release when the version is new and has notes.
+            deploy=true
             if [ -f "release-notes/$version.md" ] && ! git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
               tag="v$version"
             fi
           fi
-          { echo "sha=$sha"; echo "deploy=$deploy"; echo "tag=$tag"; } >> "$GITHUB_OUTPUT"
+          { echo "sha=$sha"; echo "deploy=$deploy"; echo "tag=$tag"; echo "tag_pushed=$tag_pushed"; } >> "$GITHUB_OUTPUT"
           echo "Commit ${sha::7}; deploy: $deploy; release: ${tag:-none}"
           { echo "Commit ${sha::7} · deploy: $deploy · release: ${tag:-none}"; echo; } >> "$GITHUB_STEP_SUMMARY"
       - name: Read and check the notes
@@ -101,7 +115,7 @@ jobs:
             *) notes="$COMMIT_MESSAGE" ;;
           esac
           # A release always ships its committed release notes.
-          if [ -n "$RELEASE" ]; then notes="release-notes/${RELEASE#v}.md"; fi
+          if [ -n "$RELEASE" ]; then notes="release-notes/${RELEASE#v}.md"; strict=true; fi
           if [ "$strict" = true ]; then
             # A path to a Markdown file in the repo means "use that file".
             if [[ "$notes" =~ ^[A-Za-z0-9._/-]+\.md$ ]]; then
@@ -264,6 +278,46 @@ jobs:
           path: ${{ runner.temp }}/out
           retention-days: 30
 
+  windows:
+    name: Build the Windows .exe
+    # Releases ship it; a hand-started run on any branch builds it too, to try it before a release.
+    if: needs.notes.outputs.release != '' || github.event_name == 'workflow_dispatch'
+    needs: [notes, web]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.notes.outputs.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: desktop
+      - uses: actions/download-artifact@v8
+        with:
+          name: web
+          path: desktop/web
+      - name: Build the portable .exe
+        working-directory: desktop
+        run: |
+          version="$(node -p "require('../package.json').version")"
+          mkdir -p build && cp ../assets/icon-512.png build/icon.png
+          npx electron-builder --win portable --x64 --publish never -c.extraMetadata.version="$version"
+          mkdir -p "$RUNNER_TEMP/win"
+          cp release/tag-team-ludo-windows.exe "$RUNNER_TEMP/win/"
+          ls -l "$RUNNER_TEMP/win"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: ${{ runner.temp }}/win
+          retention-days: 30
+
   pages:
     name: Deploy the website
     if: needs.notes.outputs.deploy == 'true'
@@ -303,7 +357,7 @@ jobs:
   release:
     name: Publish the GitHub Release
     if: needs.notes.outputs.release != ''
-    needs: [notes, android]
+    needs: [notes, android, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -314,6 +368,10 @@ jobs:
           path: apk
       - uses: actions/download-artifact@v8
         with:
+          name: windows
+          path: win
+      - uses: actions/download-artifact@v8
+        with:
           name: release-notes
           path: notes
       - name: Create the release
@@ -321,13 +379,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.android.outputs.version }}
           TAG: ${{ needs.notes.outputs.release }}
+          TAG_PUSHED: ${{ needs.notes.outputs.tag_pushed }}
           SHA: ${{ needs.notes.outputs.sha }}
         run: |
           mv apk/tag-team-ludo.apk "apk/tag-team-ludo-$VERSION.apk"
           files=("apk/tag-team-ludo-$VERSION.apk")
           [ -f apk/tag-team-ludo.aab ] && mv apk/tag-team-ludo.aab "apk/tag-team-ludo-$VERSION.aab" && files+=("apk/tag-team-ludo-$VERSION.aab")
+          mv win/tag-team-ludo-windows.exe "win/tag-team-ludo-$VERSION-windows.exe"
+          files+=("win/tag-team-ludo-$VERSION-windows.exe")
           # Our notes first, then GitHub's list of merged PRs.
-          # The tag is created on the exact commit this run built.
-          flags=(--title "Tag Team Ludo $VERSION" --notes-file notes/release-notes.md --generate-notes --target "$SHA")
+          flags=(--title "Tag Team Ludo $VERSION" --notes-file notes/release-notes.md --generate-notes)
+          # A pushed tag already exists; a hand-started release creates the tag on the exact commit it built.
+          [ "$TAG_PUSHED" = true ] && flags+=(--verify-tag) || flags+=(--target "$SHA")
           [[ "$VERSION" == *-* ]] && flags+=(--prerelease) || flags+=(--latest)
           gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" "${flags[@]}"

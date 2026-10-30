@@ -1,5 +1,8 @@
 node_modules/
 dist/
+desktop/web/
+desktop/build/
+desktop/release/
 .claude/
 *.jks
 *.keystore
