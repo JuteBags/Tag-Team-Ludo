@@ -52,22 +52,28 @@ See [AGENTS.md](AGENTS.md) for architecture notes and conventions.
 
 ## Build and release
 
-[`.github/workflows/build.yml`](.github/workflows/build.yml) runs automatically on every push and pull request, and can also be started by hand (Actions → Build and deploy → Run workflow). Every build carries **release notes**, which go into the GitHub Release, `download/version.json` and the run summary:
+[`.github/workflows/build.yml`](.github/workflows/build.yml) tests and builds every push to `main` and every pull request, but **deploys only when someone runs it by hand**:
 
-| Trigger | Result | Release notes |
-|---|---|---|
-| Push to `main` | Tests, web build, signed APK, website deployed to GitHub Pages with the game at `/play/` and the APK at `/download/tag-team-ludo.apk`. **A new version** (see below) is also published as a GitHub Release | The commit message, or `release-notes/<version>.md` for a new version |
-| Push a tag `v1.2.3` | Signed APK + AAB attached to a GitHub Release (`v1.2.3-rc1` style tags become pre-releases) | `release-notes/1.2.3.md` if it exists, else the commit message; **required** |
-| Pull request | Tests, web build and APK as a run artifact, plus the simulation comparison comment ([`sim.yml`](.github/workflows/sim.yml)) | The PR title |
-| Run by hand | Same as the branch or tag it runs on | Typed in; **required** |
+| Trigger | Result |
+|---|---|
+| Push to `main`, pull request | Tests, web build and a signed APK as run artifacts. **Nothing is deployed.** PRs also get the simulation comparison comment ([`sim.yml`](.github/workflows/sim.yml)) |
+| Run by hand on `main` | The same, then deploys the website with the game at `/play/` and the APK at `/download/tag-team-ludo.apk`. If `package.json` has a version with no `v<version>` tag yet and `release-notes/<version>.md` exists, it also publishes GitHub Release `v<version>` with the signed APK and AAB, tagged on the commit it built |
+| Run by hand on another branch | Build only, nothing deployed |
 
-Releases need real notes: for tags and hand-started runs, empty or placeholder notes ("test", "fix") fail the run before anything is built.
+Run it from Actions → Build and deploy → Run workflow (Use workflow from: `main`), or:
 
-To publish a version, bump `version` in `package.json` and add `release-notes/<version>.md` in a PR. When it merges, CI publishes GitHub Release `v<version>` with the signed APK and AAB, and deploys the website, with no hand-made tag. (Pushing a `v1.2.3` tag by hand still works too.)
+```bash
+# Deploy the latest main (and release it if its version is new and has notes)
+gh workflow run build.yml --ref main -f release_notes=release-notes/1.0.1.md
+# Build and deploy one exact commit
+gh workflow run build.yml --ref main -f commit=<sha> -f release_notes="What changed, for players"
+```
+
+Hand runs need real release notes (text, or the path of a committed `.md` file): empty or placeholder notes ("test", "fix") fail the run before anything is built. A release always uses its `release-notes/<version>.md`.
+
+To release a new version: bump `version` in `package.json` and add `release-notes/<version>.md` in a PR, merge it, then run the workflow by hand on `main`.
 
 Every pull request also plays all-bot games on `main` and on the PR with the same seeds, and comments with the difference: kills, idle rolls, game length, pair moves, and one player's view (win rate, kills, tokens lost, time stuck at home). A PR that doesn't change the game shows "No change".
-
-To rebuild something by hand: `gh workflow run build.yml --ref main -f release_notes="Pairs now lock on normal squares; only a pair can cut a pair."`
 
 Run the tests locally before pushing: `npm test`, plus `npm run sim` for the long all-bot simulation.
 
