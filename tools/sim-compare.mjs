@@ -10,8 +10,16 @@ const read = (path) => {
 };
 
 const [basePath, headPath] = process.argv.slice(2);
-const base = read(basePath);
 const head = read(headPath);
+// If main couldn't be measured (e.g. the PR's simulation needs engine changes main doesn't have),
+// still report the PR's numbers.
+let base = { setups: {} };
+let baseNote = '';
+try {
+  base = read(basePath);
+} catch {
+  baseNote = '\n\n⚠️ `main` could not be measured with this PR\'s simulation, so only this PR\'s numbers are shown.';
+}
 const fmt = (m, v) => (v === undefined || Number.isNaN(v) ? '–' : m.pct ? `${(100 * v).toFixed(1)}%` : v.toFixed(1));
 
 function cell(m, setup) {
@@ -38,7 +46,7 @@ const changed = head.metrics.some((m) => [...weighted, ...fair].some((s) => Math
 console.log(`<!-- sim-compare -->
 ## 🎲 Simulation: \`main\` → this PR
 
-${head.games} all-bot games per setup, the same seeds on both sides. ${changed ? 'Changes of 5% or more are in **bold**.' : '**No change**: this PR does not change how games play out.'} "Player" rows are one seat (Blue, the seat a human plays).
+${head.games} all-bot games per setup, the same seeds on both sides. ${changed ? 'Changes of 5% or more are in **bold**.' : '**No change**: this PR does not change how games play out.'} "Player" rows are one seat (Blue, the seat a human plays).${baseNote}
 
 ### With the game's dice
 ${table(weighted)}
