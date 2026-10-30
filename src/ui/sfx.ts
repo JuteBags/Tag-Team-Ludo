@@ -19,7 +19,9 @@ function ac(): AudioContext | null {
   if (ctx.state === 'suspended') void ctx.resume();
   return ctx;
 }
-addEventListener('pointerdown', () => void ac(), { once: true, capture: true });
+// Every tap may (re)start audio: if sound was muted at the first tap and turned on later, the next
+// tap is what unlocks it. ac() is cheap once the context is running.
+addEventListener('pointerdown', () => void ac(), { capture: true, passive: true });
 
 /** One oscillator note with a quick attack and exponential decay. */
 function tone(freq: number, dur: number, { type = 'sine' as OscillatorType, vol = 0.2, at = 0, slide = 0 } = {}) {
