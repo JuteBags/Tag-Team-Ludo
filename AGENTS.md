@@ -53,9 +53,9 @@
 
 Repo: https://github.com/JuteBags/Tag-Team-Ludo · site: https://jutebags.github.io/Tag-Team-Ludo/
 
-- CI is manual only and needs release notes: `gh workflow run build.yml --ref <branch-or-tag> -f release_notes="..."` (or a path to a committed `.md` file). Pushes and PRs trigger nothing; empty or placeholder notes fail the run. Run `npm test` and `npm run sim` locally first.
-- Run on `main` → tests, web build, signed APK, then the Pages site is assembled from `docs/` + the game at `/play/` + the APK at `/download/tag-team-ludo.apk` (with `download/version.json`).
-- Run on a tag `vX.Y.Z` → signed APK + AAB attached to a GitHub Release (`-suffix` tags are pre-releases). Pages only deploys from `main`.
+- CI runs on every push to `main`, every `v*` tag and every PR, and by hand (`gh workflow run build.yml --ref <branch-or-tag> -f release_notes="..."`). Release notes: push → commit message, PR → title, tag → `release-notes/X.Y.Z.md` if present else the commit message, by hand → the input. Tags and hand runs reject empty or placeholder notes. Run `npm test` and `npm run sim` locally before pushing.
+- `main` → tests, web build, signed APK, then the Pages site is assembled from `docs/` + the game at `/play/` + the APK at `/download/tag-team-ludo.apk` (with `download/version.json`).
+- A tag `vX.Y.Z` → signed APK + AAB attached to a GitHub Release (`-suffix` tags are pre-releases). Pages only deploys from `main`.
 - `versionCode` = workflow run number; never rename `build.yml` or it restarts at 1.
 - Release key: `~/ludo-signing/` (`ludo-release.jks`, `keystore.properties`), alias `ludo`, SHA-256 `7A:B3:6E:10:…:1A:A4`. It is PKCS12, so the key password is the same as the store password. CI reads it from the secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS`. Losing it means installed apps can never be updated.
 - The app fits its stage inside the `--safe-area-inset-*` variables Capacitor injects on Android (`.safe` in `src/ui/styles.css`).
