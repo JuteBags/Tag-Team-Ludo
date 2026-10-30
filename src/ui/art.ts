@@ -65,23 +65,37 @@ export function globalDefs(): string {
 }
 
 // ---------- pawns ----------
-/** A pawn drawn around (0, 0): shadow, an invisible tap target and the body. */
+// The pawn's silhouette: a wide base, a bell body, a collar and a round head. Shared by the outline
+// and the fill so the two always line up.
+const PAWN_BASE = (cy: number) => `<ellipse cx="0" cy="${cy}" rx="11.5" ry="4"/>`;
+const PAWN_BODY = '<path d="M-8.6,8.6 C-8.6,2.4 -4.4,-.4 -3.6,-3.6 L3.6,-3.6 C4.4,-.4 8.6,2.4 8.6,8.6 Q0,11.8 -8.6,8.6Z"/>';
+const PAWN_HEAD = '<circle cx="0" cy="-8.4" r="6.4"/>';
+
+/**
+ * A pawn centred on (0, 0): its body runs from y -14.8 to 14.4, so it sits in the middle of whatever
+ * it stands on and fits inside a 40-unit square up to scale 1.3. Shadow, an invisible tap target,
+ * a white halo and a dark outline so it reads on any tile (its own colour too), then the glossy body.
+ */
 export function pawnArt(c: Color): string {
   const v = PALETTE[c];
-  return `<ellipse cx="1.5" cy="13.6" rx="13" ry="4.6" fill="#000" opacity=".38" filter="url(#soft)"/>
-<circle class="hit" cx="0" cy="-2" r="22" fill="transparent"/>
-<g class="pawn-art"><ellipse cx="0" cy="11.2" rx="12.5" ry="4.8" fill="${v.d}"/>
-<ellipse cx="0" cy="9.6" rx="12.5" ry="4.8" fill="url(#pb-${c})"/>
-<path d="M-9.4,9.6 C-9.4,3 -4.6,0 -3.9,-6 L3.9,-6 C4.6,0 9.4,3 9.4,9.6 Q0,13.2 -9.4,9.6Z" fill="url(#pb-${c})"/>
-<ellipse cx="0" cy="-5.6" rx="6.2" ry="2.5" fill="${v.d}"/>
-<ellipse cx="0" cy="-6.4" rx="6.2" ry="2.5" fill="${v.m}"/>
-<circle cx="0" cy="-13" r="7.6" fill="url(#ph-${c})"/>
-<path d="M-6.4,7.5 C-6,3 -3.6,.5 -2.8,-4" stroke="#fff" stroke-opacity=".38" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-<ellipse cx="-2.7" cy="-16.2" rx="2.7" ry="1.7" fill="#fff" opacity=".8"/></g>`;
+  const outline = (color: string, w: number) =>
+    `<g fill="${color}" stroke="${color}" stroke-width="${w}" stroke-linejoin="round">${PAWN_BASE(10.4)}${PAWN_BODY}${PAWN_HEAD}</g>`;
+  return `<ellipse cx="1" cy="13" rx="12.5" ry="3.8" fill="#000" opacity=".35" filter="url(#soft)"/>
+<circle class="hit" cx="0" cy="0" r="20" fill="transparent"/>
+<g class="pawn-art">${outline('#fff', 5.2)}${outline(v.d, 2.6)}
+<g fill="${v.d}">${PAWN_BASE(10.4)}</g>
+<g fill="url(#pb-${c})">${PAWN_BASE(8.6)}</g>
+<path d="M-11.5,8.6 A11.5,4 0 0 0 11.5,8.6" fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="1"/>
+<g fill="url(#pb-${c})">${PAWN_BODY}</g>
+<ellipse cx="0" cy="-3.4" rx="5.8" ry="2.2" fill="${v.d}"/>
+<ellipse cx="0" cy="-4.1" rx="5.8" ry="2.2" fill="${v.m}"/>
+<g fill="url(#ph-${c})">${PAWN_HEAD}</g>
+<path d="M-5.8,7 C-5.6,3.2 -3.4,1 -2.6,-1.8" stroke="#fff" stroke-opacity=".45" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+<ellipse cx="-2.4" cy="-11" rx="2.6" ry="1.6" fill="#fff" opacity=".85"/></g>`;
 }
-export const pawnSVG = (c: Color) => `<svg viewBox="-17 -24 34 42">${pawnArt(c)}</svg>`;
+export const pawnSVG = (c: Color) => `<svg viewBox="-15 -17 30 34">${pawnArt(c)}</svg>`;
 export const twinsSVG = (c: Color) =>
-  `<svg viewBox="-24 -26 48 46"><ellipse cx="0" cy="14" rx="20" ry="6.5" fill="#ffd23f" opacity=".5"/><g transform="translate(7 0) scale(.9)">${pawnArt(c)}</g><g transform="translate(-7 4) scale(.9)">${pawnArt(c)}</g></svg>`;
+  `<svg viewBox="-22 -19 44 38"><ellipse cx="0" cy="13" rx="19" ry="5.5" fill="#ffd23f" opacity=".5"/><g transform="translate(7 -1) scale(.9)">${pawnArt(c)}</g><g transform="translate(-7 3) scale(.9)">${pawnArt(c)}</g></svg>`;
 
 // ---------- board ----------
 function tile(x: number, y: number, f: string): string {
