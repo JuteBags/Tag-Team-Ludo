@@ -26,7 +26,8 @@ function cell(m, setup) {
 }
 
 function table(setups) {
-  const rows = head.metrics.map((m) => `| ${m.label} | ${setups.map((s) => cell(m, s)).join(' | ')} |`);
+  // A '|' inside a label would split the Markdown table cell.
+  const rows = head.metrics.map((m) => `| ${m.label.replaceAll('|', '\|')} | ${setups.map((s) => cell(m, s)).join(' | ')} |`);
   return [`| Metric | ${setups.map((s) => s.replace(' weighted', '').replace(' fair', '')).join(' | ')} |`, `|---|${setups.map(() => '---').join('|')}|`, ...rows].join('\n');
 }
 

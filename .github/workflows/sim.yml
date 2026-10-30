@@ -34,7 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      SIM_GAMES: 1000
+      # 3000 per setup = the full 18,000 games on each side; about 4 minutes on a GitHub runner.
+      SIM_GAMES: 3000
     steps:
       - uses: actions/checkout@v7
         with:
