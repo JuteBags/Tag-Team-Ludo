@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.jutebags.ludo',
-  appName: 'Ludo',
+  appName: 'Tag Team Ludo',
   webDir: 'dist',
   // Matches the game background so there is no white flash while the WebView loads.
   backgroundColor: '#071a4f',

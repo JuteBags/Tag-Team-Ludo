@@ -1,6 +1,6 @@
 # AGENTS.md
 
-HTML5 Ludo game for web and Android (APK via Capacitor) from one codebase. v1 is one human against 1-3 bots, offline. Multiplayer (online and private rooms) comes in a later update.
+**Tag Team Ludo**: an HTML5 Ludo game for web and Android (APK via Capacitor) from one codebase. v1 is one human against 1-3 bots, offline. Multiplayer (online and private rooms) comes in a later update.
 
 ## Stack
 
@@ -51,9 +51,9 @@ HTML5 Ludo game for web and Android (APK via Capacitor) from one codebase. v1 is
 
 ## Build and release
 
-Repo: https://github.com/JuteBags/Ludo-game · site: https://jutebags.github.io/Ludo-game/
+Repo: https://github.com/JuteBags/Tag-Team-Ludo · site: https://jutebags.github.io/Tag-Team-Ludo/
 
-- Push to `main` → tests, web build, signed APK, then the Pages site is assembled from `docs/` + the game at `/play/` + the APK at `/download/ludo.apk` (with `download/version.json`).
+- Push to `main` → tests, web build, signed APK, then the Pages site is assembled from `docs/` + the game at `/play/` + the APK at `/download/tag-team-ludo.apk` (with `download/version.json`).
 - Push a tag `vX.Y.Z` → signed APK + AAB attached to a GitHub Release (`-suffix` tags are pre-releases). Pages only deploys from `main`.
 - `versionCode` = workflow run number; never rename `build.yml` or it restarts at 1.
 - Release key: `~/ludo-signing/` (`ludo-release.jks`, `keystore.properties`), alias `ludo`, SHA-256 `7A:B3:6E:10:…:1A:A4`. It is PKCS12, so the key password is the same as the store password. CI reads it from the secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS`. Losing it means installed apps can never be updated.

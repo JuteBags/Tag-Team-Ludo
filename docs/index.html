@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ludo — classic Ludo with the pair move</title>
-<meta name="description" content="Play Ludo against smart bots in your browser or on Android. Classic rules plus the pair move: two tokens together form a block and move as twins.">
+<title>Tag Team Ludo — classic Ludo with the pair move</title>
+<meta name="description" content="Tag Team Ludo: play Ludo against smart bots in your browser or on Android. Classic rules plus the pair move: two tokens team up, form a block and move as twins.">
 <meta name="theme-color" content="#0c2a74">
-<meta property="og:title" content="Ludo — classic Ludo with the pair move">
+<meta property="og:title" content="Tag Team Ludo — classic Ludo with the pair move">
 <meta property="og:description" content="Play in your browser or download the Android app.">
 <meta property="og:image" content="assets/icon-512.png">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -49,9 +49,14 @@ nav .links a:hover{color:#fff}
 
 /* hero */
 .hero{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:56px 0 40px}
-.logo{position:relative;font-size:clamp(72px,11vw,128px);line-height:1;margin-bottom:12px}
-.logo::before{content:attr(data-t);position:absolute;inset:0;color:#0a2470;-webkit-text-stroke:14px #0a2470;text-shadow:0 9px 0 #06164a,0 16px 24px rgba(0,0,0,.55)}
+.logo{line-height:1;margin-bottom:14px}
+.logo>*{position:relative;display:block;font-weight:400}
+.logo small{font-size:clamp(40px,5.6vw,64px);letter-spacing:2px}
+.logo b{font-size:clamp(72px,11vw,128px)}
+.logo>*::before{content:attr(data-t);position:absolute;inset:0;color:#0a2470;-webkit-text-stroke:14px #0a2470;text-shadow:0 9px 0 #06164a,0 16px 24px rgba(0,0,0,.55)}
+.logo small::before{-webkit-text-stroke:10px #0a2470;text-shadow:0 6px 0 #06164a}
 .logo span{position:relative;background:linear-gradient(180deg,#fffbe2 0%,#ffe066 32%,#ffb81f 62%,#ff7412 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.logo small span{background:linear-gradient(180deg,#ffffff 0%,#d6ecff 45%,#7cc0ff 100%);-webkit-background-clip:text;background-clip:text}
 .tag{font-size:22px;font-weight:800;max-width:30ch}
 .tag b{color:var(--gold)}
 .cta{display:flex;flex-wrap:wrap;gap:16px;margin:28px 0 14px}
@@ -124,29 +129,29 @@ footer a{color:#cfe0ff}
 </defs></svg>
 
 <header><nav class="wrap">
-  <a class="brand disp" href="#top"><img src="favicon.svg" alt="">LUDO</a>
-  <div class="links"><a href="#play">Play</a><a href="#rules">How to play</a><a href="#design">Design</a><a href="#download">Download</a><a href="https://github.com/JuteBags/Ludo-game">GitHub</a></div>
+  <a class="brand disp" href="#top"><img src="favicon.svg" alt="">TAG TEAM LUDO</a>
+  <div class="links"><a href="#play">Play</a><a href="#rules">How to play</a><a href="#design">Design</a><a href="#download">Download</a><a href="https://github.com/JuteBags/Tag-Team-Ludo">GitHub</a></div>
 </nav></header>
 
 <main id="top" class="wrap">
   <div class="hero" id="play">
     <div>
-      <h1 class="logo disp" data-t="LUDO"><span>LUDO</span></h1>
-      <p class="tag">Classic Ludo against smart bots, plus <b>the pair move</b>: two tokens together form a block and walk as twins.</p>
+      <h1 class="logo disp"><small data-t="TAG TEAM"><span>TAG TEAM</span></small><b data-t="LUDO"><span>LUDO</span></b></h1>
+      <p class="tag">Classic Ludo against smart bots, plus <b>the pair move</b>: two tokens team up, form a block and walk as twins.</p>
       <div class="cta">
         <a class="btn green" href="play/"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z" fill="#fff"/></svg>Play in browser</a>
-        <a class="btn gold" href="download/ludo.apk" download="ludo.apk"><svg viewBox="0 0 24 24"><path d="M12 3v11m0 0-4.5-4.5M12 14l4.5-4.5M4 17v3h16v-3" stroke="#4a2400" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Download APK</a>
+        <a class="btn gold" href="download/tag-team-ludo.apk" download="tag-team-ludo.apk"><svg viewBox="0 0 24 24"><path d="M12 3v11m0 0-4.5-4.5M12 14l4.5-4.5M4 17v3h16v-3" stroke="#4a2400" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Download APK</a>
       </div>
       <p class="meta" data-apk-meta>Android 7.0 or newer · offline vs computer · free</p>
     </div>
     <div class="phone">
-      <iframe src="play/" title="Ludo game" loading="lazy"></iframe>
+      <iframe src="play/" title="Tag Team Ludo game" loading="lazy"></iframe>
       <small>Live game. Tap the dice to play.</small>
     </div>
   </div>
 
   <section>
-    <h2>Why this Ludo</h2>
+    <h2>Why Tag Team Ludo</h2>
     <p class="lead">Same board and rules you grew up with, rebuilt for phones, with one move people play at home that most apps leave out.</p>
     <div class="cards">
       <div class="card"><div class="ic" style="background:linear-gradient(#ffe066,#f2a20f)"><svg viewBox="-24 -26 48 46"><use href="#pawn-blue" transform="translate(7 0) scale(.9)"/><use href="#pawn-blue" transform="translate(-7 4) scale(.9)"/></svg></div>
@@ -218,18 +223,18 @@ footer a{color:#cfe0ff}
 
   <section id="download">
     <div class="download">
-      <img src="assets/icon-512.png" alt="Ludo app icon">
+      <img src="assets/icon-512.png" alt="Tag Team Ludo app icon">
       <div>
         <h2>Get the Android app</h2>
         <p class="meta" data-apk-meta>Android 7.0 or newer · free</p>
         <div class="row" style="margin-top:18px">
-          <a class="btn gold" href="download/ludo.apk" download="ludo.apk"><svg viewBox="0 0 24 24"><path d="M12 3v11m0 0-4.5-4.5M12 14l4.5-4.5M4 17v3h16v-3" stroke="#4a2400" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Download APK</a>
-          <a class="meta" href="https://github.com/JuteBags/Ludo-game/releases">All versions on GitHub</a>
+          <a class="btn gold" href="download/tag-team-ludo.apk" download="tag-team-ludo.apk"><svg viewBox="0 0 24 24"><path d="M12 3v11m0 0-4.5-4.5M12 14l4.5-4.5M4 17v3h16v-3" stroke="#4a2400" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Download APK</a>
+          <a class="meta" href="https://github.com/JuteBags/Tag-Team-Ludo/releases">All versions on GitHub</a>
         </div>
         <ol>
-          <li>Download <b>ludo.apk</b> on your Android phone.</li>
+          <li>Download <b>tag-team-ludo.apk</b> on your Android phone.</li>
           <li>Open it. If Android asks, allow your browser to install unknown apps.</li>
-          <li>Tap Install, then open Ludo.</li>
+          <li>Tap Install, then open Tag Team Ludo.</li>
         </ol>
       </div>
     </div>
@@ -237,7 +242,7 @@ footer a{color:#cfe0ff}
 </main>
 
 <footer class="wrap">
-  <p>Ludo by JuteBags · built with HTML5 · <a href="https://github.com/JuteBags/Ludo-game">source on GitHub</a></p>
+  <p>Tag Team Ludo by JuteBags · built with HTML5 · <a href="https://github.com/JuteBags/Tag-Team-Ludo">source on GitHub</a></p>
 </footer>
 
 <script>

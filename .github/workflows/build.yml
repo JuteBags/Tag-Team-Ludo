@@ -1,7 +1,7 @@
 # Builds everything on every push.
 #
 #   Push to main        -> tests, HTML5 game, signed APK, website deployed to GitHub Pages
-#                          (game at /play/, APK at /download/ludo.apk, site from docs/).
+#                          (game at /play/, APK at /download/tag-team-ludo.apk, site from docs/).
 #   Push a tag v1.2.3   -> tests, HTML5 game, signed APK + AAB, GitHub Release "v1.2.3".
 #                          A tag with a suffix (v1.2.3-rc1) becomes a pre-release.
 #   Pull request        -> tests, HTML5 game, APK as a run artifact (no deploy).
@@ -125,11 +125,11 @@ jobs:
           if [ "$SIGNED" = true ]; then
             # The APK is for the website and the GitHub Release; the AAB is what Google Play takes.
             ./gradlew assembleRelease bundleRelease "${args[@]}"
-            cp app/build/outputs/apk/release/app-release.apk "$out/ludo.apk"
-            cp app/build/outputs/bundle/release/app-release.aab "$out/ludo.aab"
+            cp app/build/outputs/apk/release/app-release.apk "$out/tag-team-ludo.apk"
+            cp app/build/outputs/bundle/release/app-release.aab "$out/tag-team-ludo.aab"
           else
             ./gradlew assembleDebug "${args[@]}"
-            cp app/build/outputs/apk/debug/app-debug.apk "$out/ludo.apk"
+            cp app/build/outputs/apk/debug/app-debug.apk "$out/tag-team-ludo.apk"
           fi
 
       - name: Check the APK
@@ -140,13 +140,13 @@ jobs:
         run: |
           out="$RUNNER_TEMP/out"
           bt="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
-          "$bt/aapt2" dump badging "$out/ludo.apk" | grep -E "^package|sdkVersion|targetSdkVersion"
-          unzip -l "$out/ludo.apk" | grep -q "assets/public/index.html" || { echo "::error::The game is missing from the APK"; exit 1; }
+          "$bt/aapt2" dump badging "$out/tag-team-ludo.apk" | grep -E "^package|sdkVersion|targetSdkVersion"
+          unzip -l "$out/tag-team-ludo.apk" | grep -q "assets/public/index.html" || { echo "::error::The game is missing from the APK"; exit 1; }
           if [ "$SIGNED" = true ]; then
-            "$bt/apksigner" verify --print-certs "$out/ludo.apk" | grep -E "certificate (DN|SHA-256)"
-            jarsigner -verify "$out/ludo.aab" | grep -q "jar verified" || { echo "::error::The AAB is not signed"; exit 1; }
+            "$bt/apksigner" verify --print-certs "$out/tag-team-ludo.apk" | grep -E "certificate (DN|SHA-256)"
+            jarsigner -verify "$out/tag-team-ludo.aab" | grep -q "jar verified" || { echo "::error::The AAB is not signed"; exit 1; }
           fi
-          size=$(stat -c %s "$out/ludo.apk")
+          size=$(stat -c %s "$out/tag-team-ludo.apk")
           printf '{"version":"%s","code":%s,"size":%s,"signed":%s,"commit":"%s"}\n' \
             "$NAME" "$CODE" "$size" "${SIGNED:-false}" "${GITHUB_SHA::7}" > "$out/version.json"
           cat "$out/version.json"
@@ -209,9 +209,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.android.outputs.version }}
         run: |
-          mv apk/ludo.apk "apk/ludo-$VERSION.apk"
-          files=("apk/ludo-$VERSION.apk")
-          [ -f apk/ludo.aab ] && mv apk/ludo.aab "apk/ludo-$VERSION.aab" && files+=("apk/ludo-$VERSION.aab")
-          flags=(--title "Ludo $VERSION" --generate-notes --verify-tag)
+          mv apk/tag-team-ludo.apk "apk/tag-team-ludo-$VERSION.apk"
+          files=("apk/tag-team-ludo-$VERSION.apk")
+          [ -f apk/tag-team-ludo.aab ] && mv apk/tag-team-ludo.aab "apk/tag-team-ludo-$VERSION.aab" && files+=("apk/tag-team-ludo-$VERSION.aab")
+          flags=(--title "Tag Team Ludo $VERSION" --generate-notes --verify-tag)
           [[ "$VERSION" == *-* ]] && flags+=(--prerelease) || flags+=(--latest)
           gh release create "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" "${flags[@]}"

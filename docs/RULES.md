@@ -1,4 +1,4 @@
-# Game rules (v1)
+# Tag Team Ludo — game rules (v1)
 
 Approved 2026-10-30. The engine in `src/engine/` and the game screen implement exactly these rules; tests in `tests/` check them. This file stays off the public website because of section F (weighted dice).
 

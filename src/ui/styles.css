@@ -62,12 +62,17 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 @keyframes burst{from{transform:scale(.3);opacity:1;stroke-width:7}to{transform:scale(2);opacity:0;stroke-width:1}}
 
 /* ---------- home ---------- */
-.logo{position:absolute;top:44px;left:0;right:0;text-align:center;font-size:88px;line-height:1;z-index:5}
-.logo::before{content:attr(data-t);position:absolute;left:0;right:0;top:0;color:#0a2470;-webkit-text-stroke:13px #0a2470;
+.logo{position:absolute;top:24px;left:0;right:0;text-align:center;line-height:1;z-index:5}
+.logo>*{position:relative;display:block;font-weight:400}
+.logo small{font-size:44px;letter-spacing:2px}
+.logo b{font-size:84px;margin-top:-2px}
+.logo>*::before{content:attr(data-t);position:absolute;left:0;right:0;top:0;color:#0a2470;-webkit-text-stroke:13px #0a2470;
   text-shadow:0 9px 0 #06164a,0 16px 24px rgba(0,0,0,.6)}
+.logo small::before{-webkit-text-stroke:10px #0a2470;text-shadow:0 6px 0 #06164a}
 .logo span{position:relative;background:linear-gradient(180deg,#fffbe2 0%,#ffe066 32%,#ffb81f 62%,#ff7412 100%);
   -webkit-background-clip:text;background-clip:text;color:transparent}
-.hero{position:absolute;top:122px;left:0;right:0;height:240px;perspective:760px;display:flex;justify-content:center;pointer-events:none}
+.logo small span{background:linear-gradient(180deg,#ffffff 0%,#d6ecff 45%,#7cc0ff 100%);-webkit-background-clip:text;background-clip:text}
+.hero{position:absolute;top:146px;left:0;right:0;height:240px;perspective:760px;display:flex;justify-content:center;pointer-events:none}
 .hero .glow{position:absolute;left:50%;top:40px;width:360px;height:220px;margin-left:-180px;border-radius:50%;
   background:radial-gradient(closest-side,rgba(110,170,255,.55),transparent);filter:blur(6px)}
 .hero .tilt{transform:rotateX(50deg) translateY(-26px)}

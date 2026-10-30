@@ -16,7 +16,7 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
   el.className = 'screen home';
   const dots = (n: number) => COLORS.slice(0, n).map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
   el.innerHTML = `
-    <h1 class="logo disp" data-t="LUDO"><span>LUDO</span></h1>
+    <h1 class="logo disp"><small data-t="TAG TEAM"><span>TAG TEAM</span></small><b data-t="LUDO"><span>LUDO</span></b></h1>
     <div class="hero"><div class="glow"></div><div class="tilt"></div>
       <div class="hdie">${dieMarkup(6, 50, -26, -34)}</div><div class="hdie2">${dieMarkup(3, 38, -20, 24)}</div></div>
     <button class="cta" data-act="play"><span class="ci">${icons.robot}</span><span class="ct"><b class="disp">PLAY</b><small>vs Computer · Offline</small></span><span class="go">${icons.play}</span></button>

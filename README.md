@@ -1,13 +1,13 @@
-# Ludo
+# Tag Team Ludo
 
-[![Build and deploy](https://github.com/JuteBags/Ludo-game/actions/workflows/build.yml/badge.svg)](https://github.com/JuteBags/Ludo-game/actions/workflows/build.yml)
+[![Build and deploy](https://github.com/JuteBags/Tag-Team-Ludo/actions/workflows/build.yml/badge.svg)](https://github.com/JuteBags/Tag-Team-Ludo/actions/workflows/build.yml)
 
-Classic Ludo against computer players, plus the **pair move** (jodi): two of your tokens on one square move together and block the way. One HTML5 codebase runs in the browser and ships as an Android app.
+**Tag Team Ludo** is classic Ludo against computer players, plus the **pair move** (jodi): two of your tokens on one square move together and block the way. One HTML5 codebase runs in the browser and ships as an Android app.
 
-- **Website:** https://jutebags.github.io/Ludo-game/
-- **Play in the browser:** https://jutebags.github.io/Ludo-game/play/
-- **Download the APK:** https://jutebags.github.io/Ludo-game/download/ludo.apk (Android 7.0 or newer)
-- **Versioned releases:** https://github.com/JuteBags/Ludo-game/releases
+- **Website:** https://jutebags.github.io/Tag-Team-Ludo/
+- **Play in the browser:** https://jutebags.github.io/Tag-Team-Ludo/play/
+- **Download the APK:** https://jutebags.github.io/Tag-Team-Ludo/download/tag-team-ludo.apk (Android 7.0 or newer)
+- **Versioned releases:** https://github.com/JuteBags/Tag-Team-Ludo/releases
 
 ![Design mockups: home screen, a game in progress and the winner screen](docs/assets/design-showcase.png)
 
@@ -53,7 +53,7 @@ See [AGENTS.md](AGENTS.md) for architecture notes and conventions.
 
 | Trigger | Result |
 |---|---|
-| Push to `main` | Tests, web build, signed APK, website deployed to GitHub Pages with the game at `/play/` and the APK at `/download/ludo.apk` |
+| Push to `main` | Tests, web build, signed APK, website deployed to GitHub Pages with the game at `/play/` and the APK at `/download/tag-team-ludo.apk` |
 | Push a tag `v1.2.3` | Signed APK + AAB attached to a GitHub Release (`v1.2.3-rc1` style tags become pre-releases) |
 | Pull request | Tests, web build and APK as a run artifact |
 

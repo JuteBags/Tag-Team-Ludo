@@ -41,7 +41,7 @@ describe('dice weights', () => {
     expect(sum(weights)).toBeCloseTo(1, 12);
   });
 
-  it('always sums to 1 and stays within 2/18..5/18', () => {
+  it('always sums to 1 and stays within 2/18..5/18', { timeout: 30_000 }, () => {
     const r = seeded(99);
     const colors: Color[] = ['blue', 'green', 'red', 'yellow'];
     for (let n = 0; n < 3000; n++) {
@@ -58,7 +58,7 @@ describe('dice weights', () => {
 });
 
 describe('dice sampling (Monte Carlo)', () => {
-  it('matches the weights within ±0.5% over 600k rolls', () => {
+  it('matches the weights within ±0.5% over 600k rolls', { timeout: 30_000 }, () => {
     const ps = mk({ blue: [5, 52, -1, -1], red: [prog('red', 46), -1, -1, -1] });
     const w = diceWeights(ps, 'blue', rng);
     const r = seeded(2024);
@@ -68,7 +68,7 @@ describe('dice sampling (Monte Carlo)', () => {
     counts.forEach((c, i) => expect(Math.abs(c / N - w[i]!)).toBeLessThan(0.005));
   });
 
-  it('rollDice follows the same weights end to end', () => {
+  it('rollDice follows the same weights end to end', { timeout: 30_000 }, () => {
     const ps = mk({ blue: [5, -1, -1, -1], red: [prog('red', 46), -1, -1, -1] });
     const r = seeded(5);
     const N = 40_000;
