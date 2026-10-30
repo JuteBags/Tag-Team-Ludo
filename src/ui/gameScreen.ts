@@ -3,6 +3,7 @@
 import { FINISHED, chooseMove, createGame, cryptoRng, move, ownerRanking, roll, type Color, type GameState, type Move, type Rng } from '../engine';
 import { PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
+import { playCutscene } from './palace';
 import { dieMarkup, rollDie } from './dice';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
@@ -153,8 +154,11 @@ export class GameScreen {
     await this.view.animateMove(m, this.state.players, this.speed);
     const ev = this.state.event;
     const extra = ev?.type === 'moved' && ev.extraTurn;
-    const human = !this.state.players.find((p) => p.color === m.color)!.bot;
+    const player = this.state.players.find((p) => p.color === m.color)!;
+    const human = !player.bot;
     if (m.captures.length) this.toast(m.captures.length > 1 ? 'DOUBLE KILL!' : 'KILL!', m.color, 'kill');
+    // A person's token reaching home is welcomed into the palace; a bot's just gets the banner.
+    else if (m.finishes && human) await playCutscene(this.el, m.color, player.tokens, this.speed);
     else if (m.finishes) this.toast('HOME!', m.color, 'home');
     if (extra && human) this.toast('Roll again', m.color);
   }

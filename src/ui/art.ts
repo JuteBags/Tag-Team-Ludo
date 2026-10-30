@@ -177,6 +177,48 @@ function homeArrows(c: Color): string {
   return s;
 }
 
+// ---------- the palace (board centre) ----------
+
+const STONE = '#f6ecd6';
+const STONE_D = '#cdb994';
+/** Which way each colour's gate faces, as a rotation of the top gate around the board centre. */
+const GATE_TURN: Record<Color, number> = { red: 0, yellow: 90, blue: 180, green: 270 };
+
+/** The centre of the board (240..360): four colour courts inside a walled castle with a round keep. */
+export function palaceSVG(): string {
+  let s = `<polygon points="240,240 240,360 300,300" fill="url(#base-green)"/><polygon points="240,240 360,240 300,300" fill="url(#base-red)"/>
+  <polygon points="360,240 360,360 300,300" fill="url(#base-yellow)"/><polygon points="240,360 360,360 300,300" fill="url(#base-blue)"/>
+  <path d="M252,252 L348,348 M348,252 L252,348" stroke="#fff" stroke-opacity=".45" stroke-width="2"/>
+  <rect x="244" y="245.5" width="112" height="112" rx="5" fill="none" stroke="${STONE_D}" stroke-width="5"/>
+  <rect x="244" y="244" width="112" height="112" rx="5" fill="none" stroke="${STONE}" stroke-width="5"/>`;
+  // Battlements on each wall, leaving the middle for the gatehouse.
+  for (const turn of [0, 90, 180, 270]) {
+    let m = '';
+    for (const x of [259, 271, 329, 341]) m += `<rect x="${x - 3}" y="239.5" width="6" height="6" rx="1" fill="${STONE}" stroke="${STONE_D}" stroke-width=".8"/>`;
+    s += `<g transform="rotate(${turn} 300 300)">${m}</g>`;
+  }
+  // A gatehouse facing each colour's home lane, with a door in that colour.
+  for (const [c, turn] of Object.entries(GATE_TURN) as [Color, number][]) {
+    s += `<g transform="rotate(${turn} 300 300)"><rect x="288" y="237" width="24" height="14" rx="3" fill="${STONE_D}" transform="translate(0 1.2)"/>
+    <rect x="288" y="237" width="24" height="14" rx="3" fill="${STONE}"/>
+    <path d="M294.5,251 V245 a5.5,5.5 0 0 1 11,0 V251Z" fill="${PALETTE[c].d}"/><path d="M300,240 V251" stroke="${PALETTE[c].m}" stroke-width="1.2"/></g>`;
+  }
+  // Corner towers seen from above: stone ring, crenels, a gold roof.
+  // Set in from the corners, clear of the arrows where the track turns.
+  for (const [x, y] of [[252, 252], [348, 252], [348, 348], [252, 348]] as const) {
+    s += `<circle cx="${x}" cy="${y + 1.5}" r="9" fill="${STONE_D}"/><circle cx="${x}" cy="${y}" r="9" fill="${STONE}"/>
+    <circle cx="${x}" cy="${y}" r="7.8" fill="none" stroke="${STONE_D}" stroke-width="2.4" stroke-dasharray="2.4 2.2"/>
+    <circle cx="${x}" cy="${y}" r="5.2" fill="url(#gCoin)" stroke="#d58a06" stroke-width=".8"/><circle cx="${x - 1.6}" cy="${y - 1.8}" r="1.5" fill="#fff" opacity=".7"/>`;
+  }
+  // The keep: the home star sits on its golden roof.
+  s += `<circle cx="300" cy="302.5" r="23" fill="#000" opacity=".18"/><circle cx="300" cy="300" r="23" fill="${STONE}"/>
+  <circle cx="300" cy="300" r="21" fill="none" stroke="${STONE_D}" stroke-width="3.4" stroke-dasharray="3.4 2.6"/>
+  <circle cx="300" cy="300" r="15.5" fill="url(#gCoin)" stroke="#d58a06" stroke-width="1"/>
+  <path d="${starPath(300, 301, 9.5, 4.2)}" fill="#fff6c8" stroke="#d58a06" stroke-width="1.1"/>
+  <circle cx="294.5" cy="294" r="2.4" fill="#fff" opacity=".6"/>`;
+  return s;
+}
+
 /** The static board plus empty layers for the board view to fill. */
 export function boardSVG(): string {
   let s = `<svg viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg"><rect width="600" height="600" fill="#d6cbb6"/>`;
@@ -197,13 +239,11 @@ export function boardSVG(): string {
     const st = starts.has(i);
     s += `<path d="${starPath(x * S + 20, y * S + 21, 12, 5.2)}" fill="${st ? '#fff' : '#cbbfa9'}" ${st ? 'fill-opacity=".92"' : ''}/>`;
   }
-  s += turnArrows() + tipArrows() + startChevrons();
+  s += tipArrows() + startChevrons();
   for (const c of COLORS) s += homeArrows(c);
   for (const c of COLORS) s += base(c);
-  s += `<polygon points="240,240 240,360 300,300" fill="url(#base-green)"/><polygon points="240,240 360,240 300,300" fill="url(#base-red)"/>
-  <polygon points="360,240 360,360 300,300" fill="url(#base-yellow)"/><polygon points="240,360 360,360 300,300" fill="url(#base-blue)"/>
-  <path d="M240,240 L360,360 M360,240 L240,360" stroke="#fff" stroke-opacity=".55" stroke-width="2"/>
-  <circle cx="300" cy="302" r="16" fill="#000" opacity=".2"/><circle cx="300" cy="300" r="16" fill="#fffaf0"/><path d="${starPath(300, 301, 10, 4.5)}" fill="#ffc21a" stroke="#d58a06" stroke-width="1.2"/>`;
+  // The turn arrows go over the palace walls, so they always show.
+  s += palaceSVG() + turnArrows();
   return s + `<g class="deco"></g><g class="fx"></g><g class="pieces"></g><g class="marks"></g><g class="badges"></g></svg>`;
 }
 

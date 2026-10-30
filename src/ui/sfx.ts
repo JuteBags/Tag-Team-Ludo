@@ -130,6 +130,38 @@ export const sfx = {
     [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.32, { type: 'triangle', vol: 0.14, at: i * 0.09 }));
     buzz([25, 40, 25, 40, 50]);
   },
+  // ---------- the palace cutscene ----------
+  /** The palace gate swinging open: a low wooden creak and thud. */
+  gate() {
+    noise(0.5, { vol: 0.22, freq: 320, q: 4 });
+    tone(140, 0.5, { type: 'sawtooth', vol: 0.04, slide: 0.7 });
+    tone(80, 0.3, { type: 'sine', vol: 0.3, at: 0.42 });
+  },
+  /** The welcome: a rising fanfare that lands on a bright chord. */
+  fanfare() {
+    [523, 659, 784].forEach((f, i) => tone(f, 0.18, { type: 'square', vol: 0.05, at: i * 0.11 }));
+    [784, 1047, 1319].forEach((f) => tone(f, 0.8, { type: 'triangle', vol: 0.1, at: 0.36 }));
+    buzz([30, 50, 30, 50, 80]);
+  },
+  /** Red: the dragon's fiery breath. */
+  roar() {
+    noise(0.6, { vol: 0.3, freq: 500, q: 0.5, type: 'lowpass' });
+    tone(130, 0.5, { type: 'sawtooth', vol: 0.06, slide: 0.55 });
+  },
+  /** Green: the owls hoot. */
+  hoot() {
+    tone(440, 0.2, { vol: 0.14, slide: 0.85 });
+    tone(392, 0.28, { vol: 0.14, at: 0.26, slide: 0.85 });
+  },
+  /** Yellow: the trumpeters' call. */
+  trumpets() {
+    [392, 523, 659].forEach((f, i) => tone(f, 0.16, { type: 'sawtooth', vol: 0.05, at: i * 0.12 }));
+    tone(784, 0.5, { type: 'sawtooth', vol: 0.05, at: 0.36 });
+  },
+  /** Blue: a stream of bubbles. */
+  bubbles() {
+    for (let i = 0; i < 9; i++) tone(280 + Math.random() * 520, 0.09, { vol: 0.08, at: i * 0.06, slide: 2.2 });
+  },
   /** Three sixes: the turn is lost. */
   bust() {
     tone(330, 0.2, { type: 'square', vol: 0.07 });

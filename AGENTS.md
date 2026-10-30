@@ -23,7 +23,8 @@
   - `rng.ts` seeded RNG for tests, `cryptoRng` for real play
 - `src/ui/` — the game UI (DOM + SVG), driven by the engine:
   - `app.ts` fixed 390 x 844 stage scaled to fit any screen, routing home → setup → game
-  - `art.ts` all vector art (board, pawns, avatars, trophy) and the shared SVG `<defs>`
+  - `art.ts` all vector art (board and the palace in its centre, pawns, avatars, trophy) and the shared SVG `<defs>`
+  - `palace.ts` the palace cutscene: when a person's token gets home, a short scene in that colour's kingdom (Red: the Ember Keep, Green: the Emerald Grove, Yellow: the Sun Citadel, Blue: the Tide Palace) welcomes it through the gate; tap to skip, still under reduced motion. Bots' tokens get the HOME! banner only
   - `geometry.ts` board cell coordinates and the four track turns; track order must match `src/engine/board.ts`
   - `targets.ts` pure: one landing marker per legal move, nearest-tap picking, why a token can't move (tested)
   - `boardView.ts` pawn placement, stacking, double badges (padlock = locked, ×2 = on a star, ! = single on an enemy double), landing markers, board-wide tap picking, hop/kill/finish effects
