@@ -1,6 +1,6 @@
 // Vector art shared by all screens. Ported from mockups/index.html.
 import { COLORS, SAFE_SQUARES, START, type Color } from '../engine';
-import { ARROW, CELL as S, CORNER, HOME_COL, SLOT, TRACK } from './geometry';
+import { ARROW, CELL as S, CORNER, HOME_COL, SLOT, TRACK, TURNS, centerOf } from './geometry';
 
 export const PALETTE: Record<Color, { l: string; m: string; d: string; t: string }> = {
   blue: { l: '#7cc0ff', m: '#1f7bff', d: '#0a3c9c', t: '#dcecff' },
@@ -102,6 +102,37 @@ function base(c: Color): string {
   return s;
 }
 
+/** Curved arrows where the track jumps diagonally into the next arm, bowed away from the centre. */
+function turnArrows(): string {
+  let s = '';
+  for (const { from, to } of TURNS) {
+    const [ax, ay] = centerOf(from), [bx, by] = centerOf(to);
+    // The two cells meet at a corner of the centre square; bow the curve outward from it.
+    const cx = Math.max(from[0], to[0]) * S, cy = Math.max(from[1], to[1]) * S;
+    const kx = cx + Math.sign(cx - 300) * 15, ky = cy + Math.sign(cy - 300) * 15;
+    const ang = (Math.atan2(by - ky, bx - kx) * 180) / Math.PI;
+    const d = `M${ax + (kx - ax) * 0.25},${ay + (ky - ay) * 0.25} Q${kx},${ky} ${bx + (kx - bx) * 0.32},${by + (ky - by) * 0.32}`;
+    const [hx, hy] = [bx + (kx - bx) * 0.32, by + (ky - by) * 0.32];
+    const head = `transform="translate(${hx} ${hy}) rotate(${ang})"`;
+    s += `<g class="turn"><path d="${d}" fill="none" stroke="#5a3a10" stroke-width="11" stroke-linecap="round" opacity=".7"/>
+      <path d="M-8,-10 L9,0 L-8,10Z" fill="#5a3a10" opacity=".7" stroke="#5a3a10" stroke-width="3" stroke-linejoin="round" ${head}/>
+      <path d="${d}" fill="none" stroke="#ffd23f" stroke-width="6" stroke-linecap="round"/>
+      <path d="M-7,-8.5 L8,0 L-7,8.5Z" fill="#ffd23f" stroke="#ffd23f" stroke-width="1.5" stroke-linejoin="round" ${head}/></g>`;
+  }
+  return s;
+}
+
+/** A bold arrow on each colour's entry square pointing into its home lane, plus chevrons up the lane. */
+function homeArrows(c: Color): string {
+  const [x, y, rot] = ARROW[c];
+  const at = (px: number, py: number) => `translate(${px * S + 20} ${py * S + 20}) rotate(${rot})`;
+  let s = `<path d="M-11,-12 L13,0 L-11,12 L-5,0Z" fill="${PALETTE[c].m}" stroke="#fff" stroke-width="2.5" stroke-linejoin="round" transform="${at(x, y)}"/>`;
+  for (const [hx, hy] of HOME_COL[c].slice(0, 4)) {
+    s += `<path d="M-4,-6 L3,0 L-4,6" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" transform="${at(hx, hy)}"/>`;
+  }
+  return s;
+}
+
 /** The static board plus empty layers for the board view to fill. */
 export function boardSVG(): string {
   let s = `<svg viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg"><rect width="600" height="600" fill="#d6cbb6"/>`;
@@ -122,16 +153,14 @@ export function boardSVG(): string {
     const st = starts.has(i);
     s += `<path d="${starPath(x * S + 20, y * S + 21, 12, 5.2)}" fill="${st ? '#fff' : '#cbbfa9'}" ${st ? 'fill-opacity=".92"' : ''}/>`;
   }
-  for (const c of COLORS) {
-    const [x, y, rot] = ARROW[c];
-    s += `<path d="M-8,-9 L10,0 L-8,9 L-4,0Z" fill="${PALETTE[c].m}" transform="translate(${x * S + 20} ${y * S + 20}) rotate(${rot})"/>`;
-  }
+  s += turnArrows();
+  for (const c of COLORS) s += homeArrows(c);
   for (const c of COLORS) s += base(c);
   s += `<polygon points="240,240 240,360 300,300" fill="url(#base-green)"/><polygon points="240,240 360,240 300,300" fill="url(#base-red)"/>
   <polygon points="360,240 360,360 300,300" fill="url(#base-yellow)"/><polygon points="240,360 360,360 300,300" fill="url(#base-blue)"/>
   <path d="M240,240 L360,360 M360,240 L240,360" stroke="#fff" stroke-opacity=".55" stroke-width="2"/>
   <circle cx="300" cy="302" r="16" fill="#000" opacity=".2"/><circle cx="300" cy="300" r="16" fill="#fffaf0"/><path d="${starPath(300, 301, 10, 4.5)}" fill="#ffc21a" stroke="#d58a06" stroke-width="1.2"/>`;
-  return s + `<g class="deco"></g><g class="fx"></g><g class="pieces"></g><g class="badges"></g></svg>`;
+  return s + `<g class="deco"></g><g class="fx"></g><g class="pieces"></g><g class="marks"></g><g class="badges"></g></svg>`;
 }
 
 // ---------- avatars ----------

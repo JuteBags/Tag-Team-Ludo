@@ -1,21 +1,29 @@
-// Live board: places pawns, stacks shared squares, animates moves and captures.
+// Live board: places pawns, stacks shared squares, shows where moves land, animates moves and captures.
 import { isSafe, type Color, type Move, type PlayerState } from '../engine';
-import { boardSVG, pawnArt } from './art';
+import { PALETTE, boardSVG, pawnArt } from './art';
 import { spot, stepPoints, type Pt } from './geometry';
+import { sfx } from './sfx';
+import { nearest, type Target } from './targets';
 
 const NS = 'http://www.w3.org/2000/svg';
 const HOP_MS = 150;
-const BASE_SCALE = 1.18;
+const BASE_SCALE = 1.42;
+/** A lone pawn on the track: a little over a cell wide reads better on a phone. */
+const TRACK_SCALE = 1.14;
+/** Tap radius in board units (the board is 600 wide): about 20px on a phone, well over a 40px target. */
+const HIT = 34;
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Offsets and scale for 1-4 pawns sharing a square. */
 const STACK: Record<number, { o: Pt[]; s: number }> = {
-  1: { o: [[0, 0]], s: 1 },
-  2: { o: [[-6, 4], [6, 0]], s: 0.84 },
-  3: { o: [[-7, 5], [7, 5], [0, -3]], s: 0.72 },
-  4: { o: [[-7, 6], [7, 6], [-7, -4], [7, -4]], s: 0.66 },
+  1: { o: [[0, 0]], s: TRACK_SCALE },
+  2: { o: [[-7, 4], [7, 0]], s: 0.9 },
+  3: { o: [[-8, 5], [8, 5], [0, -3]], s: 0.76 },
+  4: { o: [[-8, 6], [8, 6], [-8, -4], [8, -4]], s: 0.7 },
 };
 
-interface Place { x: number; y: number; s: number }
+/** Position, scale, squash (+ wide/short, - tall/thin) and spin of a pawn. */
+interface Place { x: number; y: number; s: number; q?: number; r?: number }
 
 const tween = (ms: number, f: (t: number) => void): Promise<void> => {
   if (document.hidden || ms <= 0) {
@@ -45,15 +53,41 @@ const tween = (ms: number, f: (t: number) => void): Promise<void> => {
 };
 const ease = (t: number) => 1 - (1 - t) * (1 - t);
 
+/**
+ * Where a marker's label goes, relative to the marker: above, else below, else nudged sideways,
+ * so neighbouring labels never cover each other; always inside the board. Records the spot in `taken`.
+ */
+function placeLabel(x: number, y: number, w: number, taken: { x: number; y: number; w: number }[]) {
+  const clampX = (cx: number) => Math.min(Math.max(cx, w / 2 + 4), 596 - w / 2);
+  const free = (cx: number, cy: number) => taken.every((r) => Math.abs(r.x - cx) > (r.w + w) / 2 + 2 || Math.abs(r.y - cy) > 28);
+  const tries: [number, number][] = [];
+  for (const dy of y < 60 ? [36, -36] : [-36, 36]) for (const dx of [0, w * 0.6, -w * 0.6]) tries.push([dx, dy]);
+  const [dx, dy] = tries.find(([dx, dy]) => free(clampX(x + dx), y + dy)) ?? tries[0]!;
+  const cx = clampX(x + dx);
+  taken.push({ x: cx, y: y + dy, w });
+  return { lx: cx - x, ly: dy };
+}
+const TAG_COLOR = { kill: '#ff3b3b', finish: '#ffc21a', home: '#ffffff', safe: '#ffd23f' } as const;
+
 export class BoardView {
   readonly el: HTMLElement;
+  private svg: SVGSVGElement;
   private pieces: SVGGElement;
   private deco: SVGGElement;
   private fx: SVGGElement;
+  private marks: SVGGElement;
   private badges: SVGGElement;
   private pawns = new Map<string, SVGGElement>();
   private placed = new Map<string, Place>();
-  private onPick: ((key: string) => void) | null = null;
+  private targets: Target[] = [];
+  private onChoose: ((t: Target) => void) | null = null;
+  private onSelect: ((ts: Target[]) => void) | null = null;
+  private onStuck: ((pawn: string) => void) | null = null;
+  /** Pawn whose several moves are on show (a pair on a star: move both, or one). */
+  private selected: string | null = null;
+  private focusKey = '';
+  /** Markers pop in only when they first appear, not on every hover redraw. */
+  private fresh = false;
 
   constructor(players: PlayerState[], size: number) {
     this.el = document.createElement('div');
@@ -61,23 +95,30 @@ export class BoardView {
     this.el.style.width = this.el.style.height = `${size}px`;
     this.el.innerHTML = `<div class="binner">${boardSVG()}</div>`;
     const q = (c: string) => this.el.querySelector<SVGGElement>(`.${c}`)!;
+    this.svg = this.el.querySelector('svg')!;
     this.pieces = q('pieces');
     this.deco = q('deco');
     this.fx = q('fx');
+    this.marks = q('marks');
     this.badges = q('badges');
     for (const p of players) {
       p.tokens.forEach((_, i) => {
-        const key = p.color + i;
         const g = document.createElementNS(NS, 'g');
         g.setAttribute('class', 'pawn');
         g.innerHTML = pawnArt(p.color);
-        g.addEventListener('click', () => {
-          if (g.classList.contains('movable')) this.onPick?.(key);
-        });
         this.pieces.appendChild(g);
-        this.pawns.set(key, g);
+        this.pawns.set(p.color + i, g);
       });
     }
+    // One handler for the whole board: a tap goes to the nearest pawn or landing spot, so small
+    // pieces are easy to hit with a finger.
+    this.svg.addEventListener('click', (e) => this.tap(this.toBoard(e)));
+    this.svg.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'mouse' || !this.onChoose) return;
+      const hit = this.hit(this.toBoard(e));
+      this.svg.style.cursor = hit ? 'pointer' : '';
+      this.drawTargets(hit ? ('target' in hit ? [hit.target] : this.targetsOf(hit.pawn)) : undefined);
+    });
     this.layout(players);
   }
 
@@ -106,10 +147,27 @@ export class BoardView {
       const counts = new Map<Color, number>();
       for (const it of list) counts.set(it.color, (counts.get(it.color) ?? 0) + 1);
       const [x, y] = list[0]!.pt;
+      const bx = Math.min(x + 15, 588), by = Math.max(y - 18, 12);
+      let doubled = false;
       for (const [, n] of counts) {
         if (n < 2) continue;
-        if (block) deco += `<ellipse cx="${x}" cy="${y + 15}" rx="19" ry="6.5" fill="#ffd23f" opacity=".6"/><ellipse cx="${x}" cy="${y + 15}" rx="19" ry="6.5" fill="none" stroke="#fff3b0" stroke-width="1.5"/>`;
-        badges += `<g transform="translate(${Math.min(x + 14, 589)} ${Math.max(y - 17, 11)})"><circle r="8.5" fill="${block ? '#ffd23f' : '#fff'}" stroke="#7a4200" stroke-width="1.6"/><text y="3.4" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="10" fill="#5a2d00">×${n}</text></g>`;
+        doubled = true;
+        if (block) {
+          // A locked double: gold ring and a padlock.
+          deco += `<ellipse cx="${x}" cy="${y + 15}" rx="20" ry="7" fill="#ffd23f" opacity=".65"/><ellipse cx="${x}" cy="${y + 15}" rx="20" ry="7" fill="none" stroke="#fff3b0" stroke-width="1.5"/>`;
+          badges += `<g transform="translate(${bx} ${by})"><circle r="10" fill="#ffd23f" stroke="#7a4200" stroke-width="1.8"/><path d="M-3.4,-1 V-3.2 a3.4,3.4 0 0 1 6.8,0 V-1" fill="none" stroke="#5a2d00" stroke-width="1.8"/><rect x="-5" y="-1.5" width="10" height="7.5" rx="1.8" fill="#5a2d00"/></g>`;
+        } else {
+          // A pair on a star: split, it can move together or one at a time.
+          badges += `<g transform="translate(${bx} ${by})"><circle r="10" fill="#fff" stroke="#7a4200" stroke-width="1.8"/><text y="4" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="12" fill="#5a2d00">×${n}</text></g>`;
+        }
+      }
+      // A single sitting on an enemy double can be cut there: warn on it.
+      if (block && doubled) {
+        for (const [c, n] of counts) {
+          if (n % 2 === 0 || ![...counts].some(([o, m]) => o !== c && m >= 2)) continue;
+          const p = this.placed.get(list.find((it) => it.color === c)!.key)!;
+          badges += `<g class="risk" transform="translate(${Math.max(p.x - 15, 12)} ${Math.max(p.y - 22, 12)})"><circle r="9" fill="#ff3b3b" stroke="#fff" stroke-width="2"/><text y="4.5" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="13" fill="#fff">!</text></g>`;
+        }
       }
     }
     this.deco.innerHTML = deco;
@@ -117,24 +175,129 @@ export class BoardView {
     this.sortZ();
   }
 
-  /** Highlights tappable pawns; `onPick` gets the pawn key ("blue2"). */
-  setMovable(keys: string[], onPick: (key: string) => void) {
+  // ---------- choosing a move ----------
+
+  /**
+   * Shows every move as a marker where it would land. Tapping a marker plays that move; tapping a
+   * pawn plays its move, or, when it has several (a pair on a star), shows just those.
+   */
+  showTargets(targets: Target[], onChoose: (t: Target) => void, onSelect?: (ts: Target[]) => void, onStuck?: (pawn: string) => void) {
     this.clearMovable();
-    this.onPick = onPick;
-    let fx = '';
-    for (const k of keys) {
-      this.pawns.get(k)!.classList.add('movable');
-      const p = this.placed.get(k)!;
-      fx += `<circle class="glow" cx="${p.x}" cy="${p.y - 2}" r="${22 * p.s}"/><circle class="pulse" cx="${p.x}" cy="${p.y - 2}" r="${22 * p.s}"/>`;
-    }
-    this.fx.innerHTML = fx;
+    this.targets = targets;
+    this.onChoose = onChoose;
+    this.onSelect = onSelect ?? null;
+    this.onStuck = onStuck ?? null;
+    for (const t of targets) for (const k of t.pawns) this.pawns.get(k)!.classList.add('movable');
+    this.fresh = true;
+    this.drawTargets();
   }
 
   clearMovable() {
-    this.onPick = null;
-    this.fx.innerHTML = '';
+    this.targets = [];
+    this.onChoose = this.onSelect = this.onStuck = null;
+    this.selected = null;
+    this.focusKey = '';
+    this.fx.innerHTML = this.marks.innerHTML = '';
+    this.svg.style.cursor = '';
     for (const g of this.pawns.values()) g.classList.remove('movable');
   }
+
+  private targetsOf(pawn: string) {
+    return this.targets.filter((t) => t.pawns.includes(pawn));
+  }
+
+  private tap(at: Pt) {
+    if (!this.onChoose) return;
+    const hit = this.hit(at);
+    if (!hit) {
+      // One of your own pawns that can't move: say why.
+      const color = this.targets[0]?.move.color;
+      const own = [...this.pawns.keys()].filter((k) => color && k.startsWith(color) && !this.pawns.get(k)!.classList.contains('movable'));
+      const stuck = nearest(own.map((k) => ({ k, pt: [this.placed.get(k)!.x, this.placed.get(k)!.y - 6] as Pt })), at, HIT);
+      if (stuck) {
+        sfx.tick();
+        this.onStuck?.(stuck.k);
+      }
+      if (this.selected) {
+        this.selected = null;
+        this.drawTargets();
+      }
+      return;
+    }
+    if ('target' in hit) return this.choose(hit.target);
+    const own = this.targetsOf(hit.pawn);
+    if (own.length === 1) return this.choose(own[0]!);
+    this.selected = hit.pawn;
+    sfx.tick();
+    this.drawTargets(own);
+    this.onSelect?.(own);
+  }
+
+  private choose(t: Target) {
+    const f = this.onChoose;
+    this.clearMovable();
+    f?.(t);
+  }
+
+  /** Nearest movable pawn or landing spot. A pawn wins a near-tie: its marker may sit on another pawn. */
+  private hit(at: Pt): { pawn: string } | { target: Target } | null {
+    const keys = [...new Set((this.selected ? this.targetsOf(this.selected) : this.targets).flatMap((t) => t.pawns))];
+    const pawn = nearest(keys.map((k) => ({ k, pt: [this.placed.get(k)!.x, this.placed.get(k)!.y - 6] as Pt })), at, HIT);
+    const pool = this.selected ? this.targetsOf(this.selected) : this.targets;
+    const dest = nearest(pool.map((t) => ({ t, pt: t.dest })), at, HIT);
+    if (pawn && (!dest || Math.hypot(pawn.pt[0] - at[0], pawn.pt[1] - at[1]) <= Math.hypot(dest.pt[0] - at[0], dest.pt[1] - at[1]) + 6)) return { pawn: pawn.k };
+    return dest ? { target: dest.t } : null;
+  }
+
+  private drawTargets(focus?: Target[]) {
+    const shown = this.selected ? this.targetsOf(this.selected) : this.targets;
+    const on = focus ?? (this.selected ? shown : []);
+    const key = on.map((t) => this.targets.indexOf(t)).join(',') + '|' + this.selected;
+    if (key === this.focusKey && this.marks.childElementCount) return;
+    this.focusKey = key;
+    let s = '';
+    for (const k of new Set(shown.flatMap((t) => t.pawns))) {
+      const p = this.placed.get(k)!;
+      s += `<circle class="glow" cx="${p.x}" cy="${p.y - 4}" r="${24 * p.s}"/><circle class="pulse" cx="${p.x}" cy="${p.y - 4}" r="${24 * p.s}"/>`;
+    }
+    // Path previews for the focused moves, under the markers.
+    for (const t of on) {
+      const from = this.placed.get(t.pawns[0]!)!;
+      const pts = [[from.x, from.y - 4], ...stepPoints(t.move.color, t.move.from, t.move.to)];
+      pts[pts.length - 1] = t.dest;
+      s += `<polyline class="trail" points="${pts.map((p) => p.join(',')).join(' ')}"/>`;
+    }
+    let m = '';
+    const taken: { x: number; y: number; w: number }[] = [];
+    for (const t of shown) {
+      const c = t.tag === 'plain' ? PALETTE[t.move.color].m : TAG_COLOR[t.tag];
+      const [x, y] = t.dest;
+      const w = t.label.length * 9.6 + (t.tag === 'kill' ? 50 : 20);
+      const { lx, ly } = placeLabel(x, y, w, taken);
+      const text = t.tag === 'kill' ? `${t.label} KILL` : t.label;
+      const icon =
+        t.tag === 'kill' ? `<path d="M-6,-6 L6,6 M6,-6 L-6,6" stroke="#fff" stroke-width="3" stroke-linecap="round"/>`
+        : t.tag === 'safe' ? `<path d="M0,-7 L2,-2 7,-2 3,1.5 4.5,6.5 0,3.5 -4.5,6.5 -3,1.5 -7,-2 -2,-2Z" fill="#fff"/>`
+        : t.tag === 'home' || t.tag === 'finish' ? `<path d="M-6,1 L0,-6 L6,1 M-4,0 V6 H4 V0" fill="none" stroke="#5a2d00" stroke-width="2.2" stroke-linejoin="round"/>`
+        : `<circle r="4" fill="#fff"/>`;
+      m += `<g class="mark ${t.tag}${on.includes(t) ? ' on' : ''}${this.fresh ? ' fresh' : ''}" transform="translate(${x} ${y})" style="--c:${c}">
+        <circle class="ring" r="18"/><circle class="core" r="13"/>${icon}
+        <g transform="translate(${lx} ${ly})"><rect x="${-w / 2}" y="-13" width="${w}" height="26" rx="13" class="pill"/><text y="6.5" text-anchor="middle">${text}</text></g></g>`;
+    }
+    this.fx.innerHTML = s;
+    this.marks.innerHTML = m;
+    this.fresh = false;
+  }
+
+  private toBoard(e: MouseEvent): Pt {
+    const p = this.svg.createSVGPoint();
+    p.x = e.clientX;
+    p.y = e.clientY;
+    const q = p.matrixTransform(this.svg.getScreenCTM()!.inverse());
+    return [q.x, q.y];
+  }
+
+  // ---------- animation ----------
 
   /** Hops the moving pawns square by square, sends captured pawns home, then re-lays the board. */
   async animateMove(m: Move, after: PlayerState[], speed = 1) {
@@ -143,26 +306,44 @@ export class BoardView {
     this.badges.innerHTML = '';
     const keys = m.tokens.map((i) => m.color + i);
     for (const k of keys) this.pieces.appendChild(this.pawns.get(k)!);
-    const offs: Pt[] = keys.length === 2 ? [[-6, 4], [6, 0]] : [[0, 0]];
-    const s = keys.length === 2 ? 0.84 : 1;
+    const offs: Pt[] = keys.length === 2 ? STACK[2]!.o : [[0, 0]];
+    const s = keys.length === 2 ? STACK[2]!.s : TRACK_SCALE;
     let from = keys.map((k) => this.placed.get(k)!);
     const pts = stepPoints(m.color, m.from, m.to);
-    for (const pt of pts) {
+    const kill = m.captures.length > 0;
+    for (const [i, pt] of pts.entries()) {
+      const last = i === pts.length - 1;
       const to = offs.map(([ox, oy]) => ({ x: pt[0] + ox, y: pt[1] + oy + 3, s }));
-      await this.hop(keys, from, to, (m.from < 0 ? 2 : 1) * HOP_MS / speed, 14);
+      // The killing hop is a big leap that slams down.
+      await this.hop(keys, from, to, ((m.from < 0 ? 2 : 1) * HOP_MS * (last && kill ? 2.2 : 1)) / speed, last && kill ? 46 : 14);
+      if (!(last && kill)) sfx.hop();
+      void this.squash(keys, last ? 0.22 : 0.1, 140 / speed);
       from = to;
     }
-    if (m.captures.length) {
-      const [x, y] = pts[pts.length - 1]!;
-      this.burst(x, y);
+    const [x, y] = pts[pts.length - 1]!;
+    if (m.from < 0) {
+      sfx.release();
+      this.pop(x, y, PALETTE[m.color].l);
+    }
+    if (kill) {
+      sfx.kill(m.captures.length);
+      this.impact(x, y, PALETTE[m.captures[0]!.color].m, m.captures.length);
       await Promise.all(
-        m.captures.map((c) => {
+        m.captures.map((c, j) => {
           const k = c.color + c.token;
           const { pt } = spot(c.color, -1, c.token);
           this.pieces.appendChild(this.pawns.get(k)!);
-          return this.hop([k], [this.placed.get(k)!], [{ x: pt[0], y: pt[1] + 3, s: BASE_SCALE }], 520 / speed, 70);
+          const start = this.placed.get(k)!;
+          return this.hop([k], [{ ...start, r: 0 }], [{ x: pt[0], y: pt[1] + 3, s: BASE_SCALE, r: (j ? -1 : 1) * 720 }], (760 + j * 80) / speed, 150).then(() => {
+            this.pop(pt[0], pt[1], PALETTE[c.color].l);
+            return this.squash([k], 0.3, 220 / speed);
+          });
         }),
       );
+    }
+    if (m.finishes) {
+      sfx.home();
+      this.starBurst(x, y);
     }
     this.layout(after);
   }
@@ -170,26 +351,95 @@ export class BoardView {
   private hop(keys: string[], from: Place[], to: Place[], ms: number, height: number) {
     return tween(ms, (t) => {
       const e = ease(t);
+      const air = Math.sin(Math.PI * t);
       keys.forEach((k, j) => {
         const a = from[j]!, b = to[j]!;
-        this.set(k, { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e - height * Math.sin(Math.PI * t), s: a.s + (b.s - a.s) * e });
+        const r = (a.r ?? 0) + ((b.r ?? 0) - (a.r ?? 0)) * e;
+        // Stretch tall in the air.
+        this.set(k, { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e - height * air, s: a.s + (b.s - a.s) * e, q: -0.12 * air, r: t >= 1 ? 0 : r });
       });
     });
   }
 
-  private burst(x: number, y: number) {
+  /** A quick landing squash that springs back. */
+  private squash(keys: string[], amount: number, ms: number) {
+    if (calm()) return Promise.resolve();
+    const base = keys.map((k) => this.placed.get(k)!);
+    return tween(ms, (t) => {
+      const q = amount * Math.sin(Math.PI * t) * (1 - t);
+      keys.forEach((k, j) => this.set(k, { ...base[j]!, q }));
+    }).then(() => keys.forEach((k, j) => this.set(k, { ...base[j]!, q: 0 })));
+  }
+
+  // ---------- effects ----------
+
+  /** The kill: board shake, shockwave rings and sparks in the victim's colour. */
+  private impact(x: number, y: number, color: string, n: number) {
+    this.ring(x, y, '#fff', 18, 3.2, 520);
+    this.ring(x, y, color, 14, 4.2, 680);
+    if (calm()) return;
+    this.sparks(x, y, [color, '#fff', '#ffd23f'], 14 * n, 70 + 30 * n);
+    this.el.animate(
+      [{ transform: 'translate(0,0)' }, { transform: 'translate(-7px,4px) rotate(-.6deg)' }, { transform: 'translate(6px,-5px) rotate(.5deg)' }, { transform: 'translate(-4px,3px)' }, { transform: 'translate(2px,-1px)' }, { transform: 'translate(0,0)' }],
+      { duration: 360, easing: 'cubic-bezier(.2,.8,.3,1)' },
+    );
+    const flash = document.createElementNS(NS, 'rect');
+    flash.setAttribute('width', '600');
+    flash.setAttribute('height', '600');
+    flash.setAttribute('fill', color);
+    this.badges.appendChild(flash);
+    flash.animate([{ opacity: 0.35 }, { opacity: 0 }], { duration: 260, easing: 'ease-out' }).finished.finally(() => flash.remove());
+  }
+
+  /** Gold star burst for a token reaching the centre. */
+  private starBurst(x: number, y: number) {
+    this.ring(x, y, '#ffd23f', 12, 4, 700);
+    if (!calm()) this.sparks(x, y, ['#ffd23f', '#fff6c2', '#ff9f1a'], 18, 90, true);
+  }
+
+  /** A pawn arriving somewhere new: a small ring. */
+  private pop(x: number, y: number, color: string) {
+    this.ring(x, y, color, 10, 2.4, 420);
+  }
+
+  private ring(x: number, y: number, color: string, r: number, grow: number, ms: number) {
     const c = document.createElementNS(NS, 'circle');
-    c.setAttribute('class', 'burst');
     c.setAttribute('cx', String(x));
     c.setAttribute('cy', String(y));
-    c.setAttribute('r', '18');
+    c.setAttribute('r', String(r));
+    c.setAttribute('class', 'shock');
+    c.style.stroke = color;
     this.badges.appendChild(c);
-    setTimeout(() => c.remove(), 600);
+    c.animate([{ transform: 'scale(.4)', opacity: 1, strokeWidth: 7 }, { transform: `scale(${grow})`, opacity: 0, strokeWidth: 1 }], { duration: ms, easing: 'cubic-bezier(.16,1,.3,1)' }).finished.finally(() => c.remove());
+  }
+
+  private sparks(x: number, y: number, colors: string[], n: number, dist: number, stars = false) {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random() * 0.4;
+      const d = dist * (0.55 + Math.random() * 0.6);
+      const el = document.createElementNS(NS, stars ? 'path' : 'circle');
+      if (stars) el.setAttribute('d', 'M0,-5 L1.4,-1.4 5,0 1.4,1.4 0,5 -1.4,1.4 -5,0 -1.4,-1.4Z');
+      else el.setAttribute('r', String(2.2 + Math.random() * 2.6));
+      el.setAttribute('fill', colors[i % colors.length]!);
+      // The group places the spark; the animation moves it relative to that.
+      const g = document.createElementNS(NS, 'g');
+      g.setAttribute('transform', `translate(${x} ${y})`);
+      g.appendChild(el);
+      this.badges.appendChild(g);
+      el.animate(
+        [{ transform: 'translate(0,0) scale(1)', opacity: 1 }, { transform: `translate(${Math.cos(a) * d}px,${Math.sin(a) * d + 18}px) scale(.2) rotate(${stars ? 180 : 0}deg)`, opacity: 0 }],
+        { duration: 600 + Math.random() * 300, easing: 'cubic-bezier(.16,1,.3,1)' },
+      ).finished.finally(() => g.remove());
+    }
   }
 
   private set(key: string, p: Place) {
     this.placed.set(key, p);
-    this.pawns.get(key)!.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) scale(${p.s.toFixed(3)})`);
+    const q = p.q ?? 0;
+    this.pawns.get(key)!.setAttribute(
+      'transform',
+      `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${(p.r ?? 0).toFixed(0)}) scale(${(p.s * (1 + q)).toFixed(3)} ${(p.s * (1 - q)).toFixed(3)})`,
+    );
   }
 
   /** Lower pawns are drawn last so they overlap the ones behind them. */
