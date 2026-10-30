@@ -1,12 +1,14 @@
 # Plays all-bot games on every pull request, on main and on the PR, and comments with the difference.
 #
-# Both sides run this PR's simulation (tests/simulation.sim.ts) with the same seeds, so a PR that
-# doesn't change the game shows "No change", and every difference is a real effect of the PR.
-# The check fails if a game never ends or the dice stop behaving as src/engine/dice.ts says.
-# The comment is kept to one per PR and updated on each push. The full report is also in the run
-# summary and the logs are a run artifact.
+# Each simulation is its own file in tests/sim/ (single-house.sim.ts, double-house.sim.ts, ...), and each
+# file runs as its own job, in parallel. Every job runs main and the PR side by side with this PR's
+# simulation files and the same seeds, so a PR that doesn't change the game shows "No change", and every
+# difference is a real effect of the PR. A job fails if a game never ends or the dice stop behaving as
+# src/engine/dice.ts says. The report job joins every file's section into one PR comment, updated on each
+# push; the same report goes in the run summary and the logs are run artifacts.
 #
-# Actions -> Simulation -> Run workflow runs just the simulation on a branch, with any number of games.
+# Actions -> Simulation -> Run workflow runs every simulation file on a branch (also in parallel), with
+# any number of games.
 
 name: Simulation
 
@@ -15,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       games:
-        description: 'Games per setup (6 setups: 2/3/4 players x game dice/fair dice)'
+        description: 'Games per setup (each setup is played with the game dice and with fair dice)'
         required: true
         default: '3000'
 
@@ -28,13 +30,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  files:
+    name: List the simulations
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: list
+        run: echo "list=$(ls tests/sim/*.sim.ts | jq -R -s -c 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+
   compare:
-    name: Simulate main and this PR
+    name: Simulate ${{ matrix.file }}
+    needs: files
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        file: ${{ fromJson(needs.files.outputs.list) }}
     env:
-      # 3000 per setup = the full 18,000 games on each side; about 4 minutes on a GitHub runner.
+      # 3000 per setup; each file is one job, so files run side by side.
       SIM_GAMES: 3000
     steps:
       - uses: actions/checkout@v7
@@ -53,18 +70,65 @@ jobs:
         working-directory: head
       - run: npm ci --no-audit --no-fund
         working-directory: base
-      - name: Measure main with this PR's simulation
-        run: cp head/tests/simulation.sim.ts base/tests/ && cp head/vitest.sim.config.ts base/
+      - name: Measure main with this PR's simulations
+        run: rm -rf base/tests/sim && cp -r head/tests/sim base/tests/sim && cp head/vitest.sim.config.ts base/
+      - name: Name this simulation
+        id: name
+        env:
+          FILE: ${{ matrix.file }}
+        run: echo "name=$(basename "$FILE" .sim.ts)" >> "$GITHUB_OUTPUT"
       - name: Simulate main and this PR side by side
+        env:
+          FILE: ${{ matrix.file }}
+          NAME: ${{ steps.name.outputs.name }}
         run: |
-          (cd base && npx vitest run --config vitest.sim.config.ts > ../base.log 2>&1) & b=$!
-          (cd head && npx vitest run --config vitest.sim.config.ts > ../head.log 2>&1) & h=$!
+          # Logs are named after the file, so the report job can download them all into one folder.
+          (cd base && npx vitest run --config vitest.sim.config.ts "$FILE" > "../$NAME.base.log" 2>&1) & b=$!
+          (cd head && npx vitest run --config vitest.sim.config.ts "$FILE" > "../$NAME.head.log" 2>&1) & h=$!
           bs=0; hs=0; wait $b || bs=$?; wait $h || hs=$?
-          grep -v '^SIM_JSON ' head.log | tail -45
-          [ $bs -eq 0 ] || echo "::warning::The simulation checks failed on main"
-          if [ $hs -ne 0 ]; then echo "::error::The simulation checks failed on this PR (a game never ended, or the dice changed behaviour)"; exit 1; fi
-      - name: Compare
-        run: node head/tools/sim-compare.mjs base.log head.log > report.md && cat report.md >> "$GITHUB_STEP_SUMMARY"
+          grep -v '^SIM_JSON ' "$NAME.head.log" | tail -45
+          [ $bs -eq 0 ] || echo "::warning::$FILE could not run on main (it may need engine changes from this PR)"
+          if [ $hs -ne 0 ]; then echo "::error::$FILE failed on this PR (a game never ended, or the dice changed behaviour)"; exit 1; fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sim-${{ steps.name.outputs.name }}
+          path: '*.log'
+          retention-days: 14
+
+  report:
+    name: Comment with the results
+    needs: [files, compare]
+    if: always() && github.event_name == 'pull_request' && needs.compare.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: sim-*
+          path: sims
+          merge-multiple: true
+      - name: Build the report
+        env:
+          FILES: ${{ needs.files.outputs.list }}
+        run: |
+          {
+            echo '<!-- sim-compare -->'
+            echo '## 🎲 Simulation: `main` → this PR'
+            echo
+            echo 'Every simulation file ran as its own job, in parallel, with the same seeds on both sides. "Player" rows are one seat (Blue, the seat a human plays).'
+            echo
+            # One section per simulation file, in file order; a file without results failed.
+            for file in $(echo "$FILES" | jq -r '.[]' | tr -d '\r'); do
+              name="$(basename "$file" .sim.ts)"
+              if [ -f "sims/$name.head.log" ] && grep -q '^SIM_JSON ' "sims/$name.head.log"; then
+                node tools/sim-compare.mjs "sims/$name.base.log" "sims/$name.head.log"
+              else
+                echo "### $name"; echo; echo "❌ \`$file\` failed on this PR; see its job log."; echo
+              fi
+            done
+          } > report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
       - name: Comment on the PR
         # Pull requests from forks get a read-only token; their report is in the run summary.
         if: github.event.pull_request.head.repo.full_name == github.repository
@@ -78,18 +142,17 @@ jobs:
           else
             gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file report.md
           fi
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: simulation
-          path: '*.log'
-          retention-days: 14
 
   run:
-    name: Simulate this branch
+    name: Simulate ${{ matrix.file }}
+    needs: files
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        file: ${{ fromJson(needs.files.outputs.list) }}
     env:
       SIM_GAMES: ${{ inputs.games }}
     steps:
@@ -100,11 +163,18 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - name: Simulate
+        env:
+          FILE: ${{ matrix.file }}
         run: |
-          npx vitest run --config vitest.sim.config.ts > sim.log 2>&1 || { tail -60 sim.log; exit 1; }
+          npx vitest run --config vitest.sim.config.ts "$FILE" > sim.log 2>&1 || { tail -60 sim.log; exit 1; }
           { echo '```'; grep -v '^SIM_JSON ' sim.log | tail -45; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Name this simulation
+        id: name
+        env:
+          FILE: ${{ matrix.file }}
+        run: echo "name=$(basename "$FILE" .sim.ts)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
-          name: simulation
+          name: sim-${{ steps.name.outputs.name }}
           path: sim.log
           retention-days: 30
