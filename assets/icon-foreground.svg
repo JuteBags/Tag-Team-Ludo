@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Gold pawn from src/ui/art.ts, scaled into the adaptive-icon safe zone (centre 66%). -->
+  <defs>
+    <linearGradient id="pb" x1="0" x2="1"><stop offset="0" stop-color="#fff3b0"/><stop offset=".42" stop-color="#ffc21a"/><stop offset="1" stop-color="#b06f00"/></linearGradient>
+    <radialGradient id="ph" cx=".36" cy=".32" r=".78"><stop offset="0" stop-color="#fff6c8"/><stop offset=".45" stop-color="#ffc21a"/><stop offset="1" stop-color="#b06f00"/></radialGradient>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.2"/></filter>
+  </defs>
+  <g transform="translate(512 560) scale(15)">
+    <ellipse cx="1.5" cy="13.6" rx="14" ry="4.8" fill="#000" opacity=".45" filter="url(#soft)"/>
+    <g stroke="#3a2200" stroke-width="1.1" stroke-linejoin="round">
+      <ellipse cx="0" cy="11.2" rx="12.5" ry="4.8" fill="#8a4f00"/>
+      <ellipse cx="0" cy="9.6" rx="12.5" ry="4.8" fill="url(#pb)"/>
+      <path d="M-9.4,9.6 C-9.4,3 -4.6,0 -3.9,-6 L3.9,-6 C4.6,0 9.4,3 9.4,9.6 Q0,13.2 -9.4,9.6Z" fill="url(#pb)"/>
+      <ellipse cx="0" cy="-6" rx="6.2" ry="2.5" fill="#ffc21a"/>
+      <circle cx="0" cy="-13" r="7.6" fill="url(#ph)"/>
+    </g>
+    <path d="M-6.4,7.5 C-6,3 -3.6,.5 -2.8,-4" stroke="#fff" stroke-opacity=".5" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+    <ellipse cx="-2.7" cy="-16.2" rx="2.7" ry="1.7" fill="#fff" opacity=".85"/>
+  </g>
+</svg>

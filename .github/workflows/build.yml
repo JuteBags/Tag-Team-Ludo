@@ -1,0 +1,217 @@
+# Builds everything on every push.
+#
+#   Push to main        -> tests, HTML5 game, signed APK, website deployed to GitHub Pages
+#                          (game at /play/, APK at /download/ludo.apk, site from docs/).
+#   Push a tag v1.2.3   -> tests, HTML5 game, signed APK + AAB, GitHub Release "v1.2.3".
+#                          A tag with a suffix (v1.2.3-rc1) becomes a pre-release.
+#   Pull request        -> tests, HTML5 game, APK as a run artifact (no deploy).
+#   Actions -> Build and deploy -> Run workflow: same as a push on that branch.
+#
+# APK signing uses these repository secrets (without them a debug APK is built):
+#   KEYSTORE_BASE64  the .jks file, base64-encoded
+#   KEYSTORE_PASSWORD, KEY_PASSWORD, KEY_ALIAS
+#
+# versionCode is the workflow run number, so every build can update the one before it.
+# Don't rename this file: a renamed workflow starts counting from 1 again.
+
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  web:
+    name: Test and build the HTML5 game
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: web
+          path: dist
+          retention-days: 14
+
+  android:
+    name: Build the Android APK
+    needs: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      version: ${{ steps.version.outputs.name }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v8
+        with:
+          name: web
+          path: dist
+
+      - name: Work out the version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            name="${GITHUB_REF_NAME#v}"
+          else
+            name="$(node -p "require('./package.json').version")-build.$GITHUB_RUN_NUMBER"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Version $name (versionCode $GITHUB_RUN_NUMBER)"
+
+      - name: Copy the game into the Android project
+        run: npx cap sync android
+
+      - name: Load the signing key
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::No signing secrets available, building a debug APK"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > "$RUNNER_TEMP/keystore.properties"
+          echo "KEYSTORE_PROPERTIES=$RUNNER_TEMP/keystore.properties" >> "$GITHUB_ENV"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build the APK
+        working-directory: android
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          NAME: ${{ steps.version.outputs.name }}
+          CODE: ${{ steps.version.outputs.code }}
+        run: |
+          chmod +x gradlew
+          out="$RUNNER_TEMP/out"
+          mkdir -p "$out"
+          args=(-PappVersionName="$NAME" -PappVersionCode="$CODE" --no-daemon --console=plain)
+          if [ "$SIGNED" = true ]; then
+            # The APK is for the website and the GitHub Release; the AAB is what Google Play takes.
+            ./gradlew assembleRelease bundleRelease "${args[@]}"
+            cp app/build/outputs/apk/release/app-release.apk "$out/ludo.apk"
+            cp app/build/outputs/bundle/release/app-release.aab "$out/ludo.aab"
+          else
+            ./gradlew assembleDebug "${args[@]}"
+            cp app/build/outputs/apk/debug/app-debug.apk "$out/ludo.apk"
+          fi
+
+      - name: Check the APK
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          NAME: ${{ steps.version.outputs.name }}
+          CODE: ${{ steps.version.outputs.code }}
+        run: |
+          out="$RUNNER_TEMP/out"
+          bt="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+          "$bt/aapt2" dump badging "$out/ludo.apk" | grep -E "^package|sdkVersion|targetSdkVersion"
+          unzip -l "$out/ludo.apk" | grep -q "assets/public/index.html" || { echo "::error::The game is missing from the APK"; exit 1; }
+          if [ "$SIGNED" = true ]; then
+            "$bt/apksigner" verify --print-certs "$out/ludo.apk" | grep -E "certificate (DN|SHA-256)"
+            jarsigner -verify "$out/ludo.aab" | grep -q "jar verified" || { echo "::error::The AAB is not signed"; exit 1; }
+          fi
+          size=$(stat -c %s "$out/ludo.apk")
+          printf '{"version":"%s","code":%s,"size":%s,"signed":%s,"commit":"%s"}\n' \
+            "$NAME" "$CODE" "$size" "${SIGNED:-false}" "${GITHUB_SHA::7}" > "$out/version.json"
+          cat "$out/version.json"
+          rm -f "$RUNNER_TEMP/release.jks" "$RUNNER_TEMP/keystore.properties"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android
+          path: ${{ runner.temp }}/out
+          retention-days: 30
+
+  pages:
+    name: Deploy the website
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [web, android]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: web
+          path: _site/play
+      - uses: actions/download-artifact@v8
+        with:
+          name: android
+          path: _site/download
+      - name: Assemble the site
+        run: |
+          cp -r docs/. _site/
+          # The rules spec includes the dice weighting, which stays off the public site.
+          rm -f _site/RULES.md _site/download/*.aab
+          find _site -maxdepth 2 | sort
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v5
+
+  release:
+    name: Publish the GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: android
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: android
+          path: apk
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.android.outputs.version }}
+        run: |
+          mv apk/ludo.apk "apk/ludo-$VERSION.apk"
+          files=("apk/ludo-$VERSION.apk")
+          [ -f apk/ludo.aab ] && mv apk/ludo.aab "apk/ludo-$VERSION.aab" && files+=("apk/ludo-$VERSION.aab")
+          flags=(--title "Ludo $VERSION" --generate-notes --verify-tag)
+          [[ "$VERSION" == *-* ]] && flags+=(--prerelease) || flags+=(--latest)
+          gh release create "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" "${flags[@]}"

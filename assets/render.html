@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- Renders the app icon and splash PNGs from the SVGs here (tools/render-icons.ps1). -->
+<html><head><meta charset="utf-8"><style>
+html,body{margin:0;background:transparent;overflow:hidden}
+.box{position:relative;width:100vw;height:100vh}
+.box img{position:absolute;inset:0;width:100%;height:100%}
+.clip{position:absolute;inset:4%;overflow:hidden}
+.legacy .clip{border-radius:18%}
+.round .clip{border-radius:50%}
+.splash{background:#071a4f;display:grid;place-items:center}
+.splash .icon{position:relative;width:34vmin;height:34vmin;border-radius:22%;overflow:hidden;box-shadow:0 2vmin 5vmin rgba(0,0,0,.45)}
+</style></head><body><script>
+const v = location.hash.slice(1);
+const both = '<img src="icon-background.svg"><img src="icon-foreground.svg">';
+document.body.innerHTML =
+  v === 'background' ? '<div class="box"><img src="icon-background.svg"></div>' :
+  v === 'foreground' ? '<div class="box"><img src="icon-foreground.svg"></div>' :
+  v === 'icon' ? `<div class="box">${both}</div>` :
+  v === 'legacy' || v === 'round' ? `<div class="box ${v}"><div class="clip">${both}</div></div>` :
+  `<div class="box splash"><div class="icon">${both}</div></div>`;
+</script></body></html>
