@@ -106,8 +106,77 @@ function rise(root: Element, cls: string, play: Play, dist: number, sway: number
   }
 }
 
+// ---------- stick figures ----------
+// The kingdoms' people are plain stick figures: a hollow round head, a line body, and arms and legs
+// that bend at the joints. Each limb hangs from its joint at the local origin, so a CSS rotate swings
+// it about the shoulder or hip.
+
+interface Stick {
+  /** What the front hand holds, drawn with the hand at (0, 0). */
+  hold?: string;
+  /** Headwear, drawn with the head's centre at (0, 0) and the face looking toward +x. */
+  hat?: string;
+  /** Footwear, drawn at the end of each leg (the foot at 0, 0, the leg pointing up). */
+  shoe?: string;
+  /** Sitting on a ledge: the hips are at (x, y) and the legs dangle forward. */
+  sit?: boolean;
+}
+
+/** A stick figure standing with its feet at (x, y) (or sitting with its hips there), facing +x when flip is 1. */
+function stick(x: number, y: number, ink: string, flip: 1 | -1, { hold = '', hat = '', shoe = '', sit = false }: Stick = {}): string {
+  const line = (d: string, w = 3.2) => `<path d="${d}" stroke="${ink}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
+  const hip = sit ? 0 : -24;
+  // Each leg hangs from the hip, so it can swing or kick on its own.
+  const leg = (d: string, [fx, fy]: [number, number]) => `<g class="cs-leg">${line(d)}<g transform="translate(${fx} ${fy})">${shoe}</g></g>`;
+  const legs = sit
+    ? `<g class="cs-legs">${leg('M0,0 L13,-1 L15,15', [15, 15])}${leg('M0,0 L11,2 L10,18', [10, 18])}</g>`
+    : `<g transform="translate(0 ${hip})">${leg('M0,0 L-9,24', [-9, 24])}${leg('M0,0 L9,24', [9, 24])}</g>`;
+  const head = hip - 33;
+  return `<g transform="translate(${x} ${y}) scale(${flip} 1)"><g class="cs-stick${sit ? ' sit' : ''}">${legs}${line(`M0,${hip} L0,${hip - 24}`)}
+    <circle cx="0" cy="${head}" r="8.5" fill="none" stroke="${ink}" stroke-width="3.2"/>
+    <circle cx="-2.4" cy="${head - 1}" r="1.3" fill="${ink}"/><circle cx="3" cy="${head - 1}" r="1.3" fill="${ink}"/>${line(`M-2.6,${head + 3} q3,2.6 6,0`, 1.6)}
+    <g transform="translate(0 ${head})">${hat}</g>
+    <g transform="translate(0 ${hip - 20})"><g class="cs-arm-b">${line('M0,0 L-10,11 L-13,23')}</g></g>
+    <g transform="translate(0 ${hip - 20})"><g class="cs-arm">${line('M0,0 L11,9 L20,4')}<g transform="translate(20 4)">${hold}</g></g></g></g></g>`;
+}
+
+// Each kingdom's gear.
+/** Red: a knight's helmet with a flame-red plume. */
+const HELMET = `<path d="M-10,-1 a10,10 0 0 1 20,0Z" fill="#c9d2e0" stroke="#5a6278" stroke-width="1.4"/><path d="M-10,-1 h20" stroke="#5a6278" stroke-width="2"/>
+  <path d="M-1,-10 C-4,-20 5,-25 9,-21 C3,-19 3,-14 -1,-10Z" fill="#ee3535" stroke="#9a1414" stroke-width="1"/>`;
+/** Green: a crown of leaves. */
+const LEAVES = `<ellipse cx="-6" cy="-8" rx="3" ry="5.5" fill="#3fc35f" transform="rotate(-35 -6 -8)"/><ellipse cx="0" cy="-10.5" rx="3" ry="6" fill="#1faf4c"/>
+  <ellipse cx="6" cy="-8" rx="3" ry="5.5" fill="#3fc35f" transform="rotate(35 6 -8)"/>`;
+/** Yellow: a marching-band hat with a gold plume. */
+const BAND_HAT = `<rect x="-7.5" y="-21" width="15" height="13" rx="2" fill="#1f7bff" stroke="#0a3c9c" stroke-width="1.2"/><rect x="-7.5" y="-12" width="15" height="2.5" fill="#ffd23f"/>
+  <rect x="-10" y="-9" width="18" height="3" rx="1.5" fill="#0a3c9c"/><path d="M4,-20 C4,-28 10,-31 13,-27" stroke="#ffd23f" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+/** Blue: a dive mask over the eyes and a snorkel. */
+const MASK = `<path d="M-9,-1 C-9,-6 -4,-6 -4,-3" stroke="#ffbd14" stroke-width="1.8" fill="none"/>
+  <rect x="-5" y="-5" width="12" height="7" rx="3" fill="#bff4ff" fill-opacity=".55" stroke="#ffbd14" stroke-width="1.8"/>
+  <path d="M-8,4 Q-12,4 -12,-2 L-12,-17" stroke="#ff7a2a" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+/** Blue: flippers. */
+const FLIPPER = `<path d="M-2.5,-1 L2.5,-1 L7,13 C3,15 -3,15 -7,13Z" fill="#ffbd14" stroke="#b06f00" stroke-width="1.1" stroke-linejoin="round"/>`;
+
+const TORCH = `<path d="M0,0 L4,-22" stroke="#5a3a1a" stroke-width="3.6" stroke-linecap="round"/><g transform="translate(4 -22)"><g class="cs-flame" ${box('50% 100%')}>
+  <path d="M0,-18 C7,-8 7,-3 0,1 C-7,-3 -7,-8 0,-18Z" fill="#ff8a3d"/><path d="M0,-11 C4,-5 4,-2 0,1 C-4,-2 -4,-5 0,-11Z" fill="#ffe98f"/></g></g>`;
+const TRUMPET = `<path d="M-2,-2 L16,-5 L22,-12 L24,8 L16,2 L-2,2Z" fill="#ffd23f" stroke="#b06f00" stroke-width="1.2" stroke-linejoin="round"/>`;
+const TWIG = `<path d="M0,0 L8,-18" stroke="#5a3a1a" stroke-width="2.4" stroke-linecap="round"/><ellipse cx="8" cy="-23" rx="4.5" ry="7" fill="#1faf4c"/>
+  <ellipse cx="3" cy="-15" rx="3.5" ry="5.5" fill="#3fc35f" transform="rotate(-35 3 -15)"/><ellipse cx="13" cy="-14" rx="3.5" ry="5.5" fill="#3fc35f" transform="rotate(35 13 -14)"/>`;
+
+/** Arms up and a couple of jumps (sitting figures stay put and just throw their arms up). Ends where it started. */
+function hooray(root: Element, play: Play, arm = -80) {
+  for (const f of all(root, '.cs-stick:not(.sit)')) play(f, [{ transform: 'translateY(0)' }, { transform: 'translateY(-18px)', offset: 0.25 }, { transform: 'translateY(0)', offset: 0.5 }, { transform: 'translateY(-10px)', offset: 0.72 }, { transform: 'translateY(0)' }], 1000, { fill: 'none' });
+  for (const a of all(root, '.cs-arm')) play(a, [{ transform: 'rotate(0deg)' }, { transform: `rotate(${arm}deg)`, offset: 0.2 }, { transform: `rotate(${arm + 10}deg)`, offset: 0.8 }, { transform: 'rotate(0deg)' }], 1300, { fill: 'none' });
+  for (const a of all(root, '.cs-arm-b')) play(a, [{ transform: 'rotate(0deg)' }, { transform: 'rotate(85deg)', offset: 0.2 }, { transform: 'rotate(70deg)', offset: 0.5 }, { transform: 'rotate(85deg)', offset: 0.8 }, { transform: 'rotate(0deg)' }], 1300, { fill: 'none' });
+}
+
+/** A gentle back-and-forth on every match, each at its own pace. */
+function sway(root: Element, sel: string, play: Play, from: string, to: string, ms: [number, number]) {
+  for (const el of all(root, sel)) play(el, [{ transform: from }, { transform: to }], rnd(...ms), { iterations: Infinity, direction: 'alternate', easing: 'ease-in-out', delay: -rnd(0, 1000) });
+}
+
 const SCENES: Record<Color, Scene> = {
-  // Volcanoes, a lava river, torches and a little dragon on the wing.
+  // Volcanoes, a lava river, and two guards holding torches at the gate.
   red: {
     back: () => `<polygon points="-10,430 70,236 104,246 170,430" fill="#1a0508"/><polygon points="230,430 316,214 350,226 400,330 400,430" fill="#22070b"/>
       <ellipse cx="86" cy="240" rx="22" ry="7" fill="#ff7a2a" filter="url(#soft)"/><ellipse cx="333" cy="219" rx="20" ry="6" fill="#ff7a2a" filter="url(#soft)"/>
@@ -116,31 +185,20 @@ const SCENES: Record<Color, Scene> = {
     front: () => `<g stroke="#ff7a2a" stroke-width="2" fill="none" opacity=".7" stroke-linecap="round"><path d="M30,470 l20,10 l-6,14 M320,480 l18,-8 l10,16 M60,530 l14,-6 M330,540 l-18,6"/></g>
       <path d="M0,520 C40,510 60,540 100,548 L100,560 L0,560Z M390,512 C350,506 320,536 290,550 L290,560 L390,560Z" fill="#ff6a1a"/>
       <path d="M0,524 C40,514 60,544 100,552 M390,516 C350,510 320,540 290,554" stroke="#ffd23f" stroke-width="2" fill="none" opacity=".7"/>
-      ${[150, 240].map((x) => `<g transform="translate(${x} 378)"><rect x="-2.5" y="0" width="5" height="52" fill="#2a1408"/><path d="M-9,0 h18 l-4,8 h-10Z" fill="#7a4200"/>
-        <g class="cs-flame" ${box('50% 100%')}><path d="M0,-26 C10,-12 10,-4 0,2 C-10,-4 -10,-12 0,-26Z" fill="#ff8a3d"/><path d="M0,-16 C5,-8 5,-3 0,1 C-5,-3 -5,-8 0,-16Z" fill="#ffe98f"/></g></g>`).join('')}
-      <g transform="translate(312 150)"><g class="cs-dragon">
-        <path class="cs-wing" d="M2,-8 Q22,-54 50,-38 Q36,-28 40,-14 Q24,-18 12,-2Z" fill="#9a1414" stroke="#5e0a0a" stroke-width="1.5" ${box('8% 92%')}/>
-        <path d="M22,4 C44,8 56,-4 62,-18 C60,0 48,18 22,14Z" fill="#ee3535" stroke="#5e0a0a" stroke-width="1.5"/>
-        <ellipse cx="6" cy="4" rx="24" ry="16" fill="#ee3535" stroke="#5e0a0a" stroke-width="1.5"/><ellipse cx="2" cy="9" rx="15" ry="8" fill="#ffb347"/>
-        <path d="M-26,-20 l-4,-10 l8,6Z M-16,-24 l0,-11 l6,8Z" fill="#ffd23f" stroke="#5e0a0a" stroke-width="1"/>
-        <circle cx="-22" cy="-12" r="13" fill="#ee3535" stroke="#5e0a0a" stroke-width="1.5"/><ellipse cx="-34" cy="-8" rx="10" ry="7" fill="#ee3535" stroke="#5e0a0a" stroke-width="1.5"/>
-        <circle cx="-38" cy="-10" r="1.4" fill="#5e0a0a"/><circle cx="-22" cy="-15" r="4.2" fill="#fff"/><circle cx="-23.5" cy="-15" r="2.2" fill="#1a0a0a"/>
-        <path d="M-33,-2 q4,3 9,1" stroke="#5e0a0a" stroke-width="1.4" fill="none" stroke-linecap="round"/>
-        <g class="cs-breath" ${box('100% 50%')} opacity="0"><path d="M-44,-8 C-60,-22 -86,-14 -96,-4 C-84,-6 -78,2 -92,10 C-72,10 -58,6 -44,-6Z" fill="#ff8a3d"/><path d="M-46,-7 C-58,-14 -72,-10 -78,-4 C-68,-3 -64,2 -72,6 C-62,6 -54,3 -46,-6Z" fill="#ffe98f"/></g>
-      </g></g>
+      ${stick(134, 432, '#ffe9d6', 1, { hold: TORCH, hat: HELMET })}${stick(256, 432, '#ffe9d6', -1, { hold: TORCH, hat: HELMET })}
       ${risers('cs-ember', 26, (i) => `<circle r="${rnd(1.2, 3).toFixed(1)}" fill="${i % 3 ? '#ffb347' : '#ff6a1a'}"/>`)}`,
     live: (root, play) => {
       for (const f of all(root, '.cs-flame')) play(f, [{ transform: 'scale(1,1)' }, { transform: 'scale(.9,1.12)' }, { transform: 'scale(1.05,.94)' }, { transform: 'scale(1,1)' }], rnd(380, 520), { iterations: Infinity });
-      play(root.querySelector('.cs-dragon')!, [{ transform: 'translate(0,0)' }, { transform: 'translate(-6px,-12px)' }, { transform: 'translate(0,0)' }], 1300, { iterations: Infinity, easing: 'ease-in-out' });
-      play(root.querySelector('.cs-wing')!, [{ transform: 'rotate(0deg)' }, { transform: 'rotate(-34deg)' }, { transform: 'rotate(0deg)' }], 520, { iterations: Infinity, easing: 'ease-in-out' });
+      sway(root, '.cs-arm-b', play, 'rotate(-6deg)', 'rotate(8deg)', [900, 1300]);
       rise(root, 'cs-ember', play, 300, 40, [2200, 3600]);
     },
     cheer: (root, play) => {
-      play(root.querySelector('.cs-breath')!, [{ transform: 'scale(0)', opacity: 1 }, { transform: 'scale(1.15)', opacity: 1, offset: 0.35 }, { transform: 'scale(1)', opacity: 1, offset: 0.7 }, { transform: 'scale(.4)', opacity: 0 }], 900);
-      sfx.roar();
+      hooray(root, play, -55);
+      for (const f of all(root, '.cs-flame')) play(f, [{ transform: 'scale(1)' }, { transform: 'scale(1.9)', offset: 0.3 }, { transform: 'scale(1)' }], 900, { fill: 'none', composite: 'add' });
+      sfx.flare();
     },
   },
-  // Rolling hills, round trees, owls on their branches and fireflies.
+  // Rolling hills, round trees, two people on the branches waving twigs, and fireflies.
   green: {
     back: () => {
       let trees = '';
@@ -154,13 +212,10 @@ const SCENES: Record<Color, Scene> = {
       let s = '';
       for (const [x, y] of [[40, 470], [120, 500], [300, 480], [350, 520], [70, 540], [250, 540]] as const) s += `<path d="M${x},${y} l-4,-10 M${x},${y} l0,-13 M${x},${y} l4,-10" stroke="#2a7a3a" stroke-width="2.4" stroke-linecap="round"/>`;
       for (const [x, y] of [[60, 452], [330, 458]] as const) s += `<rect x="${x - 2}" y="${y - 10}" width="4" height="10" fill="#fff3e0"/><path d="M${x - 9},${y - 9} a9,7 0 0 1 18,0Z" fill="#ee3535"/><circle cx="${x - 3}" cy="${y - 13}" r="1.6" fill="#fff"/><circle cx="${x + 3}" cy="${y - 11}" r="1.3" fill="#fff"/>`;
-      const owl = (x: number, flip: number) => `<g transform="translate(${x} 330) scale(${flip} 1)"><path d="M-30,22 C0,16 20,18 40,24" stroke="#5a3a1a" stroke-width="6" stroke-linecap="round" fill="none"/>
-        <g class="cs-owl" ${box('50% 100%')}><ellipse cx="0" cy="0" rx="18" ry="22" fill="#8b5a2b"/><ellipse cx="0" cy="6" rx="11" ry="13" fill="#d9b27c"/>
-        <path class="cs-owl-wing" d="M14,-6 C24,0 24,14 14,20Z" fill="#6b4220" ${box('0% 0%')}/><path d="M-14,-6 C-24,0 -24,14 -14,20Z" fill="#6b4220"/>
-        <path d="M-14,-18 l-4,-10 l10,6Z M14,-18 l4,-10 l-10,6Z" fill="#6b4220"/>
-        <g class="cs-eyes" ${box()}><circle cx="-7" cy="-8" r="7" fill="#fff"/><circle cx="7" cy="-8" r="7" fill="#fff"/><circle cx="-6" cy="-8" r="3.4" fill="#1a1a1a"/><circle cx="8" cy="-8" r="3.4" fill="#1a1a1a"/></g>
-        <path d="M-3,-2 L3,-2 L0,4Z" fill="#ffbd14"/></g></g>`;
-      s += `<rect x="34" y="300" width="12" height="260" fill="#5a3a1a"/><rect x="344" y="300" width="12" height="260" fill="#5a3a1a"/>${owl(62, 1)}${owl(328, -1)}`;
+      // A trunk at each side with a branch reaching in, and someone sitting on it.
+      s += `<rect x="30" y="250" width="14" height="310" fill="#5a3a1a"/><rect x="346" y="250" width="14" height="310" fill="#5a3a1a"/>
+        <path d="M40,356 C60,352 82,353 100,360 M350,356 C330,352 308,353 290,360" stroke="#5a3a1a" stroke-width="7" stroke-linecap="round" fill="none"/>
+        ${stick(70, 352, '#1d140a', 1, { sit: true, hold: TWIG, hat: LEAVES })}${stick(320, 352, '#1d140a', -1, { sit: true, hold: TWIG, hat: LEAVES })}`;
       for (let i = 0; i < 20; i++) s += `<g transform="translate(${rnd(10, 380).toFixed(0)} ${rnd(150, 520).toFixed(0)})"><g class="cs-fly"><circle r="3.2" fill="#fff59a" filter="url(#soft)"/><circle r="1.3" fill="#fff"/></g></g>`;
       return s;
     },
@@ -169,12 +224,13 @@ const SCENES: Record<Color, Scene> = {
         const [dx, dy] = [rnd(-30, 30), rnd(-30, 30)];
         play(f, [{ transform: 'translate(0,0)', opacity: 0.2 }, { transform: `translate(${dx}px,${dy}px)`, opacity: 1 }, { transform: `translate(${-dy}px,${dx}px)`, opacity: 0.3 }, { transform: 'translate(0,0)', opacity: 0.2 }], rnd(2400, 4000), { iterations: Infinity, delay: -rnd(0, 3000) });
       }
-      for (const e of all(root, '.cs-eyes')) play(e, [{ transform: 'scaleY(1)' }, { transform: 'scaleY(1)', offset: 0.9 }, { transform: 'scaleY(.1)', offset: 0.95 }, { transform: 'scaleY(1)' }], rnd(1800, 2600), { iterations: Infinity });
+      // Swinging legs, and the twig waved slowly.
+      sway(root, '.cs-legs', play, 'rotate(-14deg)', 'rotate(16deg)', [600, 800]);
+      sway(root, '.cs-arm', play, 'rotate(-30deg)', 'rotate(6deg)', [700, 1000]);
     },
     cheer: (root, play) => {
-      for (const o of all(root, '.cs-owl')) play(o, [{ transform: 'translateY(0)' }, { transform: 'translateY(-14px)', offset: 0.3 }, { transform: 'translateY(0)', offset: 0.55 }, { transform: 'translateY(-8px)', offset: 0.75 }, { transform: 'translateY(0)' }], 900);
-      for (const w of all(root, '.cs-owl-wing')) play(w, [{ transform: 'rotate(0)' }, { transform: 'rotate(-50deg)' }, { transform: 'rotate(0)' }, { transform: 'rotate(-50deg)' }, { transform: 'rotate(0)' }], 900);
-      sfx.hoot();
+      hooray(root, play, -95);
+      sfx.whistle();
     },
   },
   // A blazing sun, dunes, bunting, and two trumpeters at the gate.
@@ -189,53 +245,48 @@ const SCENES: Record<Color, Scene> = {
         ${[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => { const x = 125 + i * 17.5, y = 250 + Math.sin((i / 8) * Math.PI) * 19; return `<path d="M${x - 6},${y} L${x + 6},${y} L${x},${y + 13}Z" fill="${['#ee3535', '#1f7bff', '#1faf4c'][i % 3]}"/>`; }).join('')}`;
     },
     front: () => {
-      const guard = (x: number, flip: number) => `<g transform="translate(${x} 432) scale(${flip} 1)"><g class="cs-guard" ${box('50% 100%')}>
-        <rect x="-13" y="-36" width="26" height="36" rx="11" fill="#1f7bff"/><rect x="-13" y="-16" width="26" height="5" fill="#ffd23f"/>
-        <circle cx="0" cy="-48" r="13" fill="#ffe3b8"/><circle cx="4" cy="-49" r="2" fill="#1a1a1a"/><circle cx="-4" cy="-49" r="2" fill="#1a1a1a"/><path d="M-3,-43 q3,2.5 6,0" stroke="#1a1a1a" stroke-width="1.4" fill="none" stroke-linecap="round"/>
-        <path d="M-14,-52 a14,13 0 0 1 28,0Z" fill="#ffd23f" stroke="#b06f00" stroke-width="1.2"/><path d="M0,-65 C-3,-76 6,-82 10,-78 C4,-76 3,-70 0,-65Z" fill="#ee3535"/>
-        <g class="cs-horn" ${box('0% 50%')}><path d="M8,-30 L30,-36 L36,-46 L38,-24 L30,-28 L8,-26Z" fill="#ffd23f" stroke="#b06f00" stroke-width="1.2"/><rect x="14" y="-30" width="8" height="10" fill="#ee3535"/></g></g></g>`;
-      let s = `<path d="M20,480 q20,-6 40,0 M300,470 q24,-6 48,0 M90,530 q20,-5 40,0 M260,536 q18,-5 36,0" stroke="#d89a3e" stroke-width="2" fill="none" stroke-linecap="round"/>${guard(132, 1)}${guard(258, -1)}`;
+      let s = `<path d="M20,480 q20,-6 40,0 M300,470 q24,-6 48,0 M90,530 q20,-5 40,0 M260,536 q18,-5 36,0" stroke="#d89a3e" stroke-width="2" fill="none" stroke-linecap="round"/>
+        ${stick(134, 432, '#3b2a17', 1, { hold: TRUMPET, hat: BAND_HAT })}${stick(256, 432, '#3b2a17', -1, { hold: TRUMPET, hat: BAND_HAT })}`;
       for (let i = 0; i < 18; i++) s += `<g transform="translate(${rnd(10, 380).toFixed(0)} ${rnd(40, 380).toFixed(0)})"><path class="cs-spark" d="M0,-6 L1.6,-1.6 6,0 1.6,1.6 0,6 -1.6,1.6 -6,0 -1.6,-1.6Z" fill="#fff" ${box()}/></g>`;
-      s += [0, 1, 2, 3, 4, 5].map((i) => `<g transform="translate(${i % 2 ? 268 : 122} 390)"><text class="cs-note" font-size="20" fill="#fff" stroke="#b06f00" stroke-width=".8" opacity="0">${i % 3 ? '♪' : '♫'}</text></g>`).join('');
+      s += [0, 1, 2, 3, 4, 5].map((i) => `<g transform="translate(${i % 2 ? 222 : 150} 380)"><text class="cs-note" font-size="20" fill="#fff" stroke="#b06f00" stroke-width=".8" opacity="0">${i % 3 ? '♪' : '♫'}</text></g>`).join('');
       return s;
     },
     live: (root, play) => {
       play(root.querySelector('.cs-rays')!, [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], 14000, { iterations: Infinity });
       for (const sp of all(root, '.cs-spark')) play(sp, [{ transform: 'scale(0)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }, { transform: 'scale(0) rotate(90deg)', opacity: 0 }], rnd(1000, 1800), { iterations: Infinity, delay: -rnd(0, 1800) });
-      for (const g of all(root, '.cs-guard')) play(g, [{ transform: 'translateY(0)' }, { transform: 'translateY(-3px)' }, { transform: 'translateY(0)' }], 700, { iterations: Infinity });
+      sway(root, '.cs-arm-b', play, 'rotate(-4deg)', 'rotate(10deg)', [500, 700]);
     },
     cheer: (root, play) => {
-      for (const h of all(root, '.cs-horn')) play(h, [{ transform: 'rotate(0)' }, { transform: 'rotate(-28deg)', offset: 0.2 }, { transform: 'rotate(-24deg)', offset: 0.85 }, { transform: 'rotate(0)' }], 1400);
+      // Trumpets up (the front arm holds the trumpet), and a little bounce.
+      for (const a of all(root, '.cs-arm')) play(a, [{ transform: 'rotate(0deg)' }, { transform: 'rotate(-34deg)', offset: 0.15 }, { transform: 'rotate(-30deg)', offset: 0.85 }, { transform: 'rotate(0deg)' }], 1500, { fill: 'none' });
+      for (const f of all(root, '.cs-stick')) play(f, [{ transform: 'translateY(0)' }, { transform: 'translateY(-8px)' }, { transform: 'translateY(0)' }], 380, { iterations: 3, fill: 'none' });
       all(root, '.cs-note').forEach((n, i) => play(n, [{ transform: 'translate(0,0)', opacity: 0 }, { opacity: 1, offset: 0.2 }, { transform: `translate(${(i % 2 ? 1 : -1) * rnd(10, 40)}px,-${rnd(90, 150)}px)`, opacity: 0 }], 1300, { delay: 150 + i * 120, fill: 'both' }));
       sfx.trumpets();
     },
   },
-  // Under the sea: light rays, a whale far off, jellyfish, seaweed and rising bubbles.
+  // Under the sea: light rays, seaweed, coral, two divers in masks and flippers treading water, and rising bubbles.
   blue: {
     back: () => `${[40, 140, 250, 330].map((x, i) => `<polygon class="cs-ray" points="${x},0 ${x + 40},0 ${x + 90 - i * 10},430 ${x + 20 - i * 10},430" fill="#fff" opacity=".07"/>`).join('')}
-      <g transform="translate(-160 210)"><g class="cs-whale"><path d="M0,0 C30,-30 110,-30 130,0 C110,26 30,26 0,0Z" fill="#0a3c7a" opacity=".75"/><path d="M128,0 L160,-20 L150,0 L160,20Z" fill="#0a3c7a" opacity=".75"/><circle cx="30" cy="-4" r="2.4" fill="#bff4ff"/></g></g>
       <path d="M-10,400 C40,370 90,392 130,400 L130,430 L-10,430Z M260,404 C300,380 350,376 400,396 L400,430 L260,430Z" fill="#0b3a66"/>`,
     front: () => {
       const weed = (x: number, h: number, col: string) => `<path class="cs-weed" d="M${x},560 C${x - 14},${560 - h * 0.3} ${x + 14},${560 - h * 0.6} ${x},${560 - h}" stroke="${col}" stroke-width="7" fill="none" stroke-linecap="round" ${box('50% 100%')}/>`;
-      const jelly = (x: number, y: number, col: string) => `<g transform="translate(${x} ${y})"><g class="cs-jelly"><path d="M-18,0 C-18,-26 18,-26 18,0 C12,4 6,-2 0,3 C-6,-2 -12,4 -18,0Z" fill="${col}" opacity=".85"/>
-        <circle cx="-6" cy="-9" r="2" fill="#2a1a4a"/><circle cx="6" cy="-9" r="2" fill="#2a1a4a"/>
-        <path d="M-10,3 q-4,12 2,24 M0,4 q4,12 -2,26 M10,3 q4,12 -2,22" stroke="${col}" stroke-width="2.2" fill="none" opacity=".75" stroke-linecap="round"/></g></g>`;
-      const fish = (x: number, y: number, col: string) => `<g transform="translate(${x} ${y})"><g class="cs-fish"><path d="M0,0 C6,-7 18,-7 22,0 C18,7 6,7 0,0Z M20,0 L28,-6 L28,6Z" fill="${col}"/><circle cx="6" cy="-1.5" r="1.3" fill="#1a1a1a"/></g></g>`;
       return `${weed(18, 160, '#1faf6c')}${weed(36, 120, '#17905a')}${weed(354, 150, '#1faf6c')}${weed(372, 110, '#17905a')}
         <path d="M60,560 C60,520 80,500 90,520 C96,500 110,510 106,560Z M290,560 C292,530 310,514 316,534 C324,516 336,526 330,560Z" fill="#ff7a9a"/>
-        ${jelly(64, 250, '#d7a6ff')}${jelly(330, 280, '#ffa6d8')}${fish(300, 170, '#ffd23f')}${fish(320, 186, '#ffd23f')}${fish(296, 198, '#ffd23f')}
+        <g class="cs-swim">${stick(72, 300, '#f4fbff', 1, { hat: MASK, shoe: FLIPPER })}</g><g class="cs-swim">${stick(318, 326, '#f4fbff', -1, { hat: MASK, shoe: FLIPPER })}</g>
         ${risers('cs-bubble', 24, () => `<circle r="${rnd(2, 6).toFixed(1)}" fill="#bff4ff" fill-opacity=".15" stroke="#fff" stroke-opacity=".75" stroke-width="1.2"/>`)}`;
     },
     live: (root, play) => {
-      play(root.querySelector('.cs-whale')!, [{ transform: 'translate(0,0)' }, { transform: 'translate(720px,-20px)' }], 9000, { iterations: Infinity });
       for (const w of all(root, '.cs-weed')) play(w, [{ transform: 'rotate(-6deg)' }, { transform: 'rotate(6deg)' }], rnd(1300, 1900), { iterations: Infinity, direction: 'alternate', easing: 'ease-in-out' });
-      for (const j of all(root, '.cs-jelly')) play(j, [{ transform: 'translateY(0) scale(1,1)' }, { transform: 'translateY(-18px) scale(.92,1.08)' }, { transform: 'translateY(0) scale(1,1)' }], rnd(1600, 2100), { iterations: Infinity, easing: 'ease-in-out' });
-      for (const f of all(root, '.cs-fish')) play(f, [{ transform: 'translate(0,0) scaleX(1)' }, { transform: 'translate(-240px,10px) scaleX(1)' }], 5200, { iterations: Infinity });
+      sway(root, '.cs-swim', play, 'translateY(0)', 'translateY(-14px)', [1300, 1700]);
+      // Treading water: both arms paddle and the flippers kick, one leg against the other.
+      all(root, '.cs-swim .cs-leg').forEach((l, i) => play(l, [{ transform: 'rotate(-16deg)' }, { transform: 'rotate(16deg)' }], 420, { iterations: Infinity, direction: 'alternate', easing: 'ease-in-out', delay: i % 2 ? -420 : 0 }));
+      sway(root, '.cs-arm', play, 'rotate(-40deg)', 'rotate(10deg)', [450, 600]);
+      sway(root, '.cs-arm-b', play, 'rotate(40deg)', 'rotate(-10deg)', [450, 600]);
       for (const r of all(root, '.cs-ray')) play(r, [{ opacity: 0.03 }, { opacity: 0.12 }], rnd(1400, 2200), { iterations: Infinity, direction: 'alternate' });
       rise(root, 'cs-bubble', play, 440, 24, [2600, 4200]);
     },
     cheer: (root, play) => {
-      for (const j of all(root, '.cs-jelly')) play(j, [{ transform: 'translateY(0)' }, { transform: 'translateY(-40px)', offset: 0.4 }, { transform: 'translateY(0)' }], 1000, { composite: 'add' });
+      hooray(root, play, -95);
       sfx.bubbles();
     },
   },

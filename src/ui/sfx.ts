@@ -143,15 +143,15 @@ export const sfx = {
     [784, 1047, 1319].forEach((f) => tone(f, 0.8, { type: 'triangle', vol: 0.1, at: 0.36 }));
     buzz([30, 50, 30, 50, 80]);
   },
-  /** Red: the dragon's fiery breath. */
-  roar() {
+  /** Red: the guards' torches flaring up. */
+  flare() {
     noise(0.6, { vol: 0.3, freq: 500, q: 0.5, type: 'lowpass' });
     tone(130, 0.5, { type: 'sawtooth', vol: 0.06, slide: 0.55 });
   },
-  /** Green: the owls hoot. */
-  hoot() {
-    tone(440, 0.2, { vol: 0.14, slide: 0.85 });
-    tone(392, 0.28, { vol: 0.14, at: 0.26, slide: 0.85 });
+  /** Green: a cheerful two-note whistle from the trees. */
+  whistle() {
+    tone(1047, 0.16, { vol: 0.1, slide: 1.25 });
+    tone(1319, 0.3, { vol: 0.1, at: 0.2, slide: 1.2 });
   },
   /** Yellow: the trumpeters' call. */
   trumpets() {
