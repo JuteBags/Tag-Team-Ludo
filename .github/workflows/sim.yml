@@ -1,0 +1,110 @@
+# Plays all-bot games on every pull request, on main and on the PR, and comments with the difference.
+#
+# Both sides run this PR's simulation (tests/simulation.sim.ts) with the same seeds, so a PR that
+# doesn't change the game shows "No change", and every difference is a real effect of the PR.
+# The check fails if a game never ends or the dice stop behaving as src/engine/dice.ts says.
+# The comment is kept to one per PR and updated on each push. The full report is also in the run
+# summary and the logs are a run artifact.
+#
+# Actions -> Simulation -> Run workflow runs just the simulation on a branch, with any number of games.
+
+name: Simulation
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      games:
+        description: 'Games per setup (6 setups: 2/3/4 players x game dice/fair dice)'
+        required: true
+        default: '3000'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: sim-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    name: Simulate main and this PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # 3000 per setup = the full 18,000 games on each side; about 4 minutes on a GitHub runner.
+      SIM_GAMES: 3000
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: head
+      - uses: actions/checkout@v7
+        with:
+          path: base
+          ref: ${{ github.event.pull_request.base.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: head/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: head
+      - run: npm ci --no-audit --no-fund
+        working-directory: base
+      - name: Measure main with this PR's simulation
+        run: cp head/tests/simulation.sim.ts base/tests/ && cp head/vitest.sim.config.ts base/
+      - name: Simulate main and this PR side by side
+        run: |
+          (cd base && npx vitest run --config vitest.sim.config.ts > ../base.log 2>&1) & b=$!
+          (cd head && npx vitest run --config vitest.sim.config.ts > ../head.log 2>&1) & h=$!
+          bs=0; hs=0; wait $b || bs=$?; wait $h || hs=$?
+          grep -v '^SIM_JSON ' head.log | tail -45
+          [ $bs -eq 0 ] || echo "::warning::The simulation checks failed on main"
+          if [ $hs -ne 0 ]; then echo "::error::The simulation checks failed on this PR (a game never ended, or the dice changed behaviour)"; exit 1; fi
+      - name: Compare
+        run: node head/tools/sim-compare.mjs base.log head.log > report.md && cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Comment on the PR
+        # Pull requests from forks get a read-only token; their report is in the run summary.
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate --jq '.[] | select(.body | startswith("<!-- sim-compare -->")) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@report.md > /dev/null
+          else
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file report.md
+          fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: simulation
+          path: '*.log'
+          retention-days: 14
+
+  run:
+    name: Simulate this branch
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SIM_GAMES: ${{ inputs.games }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Simulate
+        run: |
+          npx vitest run --config vitest.sim.config.ts > sim.log 2>&1 || { tail -60 sim.log; exit 1; }
+          { echo '```'; grep -v '^SIM_JSON ' sim.log | tail -45; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: simulation
+          path: sim.log
+          retention-days: 30

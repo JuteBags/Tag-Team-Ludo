@@ -1,22 +1,22 @@
-# Builds everything automatically on every push, and can also be started by hand.
+# Builds on every push to main and every pull request, but deploys ONLY when started by hand.
 #
-#   Push to main        -> notes = the commit message
-#   Push a tag v1.2.3   -> notes = release-notes/1.2.3.md if it exists, else the commit message
-#   Pull request        -> notes = the PR title (tests and APK only, nothing deployed)
-#   By hand             -> Actions -> Build and deploy -> Run workflow, or
-#                          gh workflow run build.yml --ref <branch-or-tag> -f release_notes="What changed, for players"
-#                          gh workflow run build.yml --ref v1.2.3 -f release_notes=release-notes/1.2.3.md
+#   Push to main, pull request -> tests, HTML5 game, signed APK (run artifacts). Nothing is deployed.
+#   By hand (on main)          -> the same, then deploys: website + game at /play/ + APK at
+#                                 /download/tag-team-ludo.apk on GitHub Pages. If the version in
+#                                 package.json has no tag v<version> yet and release-notes/<version>.md
+#                                 exists, it also publishes GitHub Release v<version> (signed APK + AAB),
+#                                 tagging the commit it built. Otherwise it is a redeploy, no release.
+#   By hand on another branch  -> build only, nothing deployed.
 #
-# Releases need real notes: for hand-started runs and v* tags, empty or placeholder notes ("test", "fix")
-# fail the run before anything is built. The notes go into the GitHub Release, download/version.json and
-# the run summary. What it does depends on the branch or tag:
+#   Actions -> Build and deploy -> Run workflow (Use workflow from: main), or
+#     gh workflow run build.yml --ref main -f release_notes=release-notes/1.0.0.md
+#     gh workflow run build.yml --ref main -f release_notes="..." -f commit=<sha>   (build and deploy that exact commit)
 #
-#   main                -> tests, HTML5 game, signed APK, website deployed to GitHub Pages
-#                          (game at /play/, APK at /download/tag-team-ludo.apk, site from docs/).
-#   a tag v1.2.3        -> tests, HTML5 game, signed APK + AAB, GitHub Release "v1.2.3".
-#                          A tag with a suffix (v1.2.3-rc1) becomes a pre-release.
-#   pull request, or any other branch run by hand
-#                       -> tests, HTML5 game, APK as a run artifact (no deploy).
+# Hand runs need real notes (text, or the path of a committed .md file): empty or placeholder notes
+# ("test", "fix") fail the run before anything is built. A release always uses its release-notes file.
+# The notes go into the GitHub Release, download/version.json and the run summary.
+#
+# Pull requests also get .github/workflows/sim.yml: all-bot games on main and the PR, compared in a comment.
 #
 # APK signing uses these repository secrets (without them a debug APK is built):
 #   KEYSTORE_BASE64  the .jks file, base64-encoded
@@ -30,7 +30,6 @@ name: Build and deploy
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -38,24 +37,56 @@ on:
         description: 'Release notes (required): what changed, for players. Text, or a path like release-notes/1.2.3.md'
         required: true
         type: string
+      commit:
+        description: 'Commit to build and deploy (full or short SHA). Empty = the latest commit of the branch.'
+        required: false
+        type: string
+        default: ''
 
-run-name: "${{ github.ref_name }}: ${{ inputs.release_notes || github.event.head_commit.message || github.event.pull_request.title }}"
+run-name: "${{ github.event_name == 'workflow_dispatch' && 'Deploy ' || '' }}${{ github.ref_name }}${{ inputs.commit && format(' @ {0}', inputs.commit) || '' }}: ${{ inputs.release_notes || github.event.head_commit.message || github.event.pull_request.title }}"
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  group: build-${{ github.ref }}-${{ github.event_name }}
+  # A newer push replaces an older build; a hand-started deploy is never cancelled.
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   notes:
     name: Check the release notes
     runs-on: ubuntu-latest
+    outputs:
+      # The exact commit every job builds, whether this run deploys, and the release tag it
+      # publishes ("v1.2.3", or empty).
+      sha: ${{ steps.plan.outputs.sha }}
+      deploy: ${{ steps.plan.outputs.deploy }}
+      release: ${{ steps.plan.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+      - name: What this run builds and deploys
+        id: plan
+        run: |
+          sha="$(git rev-parse HEAD)"
+          deploy=false
+          tag=""
+          # Only a hand-started run on main deploys. It is a release when the version is new and has notes.
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+            deploy=true
+            version="$(node -p "require('./package.json').version")"
+            if [ -f "release-notes/$version.md" ] && ! git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+              tag="v$version"
+            fi
+          fi
+          { echo "sha=$sha"; echo "deploy=$deploy"; echo "tag=$tag"; } >> "$GITHUB_OUTPUT"
+          echo "Commit ${sha::7}; deploy: $deploy; release: ${tag:-none}"
+          { echo "Commit ${sha::7} · deploy: $deploy · release: ${tag:-none}"; echo; } >> "$GITHUB_STEP_SUMMARY"
       - name: Read and check the notes
         env:
+          RELEASE: ${{ steps.plan.outputs.tag }}
           EVENT: ${{ github.event_name }}
           INPUT_NOTES: ${{ inputs.release_notes }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
@@ -69,11 +100,8 @@ jobs:
             pull_request) notes="PR #$PR_NUMBER: $PR_TITLE" ;;
             *) notes="$COMMIT_MESSAGE" ;;
           esac
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            strict=true
-            file="release-notes/${GITHUB_REF_NAME#v}.md"
-            [ "$EVENT" = push ] && [ -f "$file" ] && notes="$file"
-          fi
+          # A release always ships its committed release notes.
+          if [ -n "$RELEASE" ]; then notes="release-notes/${RELEASE#v}.md"; fi
           if [ "$strict" = true ]; then
             # A path to a Markdown file in the repo means "use that file".
             if [[ "$notes" =~ ^[A-Za-z0-9._/-]+\.md$ ]]; then
@@ -102,6 +130,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.notes.outputs.sha }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -117,13 +147,15 @@ jobs:
 
   android:
     name: Build the Android APK
-    needs: web
+    needs: [notes, web]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     outputs:
       version: ${{ steps.version.outputs.name }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.notes.outputs.sha }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -145,9 +177,11 @@ jobs:
 
       - name: Work out the version
         id: version
+        env:
+          RELEASE: ${{ needs.notes.outputs.release }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            name="${GITHUB_REF_NAME#v}"
+          if [ -n "$RELEASE" ]; then
+            name="${RELEASE#v}"
           else
             name="$(node -p "require('./package.json').version")-build.$GITHUB_RUN_NUMBER"
           fi
@@ -207,6 +241,7 @@ jobs:
           SIGNED: ${{ steps.signing.outputs.signed }}
           NAME: ${{ steps.version.outputs.name }}
           CODE: ${{ steps.version.outputs.code }}
+          SHA: ${{ needs.notes.outputs.sha }}
         run: |
           out="$RUNNER_TEMP/out"
           bt="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
@@ -218,7 +253,7 @@ jobs:
           fi
           size=$(stat -c %s "$out/tag-team-ludo.apk")
           jq -n --arg version "$NAME" --argjson code "$CODE" --argjson size "$size" --argjson signed "${SIGNED:-false}" \
-            --arg commit "${GITHUB_SHA::7}" --rawfile notes "$RUNNER_TEMP/notes/release-notes.md" \
+            --arg commit "${SHA::7}" --rawfile notes "$RUNNER_TEMP/notes/release-notes.md" \
             '{version: $version, code: $code, size: $size, signed: $signed, commit: $commit, notes: $notes}' > "$out/version.json"
           cat "$out/version.json"
           rm -f "$RUNNER_TEMP/release.jks" "$RUNNER_TEMP/keystore.properties"
@@ -231,8 +266,8 @@ jobs:
 
   pages:
     name: Deploy the website
-    if: github.ref == 'refs/heads/main'
-    needs: [web, android]
+    if: needs.notes.outputs.deploy == 'true'
+    needs: [notes, web, android]
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -242,6 +277,8 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.notes.outputs.sha }}
       - uses: actions/download-artifact@v8
         with:
           name: web
@@ -265,8 +302,8 @@ jobs:
 
   release:
     name: Publish the GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: android
+    if: needs.notes.outputs.release != ''
+    needs: [notes, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -283,11 +320,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.android.outputs.version }}
+          TAG: ${{ needs.notes.outputs.release }}
+          SHA: ${{ needs.notes.outputs.sha }}
         run: |
           mv apk/tag-team-ludo.apk "apk/tag-team-ludo-$VERSION.apk"
           files=("apk/tag-team-ludo-$VERSION.apk")
           [ -f apk/tag-team-ludo.aab ] && mv apk/tag-team-ludo.aab "apk/tag-team-ludo-$VERSION.aab" && files+=("apk/tag-team-ludo-$VERSION.aab")
           # Our notes first, then GitHub's list of merged PRs.
-          flags=(--title "Tag Team Ludo $VERSION" --notes-file notes/release-notes.md --generate-notes --verify-tag)
+          # The tag is created on the exact commit this run built.
+          flags=(--title "Tag Team Ludo $VERSION" --notes-file notes/release-notes.md --generate-notes --target "$SHA")
           [[ "$VERSION" == *-* ]] && flags+=(--prerelease) || flags+=(--latest)
-          gh release create "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" "${flags[@]}"
+          gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" "${flags[@]}"

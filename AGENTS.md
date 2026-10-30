@@ -31,7 +31,7 @@
   - `dice.ts` CSS 3D die and roll animation
   - `gameScreen.ts` turn loop, bot pacing, human move choice (via landing markers), banners, pause menu, result screen
   - `homeScreen.ts` home screen (Online/Private tiles are locked placeholders)
-- `tests/` — Vitest specs: rules, turn flow, dice (incl. Monte Carlo), bot simulations.
+- `tests/` — Vitest specs: rules, turn flow, dice (incl. Monte Carlo), bot simulations, UI logic (`targets.test.ts`), and rule invariants checked on every move of hundreds of random and bot games (`invariants.test.ts`). `*.sim.ts` is the long simulation (`npm run sim`).
 - `mockups/` — static UI mockup and its PNG screenshots.
 - `docs/` — the public website (GitHub Pages): `index.html` plus `assets/`. `docs/RULES.md` lives here too but CI leaves it out of the site.
 - `android/` — Capacitor Android project. Signing and version come from CI (`android/app/build.gradle`).
@@ -56,11 +56,12 @@
 
 Repo: https://github.com/JuteBags/Tag-Team-Ludo · site: https://jutebags.github.io/Tag-Team-Ludo/
 
-- CI runs on every push to `main`, every `v*` tag and every PR, and by hand (`gh workflow run build.yml --ref <branch-or-tag> -f release_notes="..."`). Release notes: push → commit message, PR → title, tag → `release-notes/X.Y.Z.md` if present else the commit message, by hand → the input. Tags and hand runs reject empty or placeholder notes. Run `npm test` and `npm run sim` locally before pushing.
-- `main` → tests, web build, signed APK, then the Pages site is assembled from `docs/` + the game at `/play/` + the APK at `/download/tag-team-ludo.apk` (with `download/version.json`).
-- A tag `vX.Y.Z` → signed APK + AAB attached to a GitHub Release (`-suffix` tags are pre-releases). Pages only deploys from `main`.
+- CI tests and builds every push to `main` and every PR (run artifacts only) and **deploys only when run by hand on `main`**: `gh workflow run build.yml --ref main -f release_notes="..."` (text or a committed `.md` path), optionally `-f commit=<sha>` to build and deploy an exact commit. Hand runs reject empty or placeholder notes. Every PR also runs `sim.yml`: all-bot games on `main` and the PR with the same seeds, compared in one PR comment that updates on each push.
+- A hand run on `main` → tests, web build, signed APK, then the Pages site is assembled from `docs/` + the game at `/play/` + the APK at `/download/tag-team-ludo.apk` (with `download/version.json`).
+- Releasing: bump `version` in `package.json` and add `release-notes/<version>.md`, merge, then run the workflow by hand on `main`. A version with no `v<version>` tag yet is published as a GitHub Release (signed APK + AAB), tagged on the commit the run built. Tag pushes trigger nothing.
 - `versionCode` = workflow run number; never rename `build.yml` or it restarts at 1.
 - Release key: `~/ludo-signing/` (`ludo-release.jks`, `keystore.properties`), alias `ludo`, SHA-256 `7A:B3:6E:10:…:1A:A4`. It is PKCS12, so the key password is the same as the store password. CI reads it from the secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS`. Losing it means installed apps can never be updated.
+- Local release-signed builds (to test updates on MuMu or a phone with the same key as CI): with the key in `~/ludo-signing/`, run `gradlew assembleRelease` with `KEYSTORE_PROPERTIES=~/ludo-signing/keystore.properties` (read by `android/app/build.gradle`). GitHub secrets can't be read back, so the key file has to come from whoever holds it. A device with a debug-signed install needs one uninstall before the first release-signed one.
 - The app fits its stage inside the `--safe-area-inset-*` variables Capacitor injects on Android (`.safe` in `src/ui/styles.css`).
 
 ## Commands
@@ -68,7 +69,7 @@ Repo: https://github.com/JuteBags/Tag-Team-Ludo · site: https://jutebags.github
 - `npm run dev` — dev server on http://localhost:5173
 - `npm run build` — typecheck + production build to `dist/`
 - `npm test` — run all tests
-- `npm run sim` — long all-bot simulation (`tests/*.sim.ts`, `SIM_GAMES=500` for a quick pass)
+- `npm run sim` — long all-bot simulation (`tests/*.sim.ts`, `SIM_GAMES=500` for a quick pass); CI runs it on every PR (`.github/workflows/sim.yml`) and compares with `main` via `tools/sim-compare.mjs`
 - `npm run typecheck` — TypeScript check
 - `npx cap sync android` — copy `dist/` into the Android project (CI does this)
 - `powershell -File tools/render-icons.ps1` — re-render app icons and splash screens
