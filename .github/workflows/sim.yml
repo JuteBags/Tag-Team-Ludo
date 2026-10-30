@@ -72,21 +72,23 @@ jobs:
         working-directory: base
       - name: Measure main with this PR's simulations
         run: rm -rf base/tests/sim && cp -r head/tests/sim base/tests/sim && cp head/vitest.sim.config.ts base/
-      - name: Simulate main and this PR side by side
-        env:
-          FILE: ${{ matrix.file }}
-        run: |
-          (cd base && npx vitest run --config vitest.sim.config.ts "$FILE" > ../base.log 2>&1) & b=$!
-          (cd head && npx vitest run --config vitest.sim.config.ts "$FILE" > ../head.log 2>&1) & h=$!
-          bs=0; hs=0; wait $b || bs=$?; wait $h || hs=$?
-          grep -v '^SIM_JSON ' head.log | tail -45
-          [ $bs -eq 0 ] || echo "::warning::$FILE could not run on main (it may need engine changes from this PR)"
-          if [ $hs -ne 0 ]; then echo "::error::$FILE failed on this PR (a game never ended, or the dice changed behaviour)"; exit 1; fi
       - name: Name this simulation
         id: name
         env:
           FILE: ${{ matrix.file }}
         run: echo "name=$(basename "$FILE" .sim.ts)" >> "$GITHUB_OUTPUT"
+      - name: Simulate main and this PR side by side
+        env:
+          FILE: ${{ matrix.file }}
+          NAME: ${{ steps.name.outputs.name }}
+        run: |
+          # Logs are named after the file, so the report job can download them all into one folder.
+          (cd base && npx vitest run --config vitest.sim.config.ts "$FILE" > "../$NAME.base.log" 2>&1) & b=$!
+          (cd head && npx vitest run --config vitest.sim.config.ts "$FILE" > "../$NAME.head.log" 2>&1) & h=$!
+          bs=0; hs=0; wait $b || bs=$?; wait $h || hs=$?
+          grep -v '^SIM_JSON ' "$NAME.head.log" | tail -45
+          [ $bs -eq 0 ] || echo "::warning::$FILE could not run on main (it may need engine changes from this PR)"
+          if [ $hs -ne 0 ]; then echo "::error::$FILE failed on this PR (a game never ended, or the dice changed behaviour)"; exit 1; fi
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -96,7 +98,7 @@ jobs:
 
   report:
     name: Comment with the results
-    needs: compare
+    needs: [files, compare]
     if: always() && github.event_name == 'pull_request' && needs.compare.result != 'cancelled'
     runs-on: ubuntu-latest
     steps:
@@ -105,7 +107,10 @@ jobs:
         with:
           pattern: sim-*
           path: sims
+          merge-multiple: true
       - name: Build the report
+        env:
+          FILES: ${{ needs.files.outputs.list }}
         run: |
           {
             echo '<!-- sim-compare -->'
@@ -113,11 +118,13 @@ jobs:
             echo
             echo 'Every simulation file ran as its own job, in parallel, with the same seeds on both sides. "Player" rows are one seat (Blue, the seat a human plays).'
             echo
-            for dir in sims/sim-*; do
-              if [ -f "$dir/head.log" ] && grep -q '^SIM_JSON ' "$dir/head.log"; then
-                node tools/sim-compare.mjs "$dir/base.log" "$dir/head.log"
+            # One section per simulation file, in file order; a file without results failed.
+            for file in $(echo "$FILES" | jq -r '.[]' | tr -d '\r'); do
+              name="$(basename "$file" .sim.ts)"
+              if [ -f "sims/$name.head.log" ] && grep -q '^SIM_JSON ' "sims/$name.head.log"; then
+                node tools/sim-compare.mjs "sims/$name.base.log" "sims/$name.head.log"
               else
-                echo "### ${dir#sims/sim-}"; echo; echo '❌ This simulation failed on this PR; see the job log.'; echo
+                echo "### $name"; echo; echo "❌ \`$file\` failed on this PR; see its job log."; echo
               fi
             done
           } > report.md
