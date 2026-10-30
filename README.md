@@ -53,15 +53,23 @@ See [AGENTS.md](AGENTS.md) for architecture notes and conventions.
 
 ## Build and release
 
-[`.github/workflows/build.yml`](.github/workflows/build.yml) tests and builds every push to `main` and every pull request, but **deploys only when someone runs it by hand**:
+[`.github/workflows/build.yml`](.github/workflows/build.yml) tests and builds every push to `main` and every pull request, and **deploys on a version tag or when someone runs it by hand**:
 
 | Trigger | Result |
 |---|---|
 | Push to `main`, pull request | Tests, web build and a signed APK as run artifacts. **Nothing is deployed.** PRs also get the simulation comparison comment ([`sim.yml`](.github/workflows/sim.yml)) |
-| Run by hand on `main` | The same, then deploys the website with the game at `/play/` and the APK at `/download/tag-team-ludo.apk`. If `package.json` has a version with no `v<version>` tag yet and `release-notes/<version>.md` exists, it also publishes GitHub Release `v<version>` with the signed APK and AAB, tagged on the commit it built |
-| Run by hand on another branch | Build only, nothing deployed |
+| Push a tag `v1.2.3` | The same, then deploys the website with the game at `/play/` and the APK at `/download/tag-team-ludo.apk`, and publishes GitHub Release `v1.2.3` with the signed APK, AAB and Windows `.exe`. The tag must match `version` in `package.json`, and `release-notes/1.2.3.md` must exist |
+| Run by hand on `main` | Deploys the latest `main`, or any exact commit given as `commit`. If `package.json` has a version with no `v<version>` tag yet and `release-notes/<version>.md` exists, it also publishes GitHub Release `v<version>`, tagged on the commit it built |
+| Run by hand on another branch | Build only (including the Windows `.exe`), nothing deployed |
 
-Run it from Actions → Build and deploy → Run workflow (Use workflow from: `main`), or:
+To release a new version: bump `version` in `package.json` and add `release-notes/<version>.md` in a PR, merge it, then tag the merged commit:
+
+```bash
+git tag v1.0.1 origin/main
+git push origin v1.0.1
+```
+
+Or run it from Actions → Build and deploy → Run workflow (Use workflow from: `main`):
 
 ```bash
 # Deploy the latest main (and release it if its version is new and has notes)
@@ -70,9 +78,9 @@ gh workflow run build.yml --ref main -f release_notes=release-notes/1.0.1.md
 gh workflow run build.yml --ref main -f commit=<sha> -f release_notes="What changed, for players"
 ```
 
-Hand runs need real release notes (text, or the path of a committed `.md` file): empty or placeholder notes ("test", "fix") fail the run before anything is built. A release always uses its `release-notes/<version>.md`.
+Tags and hand runs need real release notes (text, or the path of a committed `.md` file): empty or placeholder notes ("test", "fix") fail the run before anything is built. A release always uses its `release-notes/<version>.md`.
 
-To release a new version: bump `version` in `package.json` and add `release-notes/<version>.md` in a PR, merge it, then run the workflow by hand on `main`.
+The Windows `.exe` is a portable Electron build of the web game ([`desktop/`](desktop/)), about 96 MB, so it's attached to GitHub Releases rather than hosted on the website.
 
 Every pull request also plays all-bot games on `main` and on the PR with the same seeds, and comments with the difference: kills, idle rolls, game length, pair moves, and one player's view (win rate, kills, tokens lost, time stuck at home). A PR that doesn't change the game shows "No change".
 
