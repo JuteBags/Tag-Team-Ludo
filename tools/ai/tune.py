@@ -20,6 +20,9 @@ ENTITY = os.environ.get('LUDO_WANDB_ENTITY', 'ablations-tinycompany-ai')
 ARENA = os.environ.get('LUDO_ARENA', 'node tools/ai/dist/arena.mjs')
 
 
+DICE = ''  # ' --dice fair' to tune on fair dice (set from --dice)
+
+
 def play(weights, names, opponents, mode, seeds, workers, tmp, tag, base=0):
     """Mean win rate of rules `weights` at depth 1 against `opponents`, over paired seeds base .. base + seeds."""
     path = pathlib.Path(tmp) / f'{tag}.json'
@@ -27,7 +30,7 @@ def play(weights, names, opponents, mode, seeds, workers, tmp, tag, base=0):
     step = math.ceil(seeds / workers)
     rates = []
     for opponent in opponents:
-        procs = [subprocess.Popen(f'{ARENA} --a net:{path}:1 --b {opponent} --mode {mode} --from {base + k * step} --to {base + min(seeds, (k + 1) * step)}',
+        procs = [subprocess.Popen(f'{ARENA} --a net:{path}:1 --b {opponent} --mode {mode} --from {base + k * step} --to {base + min(seeds, (k + 1) * step)}{DICE}',
                                   shell=True, stdout=subprocess.PIPE, text=True) for k in range(workers) if k * step < seeds]
         games = wins = 0
         for p in procs:
@@ -43,6 +46,7 @@ def main():
     ap.add_argument('--start', required=True, help='linear rules to start from (train.py --linear)')
     ap.add_argument('--out', required=True)
     ap.add_argument('--opponent', required=True, help='policy specs the candidates play against, comma-separated (fitness = mean)')
+    ap.add_argument('--dice', default='game', choices=['game', 'fair'])
     ap.add_argument('--holdout', type=int, default=10_000, help='paired seeds for the final, held-out score')
     ap.add_argument('--mode', default='2p')
     ap.add_argument('--pop', type=int, default=16)
@@ -54,6 +58,8 @@ def main():
     ap.add_argument('--wandb', default='')
     ap.add_argument('--tmp', default='', help='folder for candidate files (default: a new temp folder)')
     a = ap.parse_args()
+    global DICE
+    DICE = ' --dice fair' if a.dice == 'fair' else ''
     start = json.load(open(a.start))['weights']
     # Every rule, including ones the start leaves out (they start at 0).
     names = ['pipsLeft', 'base', 'home', 'column', 'danger', 'dangerProg', 'prey', 'preyProg', 'safe', 'blocks',

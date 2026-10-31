@@ -32,11 +32,14 @@ def run_parallel(cmds):
     return outs
 
 
+DICE = ''  # ' --dice fair' when the ladder plays on fair dice (set from --dice)
+
+
 def match(a, b, seeds, workers, base=0, mode='2p'):
     """A's win rate vs B over paired seeds base .. base + seeds, with the 95% interval over seeds."""
     step = math.ceil(seeds / workers)
     rows = [json.loads(o.split('ARENA ', 1)[1]) for o in run_parallel(
-        [f'{ARENA} --a {a} --b {b} --mode {mode} --from {base + k * step} --to {base + min(seeds, (k + 1) * step)}' for k in range(workers) if k * step < seeds])]
+        [f'{ARENA} --a {a} --b {b} --mode {mode} --from {base + k * step} --to {base + min(seeds, (k + 1) * step)}{DICE}' for k in range(workers) if k * step < seeds])]
     g, w, s = sum(r['games'] for r in rows), sum(r['wins'] for r in rows), sum(r['seeds'] for r in rows)
     m = w / s
     se = math.sqrt(max(0.0, sum(r['seedSq'] for r in rows) / s - m * m) / s) / rows[0]['people']
@@ -54,6 +57,7 @@ def main():
     ap.add_argument('--max-games', type=int, default=2_000_000)
     ap.add_argument('--keep', type=float, default=0.012)
     ap.add_argument('--temp', type=float, default=0.01, help='starting move temperature in self-play (values are P(win), so gaps are small)')
+    ap.add_argument('--dice', default='game', choices=['game', 'fair'], help='fair: the engine trains and is checked on fair dice')
     ap.add_argument('--race', type=int, default=0, help='self-play nets use the race endgame tables (policy field 6)')
     ap.add_argument('--chance', type=int, default=2, help='self-play chance cap (policy field 7); checks always use the full search')
     ap.add_argument('--cut', type=float, default=0.0, help='self-play probe cut (policy field 8)')
@@ -63,6 +67,8 @@ def main():
     ap.add_argument('--workers', type=int, default=18)
     ap.add_argument('--wandb', default='ladder-r1')
     a = ap.parse_args()
+    global DICE
+    DICE = ' --dice fair' if a.dice == 'fair' else ''
     d = pathlib.Path(a.dir)
     d.mkdir(parents=True, exist_ok=True)
     state_file = d / 'state.json'
@@ -89,7 +95,7 @@ def main():
         fast = f'{a.race}:{a.chance}:{a.cut}'  # how the nets search in self-play (the checks use the defaults)
         pool = f"net:{cur}:1:3:{temp}:{fast}:60,net:{prev}:1:3:{temp}:{fast}:15,net:{a.hard}:1:15,hard:10"
         per = math.ceil(n / a.workers)
-        todo = [f"{SELFPLAY} --games {per} --seed {k * 1000 + w} --pool {pool} --keep {a.keep} --commit {commit} --out {gd}/shard-{w}.bin"
+        todo = [f"{SELFPLAY} --games {per} --seed {k * 1000 + w} --pool {pool} --keep {a.keep} --commit {commit} --out {gd}/shard-{w}.bin{DICE}"
                 for w in range(a.workers) if not (gd / f'shard-{w}.bin').exists()]
         sampled = off = 0
         if todo:
