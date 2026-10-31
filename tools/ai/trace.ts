@@ -2,6 +2,7 @@
 // reproduce exactly.
 //   node trace.mjs --games 1000 --seed 1 --out traces.jsonl [--from 0] [--full] [--modes 2p,4p,...]
 //                  [--policies random,easy,normal,hard]
+// Format 2 (common.ts FORMAT): the dice draw from diceRngFor(gameSeed), the policies from rng.
 // Games g = from .. from + games - 1 (--from lets workers split one seed). Game g: rng = seeded(seed * 1_000_003 + g), mode = modes[g % modes], the person at owner o plays
 // policies[(g + o) % policies], the colour at index g % colours starts. One JSON line per game:
 // {g, seed, mode, first, policies, steps, ranking, hash}; with --full also `trace`, the list of steps.
@@ -14,7 +15,7 @@
 // hash is FNV-1a (32-bit) over every step line joined by '\n', so millions of games compare cheaply.
 import { writeFileSync } from 'node:fs';
 import { analyzeDice, createGame, move, ownerRanking, roll, sampleFace, seeded, type GameState, type Move } from '../../src/engine';
-import { MODES, flags, policy } from './common';
+import { FORMAT, MODES, diceRngFor, flags, policy } from './common';
 
 const a = flags(process.argv.slice(2));
 const games = Number(a.games ?? 1000);
@@ -39,6 +40,7 @@ const t0 = Date.now();
 for (let g = from; g < from + games; g++) {
   const gameSeed = seed * 1_000_003 + g;
   const rng = seeded(gameSeed);
+  const dice = diceRngFor(gameSeed);
   const mode = modes[g % modes.length]!;
   const m = MODES[mode]!;
   let s = createGame(m.seats(), undefined, m.singles);
@@ -57,9 +59,9 @@ for (let g = from; g < from + games; g++) {
   for (; s.phase !== 'over' && steps < 50000; steps++) {
     const before = stateKey(s);
     if (s.phase === 'roll') {
-      const face = sampleFace(analyzeDice(s.players, s.players[s.current]!.color, rng, s.singles).weights, rng);
+      const face = sampleFace(analyzeDice(s.players, s.players[s.current]!.color, dice, s.singles).weights, dice);
       step(`${before} R${face}`);
-      s = roll(s, rng, face);
+      s = roll(s, dice, face);
     } else {
       const chosen = byOwner[s.players[s.current]!.owner]!(s, rng);
       step(`${before} M${moveKey(chosen)}/${s.moves.map(moveKey).join(',')}`);
@@ -68,7 +70,7 @@ for (let g = from; g < from + games; g++) {
   }
   const ranking = ownerRanking(s);
   step(`${stateKey(s)} END${ranking.join('')}`);
-  lines.push(JSON.stringify({ g, seed: gameSeed, mode, first, policies: specs, steps, ranking, hash: h.toString(16).padStart(8, '0'), ...(full ? { trace } : {}) }));
+  lines.push(JSON.stringify({ v: FORMAT, g, seed: gameSeed, mode, first, policies: specs, steps, ranking, hash: h.toString(16).padStart(8, '0'), ...(full ? { trace } : {}) }));
 }
 writeFileSync(a.out ?? 'traces.jsonl', lines.join('\n') + '\n');
 console.log(`TRACE ${games} games ${((games * 1000) / (Date.now() - t0)).toFixed(1)} games/s`);

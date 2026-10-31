@@ -1,0 +1,113 @@
+"""The climb: Extreme self-play generations against a fixed Hard, until it reaches the target or plateaus.
+
+    python ladder.py --start nets/boot-all.json --hard nets/hard2-fit.json --dir work/ladder-r1
+                     [--gens 20] [--games 300000] [--grow 1.25] [--max-games 2000000] [--target 0.8]
+
+Each generation k (all resumable: a step whose output exists is skipped):
+  1. play: `games` self-play games, each person drawn from the pool (current net at depth 1 with a little
+     temperature 60%, the previous net 15%, Hard 15%, the old Hard 10%), the game's dice;
+  2. learn: warm-start from the current net, train on this generation's and the previous one's shards
+     (labels are only the real results);
+  3. check: the new net against the current one and against Hard, 10k paired seeds each. It is promoted
+     only if it beats the current net clearly (win rate above 50% by more than the 95% interval).
+Games per generation start at --games and grow by --grow after every promotion (more rollouts as the
+nets get stronger), up to --max-games. Self-play and arena commands come from LUDO_SELFPLAY and
+LUDO_ARENA (Node by default, the Rust engine once it passes its parity gate). Logs to W&B (group ladder).
+"""
+import argparse, json, math, os, pathlib, shutil, subprocess, sys, time
+
+ENTITY = os.environ.get('LUDO_WANDB_ENTITY', 'ablations-tinycompany-ai')
+SELFPLAY = os.environ.get('LUDO_SELFPLAY', 'node tools/ai/dist/selfplay.mjs')
+ARENA = os.environ.get('LUDO_ARENA', 'node tools/ai/dist/arena.mjs')
+
+
+def run_parallel(cmds):
+    procs = [subprocess.Popen(c, shell=True, stdout=subprocess.PIPE, text=True) for c in cmds]
+    outs = [p.communicate()[0] for p in procs]
+    bad = [c for c, p in zip(cmds, procs) if p.returncode]
+    if bad:
+        raise SystemExit(f'failed: {bad[0]}')
+    return outs
+
+
+def match(a, b, seeds, workers, mode='2p'):
+    """A's win rate vs B over paired seeds, with the 95% interval over seeds."""
+    step = math.ceil(seeds / workers)
+    rows = [json.loads(o.split('ARENA ', 1)[1]) for o in run_parallel(
+        [f'{ARENA} --a {a} --b {b} --mode {mode} --from {k * step} --to {min(seeds, (k + 1) * step)}' for k in range(workers) if k * step < seeds])]
+    g, w, s = sum(r['games'] for r in rows), sum(r['wins'] for r in rows), sum(r['seeds'] for r in rows)
+    m = w / s
+    se = math.sqrt(max(0.0, sum(r['seedSq'] for r in rows) / s - m * m) / s) / rows[0]['people']
+    return w / g, 1.96 * se, g
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--start', required=True, help='Extreme net to start from')
+    ap.add_argument('--hard', required=True, help='the Hard to climb against (linear rules json)')
+    ap.add_argument('--dir', required=True)
+    ap.add_argument('--gens', type=int, default=20)
+    ap.add_argument('--games', type=int, default=300_000)
+    ap.add_argument('--grow', type=float, default=1.25)
+    ap.add_argument('--max-games', type=int, default=2_000_000)
+    ap.add_argument('--keep', type=float, default=0.012)
+    ap.add_argument('--temp', type=float, default=0.1, help='move temperature of the net in self-play (exploration)')
+    ap.add_argument('--seeds', type=int, default=5000, help='paired seeds per check')
+    ap.add_argument('--target', type=float, default=0.8)
+    ap.add_argument('--workers', type=int, default=18)
+    ap.add_argument('--wandb', default='ladder-r1')
+    a = ap.parse_args()
+    d = pathlib.Path(a.dir)
+    d.mkdir(parents=True, exist_ok=True)
+    state_file = d / 'state.json'
+    st = json.loads(state_file.read_text()) if state_file.exists() else {'gen': 0, 'current': a.start, 'previous': a.start, 'games': a.games, 'history': []}
+    commit = subprocess.run(['git', 'log', '-1', '--format=%h'], capture_output=True, text=True).stdout.strip()
+    import wandb
+    run = wandb.init(entity=ENTITY, project='tag-team-ludo-ai', name=a.wandb, group='ladder', job_type='ladder',
+                     config={**vars(a), 'engine_commit': commit, 'selfplay': SELFPLAY, 'arena': ARENA}, resume='allow', id=a.wandb)
+    print(f'WANDB {run.url}', flush=True)
+    while st['gen'] < a.gens:
+        k = st['gen'] + 1
+        gd = d / f'gen-{k}'
+        gd.mkdir(exist_ok=True)
+        cur, prev, n = st['current'], st['previous'], int(st['games'])
+        t0 = time.time()
+        # 1. play
+        pool = f"net:{cur}:1:3:{a.temp}:60,net:{prev}:1:3:{a.temp}:15,net:{a.hard}:1:15,hard:10"
+        per = math.ceil(n / a.workers)
+        todo = [f"{SELFPLAY} --games {per} --seed {k * 1000 + w} --pool {pool} --keep {a.keep} --commit {commit} --out {gd}/shard-{w}.bin"
+                for w in range(a.workers) if not (gd / f'shard-{w}.bin').exists()]
+        if todo:
+            run_parallel(todo)
+        t_play = time.time() - t0
+        # 2. learn (this generation and the previous one)
+        new = gd / 'net.json'
+        shards = f'{gd}/shard-*.bin' + (f',{d}/gen-{k - 1}/shard-*.bin' if k > 1 else '')
+        if not new.exists():
+            subprocess.run([sys.executable, '-u', 'tools/ai/train.py', '--shards', shards, '--init', cur, '--out', str(new),
+                            '--hidden', '128', '--layers', '2', '--epochs', '3', '--lr', '1e-3', '--wandb', f'{a.wandb}-gen{k}', '--group', 'ladder'], check=True)
+        t_learn = time.time() - t0 - t_play
+        # 3. check
+        vs_cur, ci_cur, games_cur = match(f'net:{new}:1', f'net:{cur}:1', a.seeds, a.workers)
+        vs_hard, ci_hard, _ = match(f'net:{new}:1', f'net:{a.hard}:1', a.seeds, a.workers)
+        promoted = vs_cur - ci_cur > 0.5
+        line = {'gen': k, 'games': n, 'vs_current': vs_cur, 'vs_current_ci': ci_cur, 'vs_hard': vs_hard, 'vs_hard_ci': ci_hard,
+                'promoted': promoted, 'play_s': round(t_play), 'learn_s': round(t_learn), 'total_s': round(time.time() - t0)}
+        print('GEN ' + json.dumps(line), flush=True)
+        run.log({f'ladder/{key}': v for key, v in line.items() if key != 'gen'} | {'ladder/gen': k})
+        if promoted:
+            st['previous'], st['current'] = cur, str(new)
+            st['games'] = min(a.max_games, int(n * a.grow))
+            shutil.copy(new, d / 'best.json')
+        st['gen'] = k
+        st['history'].append(line)
+        state_file.write_text(json.dumps(st, indent=1))
+        if promoted and vs_hard >= a.target:
+            print(f'TARGET reached: {vs_hard:.3f} vs Hard', flush=True)
+            break
+    run.finish()
+    print('DONE', json.dumps(st['history'][-1] if st['history'] else {}), flush=True)
+
+
+if __name__ == '__main__':
+    main()

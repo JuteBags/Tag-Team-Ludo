@@ -181,9 +181,12 @@ def main():
         # 'singles' is the same for every person in a game, so it cancels in the softmax and its weight
         # would only drift: readable rules leave it out.
         inputs = [i for i in range(F) if HAND[i] != 'singles']
-    net = Scorer(torch.tensor(inputs, device=dev), a.hidden, a.layers, linear=a.linear).to(dev)
     if a.init:
         js = json.load(open(a.init))
+        # A warm start keeps the starting net's shape and inputs.
+        a.hidden, a.layers, inputs = len(js['trunk'][0]['b']), len(js['trunk']), js['inputs']
+    net = Scorer(torch.tensor(inputs, device=dev), a.hidden, a.layers, linear=a.linear).to(dev)
+    if a.init:
         for l, j in [*zip(net.trunk, js['trunk']), (net.pool, js['pool']), (net.out, js['out'])]:
             l.weight.data = torch.tensor(j['W'], device=dev, dtype=torch.float32)
             l.bias.data = torch.tensor(j['b'], device=dev, dtype=torch.float32)
