@@ -12,6 +12,8 @@ import { keepAwake } from './native';
 import { drawCard, shareCard } from './shareCard';
 import { clearGame, recordGame, saveGame, type SavedGame } from './store';
 import { moveTargets, whyStuck, type Target } from './targets';
+import { goldFor, total } from './rewards';
+import { earn, lockLabel, nextGoal } from './skins';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
 const DIE = 38;
@@ -585,6 +587,15 @@ export class GameScreen {
     const winner = this.config.names[order[0]!]!;
     const title = pvp ? `${winner.toUpperCase()} WINS!` : won ? 'YOU WIN!' : `${PLACES[place]} PLACE`;
     void recordGame({ mode: this.config.mode, place, kills: this.kills, pairs: this.pairs });
+    // Gold for this game, then how close it brings you to the next skin.
+    const mineHome = colorsOf(human).reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
+    const lines = goldFor({ mode: this.config.mode, place, kills: this.kills, home: mineHome });
+    const earned = total(lines);
+    earn(earned);
+    const goal = nextGoal();
+    const price = goal?.unlock.kind === 'gold' ? goal.unlock.price : 0;
+    const reward = `<div class="reward"><div class="rg"><i class="coin"></i><b class="disp">+<span class="cnt">0</span></b><small>${lines.map((l) => `${l.label} ${l.gold}`).join(' · ')}</small></div>
+      ${goal ? `<div class="goal${settings.gold >= price ? ' ready' : ''}"><span>${settings.gold >= price ? `You can unlock <b>${goal.name}</b> in the Store!` : `Next: <b>${goal.name}</b> ${goal.shelf}`}</span><i class="bar"><i style="width:${Math.min(100, (100 * settings.gold) / price)}%"></i></i><em>${Math.min(settings.gold, price)} / ${lockLabel(goal)}</em></div>` : ''}</div>`;
     const card = order.map((o) => {
       const mine = colorsOf(o);
       const home = mine.reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
@@ -596,7 +607,7 @@ export class GameScreen {
       <div class="trophy">${won ? trophySVG() : medalSVG(place)}</div>
       ${won ? `<div class="stars">${starBadge('s0')}${starBadge('s1')}${starBadge('s2')}</div>` : ''}
       <div class="rescol"><div class="ribbon">${ribbonSVG()}<span class="disp">${title}</span></div>
-        <div class="rank">${rows}</div>
+        <div class="rank">${rows}</div>${reward}
         <div class="wbtns"><button class="b3 blue disp" data-act="home">HOME</button><button class="b3 green disp" data-act="again">PLAY AGAIN</button></div>
         <button class="sharebtn disp" data-act="share">${icons.share}SHARE RESULT</button></div>`;
     ov.addEventListener('click', (e) => {
@@ -614,6 +625,15 @@ export class GameScreen {
     });
     this.el.appendChild(ov);
     if (won) sfx.win();
+    // The gold counts up.
+    const cnt = ov.querySelector<HTMLElement>('.cnt')!;
+    const t0 = performance.now();
+    const tick = () => {
+      const k = Math.min(1, (performance.now() - t0) / 900);
+      cnt.textContent = String(Math.round(earned * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) requestAnimationFrame(tick);
+    };
+    setTimeout(() => requestAnimationFrame(tick), 500);
     ov.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 350 });
     ov.querySelector('.trophy')!.animate([{ transform: 'scale(.3) rotate(-12deg)' }, { transform: 'scale(1.08)', offset: 0.7 }, { transform: 'scale(1)' }], { duration: 650, easing: 'cubic-bezier(.3,.8,.4,1.2)' });
   }

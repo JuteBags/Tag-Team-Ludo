@@ -1,7 +1,7 @@
 // Setup before a game, one step per screen: options (houses each in 2-player games, bots for empty houses
 // in With friends, how well bots play), a roll for order, then picking houses one by one in that order. The highest roller
 // picks first and plays first. Steps with nothing to choose are skipped. Rules live in setup.ts.
-import { COLORS, type BotLevel, type Color, type Seat } from '../engine';
+import { COLORS, SEATS, type BotLevel, type Color, type Seat } from '../engine';
 import { PROFILES, cssVars, icons, pawnSVG } from './art';
 import { rollDie } from './dice';
 import { saveSetting, settings } from './settings';
@@ -92,6 +92,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
         ${mode === 'pvp' ? `<div class="row2 q bots"><span class="lbl">Fill the empty colours with computer players?</span><div class="tg" data-k="bots"></div><small class="qh"></small></div>` : ''}
         <div class="row2 q lvl"><span class="lbl">How good are the bots?</span><div class="tg" data-k="level">${(['easy', 'normal', 'hard'] as const).map((l) => `<button data-v="${l}"${l === level ? ' class="on"' : ''}>${l[0]!.toUpperCase() + l.slice(1)}</button>`).join('')}</div></div>
       </div>
+      ${mode === 'pvc' ? '<button class="quick" data-act="quick"><b class="disp">QUICK START</b><small>You play Blue and go first: no rolling, no picking</small></button>' : ''}
       <button class="b3 green disp go" data-act="to-roll">ROLL FOR ORDER</button>
     </section>` : ''}
     <section class="wiz" data-step="roll">
@@ -174,6 +175,12 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       drawOptions();
     }),
   );
+  // vs Computer, one tap to play: you take Blue and go first, the bots take the usual seats.
+  el.querySelector('[data-act=quick]')?.addEventListener('click', () => {
+    const me = cleanName(settings.myName, 'You');
+    const seats: Seat[] = SEATS[count].map((color, owner) => ({ color, owner, bot: owner > 0, ...(owner > 0 ? { level } : {}) }));
+    onStart({ mode, seats, first: 'blue', names: [me, ...BOT_NAMES.slice(0, count - 1)], ...(settings.doubles ? {} : { singles: true }) });
+  });
   el.querySelector('[data-act=to-roll]')?.addEventListener('click', () => {
     resetRoll();
     show('roll');

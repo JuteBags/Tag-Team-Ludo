@@ -5,7 +5,8 @@ import { icons, pawnSVG } from './art';
 import { BoardView } from './boardView';
 import { THROWER_ART, dieMarkup, rollDie } from './dice';
 import { sfx } from './sfx';
-import { SHELVES, UNLOCK_ALL, equip, equipped, isUnlocked, lockLabel, shelfSkins, type Shelf, type Skin } from './skins';
+import { SHELVES, UNLOCK_ALL, buy, equip, equipped, isUnlocked, lockLabel, shelfSkins, type Shelf, type Skin } from './skins';
+import { settings } from './settings';
 import { THEMES, applyLook } from './themes';
 import type { ThrowStyle } from './settings';
 
@@ -32,7 +33,7 @@ export function storeScreen(onBack: () => void): HTMLElement {
   el.className = 'screen store';
   el.innerHTML = `
     <div class="gtop"><button class="rbtn" data-act="back" aria-label="Back">${icons.back}</button>
-      <div class="mode"><small>SKINS</small><b>STORE</b></div><span class="rbtn-space"></span></div>
+      <div class="mode"><small>SKINS</small><b>STORE</b></div><span class="goldpill"><i class="coin"></i><b></b></span></div>
     ${UNLOCK_ALL ? '<p class="devnote">Test build: every skin is unlocked</p>' : ''}
     <div class="tg shelves">${SHELVES.map((s) => `<button data-s="${s.id}">${s.name}</button>`).join('')}</div>
     <div class="stage"><div class="show"></div><div class="info"><b class="disp"></b><small></small></div></div>
@@ -46,17 +47,24 @@ export function storeScreen(onBack: () => void): HTMLElement {
     q('.grid').innerHTML = shelfSkins(shelf)
       .map((s) => {
         const open = isUnlocked(s);
-        const state = s.id === inUse.id ? '<em class="using">In use</em>' : open ? '' : `<em class="lock">${icons.lock}${lockLabel(s)}</em>`;
+        const label = s.unlock.kind === 'gold' ? `<i class="coin"></i>${lockLabel(s)}` : `${icons.lock}${lockLabel(s)}`;
+        const state = s.id === inUse.id ? '<em class="using">In use</em>' : open ? '' : `<em class="lock">${label}</em>`;
         return `<button class="card${s.id === picked.id ? ' on' : ''}${open ? '' : ' locked'}" data-id="${s.id}">${thumb(s)}<b>${s.name}</b>${state}</button>`;
       })
       .join('');
     q('.info b').textContent = picked.name;
     q('.info small').textContent = picked.blurb;
+    q('.goldpill b').textContent = String(settings.gold);
     const use = q<HTMLButtonElement>('.use');
     const open = isUnlocked(picked);
-    use.disabled = !open || picked.id === inUse.id;
-    use.textContent = !open ? `LOCKED · ${lockLabel(picked).toUpperCase()}` : picked.id === inUse.id ? 'IN USE' : 'USE';
-    use.classList.toggle('locked', !open);
+    const price = picked.unlock.kind === 'gold' ? picked.unlock.price : 0;
+    const canBuy = !open && price > 0 && settings.gold >= price;
+    use.disabled = (!open && !canBuy) || picked.id === inUse.id;
+    use.dataset.mode = open ? 'use' : 'buy';
+    use.innerHTML = open
+      ? picked.id === inUse.id ? 'IN USE' : 'USE'
+      : price ? `${canBuy ? 'BUY' : 'NEED'} <i class="coin"></i>${price}${canBuy ? '' : ` · YOU HAVE ${settings.gold}`}` : `LOCKED · ${lockLabel(picked).toUpperCase()}`;
+    use.classList.toggle('locked', !open && !canBuy);
     preview();
   };
 
@@ -98,6 +106,8 @@ export function storeScreen(onBack: () => void): HTMLElement {
     draw();
   });
   q('.use').addEventListener('click', () => {
+    // Buying uses it straight away.
+    if (q('.use').dataset.mode === 'buy' && !buy(picked)) return;
     if (!equip(picked)) return;
     sfx.home();
     applyLook();

@@ -24,12 +24,15 @@ interface Settings {
   myName: string;
   /** Store skins in use (skins.ts); the board is `theme` and the thrower `throwStyle`. */
   equipped: { pawn: string; dice: string };
+  /** Gold earned by playing (rewards.ts), and the skins bought with it ("pawn:skull"). */
+  gold: number;
+  owned: string[];
 }
 
 export type Theme = 'classic' | 'wood' | 'dark' | 'metal' | 'tron' | 'halloween';
 
 const KEY = 'ludo-settings';
-const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true, friendNames: [], myName: '', equipped: { pawn: 'classic', dice: 'classic' } };
+const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true, friendNames: [], myName: '', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [] };
 
 function load(): Settings {
   try {
