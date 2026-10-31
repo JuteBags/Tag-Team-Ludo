@@ -53,7 +53,7 @@ describe('the Store catalogue', () => {
     for (const s of shelfSkins('thrower')) if (s.id !== 'toss') expect(THROWER_ART[s.id], s.id).toBeTruthy();
     for (const s of shelfSkins('board')) {
       expect(THEMES.some((t) => t.id === s.id), s.id).toBe(true);
-      if (s.id !== 'classic') expect(css, s.id).toContain(`:root[data-theme=${s.id}]{`);
+      if (s.id !== 'classic') expect(css, s.id).toContain(`[data-theme=${s.id}]{`);
     }
   });
 });

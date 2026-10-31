@@ -1,39 +1,42 @@
 /* Board themes (themes.ts sets data-theme on <html>): the board's colours, frame and arrow ink. */
 :root{--b-side:#b9a27a;--b-bg:#a8916b;--b-tile1:#fffaf0;--b-tile2:#efe3cb;--b-shade:#5a4320;--b-panel1:#ffffff;--b-panel2:#ece3d2;--b-star:#cbbfa9;--b-ink:#3b2a17;
   --b-stone:#f6ecd6;--b-stone-d:#cdb994;--b-rim:#8a4a08;--b-frame:linear-gradient(150deg,#ffe28e 0%,#f3ab3c 38%,#cf7714 72%,#9a520a 100%)}
-:root[data-theme=wood]{--b-side:#a9824c;--b-bg:#5e3a1c;--b-tile1:#f6e2b8;--b-tile2:#e2c08a;--b-shade:#2a1606;--b-panel1:#f8e6c2;--b-panel2:#e4c48f;--b-star:#b89058;--b-ink:#4a2a10;
+[data-theme=wood]{--b-side:#a9824c;--b-bg:#5e3a1c;--b-tile1:#f6e2b8;--b-tile2:#e2c08a;--b-shade:#2a1606;--b-panel1:#f8e6c2;--b-panel2:#e4c48f;--b-star:#b89058;--b-ink:#4a2a10;
   --b-stone:#ecd3a4;--b-stone-d:#b08a55;--b-rim:#3a2008;--b-frame:linear-gradient(150deg,#b07a44 0%,#7a4a22 40%,#5a3414 75%,#3a2008 100%)}
-:root[data-theme=dark]{--b-side:#1c2644;--b-bg:#0d1424;--b-tile1:#3a4a74;--b-tile2:#2c3a60;--b-shade:#000;--b-panel1:#2e3a5c;--b-panel2:#1c2540;--b-star:#8fa0d0;--b-ink:#c9d6ff;
+[data-theme=dark]{--b-side:#1c2644;--b-bg:#0d1424;--b-tile1:#3a4a74;--b-tile2:#2c3a60;--b-shade:#000;--b-panel1:#2e3a5c;--b-panel2:#1c2540;--b-star:#8fa0d0;--b-ink:#c9d6ff;
   --b-stone:#3d4b70;--b-stone-d:#232c48;--b-rim:#0a0f1e;--b-frame:linear-gradient(150deg,#7c8cff 0%,#3b4aa8 40%,#232c6e 75%,#121842 100%)}
 /* Store boards (skins.ts): brushed metal, Tron (below), Halloween. */
-:root[data-theme=metal]{--b-side:#5d6676;--b-bg:#3a414e;--b-tile1:#eef2f7;--b-tile2:#b9c2cf;--b-shade:#0a0d14;--b-panel1:#e9edf3;--b-panel2:#aab3c0;--b-star:#8792a3;--b-ink:#1d2430;
+[data-theme=metal]{--b-side:#5d6676;--b-bg:#3a414e;--b-tile1:#eef2f7;--b-tile2:#b9c2cf;--b-shade:#0a0d14;--b-panel1:#e9edf3;--b-panel2:#aab3c0;--b-star:#8792a3;--b-ink:#1d2430;
   --b-stone:#d3d9e2;--b-stone-d:#8f99a8;--b-rim:#1a1f29;--b-frame:linear-gradient(150deg,#f5f8fc 0%,#a8b2c1 30%,#5b6577 62%,#cfd6e0 82%,#3c4454 100%)}
-/* Tron (the film's palette): black glass, thin lines of cyan light, orange as the rival colour.
+/* Tron (the film's palette). Part rules apply to board frames while Tron is in use and to Tron
+   thumbnails, never to other themes' thumbnails on a Tron page: black glass, thin lines of cyan light, orange as the rival colour.
    The board's parts are restyled through their classes (art.ts), not just recoloured. */
-:root[data-theme=tron]{--b-side:#02070c;--b-bg:#000;--b-tile1:#03070d;--b-tile2:#03070d;--b-shade:#00e5ff;--b-panel1:#03070d;--b-panel2:#03070d;--b-star:#6ff3ff;--b-ink:#6ff3ff;
+[data-theme=tron]{--b-side:#02070c;--b-bg:#000;--b-tile1:#03070d;--b-tile2:#03070d;--b-shade:#00e5ff;--b-panel1:#03070d;--b-panel2:#03070d;--b-star:#6ff3ff;--b-ink:#6ff3ff;
   --b-stone:#071624;--b-stone-d:#020a12;--b-rim:#00e5ff;--b-frame:linear-gradient(180deg,#0b1018,#000)}
-:root[data-theme=tron] .bframe{box-shadow:inset 0 0 0 2px #00e5ff,inset 0 0 14px rgba(0,229,255,.45),0 0 0 2px #000,0 0 18px 3px rgba(0,229,255,.55),0 12px 0 #001a24,0 30px 40px rgba(0,0,0,.7)}
-:root[data-theme=tron] .tsh{fill:#00e5ff!important;opacity:.14}
-:root[data-theme=tron] .tsd{fill:#00121c!important}
-:root[data-theme=tron] .tbv{display:none}
-:root[data-theme=tron] .thl{stroke:#c8fbff;stroke-opacity:.9}
-:root[data-theme=tron] .tf{fill:#03070d;stroke-width:1.4}
-:root[data-theme=tron] .tf.t-w{stroke:#00e5ff;stroke-opacity:.85}
-:root[data-theme=tron] .tf.t-blue{stroke:#2fd6ff;fill:#03131f}
-:root[data-theme=tron] .tf.t-green{stroke:#3dffa0;fill:#03160d}
-:root[data-theme=tron] .tf.t-red{stroke:#ff4a3d;fill:#1a0605}
-:root[data-theme=tron] .tf.t-yellow{stroke:#ff9a1f;fill:#1a0e02}
-:root[data-theme=tron] .base .bt,:root[data-theme=tron] .base .bp,:root[data-theme=tron] .base .bsl{fill:#03070d}
-:root[data-theme=tron] .base .bsd{fill:#000}
-:root[data-theme=tron] .base .bsh{fill:var(--glow);opacity:.18}
-:root[data-theme=tron] .base .bbv,:root[data-theme=tron] .base .bgl,:root[data-theme=tron] .base .bss,:root[data-theme=tron] .base .bsk{display:none}
-:root[data-theme=tron] .base .bt{stroke:var(--glow);stroke-width:3}
-:root[data-theme=tron] .base .bpr{fill:none;stroke:var(--glow);stroke-width:1.5;opacity:.6}
-:root[data-theme=tron] .base .bsr{stroke:var(--glow);stroke-opacity:1;stroke-width:2}
-:root[data-theme=tron] .base .sym{fill:var(--glow)}
+html[data-theme=tron] .bframe{box-shadow:inset 0 0 0 2px #00e5ff,inset 0 0 14px rgba(0,229,255,.45),0 0 0 2px #000,0 0 18px 3px rgba(0,229,255,.55),0 12px 0 #001a24,0 30px 40px rgba(0,0,0,.7)}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .tsh{fill:#00e5ff!important;opacity:.14}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .tsd{fill:#00121c!important}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .tbv{display:none}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .thl{stroke:#c8fbff;stroke-opacity:.9}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .tf{fill:#03070d;stroke-width:1.4}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .tf.t-w{stroke:#00e5ff;stroke-opacity:.85}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .tf.t-blue{stroke:#2fd6ff;fill:#03131f}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .tf.t-green{stroke:#3dffa0;fill:#03160d}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .tf.t-red{stroke:#ff4a3d;fill:#1a0605}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .tf.t-yellow{stroke:#ff9a1f;fill:#1a0e02}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bt,:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bp,:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bsl{fill:#03070d}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bsd{fill:#000}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bsh{fill:var(--glow);opacity:.18}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bbv,:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bgl,:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bss,:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bsk{display:none}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bt{stroke:var(--glow);stroke-width:3}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bpr{fill:none;stroke:var(--glow);stroke-width:1.5;opacity:.6}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bsr{stroke:var(--glow);stroke-opacity:1;stroke-width:2}
+:is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .sym{fill:var(--glow)}
 .b-blue{--glow:#2fd6ff}.b-green{--glow:#3dffa0}.b-red{--glow:#ff4a3d}.b-yellow{--glow:#ff9a1f}
-:root[data-theme=halloween]{--b-side:#4b2a6b;--b-bg:#1a0f24;--b-tile1:#f7e2c4;--b-tile2:#e9b980;--b-shade:#000;--b-panel1:#f4d9b0;--b-panel2:#d99a52;--b-star:#ff7a1a;--b-ink:#2a1030;
+[data-theme=halloween]{--b-side:#4b2a6b;--b-bg:#1a0f24;--b-tile1:#f7e2c4;--b-tile2:#e9b980;--b-shade:#000;--b-panel1:#f4d9b0;--b-panel2:#d99a52;--b-star:#ff7a1a;--b-ink:#2a1030;
   --b-stone:#3a2550;--b-stone-d:#24143a;--b-rim:#140a1c;--b-frame:linear-gradient(150deg,#ffb347 0%,#ff7a1a 30%,#6a2c91 64%,#2a1038 100%)}
+[data-theme=classic]{--b-side:#b9a27a;--b-bg:#a8916b;--b-tile1:#fffaf0;--b-tile2:#efe3cb;--b-shade:#5a4320;--b-panel1:#ffffff;--b-panel2:#ece3d2;--b-star:#cbbfa9;--b-ink:#3b2a17;
+  --b-stone:#f6ecd6;--b-stone-d:#cdb994;--b-rim:#8a4a08;--b-frame:linear-gradient(150deg,#ffe28e 0%,#f3ab3c 38%,#cf7714 72%,#9a520a 100%)}
 /* Colour-blind symbols show only when turned on. */
 :root:not(.symbols) .sym{display:none}
 
@@ -155,8 +158,18 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .hero .glow{position:absolute;left:50%;top:40px;width:360px;height:220px;margin-left:-180px;border-radius:50%;
   background:radial-gradient(closest-side,rgba(110,170,255,.55),transparent);filter:blur(6px)}
 .hero .tilt{transform:rotateX(50deg) translateY(-26px)}
-.hero .hdie{position:absolute;right:42px;top:150px;z-index:3}
-.hero .hdie2{position:absolute;left:46px;top:166px;z-index:3}
+.hero .hdie{position:absolute;right:42px;top:150px;z-index:3;filter:drop-shadow(5px 10px 6px rgba(0,0,20,.55))}
+.hero .hdie2{position:absolute;left:46px;top:166px;z-index:3;filter:drop-shadow(4px 8px 5px rgba(0,0,20,.55))}
+/* The first-time tip over the dice tray. */
+.tip{position:absolute;left:22px;right:22px;top:604px;z-index:30;padding:10px 14px;border-radius:14px;background:#fff6c8;color:#4a2400;font-size:13.5px;font-weight:800;line-height:1.3;box-shadow:0 8px 20px rgba(0,0,0,.45);pointer-events:none}
+.tip::after{content:'';position:absolute;left:30px;bottom:-9px;border:9px solid transparent;border-bottom:0;border-top-color:#fff6c8}
+.tip b{color:#b0400a}
+/* Houses already taken show their owner's face; houses you can't pick now fade back. */
+.house .owner{position:absolute;top:10px;right:10px;width:38px;height:38px;border-radius:11px;padding:2px;background:#fff;box-shadow:0 3px 0 rgba(0,0,0,.25)}
+.house .owner svg{width:100%;height:100%}
+.house:not(.can):not(.taken){opacity:.3}
+/* Two colours each: the preview links a person's two houses. */
+.pvh.pair1{box-shadow:inset 0 2px 0 rgba(255,255,255,.35),0 3px 0 var(--d),0 0 0 3px #ffd65a}
 .seg{position:absolute;top:512px;left:24px;right:24px;height:60px;border-radius:19px;display:flex;align-items:center;padding:6px;gap:6px;
   background:rgba(3,14,50,.55);border:1.5px solid rgba(140,180,255,.25);box-shadow:inset 0 2px 5px rgba(0,0,0,.35)}
 .seg .lbl{padding:0 8px 0 10px;font-weight:900;font-size:12px;opacity:.75;text-transform:uppercase;letter-spacing:1.2px}
@@ -561,6 +574,10 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .themes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .th{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;border-radius:13px;background:rgba(0,0,0,.25);font-family:'Lilita One';font-size:14px;color:rgba(255,255,255,.75)}
 .th i{width:44px;height:30px;border-radius:8px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.35)}
+/* A theme's thumbnail: the real board, drawn small in that theme. */
+.mini-board{display:block;width:52px;height:52px;border-radius:9px;overflow:hidden;box-shadow:0 0 0 2px rgba(255,255,255,.35),0 3px 6px rgba(0,0,0,.4);background:var(--b-bg)}
+.mini-board svg{display:block;width:100%;height:100%}
+.store .mini-board{width:58px;height:58px}
 .th.on{background:linear-gradient(180deg,#5795ff,#2459d6);color:#fff;box-shadow:inset 0 2px 0 rgba(255,255,255,.4),0 3px 0 #10307e}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
 .stats .st{padding:10px 4px;border-radius:14px;background:rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;gap:2px}

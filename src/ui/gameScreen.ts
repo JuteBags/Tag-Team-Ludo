@@ -65,6 +65,8 @@ export class GameScreen {
   /** This game's kills and pairs formed by the person playing vs Computer, for the stats. */
   private kills = 0;
   private pairs = 0;
+  /** Sixes the person playing vs Computer rolled this game. */
+  private sixes = 0;
   /** The players still in voted to stop: the game ends with the places as they stand. */
   private ended = false;
   /** Colours whose tokens have had the full palace welcome this game; later ones get a quick one. */
@@ -237,6 +239,9 @@ export class GameScreen {
       void box.offsetWidth; // restart the flare animation
       box.classList.add('six');
       this.toast('SIX! Roll again', c, 'six');
+      const human = !this.state.players.find((p) => p.color === c)!.bot;
+      if (human && this.config.mode === 'pvc') this.sixes++;
+      if (human) this.firstTip();
     }
     if (ev?.type === 'three-sixes') {
       sfx.bust();
@@ -469,6 +474,22 @@ export class GameScreen {
   }
 
   /** A banner over the board. Big moments (kill, six, home) slam in larger and tilted. */
+  /** Once per install: the first 6 a person rolls explains that dice are kept and played later. */
+  private firstTip() {
+    try {
+      if (localStorage.getItem('ludo-tip-tray') === '1') return;
+      localStorage.setItem('ludo-tip-tray', '1');
+    } catch {
+      // Storage blocked: the tip may show again next time.
+    }
+    const t = document.createElement('div');
+    t.className = 'tip';
+    t.innerHTML = '<b>A 6 rolls again.</b> Your dice wait here in the tray, then you play them in any order: tap a die, then a token.';
+    this.el.appendChild(t);
+    t.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.16,1,.3,1)' });
+    setTimeout(() => t.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 }).finished.then(() => t.remove()), 5200);
+  }
+
   /** A kill: the banner and red at the screen edges. */
   private killBanner(m: Move) {
     this.toast(m.captures.length > 1 ? 'DOUBLE KILL!' : 'KILL!', m.color, 'kill');
@@ -614,7 +635,7 @@ export class GameScreen {
       .join('');
     const winner = this.config.names[order[0]!]!;
     const title = pvp ? `${winner.toUpperCase()} WINS!` : won ? 'YOU WIN!' : `${PLACES[place]} PLACE`;
-    void recordGame({ mode: this.config.mode, place, kills: this.kills, pairs: this.pairs });
+    void recordGame({ mode: this.config.mode, place, kills: this.kills, pairs: this.pairs, sixes: this.sixes });
     // Gold for this game, then how close it brings you to the next skin.
     const mineHome = colorsOf(human).reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
     const lines = goldFor({ mode: this.config.mode, place, kills: this.kills, home: mineHome });
