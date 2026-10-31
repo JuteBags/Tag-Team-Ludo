@@ -133,15 +133,24 @@ __device__ void dense(const double* __restrict__ W, const int* L, const double (
   const int inn = L[0], out = L[1];
   const double* wt = W + L[2];
   const double* b = W + L[3];
+  // Each weight is loaded once for all nb vectors; per vector the sum still runs c = 0, 1, ... in order.
   for (int r = threadIdx.x; r < out; r += blockDim.x) {
-    for (int j = 0; j < nb; j++) {
-      double s = b[r];
-      for (int c = 0; c < inn; c++) {
-        double v = a[j][c];
-        if (v != 0.0) s = s + wt[c * out + r] * v;
+    double s[MAXC];
+#pragma unroll
+    for (int j = 0; j < MAXC; j++) s[j] = b[r];
+    for (int c = 0; c < inn; c++) {
+      const double w = wt[c * out + r];
+#pragma unroll
+      for (int j = 0; j < MAXC; j++) {
+        if (j < nb) {
+          const double v = a[j][c];
+          if (v != 0.0) s[j] = s[j] + w * v;
+        }
       }
-      z[j][r] = act ? js_tanh(s) : s;
     }
+#pragma unroll
+    for (int j = 0; j < MAXC; j++)
+      if (j < nb) z[j][r] = act ? js_tanh(s[j]) : s[j];
   }
   __syncthreads();
 }
