@@ -30,13 +30,17 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
   el.className = `screen home${saved ? ' has-save' : ''}`;
   const dots = (n: number) => COLORS.slice(0, n).map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
   const people = saved ? saved.config.names.length : 0;
+  // Continue says how far you've got: your tokens home in the saved game.
+  const mine = saved ? saved.state.players.filter((p) => !p.bot) : [];
+  const home = mine.reduce((a, p) => a + p.tokens.filter((t) => t === 56).length, 0);
+  const progress = mine.length ? ` · ${saved!.config.mode === 'pvp' ? 'home' : 'you'} ${home}/${4 * mine.length}` : '';
   el.innerHTML = `
     <button class="rbtn corner l" data-act="stats" aria-label="Stats">${icons.stats}<small>Stats</small></button>
     <button class="rbtn corner r" data-act="settings" aria-label="Settings">${icons.gear}<small>Settings</small></button>
     <h1 class="logo disp"><small data-t="TAG TEAM"><span>TAG TEAM</span></small><b data-t="LUDO"><span>LUDO</span></b></h1>
     <div class="hero"><div class="glow"></div><div class="tilt"></div>
       <div class="hdie">${dieMarkup(6, 50, -26, -34)}</div><div class="hdie2">${dieMarkup(3, 38, -20, 24)}</div></div>
-    ${saved ? `<button class="cont" data-act="continue"><span class="pi">${icons.play}</span><b class="disp">CONTINUE GAME</b><small>${saved.config.mode === 'pvp' ? 'With friends' : 'vs Computer'} · ${people} players · ${ago(saved.savedAt)}</small></button>` : ''}
+    ${saved ? `<button class="cont" data-act="continue"><span class="pi">${icons.play}</span><b class="disp">CONTINUE GAME</b><small>${saved.config.mode === 'pvp' ? 'With friends' : 'vs Computer'} · ${people} players${progress} · ${ago(saved.savedAt)}</small></button>` : ''}
     <div class="seg"><span class="lbl">Players</span>${([2, 3, 4] as const).map((n) => `<button class="o${n === count ? ' on' : ''}" data-n="${n}"><span class="dots">${dots(n)}</span>${n} Players</button>`).join('')}</div>
     <div class="modes">
       <button class="mcard pvc" data-mode="pvc"><span class="ci">${icons.robot}</span><b class="disp">VS COMPUTER</b><small>You against bots</small></button>

@@ -68,7 +68,8 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
     <div class="set">${sw('doubles', 'Doubles', settings.doubles)}<small class="qh">${DOUBLES_HINT[String(settings.doubles) as 'true' | 'false']}</small></div>
     <div class="set">${sw('sym', `Colour-blind symbols ${symbolRow()}`, settings.symbols)}</div>
     <div class="set"><span>Which face of the die counts?</span>${tg('face', [['top', `${faceIcon(true)}The top`, settings.diceFace === 'top'], ['front', `${faceIcon(false)}The front`, settings.diceFace === 'front']])}</div>
-    <div class="set">${sw('sound', 'Sound', !sfx.muted)}</div>`,
+    <div class="set">${sw('sound', 'Sound', !sfx.muted)}</div>
+    <div class="set">${sw('fast', 'Fast bots', settings.fastBots)}<small class="qh">Bots roll and move twice as fast</small></div>`,
   );
   ov.querySelector('.themes')!.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLButtonElement>('.th');
@@ -86,6 +87,7 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
   });
   toggle(ov, 'face', (v) => saveSetting('diceFace', v as 'top' | 'front'));
   switchRow(ov, 'sound', (on) => sfx.setMuted(!on));
+  switchRow(ov, 'fast', (on) => saveSetting('fastBots', on));
 }
 
 export async function statsSheet(host: HTMLElement) {

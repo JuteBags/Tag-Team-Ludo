@@ -38,6 +38,16 @@ const flatDie = (n: number) =>
 
 export type Exit = 'home' | 'again';
 
+/** The rules in a nutshell, for the pause menu. */
+const HOW_TO_PLAY = (singles: boolean) => `<h2>How to play</h2><ul class="howto">
+  <li><b>Roll first.</b> A 6 rolls again. Your dice wait in the tray at the bottom until you play them.</li>
+  <li><b>Then play the dice in any order:</b> tap a die, then a token. A 6 brings a token out.</li>
+  <li><b>Land on an enemy</b> to send it home, and roll again. Stars are safe.</li>
+  ${singles ? '<li><b>Doubles are off:</b> every token moves alone and nothing blocks.</li>' : '<li><b>Two of your tokens on a square are a double:</b> they move together on even rolls and block singles.</li>'}
+  <li><b>Three 6s in a row</b> cancel those 6s.</li>
+  <li><b>Get all four home</b> with an exact roll to win.</li></ul>
+  <button class="b3 green disp" data-act="back">BACK</button>`;
+
 export class GameScreen {
   readonly el = document.createElement('div');
   state: GameState;
@@ -57,6 +67,8 @@ export class GameScreen {
   private pairs = 0;
   /** The players still in voted to stop: the game ends with the places as they stand. */
   private ended = false;
+  /** Colours whose tokens have had the full palace welcome this game; later ones get a quick one. */
+  private welcomed = new Set<Color>();
   /** While a person picks a move: a tap on a die in their tray. */
   private trayPick: ((roll: number) => void) | null = null;
   /** Pauses the game and saves it when the app goes to the background. */
@@ -121,7 +133,7 @@ export class GameScreen {
     return `<div class="pl ${SEAT_CLASS[c]} idle" data-c="${c}" style="${cssVars(c)}">
       <div class="who"><div class="av">${avatarSVG(c)}</div><span class="nm">${this.name(c)}</span>${bot ? '<span class="bot">BOT</span>' : ''}<span class="ptr"></span>
         <svg class="psym sym" viewBox="-11 -11 22 22" aria-hidden="true"><circle r="10.5" fill="#fff"/><path d="${symbolPath(c, 6.5)}" fill="${PALETTE[c].m}" stroke="${PALETTE[c].d}" stroke-width="1.2" stroke-linejoin="round"/></svg></div>
-      <button class="dbox" aria-label="Roll dice">${dieMarkup(6, DIE)}</button></div>`;
+      <button class="dbox" aria-label="Roll dice"><span class="qdie disp">?</span></button></div>`;
   }
 
   // ---------- turn loop ----------
@@ -163,17 +175,22 @@ export class GameScreen {
   // A turn is one roll or one move at a time: the whole turn is rolled into the tray first (a 6 rolls
   // again), then its dice are played in any order; a kill or a token home rolls again first.
 
+  /** Bots' pauses: halved with "Fast bots" on. */
+  private botPause(ms: number) {
+    return this.sleep(settings.fastBots ? ms / 2 : ms);
+  }
+
   private async botTurn(c: Color) {
     this.setHint(c, `${this.name(c)} is playing…`, 'Bot turn');
     if (this.state.phase === 'roll') {
-      await this.sleep(380);
+      await this.botPause(380);
       if (!this.disposed) await this.doRoll(c);
       return;
     }
     const m = chooseMove(this.state, this.rng);
     // Light up the die the bot plays, so its turn is easy to follow.
     this.drawTrays(m.roll);
-    await this.sleep(420);
+    await this.botPause(420);
     if (!this.disposed) await this.doMove(m);
   }
 
@@ -212,7 +229,7 @@ export class GameScreen {
     const kept = this.state.rolls;
     this.state = roll(this.state, this.rng, this.forced.shift());
     const box = this.diceBox(c);
-    await rollDie(box, this.state.dice!, DIE, (this.cur.bot || this.state.players.find((p) => p.color === c)!.bot ? BOT_ROLL_MS : ROLL_MS) / this.speed);
+    await rollDie(box, this.state.dice!, DIE, (this.cur.bot || this.state.players.find((p) => p.color === c)!.bot ? BOT_ROLL_MS / (settings.fastBots ? 2 : 1) : ROLL_MS) / this.speed);
     this.lastFace.set(c, this.state.dice!);
     const ev = this.state.event;
     if (this.state.dice === 6 && ev?.type !== 'three-sixes') {
@@ -277,7 +294,10 @@ export class GameScreen {
     // A kill's banner already landed with the blow (killBanner). A person's token reaching home is
     // welcomed into the palace; a bot's just gets the banner.
     if (!m.captures.length && m.finishes) {
-      if (human) await playCutscene(this.el, m.color, player.tokens, this.speed);
+      if (human) {
+        await playCutscene(this.el, m.color, player.tokens, this.speed * (this.welcomed.has(m.color) ? 2.2 : 1));
+        this.welcomed.add(m.color);
+      }
       else this.toast('HOME!', m.color, 'home');
     }
     if (extra && human) this.toast('Roll again', m.color);
@@ -510,7 +530,7 @@ export class GameScreen {
     this.paused = true;
     const ov = document.createElement('div');
     ov.className = 'menu-ov';
-    ov.innerHTML = `<div class="box"><h2>Paused</h2><button class="b3 green disp" data-act="resume">RESUME</button><button class="b3 blue disp" data-act="face">${faceLabel()}</button><button class="b3 blue disp" data-act="sound">${sfx.muted ? 'SOUND: OFF' : 'SOUND: ON'}</button><button class="b3 blue disp" data-act="quit">QUIT TO HOME</button></div>`;
+    ov.innerHTML = `<div class="box"><h2>Paused</h2><button class="b3 green disp" data-act="resume">RESUME</button><button class="b3 blue disp" data-act="face">${faceLabel()}</button><button class="b3 blue disp" data-act="sound">${sfx.muted ? 'SOUND: OFF' : 'SOUND: ON'}</button><button class="b3 blue disp" data-act="help">HOW TO PLAY</button><button class="b3 blue disp" data-act="quit">QUIT TO HOME</button></div>`;
     ov.addEventListener('click', (e) => {
       const act = (e.target as Element).closest('button')?.dataset.act;
       if (act === 'resume') {
@@ -522,8 +542,15 @@ export class GameScreen {
         // Redraw the resting dice with the new counting face.
         this.el.querySelectorAll<HTMLElement>('.pl').forEach((pl) => {
           const box = pl.querySelector<HTMLElement>('.dbox')!;
-          box.innerHTML = dieMarkup(this.lastFace.get(pl.dataset.c as Color) ?? 6, DIE);
+          const f = this.lastFace.get(pl.dataset.c as Color);
+          if (f) box.innerHTML = dieMarkup(f, DIE);
         });
+      } else if (act === 'help') {
+        ov.querySelector('.box')!.innerHTML = HOW_TO_PLAY(!!this.state.singles);
+      } else if (act === 'back') {
+        ov.remove();
+        this.paused = false;
+        this.openMenu();
       } else if (act === 'sound') {
         sfx.setMuted(!sfx.muted);
         (e.target as Element).closest('button')!.textContent = sfx.muted ? 'SOUND: OFF' : 'SOUND: ON';
@@ -579,9 +606,10 @@ export class GameScreen {
         const bot = mine[0]!.bot;
         const sub = i === 0 ? 'Winner' : bot ? 'Bot' : pvp ? `${PLACES[i + 1]!.toLowerCase()} place` : 'You';
         const home = mine.reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
+        const pct = Math.round((100 * mine.reduce((a, p) => a + p.tokens.reduce((x, t) => x + Math.max(t, 0), 0), 0)) / (FINISHED * 4 * mine.length));
         return `<div class="row${i === 0 ? ' first' : ''}${bot ? '' : ' me'}"><span class="medal m${i + 1}">${i + 1}</span>
           <span class="ra" style="${cssVars(c)}">${avatarSVG(c)}</span><span class="rn"><b>${this.config.names[o]}</b><small>${sub}</small></span>
-          <span class="rv">${home} / ${4 * mine.length} home</span></div>`;
+          <span class="rv">${home} / ${4 * mine.length} home${home < 4 * mine.length ? `<small>${pct}% of the way</small>` : ''}</span></div>`;
       })
       .join('');
     const winner = this.config.names[order[0]!]!;
