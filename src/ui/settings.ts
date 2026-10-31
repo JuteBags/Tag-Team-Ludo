@@ -29,12 +29,14 @@ interface Settings {
   owned: string[];
   /** Bots play at double speed, for shorter games against the computer. */
   fastBots: boolean;
+  /** Kill finishers (finishers.ts): the full scene, a short one, or none. */
+  killFx: 'full' | 'short' | 'off';
 }
 
 export type Theme = 'classic' | 'wood' | 'dark' | 'metal' | 'tron' | 'halloween';
 
 const KEY = 'ludo-settings';
-const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true, friendNames: [], myName: '', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false };
+const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true, friendNames: [], myName: '', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false, killFx: 'full' };
 
 function load(): Settings {
   try {
