@@ -8,3 +8,4 @@ desktop/release/
 *.keystore
 keystore.properties
 tools/ai/dist/
+__pycache__/
