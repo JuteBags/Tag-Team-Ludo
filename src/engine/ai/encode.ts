@@ -2,6 +2,8 @@
 // The raw block is the colour's own view: its 4 tokens sorted by progress, each as a progress bucket
 // (base, 8 track bins, home column, home) and the distance to the nearest enemy behind and ahead,
 // then the same blocks of its enemies pooled (sum and max), so one scorer works for 2, 3 or 4 colours.
+// Last, the turn in progress, set only for the colour about to roll: the dice already in its tray and
+// the 6s rolled in a row. At a turn start both are empty; the search also scores mid-turn positions.
 import { BASE, FINISHED, HOME_FIRST, LAST_TRACK, TRACK_LEN, squareOf } from '../board';
 import type { GameState, PlayerState } from '../types';
 import { F, features } from './features';
@@ -10,8 +12,10 @@ const BUCKETS = 11;
 const PER_TOKEN = BUCKETS + 2;
 /** One colour's own block. */
 export const RAW = 4 * PER_TOKEN;
-/** Numbers per colour: hand features, own block, enemies' blocks summed, enemies' blocks max. */
-export const D = F + 3 * RAW;
+/** The turn in progress: tray dice per face (/3) and the 6s in a row (/2). */
+const TURN = 7;
+/** Numbers per colour: hand features, own block, enemies' blocks summed and max, the turn in progress. */
+export const D = F + 3 * RAW + TURN;
 
 const bucket = (t: number) => (t === BASE ? 0 : t === FINISHED ? 10 : t >= HOME_FIRST ? 9 : 1 + Math.min(7, Math.floor(t / 6.375)));
 
@@ -46,7 +50,7 @@ function rawBlock(players: PlayerState[], i: number, out: Float64Array, o: numbe
 }
 
 /** players.length * D numbers: each colour's input to the value net, in players order. */
-export function encode(players: PlayerState[], current: number, singles: boolean): Float64Array {
+export function encode(players: PlayerState[], current: number, singles: boolean, rolls: number[] = [], sixes = 0): Float64Array {
   const n = players.length;
   const hand = features(players, current, singles);
   const raw = new Float64Array(n * RAW);
@@ -65,7 +69,10 @@ export function encode(players: PlayerState[], current: number, singles: boolean
       }
     }
   }
+  const t = current * D + F + 3 * RAW;
+  for (const r of rolls) out[t + r - 1]! += 1 / 3;
+  out[t + 6] = sixes / 2;
   return out;
 }
 
-export const encodeState = (s: GameState) => encode(s.players, s.current, !!s.singles);
+export const encodeState = (s: GameState) => encode(s.players, s.current, !!s.singles, s.rolls, s.sixes);

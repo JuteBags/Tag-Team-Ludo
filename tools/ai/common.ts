@@ -43,15 +43,16 @@ export const peopleIn = (mode: string) => Math.max(...MODES[mode]!.seats().map((
 
 /**
  * Plays one game with the game's real dice. `byOwner[o]` plays every colour of person o, `first` is the
- * index of the colour that starts. `onTurn` sees each turn start (before the roll).
+ * index of the colour that starts. `onRoll` sees every position before a roll: turn starts, and mid-turn
+ * ones (after a 6, a kill or a token home), which the search also scores.
  */
-export function playGame(mode: string, byOwner: Policy[], rng: Rng, first: number, onTurn?: (s: GameState) => void): GameState {
+export function playGame(mode: string, byOwner: Policy[], rng: Rng, first: number, onRoll?: (s: GameState) => void): GameState {
   const m = MODES[mode]!;
   let s = createGame(m.seats(), undefined, m.singles);
   s = { ...s, current: first % s.players.length };
   for (let steps = 0; s.phase !== 'over' && steps < 50000; steps++) {
     if (s.phase === 'roll') {
-      if (s.rolls.length === 0 && s.sixes === 0) onTurn?.(s);
+      onRoll?.(s);
       s = roll(s, rng, sampleFace(analyzeDice(s.players, s.players[s.current]!.color, rng, s.singles).weights, rng));
     } else s = move(s, byOwner[s.players[s.current]!.owner]!(s, rng));
   }

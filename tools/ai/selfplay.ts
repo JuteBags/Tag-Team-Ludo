@@ -1,12 +1,12 @@
-// Self-play worker: plays games and writes one shard of training positions (one per turn start).
-//   node selfplay.mjs --games 2000 --seed 7 --out shard.bin --pool hard:6,normal:2,easy:1,random:1
+// Self-play worker: plays games and writes one shard of training positions (positions before a roll).
+//   node selfplay.mjs --games 2000 --seed 7 --out shard.bin --pool hard:65,normal:22,easy:10,random:3
 //                     [--modes 2p,3p,4p,2p-singles,...] [--keep 0.1] [--commit <sha>]
-// --keep is the chance each turn start is written (all of them with 1; a whole game is ~200-600 turns).
+// --keep is the chance each position is written (all of them with 1; a game has ~200-700 of them).
 // Each person's policy is drawn from the pool by weight. Shard layout: u32 header length, the header as
-// JSON (games with their finishing orders and policies), then float32 inputs (positions x 4 x D, unused
+// JSON (games: people's finishing order, steps left, policies), then float32 inputs (positions x 4 x D, unused
 // colours 0) and int32 meta (positions x 4: game, turn, colours, current).
 import { writeFileSync } from 'node:fs';
-import { BASE, FINISHED, finalRanking, seeded } from '../../src/engine';
+import { BASE, FINISHED, ownerRanking, seeded } from '../../src/engine';
 import { D, encodeState } from '../../src/engine/ai/encode';
 import { MODES, flags, peopleIn, playGame, policy } from './common';
 
@@ -44,9 +44,11 @@ for (let g = 0; g < games; g++) {
     xs.push(x);
     meta.push(g, turn++, s.players.length, s.current);
   });
-  // By how much: steps each colour still needed when the game ended (a token in base needs 57).
-  const left = end.players.map((p) => p.tokens.reduce((n, t) => n + FINISHED - Math.max(t, BASE), 0));
-  const order = finalRanking(end).map((c) => end.players.findIndex((p) => p.color === c));
+  // People in finishing order (a person ranks by their last colour home), and by how much: the steps
+  // each person's tokens still needed when the game ended (a token in base needs 57).
+  const order = ownerRanking(end);
+  const left = order.map(() => 0);
+  for (const p of end.players) left[p.owner]! += p.tokens.reduce((n, t) => n + FINISHED - Math.max(t, BASE), 0);
   header.games.push({ seed: gameSeed, mode, owners: end.players.map((p) => p.owner), order, policies: specs, over: end.phase === 'over', turns: turn, left });
   if ((g + 1) % 500 === 0) console.log(`PROGRESS ${g + 1}/${games} ${(((g + 1) * 1000) / (Date.now() - t0)).toFixed(1)} games/s`);
 }

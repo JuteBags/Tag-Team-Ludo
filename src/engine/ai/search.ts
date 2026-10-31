@@ -23,14 +23,12 @@ const key = (s: GameState) => `${s.current}|${s.phase}|${s.sixes}|${s.rolls.join
 
 /** Each person's chance of winning, by owner. */
 export function ownerValues(net: Net, s: GameState, owners: number): Float64Array {
-  const v = new Float64Array(owners);
   if (s.phase === 'over') {
+    const v = new Float64Array(owners);
     v[ownerRanking(s)[0]!] = 1;
     return v;
   }
-  const c = net.chances(s);
-  s.players.forEach((p, i) => (v[p.owner]! += c[i]!));
-  return v;
+  return net.ownerChances(s);
 }
 
 /** The search's value of each of the current player's moves, as that player's chance of winning. */
