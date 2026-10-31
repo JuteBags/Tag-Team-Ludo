@@ -123,6 +123,7 @@ def main():
     ap.add_argument('--init', default='', help='warm start from a net.json')
     ap.add_argument('--wandb', default='', help='W&B run name')
     ap.add_argument('--group', default='phase1-bootstrap')
+    ap.add_argument('--max-games', type=int, default=0, help='train on only the first shards, up to about this many games')
     a = ap.parse_args()
     dev = 'cuda' if torch.cuda.is_available() else 'cpu'
     commit = subprocess.run(['git', 'log', '-1', '--format=%h'], capture_output=True, text=True).stdout.strip()
@@ -135,7 +136,14 @@ def main():
         wandb.define_metric('val/*', step_metric='epoch')
         print(f'WANDB {run.url}', flush=True)
 
-    parts = [load(p) for p in sorted(glob.glob(a.shards))]
+    # --shards: glob patterns separated by commas; --max-games keeps whole shards until about that many games.
+    paths = sorted({p for pat in a.shards.split(',') for p in glob.glob(pat)})
+    parts = []
+    for path in paths:
+        if a.max_games and sum(len(np.unique(q[4])) for q in parts) >= a.max_games:
+            break
+        parts.append(load(path))
+    print(f'SHARDS {len(parts)} of {len(paths)}', flush=True)
     D = parts[0][5]
     X, OW, O, L = (torch.from_numpy(np.concatenate([p[k] for p in parts])) for k in range(4))
     G = np.concatenate([p[4] for p in parts])
