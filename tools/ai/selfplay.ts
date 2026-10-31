@@ -8,6 +8,7 @@
 import { writeFileSync } from 'node:fs';
 import { BASE, FINISHED, ownerRanking, seeded } from '../../src/engine';
 import { D, encodeState } from '../../src/engine/ai/encode';
+import { searchStats } from '../../src/engine/ai/search';
 import { FORMAT, MODES, diceRngFor, flags, peopleIn, playGame, policy } from './common';
 
 const a = flags(process.argv.slice(2));
@@ -63,4 +64,5 @@ buf.set(head, 4);
 buf.set(new Uint8Array(X.buffer), 4 + head.length);
 buf.set(new Uint8Array(M.buffer), 4 + head.length + X.byteLength);
 writeFileSync(a.out ?? 'shard.bin', buf);
-console.log(`DONE ${games} games ${xs.length} positions ${((games * 1000) / (Date.now() - t0)).toFixed(1)} games/s`);
+const capped = header.games.filter((x) => !(x as { over: boolean }).over).length;
+console.log(`DONE ${games} games ${xs.length} positions ${((games * 1000) / (Date.now() - t0)).toFixed(1)} games/s capped ${capped} sampled ${searchStats.sampled} offBest ${searchStats.offBest}`);

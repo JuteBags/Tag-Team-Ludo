@@ -18,6 +18,7 @@ import torch.nn as nn
 
 F = 19  # hand features (features.ts)
 # W&B: the account's only entity is a team; LUDO_WANDB_ENTITY moves runs elsewhere (e.g. a Ludo team).
+TURN_RULES = ['tray1', 'tray2', 'tray3', 'tray4', 'tray5', 'tray6', 'sixes']  # linear.ts
 ENTITY = os.environ.get('LUDO_WANDB_ENTITY', 'ablations-tinycompany-ai')
 PROJECT = 'tag-team-ludo-ai'
 # Bump when the validation protocol changes, so numbers stay comparable across runs.
@@ -174,13 +175,15 @@ def main():
     print(f'BASELINE uniform val {base_pl:.4f} first-logloss {base_first:.4f}', flush=True)
     # Positions with a two-house person, for the double-house loss on its own.
     dh = (torch.stack([(OWv == o).sum(1) for o in range(4)], 1).amax(1) > 1).cpu()
+    rule_name = lambda i: HAND[i] if i < F else TURN_RULES[i - (D - 7)]
 
     # hand: the 19 hand features; raw: the token blocks, the turn order and the turn in progress; all: everything.
     inputs = {'hand': list(range(F)), 'raw': list(range(14, 18)) + list(range(F, D)), 'all': list(range(D))}[a.inputs]
     if a.linear:
         # 'singles' is the same for every person in a game, so it cancels in the softmax and its weight
-        # would only drift: readable rules leave it out.
-        inputs = [i for i in range(F) if HAND[i] != 'singles']
+        # would only drift: readable rules leave it out. The turn in progress (encode.ts's last 7 inputs,
+        # set only for the colour about to roll) joins as the tray rules (linear.ts TURN_RULES).
+        inputs = [i for i in range(F) if HAND[i] != 'singles'] + list(range(D - 7, D))
     if a.init:
         js = json.load(open(a.init))
         # A warm start keeps the starting net's shape and inputs.
@@ -228,7 +231,7 @@ def main():
 
     def health():
         if a.linear:
-            return {f'rules/{HAND[i]}': w for i, w in zip(inputs, net.linear.weight.detach().cpu().flatten().tolist())}
+            return {f'rules/{rule_name(i)}': w for i, w in zip(inputs, net.linear.weight.detach().cpu().flatten().tolist())}
         """Per trunk layer: weight norm, share of saturated tanh units (|a| > 0.99) and of dead ones (no spread)."""
         out = {}
         with torch.no_grad():
@@ -292,7 +295,7 @@ def main():
 
     dump = lambda l: {'W': l.weight.detach().cpu().double().tolist(), 'b': l.bias.detach().cpu().double().tolist()}
     if a.linear:
-        weights = {HAND[i]: w for i, w in zip(inputs, net.linear.weight.detach().cpu().double().flatten().tolist())}
+        weights = {rule_name(i): w for i, w in zip(inputs, net.linear.weight.detach().cpu().double().flatten().tolist())}
         json.dump({'kind': 'linear', 'weights': weights}, open(a.out, 'w'), indent=1)
         print('RULES ' + ' '.join(f'{k}:{v:+.3f}' for k, v in sorted(weights.items(), key=lambda kv: -abs(kv[1]))), flush=True)
     else:
