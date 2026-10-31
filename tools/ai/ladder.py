@@ -66,8 +66,11 @@ def main():
     st = json.loads(state_file.read_text()) if state_file.exists() else {'gen': 0, 'current': a.start, 'previous': a.start, 'games': a.games, 'temp': a.temp, 'history': []}
     commit = subprocess.run(['git', 'log', '-1', '--format=%h'], capture_output=True, text=True).stdout.strip()
     import wandb
+    # One W&B run per ladder, its id kept in the state file so a resumed ladder logs to the same run.
+    st.setdefault('wandb_id', f"{a.wandb}-{time.strftime('%Y%m%d-%H%M%S')}")
+    state_file.write_text(json.dumps(st, indent=1))
     run = wandb.init(entity=ENTITY, project='tag-team-ludo-ai', name=a.wandb, group='ladder', job_type='ladder',
-                     config={**vars(a), 'engine_commit': commit, 'selfplay': SELFPLAY, 'arena': ARENA}, resume='allow', id=a.wandb)
+                     config={**vars(a), 'engine_commit': commit, 'selfplay': SELFPLAY, 'arena': ARENA}, resume='allow', id=st['wandb_id'])
     print(f'WANDB {run.url}', flush=True)
     if 'vs_hard_current' not in st:
         st['vs_hard_current'] = match(f"net:{st['current']}:1", f'net:{a.hard}:1', a.seeds, a.workers, base=10_000_000)[0]
