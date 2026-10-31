@@ -80,7 +80,7 @@ Repo: https://github.com/JuteBags/Tag-Team-Ludo · site: https://jutebags.github
 - `npm run dev` — dev server on http://localhost:5173
 - `npm run build` — typecheck + production build to `dist/`
 - `npm test` — run all tests
-- `npm run sim` — all the long all-bot simulations (`tests/sim/*.sim.ts`: doubles on and off, one and two houses each, and bot levels). `SIM_GAMES` is the games per file, shared by its setups and both dice (default 8000; `SIM_GAMES=1000` for a quick pass), or name one file: `npm run sim -- tests/sim/single-house.sim.ts`. CI runs every file as its own job, in parallel, on every PR (`.github/workflows/sim.yml`), compares each with `main` via `tools/sim-compare.mjs`, and joins them into one PR comment. A new kind of game gets a new `*.sim.ts` file; CI picks it up by itself.
+- `npm run sim` — all the long all-bot simulations (`tests/sim/*.sim.ts`: doubles on and off, one and two houses each, and bot levels). `SIM_GAMES` is the games per file, shared by its setups and both dice (default 8000; `SIM_GAMES=1000` for a quick pass), or name one file: `npm run sim -- tests/sim/single-house.sim.ts`. `SIM_PART=k/n` runs every n-th setup only, so one file can be split across processes (CI runs each side in two halves); `tools/sim-compare.mjs` joins the parts in setup order. CI runs every file as its own job, in parallel, on every PR (`.github/workflows/sim.yml`), compares each with `main` via `tools/sim-compare.mjs`, and joins them into one PR comment. A new kind of game gets a new `*.sim.ts` file; CI picks it up by itself.
 - `npm run typecheck` — TypeScript check
 - `npx cap sync android` — copy `dist/` into the Android project (CI does this)
 - `powershell -File tools/render-icons.ps1` — re-render app icons and splash screens

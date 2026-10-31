@@ -11,6 +11,12 @@ import { BASE, analyzeDice, chooseMove, move, ownerRanking, roll, sampleFace, se
 const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
 /** Games per simulation file: every setup, with both dice, shares these. */
 export const TOTAL = Number(env.SIM_GAMES ?? 8000);
+/**
+ * SIM_PART=k/n runs only every n-th setup, starting at the k-th, so a file can be split across n
+ * processes (CI uses every core this way). Each part prints its own SIM_JSON line; tools/sim-compare.mjs
+ * joins them. Games per setup stay the same, so the numbers don't depend on the split.
+ */
+const [PART, PARTS] = (env.SIM_PART ?? '1/1').split('/').map(Number) as [number, number];
 const MAX_ROLLS = 5000;
 const FAIR = [1, 1, 1, 1, 1, 1].map((x) => x / 6);
 /**
@@ -135,7 +141,9 @@ export const winRate = (s: Stats) => s.seatWins / s.games;
  */
 export function runSimulation(title: string, setups: Setup[], check?: (results: Results) => void) {
   const games = Math.max(1, Math.round(TOTAL / (2 * setups.length)));
-  describe(`${title}: ${games} all-bot games per setup and dice, ${games * 2 * setups.length} in all`, () => {
+  const all = setups;
+  setups = setups.filter((_, i) => i % PARTS === PART - 1);
+  describe(`${title}: ${games} all-bot games per setup and dice, ${games * 2 * all.length} in all${PARTS > 1 ? ` (part ${PART} of ${PARTS})` : ''}`, () => {
     const results: Record<string, Stats> = {};
 
     for (const setup of setups) {
@@ -162,6 +170,8 @@ export function runSimulation(title: string, setups: Setup[], check?: (results: 
       const json = {
         title,
         games,
+        // Every setup of the file, in order, so parts printed by separate processes join back in order.
+        order: all.map((s) => s.name),
         metrics: METRICS.map(({ key, label, pct }) => ({ key, label, pct: !!pct })),
         setups: Object.fromEntries(cols.map((c) => [c, Object.fromEntries(METRICS.map((m) => [m.key, m.f(results[c]!)]))])),
       };

@@ -4,10 +4,17 @@
 // Both runs use the same seeds, so a change that doesn't touch the game shows no differences at all.
 import { readFileSync } from 'node:fs';
 
+// A log may hold several SIM_JSON lines (a file split across processes with SIM_PART): their setups
+// are joined, in setup order.
 const read = (path) => {
-  const line = readFileSync(path, 'utf8').split('\n').find((l) => l.startsWith('SIM_JSON '));
-  if (!line) throw new Error(`no SIM_JSON line in ${path}`);
-  return JSON.parse(line.slice('SIM_JSON '.length));
+  const lines = readFileSync(path, 'utf8').split('\n').filter((l) => l.startsWith('SIM_JSON '));
+  if (!lines.length) throw new Error(`no SIM_JSON line in ${path}`);
+  const parts = lines.map((l) => JSON.parse(l.slice('SIM_JSON '.length)));
+  const joined = Object.assign({}, ...parts.map((p) => p.setups));
+  // Back in the file's setup order ("2p weighted", "2p fair", "3p weighted", ...).
+  const rank = (k) => (parts[0].order ?? []).indexOf(k.replace(/ (weighted|fair)$/, ''));
+  const setups = Object.fromEntries(Object.keys(joined).sort((a, b) => rank(a) - rank(b) || (a.endsWith('fair') ? 1 : 0) - (b.endsWith('fair') ? 1 : 0)).map((k) => [k, joined[k]]));
+  return { ...parts[0], setups };
 };
 
 const [basePath, headPath] = process.argv.slice(2);
