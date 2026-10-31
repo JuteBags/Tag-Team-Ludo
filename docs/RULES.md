@@ -1,6 +1,6 @@
 # Tag Team Ludo — game rules (v1)
 
-Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole turn first added 2026-10-31 (issue #25). The engine in `src/engine/` and the game screen implement exactly these rules; tests in `tests/` check them. This file stays off the public website.
+Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole turn first added 2026-10-31 (issue #25); three 6s cancel only themselves 2026-10-31. The engine in `src/engine/` and the game screen implement exactly these rules; tests in `tests/` check them. This file stays off the public website.
 
 ## A. Setup
 
@@ -22,7 +22,7 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole
 
 11. **Roll first.** A **6** rolls again, until you roll something else. Nothing moves while you roll: every die goes into your **tray**, shown beside your dice. Example: 6, 6, 4 is a tray of three dice.
 12. **Then play the tray, in any order.** Pick a die, then the token to move with it; that die leaves the tray. Each die is used once and on its own: two dice never add up (a pair uses one even die, rule 19). The turn ends when the tray is empty, or when no token can use any die left in it; those dice are lost.
-13. A **third 6 in a row** ends the turn and every die left in the tray is lost. On the first run of rolls nothing has moved yet, so 6, 6, 6 simply passes the turn.
+13. A **third 6 in a row** cancels those three 6s. Dice kept from before them (rolled before a kill, rule 14) stay in the tray and are still played; with nothing else in the tray the turn passes. On the first run of rolls nothing has moved yet, so 6, 6, 6 simply passes the turn.
 14. **Capturing** an enemy token or getting a token into the **centre** rolls again right away, before the rest of the tray is played. The new dice join the tray; a 6 rolls again here too, and the count of 6s in a row starts again from zero.
 
 ## D. Capturing and safe stars
