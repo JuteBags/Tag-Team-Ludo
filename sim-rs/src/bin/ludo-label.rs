@@ -14,7 +14,6 @@
 //! Output: u32 header length, JSON header, then float32 [positions, 4]: the target per person (owner
 //! index; 0 for people not in the game or already home), rows in shard order.
 use ludo_sim::bot::Policy;
-use ludo_sim::dice::roll_face;
 use ludo_sim::encode::{encode, D};
 use ludo_sim::eval::Evaluator;
 use ludo_sim::game::{Game, PHASE_OVER, PHASE_ROLL};
@@ -67,6 +66,8 @@ fn main() {
     assert_eq!(head["D"].as_u64().unwrap() as usize, D, "shard D differs from this engine");
     let format = head.get("v").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
     let keep = head["keep"].as_f64().unwrap();
+    // shards from --dice fair replay with fair dice
+    let fair = head.get("dice").and_then(|d| d.as_str()) == Some("fair");
     let games = head["games"].as_array().unwrap();
     let rest = buf.len() - 4 - hl;
     let rows = rest / (4 * D * 4 + 16);
@@ -103,6 +104,7 @@ fn main() {
             let mut g = Game::new(seats, *singles);
             g.current = ((rng.next() * 4.0).floor() as usize) % seats.len();
             let mut st = Streams::new(rng, game_seed, format);
+            st.fair = fair;
             let mut keep_rng = Rng::seeded(((game_seed as u32) ^ 0x5bd1_e995) as i64);
             let mut ml = MoveList::new();
             let mut x = [0.0f64; 4 * D];
@@ -135,7 +137,7 @@ fn main() {
                     }
                     vals.push(v);
                     live.push(live_mask(&g));
-                    let f = roll_face(&g.b, g.current_color(), st.dice(), g.singles, &mut ml);
+                    let f = st.roll_face(&g.b, g.current_color(), g.singles, &mut ml);
                     g.roll(f);
                 } else {
                     let k = pols[g.b.p[g.current].owner as usize].choose(&g, &mut st.rng);

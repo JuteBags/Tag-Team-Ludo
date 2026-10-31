@@ -1,7 +1,7 @@
 //! tools/ai/arena.ts in Rust: policy A against policy B on paired seeds, the same games and the same
 //! ARENA JSON line (seeds run in parallel; the counts are sums, so the order does not matter).
 //!   ludo-arena --a net:rules.json:1 --b hard --mode 2p --from 0 --to 5000 [--threads N] [--format 2]
-//!              [--aivat <weights.json> [--aivat-chance 1]]
+//!              [--aivat <weights.json> [--aivat-chance 1]] [--dice fair]
 //! --aivat adds a luck-corrected win count (AIVAT, Burch et al. 2017): each game's result minus the
 //! dice luck at every roll, luck = V(after the face rolled) - sum_f p(f) V(after face f), with p the
 //! distribution that roll was actually drawn from and V the given evaluator's chance that A's person
@@ -44,7 +44,7 @@ pub fn play_game(seats: &[(u8, u8)], singles: bool, by_owner: &[&Policy], st: &m
     while g.phase != PHASE_OVER && steps < 50000 {
         if g.phase == PHASE_ROLL {
             // roll_face, split so the distribution of this roll is known (same draws, same order)
-            let w = weights(&g.b, g.current_color(), st.dice(), g.singles, &mut ml);
+            let w = if st.fair { ludo_sim::dice::FAIR } else { weights(&g.b, g.current_color(), st.dice(), g.singles, &mut ml) };
             let f = sample_face(&w, st.dice());
             if let Some((eval, who, chance)) = aivat {
                 let mut expect = 0.0;
@@ -98,6 +98,8 @@ fn main() {
     let people = seats.iter().map(|s| s.1).max().unwrap() as usize + 1;
     let from: i64 = flags.get("from").map(|s| s.parse().unwrap()).unwrap_or(0);
     let to: i64 = flags.get("to").map(|s| s.parse().unwrap()).unwrap_or(1000);
+    // --dice fair: every face 1 in 6; default: the app's dice
+    let fair = flags.get("dice").map(|d| d == "fair").unwrap_or(false);
     let format: u32 = flags.get("format").map(|s| s.parse().unwrap()).unwrap_or(ludo_sim::rng::FORMAT);
     let aivat: Option<Evaluator> = flags.get("aivat").filter(|p| !p.is_empty()).map(|p| Evaluator::from_json_text(&std::fs::read_to_string(p).unwrap_or_else(|e| panic!("{p}: {e}"))));
     let aivat_chance: u32 = flags.get("aivat-chance").map(|s| s.parse().unwrap()).unwrap_or(1);
@@ -111,6 +113,7 @@ fn main() {
             let mut seed_corr = 0.0f64;
             for seat in 0..people {
                 let mut st = Streams::new(Rng::seeded(seed * 7919 + 13), seed * 7919 + 13, format);
+                st.fair = fair;
                 let by_owner: Vec<&Policy> = (0..people).map(|o| if o == seat { &a } else { &b }).collect();
                 let first = (seed % 4) as usize;
                 let (end, luck) = play_game(&seats, singles, &by_owner, &mut st, first, aivat.as_ref().map(|e| (e, seat, aivat_chance)));
@@ -146,10 +149,11 @@ fn main() {
     let seeds = per.len();
     let q = |x: &str| x.replace('\\', "\\\\").replace('"', "\\\"");
     println!(
-        "ARENA {{\"a\":\"{}\",\"b\":\"{}\",\"mode\":\"{}\",\"people\":{people},\"games\":{},\"wins\":{},\"placeSum\":{},\"seeds\":{seeds},\"seedSq\":{},\"firstGames\":{},\"firstWins\":{}{},\"ms\":{}}}",
+        "ARENA {{\"a\":\"{}\",\"b\":\"{}\",\"mode\":\"{}\",{}\"people\":{people},\"games\":{},\"wins\":{},\"placeSum\":{},\"seeds\":{seeds},\"seedSq\":{},\"firstGames\":{},\"firstWins\":{}{},\"ms\":{}}}",
         q(&a_spec),
         q(&b_spec),
         mode,
+        if fair { "\"dice\":\"fair\"," } else { "" },
         s[0],
         s[1],
         s[2],

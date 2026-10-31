@@ -1,7 +1,7 @@
 //! tools/ai/selfplay.ts in Rust: the same games, the same kept positions, the same v1 shard bytes.
 //!   ludo-selfplay --games 2000 --seed 7 --out shard.bin --pool hard:65,normal:22,easy:10,random:3
 //!                 [--modes 2p,3p,...] [--keep 0.1] [--commit <sha>] [--threads N] [--format 2]
-//!                 [--lockstep W [--gpu]]
+//!                 [--lockstep W [--gpu]] [--dice fair]
 //! --lockstep W: W games in flight, stepped together. At every round each game plays on to its next
 //! search decision, the search's leaves for all of them are valued in one batch (search::collect_leaves,
 //! then eval::batch_values), and each game chooses from its own values. Same bytes as without it.
@@ -9,7 +9,6 @@
 //! One invocation writes one shard (like one selfplay.mjs worker); its games run in parallel and are
 //! concatenated in game order, so the file is byte-identical to selfplay.mjs with the same flags.
 use ludo_sim::bot::Policy;
-use ludo_sim::dice::roll_face;
 use ludo_sim::encode::{encode, D};
 use ludo_sim::game::{Game, PHASE_OVER, PHASE_ROLL};
 use ludo_sim::rng::{Rng, Streams};
@@ -61,7 +60,7 @@ impl Live {
                     self.meta.extend_from_slice(&[self.g as i32, self.turn, n as i32, gm.current as i32]);
                 }
                 self.turn += 1;
-                let f = roll_face(&self.gm.b, self.gm.current_color(), self.st.dice(), self.gm.singles, &mut self.ml);
+                let f = self.st.roll_face(&self.gm.b, self.gm.current_color(), self.gm.singles, &mut self.ml);
                 self.gm.roll(f);
             } else {
                 let o = self.gm.b.p[self.gm.current].owner as usize;
@@ -129,6 +128,8 @@ fn main() {
     let keep_s = flags.get("keep").cloned().unwrap_or_else(|| "0.1".into());
     let keep: f64 = keep_s.parse().unwrap();
     let commit = flags.get("commit").cloned().unwrap_or_default();
+    // --dice fair: every face 1 in 6 (the engine's training dice); default: the app's dice
+    let fair = flags.get("dice").map(|d| d == "fair").unwrap_or(false);
     let format: u32 = flags.get("format").map(|s| s.parse().unwrap()).unwrap_or(ludo_sim::rng::FORMAT);
     let all = modes();
     let mode_list: Vec<_> = match flags.get("modes") {
@@ -170,7 +171,8 @@ fn main() {
         let keep_rng = Rng::seeded(((game_seed as u32) ^ 0x5bd1_e995) as i64);
         let mut gm = Game::new(seats, *singles);
         gm.current = ((rng.next() * 4.0).floor() as usize) % seats.len();
-        let st = Streams::new(rng, game_seed, format);
+        let mut st = Streams::new(rng, game_seed, format);
+        st.fair = fair;
         Live { g, game_seed, mode: mode.to_string(), specs, pols, keep_rng, gm, st, ml: MoveList::new(), buf: vec![0.0; 4 * D], x: Vec::new(), meta: Vec::new(), turn: 0, steps: 0 }
     };
     let lockstep: usize = flags.get("lockstep").map(|s| s.parse().unwrap()).unwrap_or(0);
@@ -252,6 +254,7 @@ fn main() {
             let mut gm = Game::new(seats, *singles);
             gm.current = ((rng.next() * 4.0).floor() as usize) % seats.len();
             let mut st = Streams::new(rng, game_seed, format);
+            st.fair = fair;
             let mut ml = MoveList::new();
             let mut buf = [0.0f64; 4 * D];
             let (mut x, mut meta) = (Vec::new(), Vec::new());
@@ -267,7 +270,7 @@ fn main() {
                         meta.extend_from_slice(&[g as i32, turn, n as i32, gm.current as i32]);
                     }
                     turn += 1;
-                    let f = roll_face(&gm.b, gm.current_color(), st.dice(), gm.singles, &mut ml);
+                    let f = st.roll_face(&gm.b, gm.current_color(), gm.singles, &mut ml);
                     gm.roll(f);
                 } else {
                     let o = gm.b.p[gm.current].owner as usize;
@@ -305,7 +308,8 @@ fn main() {
 
     let positions: usize = outs.iter().map(|o| o.meta.len() / 4).sum();
     let v = if format >= 2 { format!("\"v\":{format},") } else { String::new() };
-    let mut head = format!("{{{v}\"D\":{D},\"commit\":\"{commit}\",\"seed\":{seed},\"keep\":{keep},\"games\":[");
+    let dice = if fair { "\"dice\":\"fair\"," } else { "" };
+    let mut head = format!("{{{v}\"D\":{D},\"commit\":\"{commit}\",\"seed\":{seed},\"keep\":{keep},{dice}\"games\":[");
     for (i, o) in outs.iter().enumerate() {
         if i > 0 {
             head.push(',');
