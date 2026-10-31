@@ -1,7 +1,4 @@
-import '@fontsource/lilita-one';
-import '@fontsource/nunito/700.css';
-import '@fontsource/nunito/800.css';
-import '@fontsource/nunito/900.css';
+import './ui/fonts.css';
 import './ui/styles.css';
 import { mountApp } from './ui/app';
 

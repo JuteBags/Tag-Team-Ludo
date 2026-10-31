@@ -1,0 +1,9 @@
+/* Self-hosted fonts, Latin only and woff2 only: every WebView this app supports reads woff2, and the
+   UI is in English. Three files (about 45 KB) instead of every subset in two formats (about 500 KB).
+   Nunito 700 is not loaded; the few 700 texts use the nearest weight, 800. */
+@font-face{font-family:'Lilita One';font-style:normal;font-weight:400;font-display:swap;
+  src:url('../../node_modules/@fontsource/lilita-one/files/lilita-one-latin-400-normal.woff2') format('woff2')}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:800;font-display:swap;
+  src:url('../../node_modules/@fontsource/nunito/files/nunito-latin-800-normal.woff2') format('woff2')}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:900;font-display:swap;
+  src:url('../../node_modules/@fontsource/nunito/files/nunito-latin-900-normal.woff2') format('woff2')}
