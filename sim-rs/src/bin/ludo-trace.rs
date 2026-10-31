@@ -1,6 +1,7 @@
 //! Same command line and output as tools/ai/trace.ts, multi-threaded:
 //!   ludo-trace --games 1000 --seed 1 --out traces.jsonl [--full] [--modes 2p,4p,...]
-//!              [--policies random,easy,normal,hard] [--threads N]
+//!              [--from 0] [--policies random,easy,normal,hard] [--threads N] [--format 2]
+//! --format 1 replays the old traces (dice and policies on one stream); 2 (default) is common.ts FORMAT.
 //! `--bench` plays the same games without building step lines (no hash) and prints games/s only.
 use ludo_sim::bot::Policy;
 use ludo_sim::trace::{json_line, modes, play_traced};
@@ -25,6 +26,8 @@ fn main() {
     }
     let games: u64 = flags.get("games").map(|s| s.parse().unwrap()).unwrap_or(1000);
     let seed: i64 = flags.get("seed").map(|s| s.parse().unwrap()).unwrap_or(1);
+    let from: u64 = flags.get("from").map(|s| s.parse().unwrap()).unwrap_or(0);
+    let format: u32 = flags.get("format").map(|s| s.parse().unwrap()).unwrap_or(ludo_sim::rng::FORMAT);
     let full = flags.contains_key("full");
     let bench = flags.contains_key("bench");
     let all = modes();
@@ -39,7 +42,7 @@ fn main() {
     }
 
     let t0 = Instant::now();
-    let lines: Vec<String> = (0..games)
+    let lines: Vec<String> = (from..from + games)
         .into_par_iter()
         .map(|g| {
             let game_seed = seed * 1_000_003 + g as i64;
@@ -48,11 +51,11 @@ fn main() {
             let specs: Vec<&str> = (0..people).map(|o| policy_names[(g as usize + o) % policy_names.len()].as_str()).collect();
             let pols: Vec<Policy> = specs.iter().map(|s| Policy::parse(s)).collect();
             let first = (g as usize) % seats.len();
-            let r = play_traced(seats, *singles, &pols, first, game_seed, !bench, full);
+            let r = play_traced(seats, *singles, &pols, first, game_seed, format, !bench, full);
             if bench {
                 String::new()
             } else {
-                json_line(g, game_seed, name, first, &specs, &r, full)
+                json_line(g, game_seed, name, first, &specs, &r, full, format)
             }
         })
         .collect();

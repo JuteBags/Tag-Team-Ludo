@@ -1,13 +1,13 @@
 //! tools/ai/selfplay.ts in Rust: the same games, the same kept positions, the same v1 shard bytes.
 //!   ludo-selfplay --games 2000 --seed 7 --out shard.bin --pool hard:65,normal:22,easy:10,random:3
-//!                 [--modes 2p,3p,...] [--keep 0.1] [--commit <sha>] [--threads N]
+//!                 [--modes 2p,3p,...] [--keep 0.1] [--commit <sha>] [--threads N] [--format 2]
 //! One invocation writes one shard (like one selfplay.mjs worker); its games run in parallel and are
 //! concatenated in game order, so the file is byte-identical to selfplay.mjs with the same flags.
 use ludo_sim::bot::Policy;
 use ludo_sim::dice::roll_face;
 use ludo_sim::encode::{encode, D};
 use ludo_sim::game::{Game, PHASE_OVER, PHASE_ROLL};
-use ludo_sim::rng::Rng;
+use ludo_sim::rng::{Rng, Streams};
 use ludo_sim::rules::{MoveList, BASE, FINISHED};
 use ludo_sim::trace::modes;
 use rayon::prelude::*;
@@ -41,6 +41,7 @@ fn main() {
     let keep_s = flags.get("keep").cloned().unwrap_or_else(|| "0.1".into());
     let keep: f64 = keep_s.parse().unwrap();
     let commit = flags.get("commit").cloned().unwrap_or_default();
+    let format: u32 = flags.get("format").map(|s| s.parse().unwrap()).unwrap_or(ludo_sim::rng::FORMAT);
     let all = modes();
     let mode_list: Vec<_> = match flags.get("modes") {
         Some(m) if !m.is_empty() => m.split(',').map(|n| all.iter().find(|x| x.0 == n).unwrap_or_else(|| panic!("unknown mode {n}")).clone()).collect(),
@@ -84,6 +85,7 @@ fn main() {
             let mut keep_rng = Rng::seeded(((game_seed as u32) ^ 0x5bd1_e995) as i64);
             let mut gm = Game::new(seats, *singles);
             gm.current = ((rng.next() * 4.0).floor() as usize) % seats.len();
+            let mut st = Streams::new(rng, game_seed, format);
             let mut ml = MoveList::new();
             let mut buf = [0.0f64; 4 * D];
             let (mut x, mut meta) = (Vec::new(), Vec::new());
@@ -99,11 +101,11 @@ fn main() {
                         meta.extend_from_slice(&[g as i32, turn, n as i32, gm.current as i32]);
                     }
                     turn += 1;
-                    let f = roll_face(&gm.b, gm.current_color(), &mut rng, gm.singles, &mut ml);
+                    let f = roll_face(&gm.b, gm.current_color(), st.dice(), gm.singles, &mut ml);
                     gm.roll(f);
                 } else {
                     let o = gm.b.p[gm.current].owner as usize;
-                    let k = pols[o].choose(&gm, &mut rng);
+                    let k = pols[o].choose(&gm, &mut st.rng);
                     let m = gm.moves.m[k];
                     gm.play(&m);
                 }
@@ -135,7 +137,8 @@ fn main() {
     let secs = t0.elapsed().as_secs_f64();
 
     let positions: usize = outs.iter().map(|o| o.meta.len() / 4).sum();
-    let mut head = format!("{{\"D\":{D},\"commit\":\"{commit}\",\"seed\":{seed},\"keep\":{keep},\"games\":[");
+    let v = if format >= 2 { format!("\"v\":{format},") } else { String::new() };
+    let mut head = format!("{{{v}\"D\":{D},\"commit\":\"{commit}\",\"seed\":{seed},\"keep\":{keep},\"games\":[");
     for (i, o) in outs.iter().enumerate() {
         if i > 0 {
             head.push(',');
