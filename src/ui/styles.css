@@ -389,14 +389,37 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .cont b{font-size:21px;line-height:1;align-self:end;text-shadow:0 2px 0 rgba(0,0,0,.25)}
 .cont small{font-weight:800;font-size:12px;opacity:.9;align-self:start;margin-top:2px}
 .home.has-save .tiles{top:654px}
-.cbrow{position:absolute;top:692px;left:24px;right:24px;height:44px;border-radius:15px;display:flex;align-items:center;gap:10px;padding:0 10px 0 16px;background:rgba(0,0,0,.22);font-weight:800;font-size:14px;color:#fff}
-.home.has-save .cbrow{top:750px}
+/* Home, top to bottom: Continue (when a game is saved) is the one hero, then players, modes, coming soon. */
+.home .cont{top:392px;height:72px}
+.home .seg{top:392px}
+.home.has-save .seg{top:478px;height:52px}
+.home .modes{top:468px}
+.home.has-save .modes{top:544px}
+.home.has-save .mcard{height:88px}
+.soonrow{position:absolute;top:592px;left:24px;right:24px;height:44px;border-radius:15px;display:flex;align-items:center;gap:10px;padding:0 14px;background:rgba(0,0,0,.18);font-weight:800;font-size:13px;color:rgba(255,255,255,.6)}
+.home.has-save .soonrow{top:648px}
+.soonrow .lk svg{width:16px;height:16px;opacity:.7;display:block}
+.soonrow span:nth-child(2){flex:1}
+.soonrow em{font-style:normal;font-size:11px;font-weight:900;letter-spacing:.5px;padding:3px 8px;border-radius:8px;background:rgba(255,214,90,.18);color:#ffd65a}
+.rbtn.corner small{position:absolute;top:46px;left:50%;transform:translateX(-50%);font-size:10.5px;font-weight:900;color:rgba(255,255,255,.75);white-space:nowrap}
+.swl{font-style:normal;font-size:12px;font-weight:900;opacity:.75;min-width:22px;text-align:right}
+.cbrow{position:absolute;top:648px;left:24px;right:24px;height:44px;border-radius:15px;display:flex;align-items:center;gap:10px;padding:0 10px 0 16px;background:rgba(0,0,0,.22);font-weight:800;font-size:14px;color:#fff}
+.home.has-save .cbrow{top:704px}
 .cbrow span{flex:1;text-align:left}
 .syms{width:64px;height:16px;flex:none;vertical-align:middle}
 .sw{position:relative;width:46px;height:26px;border-radius:13px;background:rgba(255,255,255,.25);flex:none;transition:background .2s}
 .sw::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 2px 3px rgba(0,0,0,.3);transition:transform .2s}
-.cbrow[aria-checked=true] .sw{background:#24ad3c}
-.cbrow[aria-checked=true] .sw::after{transform:translateX(20px)}
+.cbrow[aria-checked=true] .sw,.swrow[aria-checked=true] .sw{background:#24ad3c}
+.cbrow[aria-checked=true] .sw::after,.swrow[aria-checked=true] .sw::after{transform:translateX(20px)}
+/* Settings: switch rows and the close button. */
+.swrow{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:0 12px 0 14px;border-radius:14px;background:rgba(0,0,0,.22);font-weight:800;font-size:14px;color:#fff;text-align:left}
+.swrow span{flex:1;display:flex;align-items:center;gap:8px}
+.sheet .box{position:relative}
+.sheet .x{position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:12px;font-size:26px;line-height:1;color:rgba(255,255,255,.8);background:rgba(0,0,0,.2)}
+.set .tg button svg{width:22px;height:22px;margin-right:6px;vertical-align:middle}
+.set .tg button{display:flex;align-items:center;justify-content:center}
+.sheet .empty{padding:18px 6px 8px;text-align:center}
+.sheet .empty b{font-size:24px;color:#ffd65a;font-weight:400}
 .home .foot{bottom:12px}
 
 /* Sheets (settings, stats) and the keep-playing vote, in the pause menu's style. */
@@ -414,7 +437,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .stats .st{padding:10px 4px;border-radius:14px;background:rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;gap:2px}
 .stats b{font-size:26px;font-weight:400;color:#ffd65a}
 .stats small{font-weight:800;font-size:11px;opacity:.85}
-.reset{margin-top:10px;min-height:40px;padding:0 16px;border-radius:12px;background:rgba(0,0,0,.25);font-weight:800;font-size:13px;color:rgba(255,255,255,.8)}
+.reset{margin-top:8px;min-height:44px;padding:0 12px;background:none;font-weight:800;font-size:13px;color:#ff9aa8;text-decoration:underline;text-underline-offset:3px}
 .reset.sure{background:#d21f57;color:#fff}
 .vote .box{width:320px}
 .vav{position:relative;width:76px;height:76px;margin:0 auto 6px;border-radius:22px;background:var(--m);box-shadow:0 4px 0 var(--d);padding:6px}
