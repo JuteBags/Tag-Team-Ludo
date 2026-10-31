@@ -29,7 +29,7 @@ fn value(eval: &Evaluator, g: &Game, who: usize, chance: u32) -> f64 {
     if g.phase == PHASE_OVER {
         return if g.owner_ranking()[0] as usize == who { 1.0 } else { 0.0 };
     }
-    let opts = ludo_sim::search::SearchOptions { depth: 1, chance, their_k: 3, race: false };
+    let opts = ludo_sim::search::SearchOptions { depth: 1, chance, their_k: 3, race: false, cut: 0.0 };
     ludo_sim::search::state_values(eval, g, opts)[who]
 }
 

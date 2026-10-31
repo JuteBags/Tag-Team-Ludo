@@ -29,7 +29,7 @@ function loadNet(path: string): Evaluator {
 
 /**
  * A policy from its name: easy | normal | hard | random |
- * net:<weights.json>[:depth[:theirK[:temperature[:race[:chance]]]]]
+ * net:<weights.json>[:depth[:theirK[:temperature[:race[:chance[:cut]]]]]]
  * (race = 1: exact values from the race database in v1 race positions, search.ts SearchOptions.race;
  * chance: chance nodes allowed within one turn before the value takes over, default 2).
  * The weights file can be a value net or linear rules (then it is a rule bot that plans whole turns).
@@ -42,9 +42,9 @@ export function policy(spec: string): Policy {
     return (s, rng) => chooseMove({ ...s, players: s.players.map((p, i) => (i === s.current ? { ...p, level } : p)) }, rng);
   }
   if (spec.startsWith('net:')) {
-    const [, path, depth, theirK, temp, race, chance] = spec.split(':');
+    const [, path, depth, theirK, temp, race, chance, cut] = spec.split(':');
     const net = loadNet(path!);
-    const opts = { depth: Number(depth ?? 1), theirK: Number(theirK ?? 3), race: race === '1', chance: Number(chance ?? 2) };
+    const opts = { depth: Number(depth ?? 1), theirK: Number(theirK ?? 3), race: race === '1', chance: Number(chance ?? 2), cut: Number(cut ?? 0) };
     return (s, rng) => chooseExtreme(net, s, rng, opts, Number(temp ?? 0));
   }
   throw new Error(`unknown policy ${spec}`);

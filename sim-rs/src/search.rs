@@ -3,7 +3,8 @@
 //! chance), so cache hits, and therefore every value, are the same.
 use crate::bot::{score_move, Lazy};
 use crate::eval::Evaluator;
-use crate::game::{Game, PHASE_MOVE, PHASE_OVER};
+use crate::game::{Game, PHASE_MOVE, PHASE_OVER, PHASE_ROLL};
+use std::sync::atomic::Ordering::Relaxed;
 use crate::rng::Rng;
 use std::collections::HashMap;
 
@@ -17,11 +18,13 @@ pub struct SearchOptions {
     pub their_k: usize,
     /// Value v1 race positions exactly with the race database (race.rs).
     pub race: bool,
+    /// search.ts SearchOptions.cut: ChanceProbCut-style probe cut (0 = off, exact).
+    pub cut: f64,
 }
 
 impl Default for SearchOptions {
     fn default() -> Self {
-        SearchOptions { depth: 1, chance: 2, their_k: 3, race: false }
+        SearchOptions { depth: 1, chance: 2, their_k: 3, race: false, cut: 0.0 }
     }
 }
 
@@ -104,6 +107,60 @@ impl<'a> Ctx<'a> {
         v
     }
 
+    /// search.ts children(): each listed move's child value, in `idx` order (SearchOptions.cut).
+    fn children(&mut self, s: &Game, idx: &[usize], who: usize, turns_left: u32, chance: u32, me: usize) -> Vec<[f64; 4]> {
+        let ts: Vec<Game> = idx
+            .iter()
+            .map(|&i| {
+                let mut t = *s;
+                t.play(&s.moves.m[i]);
+                t
+            })
+            .collect();
+        if self.opts.cut <= 0.0 {
+            return ts.iter().map(|t| self.node(t, who, turns_left, chance)).collect();
+        }
+        let max_chance = self.opts.chance;
+        let deep = |t: &Game| t.phase == PHASE_ROLL && if t.current == who { chance < max_chance } else { turns_left > 1 };
+        let mut vals = vec![[0.0f64; 4]; ts.len()];
+        let mut probes: Vec<(usize, [f64; 4])> = Vec::new();
+        let mut a = -1.0f64;
+        for (i, t) in ts.iter().enumerate() {
+            if deep(t) {
+                probes.push((i, self.owner_values(t)));
+                PROBES.fetch_add(1, Relaxed);
+            } else {
+                vals[i] = self.node(t, who, turns_left, chance);
+                if vals[i][me] > a {
+                    a = vals[i][me];
+                }
+            }
+        }
+        // probes.sort((x, y) => y[me] - x[me]): stable, best probe first
+        probes.sort_by(|x, y| {
+            let d = y.1[me] - x.1[me];
+            if d < 0.0 {
+                std::cmp::Ordering::Less
+            } else if d > 0.0 {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        });
+        for (i, p) in probes {
+            if p[me] + self.opts.cut <= a {
+                vals[i] = p;
+                CUTS.fetch_add(1, Relaxed);
+            } else {
+                vals[i] = self.node(&ts[i], who, turns_left, chance);
+                if vals[i][me] > a {
+                    a = vals[i][me];
+                }
+            }
+        }
+        vals
+    }
+
     fn node(&mut self, s: &Game, who: usize, turns_left: u32, chance: u32) -> [f64; 4] {
         if s.phase == PHASE_OVER {
             return self.owner_values(s);
@@ -137,11 +194,7 @@ impl<'a> Ctx<'a> {
                 idx.truncate(self.opts.their_k);
             }
             let mut best = [-1.0f64; 4];
-            for &i in &idx {
-                let mut t = *s;
-                let m = s.moves.m[i];
-                t.play(&m);
-                let c = self.node(&t, who, turns_left, chance);
+            for c in self.children(s, &idx, who, turns_left, chance, me) {
                 if c[me] > best[me] {
                     best = c;
                 }
@@ -182,21 +235,16 @@ pub fn search_values(eval: &Evaluator, state: &Game, opts: SearchOptions) -> Vec
     let root_owner = state.b.p[root].owner;
     let mut ctx = Ctx { eval, opts, owners, root_owner, memo: Map::default(), leaves: Map::default() };
     let me = root_owner as usize;
-    state
-        .moves
-        .as_slice()
-        .iter()
-        .map(|m| {
-            let mut t = *state;
-            t.play(m);
-            ctx.node(&t, root, opts.depth, 0)[me]
-        })
-        .collect()
+    let idx: Vec<usize> = (0..state.moves.len()).collect();
+    ctx.children(state, &idx, root, opts.depth, 0, me).iter().map(|v| v[me]).collect()
 }
 
 /// search.ts searchStats: how often temperature sampling picked a move whose value is below the best.
 pub static SAMPLED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub static OFF_BEST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// search.ts searchStats.probes / cuts: children the cut valued by the evaluator alone, and kept so.
+pub static PROBES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static CUTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// chooseExtreme(): index of the chosen move; `temperature` > 0 samples by softmax of the values.
 pub fn choose_extreme(eval: &Evaluator, state: &Game, rng: &mut Rng, opts: SearchOptions, temperature: f64) -> usize {
