@@ -3,7 +3,7 @@
 // picks first and plays first. Steps with nothing to choose are skipped. Rules live in setup.ts.
 import { COLORS, type BotLevel, type Color, type Seat } from '../engine';
 import { PROFILES, cssVars, icons, pawnSVG } from './art';
-import { dieMarkup, rollDie } from './dice';
+import { rollDie } from './dice';
 import { saveSetting, settings } from './settings';
 import { NAME_MAX, cleanName, defaultName, pickSequence, pickable, previewLayout, rankRolls, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
 
@@ -20,6 +20,10 @@ const GRID: Color[] = ['green', 'red', 'blue', 'yellow'];
 const mini = (marked: number[]) =>
   `<svg class="mini" viewBox="0 0 20 20" aria-hidden="true">${GRID.map((_, i) => `<rect x="${(i % 2) * 11}" y="${Math.floor(i / 2) * 11}" width="9" height="9" rx="2" fill="${marked.includes(i) ? '#ffd65a' : 'rgba(255,255,255,.25)'}"/>`).join('')}</svg>`;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+/** A die before anyone rolls: a question mark, so nobody looks as if they already rolled a 6. */
+const QDIE = '<span class="qdie disp">?</span>';
+const CROWN = '<svg class="crown" viewBox="0 0 24 18" aria-hidden="true"><path d="M2 15 L4 4 L9 10 L12 2 L15 10 L20 4 L22 15Z" fill="#ffd23f" stroke="#a35a00" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+const PLACE = ['1st', '2nd', '3rd', '4th'];
 
 type Step = 'opts' | 'roll' | 'pick';
 interface Person {
@@ -92,6 +96,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     </section>` : ''}
     <section class="wiz" data-step="roll">
       <h3 class="disp">Roll for order</h3><p class="sub">Highest roll picks first and plays first. Tap a name to change it</p>
+      <p class="porder" hidden></p>
       <div class="sp people"></div>
       <button class="b3 green disp go" data-act="to-pick" hidden>PICK HOUSES</button>
     </section>
@@ -146,10 +151,13 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     if (lvl) lvl.hidden = mode === 'pvp' && addedBots === 0;
     // The preview: who plays each house. Houses are picked later, so it shows the layout, not names.
     const layout = previewLayout(count, rules, mode === 'pvp' ? addedBots : 0);
+    let botSeen = 0;
     el.querySelectorAll<HTMLElement>('.pvh').forEach((h) => {
       const slot = layout[h.dataset.c as Color];
       // vs Computer, person 1 is you and everyone else is a bot.
-      const label = slot === 'empty' ? 'Empty' : slot === 'bot' || (mode === 'pvc' && slot !== 'p1') ? 'Bot' : mode === 'pvc' ? 'You' : `Player ${slot.slice(1)}`;
+      // Bots by the names they play under; vs Computer, person 1 is you and the rest are bots.
+      const botIndex = mode === 'pvc' ? Number(slot.slice(1)) - 2 : botSeen++;
+      const label = slot === 'empty' ? 'Empty' : slot === 'bot' || (mode === 'pvc' && slot !== 'p1') ? BOT_NAMES[botIndex] ?? 'Bot' : mode === 'pvc' ? 'You' : `Player ${slot.slice(1)}`;
       h.classList.toggle('empty', slot === 'empty');
       h.querySelector('b')!.textContent = label;
     });
@@ -184,7 +192,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     order = [];
     q('[data-act=to-pick]').hidden = true;
     peopleEl.innerHTML = people
-      .map((p, i) => `<div class="prow" data-p="${i}"><span class="chip disp">${i + 1}</span>${p.bot ? `<b>${p.name}</b>` : `<button class="pname" data-p="${i}" aria-label="Change name">${p.name}${PENCIL}</button>`}<span class="st"></span><button class="dbox" style="${NEUTRAL}" aria-label="Roll">${dieMarkup(6, DIE)}</button></div>`)
+      .map((p, i) => `<div class="prow" data-p="${i}"><span class="chip disp">${i + 1}</span>${p.bot ? `<b>${p.name}</b>` : `<button class="pname" data-p="${i}" aria-label="Change name">${p.name}${PENCIL}</button>`}<span class="st"></span><button class="dbox" style="${NEUTRAL}" aria-label="Roll">${QDIE}</button></div>`)
       .join('');
     refreshRoll();
   };
@@ -201,6 +209,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       const mine = rolls[i]!;
       const waiting = now.includes(i);
       row.classList.toggle('due', waiting);
+      row.classList.toggle('tie', waiting && mine.length > 0);
       row.querySelector('.st')!.textContent = waiting && mine.length ? 'Tie! Roll again' : mine.length ? `rolled ${mine.join(' · ')}` : people[i]!.bot ? '' : 'Tap the dice';
       row.querySelector('.dbox')!.classList.toggle('can-roll', waiting && !people[i]!.bot);
     });
@@ -275,15 +284,35 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     if (row && !people[Number(row.dataset.p)]!.bot) void rollFor(Number(row.dataset.p));
   });
 
+  /**
+   * Every place is decided: the rows slide into play order (1st at the top), each with its rank, and a
+   * line spells the order out. Names can still be changed; a rename doesn't move anyone.
+   */
   const finishRoll = () => {
     order = groups.flat();
-    peopleEl.querySelectorAll<HTMLElement>('.prow').forEach((row) => {
+    const rows = [...peopleEl.querySelectorAll<HTMLElement>('.prow')];
+    const before = new Map(rows.map((r) => [r, r.getBoundingClientRect().top]));
+    rows.forEach((row) => {
       const i = Number(row.dataset.p);
-      row.querySelector('.chip')!.textContent = String(order.indexOf(i) + 1);
-      row.querySelector('.st')!.textContent = `${['1st', '2nd', '3rd', '4th'][order.indexOf(i)]} · rolled ${rolls[i]!.join(' · ')}`;
+      const place = order.indexOf(i);
+      row.querySelector('.chip')!.innerHTML = place === 0 ? CROWN : String(place + 1);
+      row.querySelector('.st')!.textContent = `${PLACE[place]} · rolled ${rolls[i]!.join(' · ')}`;
       row.classList.add('ranked');
-      row.style.order = String(order.indexOf(i));
+      row.classList.toggle('first', place === 0);
+      row.classList.remove('tie');
+      row.style.order = String(place);
     });
+    // FLIP: from where each row was to where it is now, top row first.
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      for (const row of rows) {
+        const dy = before.get(row)! - row.getBoundingClientRect().top;
+        if (Math.abs(dy) < 1) continue;
+        row.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 420, delay: 60 * Number(row.style.order), easing: 'cubic-bezier(.16,1,.3,1)', fill: 'backwards' });
+      }
+    }
+    const po = q('.porder');
+    po.innerHTML = `Play order: ${order.map((i) => `<b>${people[i]!.name}</b>`).join(' → ')}`;
+    po.hidden = false;
     q('[data-act=to-pick]').hidden = false;
   };
   q('[data-act=to-pick]').addEventListener('click', () => {
@@ -340,7 +369,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
   const ready = () => {
     const first = COLORS.find((c) => picks[c] === order[0])!;
     const names = people.map((p) => p.name);
-    q('.wiz[data-step=pick] h3').textContent = `${names[order[0]!]} plays first`;
+    q('.wiz[data-step=pick] h3').innerHTML = `${CROWN}${names[order[0]!]} plays first`;
     q('.wiz[data-step=pick] .sub').textContent = 'Houses are set';
     const start = q<HTMLButtonElement>('[data-act=start]');
     start.hidden = false;
