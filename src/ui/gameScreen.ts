@@ -12,7 +12,7 @@ import { keepAwake } from './native';
 import { drawCard, shareCard } from './shareCard';
 import { clearGame, recordGame, saveGame, type SavedGame } from './store';
 import { moveTargets, whyStuck, type Target } from './targets';
-import { goldFor, total } from './rewards';
+import { goldFor, newAchievements, total } from './rewards';
 import { earn, lockLabel, nextGoal } from './skins';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
@@ -65,8 +65,9 @@ export class GameScreen {
   /** This game's kills and pairs formed by the person playing vs Computer, for the stats. */
   private kills = 0;
   private pairs = 0;
-  /** Sixes the person playing vs Computer rolled this game. */
+  /** Sixes the person playing vs Computer rolled this game, and their tokens that were captured. */
   private sixes = 0;
+  private lost = 0;
   /** The players still in voted to stop: the game ends with the places as they stand. */
   private ended = false;
   /** Colours whose tokens have had the full palace welcome this game; later ones get a quick one. */
@@ -312,6 +313,7 @@ export class GameScreen {
     if (ev?.type === 'moved' && ev.lost.length) this.toast(`Can't use the ${ev.lost.join(' and ')}`, m.color);
     this.drawTrays();
     if (human && this.config.mode === 'pvc') this.count(m);
+    if (this.config.mode === 'pvc') this.lost += m.captures.filter((c) => !this.state.players.find((p) => p.color === c.color)!.bot).length;
     // Someone just finished: the people still playing decide whether to play on for the next place.
     const fresh = this.doneOwners().filter((o) => !doneBefore.includes(o));
     if (fresh.length && this.state.phase !== 'over' && !this.humanDone()) {
@@ -638,16 +640,29 @@ export class GameScreen {
       .join('');
     const winner = this.config.names[order[0]!]!;
     const title = pvp ? `${winner.toUpperCase()} WINS!` : won ? 'YOU WIN!' : `${PLACES[place]} PLACE`;
-    void recordGame({ mode: this.config.mode, place, kills: this.kills, pairs: this.pairs, sixes: this.sixes });
+    // Achievements need the new totals, so they join the reward panel when the stats are saved.
+    const facts = { mode: this.config.mode, place, lost: this.lost, hard: this.state.players.filter((p) => p.bot).every((p) => p.level === 'hard') && this.state.players.some((p) => p.bot) };
+    const achievements = recordGame({ mode: this.config.mode, place, kills: this.kills, pairs: this.pairs, sixes: this.sixes }).then((s) => {
+      const fresh = newAchievements(s, facts, settings.achieved);
+      if (fresh.length) {
+        saveSetting('achieved', [...settings.achieved, ...fresh.map((a) => a.id)]);
+        earn(fresh.reduce((a, x) => a + x.gold, 0));
+      }
+      return fresh;
+    });
     // Gold for this game, then how close it brings you to the next skin.
     const mineHome = colorsOf(human).reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
     const lines = goldFor({ mode: this.config.mode, place, kills: this.kills, home: mineHome });
     const earned = total(lines);
     earn(earned);
-    const goal = nextGoal();
-    const price = goal?.unlock.kind === 'gold' ? goal.unlock.price : 0;
+    /** The next skin to buy and how close you are (redrawn when achievement gold lands). */
+    const goalHTML = () => {
+      const goal = nextGoal();
+      const price = goal?.unlock.kind === 'gold' ? goal.unlock.price : 0;
+      return goal ? `<div class="goal${settings.gold >= price ? ' ready' : ''}"><span>${settings.gold >= price ? `You can unlock <b>${goal.name}</b> in the Store!` : `Next: <b>${goal.name}</b> ${goal.shelf}`}</span><i class="bar"><i style="width:${Math.min(100, (100 * settings.gold) / price)}%"></i></i><em>${Math.min(settings.gold, price)} / ${lockLabel(goal)}</em></div>` : '';
+    };
     const reward = `<div class="reward"><div class="rg"><i class="coin"></i><b class="disp">+<span class="cnt">0</span></b><small>${lines.map((l) => `${l.label} ${l.gold}`).join(' · ')}</small></div>
-      ${goal ? `<div class="goal${settings.gold >= price ? ' ready' : ''}"><span>${settings.gold >= price ? `You can unlock <b>${goal.name}</b> in the Store!` : `Next: <b>${goal.name}</b> ${goal.shelf}`}</span><i class="bar"><i style="width:${Math.min(100, (100 * settings.gold) / price)}%"></i></i><em>${Math.min(settings.gold, price)} / ${lockLabel(goal)}</em></div>` : ''}</div>`;
+      <div class="achs"></div>${goalHTML()}</div>`;
     const card = order.map((o) => {
       const mine = colorsOf(o);
       const home = mine.reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
@@ -676,6 +691,16 @@ export class GameScreen {
       }
     });
     this.el.appendChild(ov);
+    // New achievements pop in as small chips, and the next-skin bar catches up with their gold.
+    void achievements.then((fresh) => {
+      const box = ov.querySelector<HTMLElement>('.achs')!;
+      fresh.forEach((a, i) => {
+        box.insertAdjacentHTML('beforeend', `<span class="ach" title="${a.blurb}">🏆 ${a.name} <em>+${a.gold}</em></span>`);
+        (box.lastElementChild as HTMLElement).animate([{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'scale(1.1)', offset: 0.7 }, { opacity: 1, transform: 'scale(1)' }], { duration: 380, delay: 1300 + i * 300, easing: 'cubic-bezier(.3,.8,.4,1.2)', fill: 'backwards' });
+        setTimeout(() => sfx.home(), 1300 + i * 300);
+      });
+      if (fresh.length) setTimeout(() => ov.querySelector('.reward .goal')?.replaceWith(document.createRange().createContextualFragment(goalHTML())), 1300 + fresh.length * 300);
+    });
     if (won) sfx.win();
     // The gold counts up.
     const cnt = ov.querySelector<HTMLElement>('.cnt')!;
