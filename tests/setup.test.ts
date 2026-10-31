@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pickSequence, pickable, rankRolls, type PickRules } from '../src/ui/setup';
+import { pickSequence, pickable, previewLayout, rankRolls, type PickRules } from '../src/ui/setup';
 
 const one: PickRules = { houses: 1, pairing: 'opposite' };
 const opp: PickRules = { houses: 2, pairing: 'opposite' };
@@ -40,5 +40,24 @@ describe('picking houses', () => {
 
   it('allows any first pick when neighbours are still free', () => {
     expect(pickable({ blue: 0 }, 1, adj)).toEqual(['green', 'red', 'yellow']);
+  });
+});
+
+describe('the options preview', () => {
+  it('shows two people opposite each other, and empty houses, with one colour each', () => {
+    expect(previewLayout(2, one, 0)).toEqual({ blue: 'p1', green: 'empty', red: 'p2', yellow: 'empty' });
+  });
+  it('fills empty houses with the bots added, in turn order', () => {
+    expect(previewLayout(2, one, 1)).toEqual({ blue: 'p1', green: 'bot', red: 'p2', yellow: 'empty' });
+    expect(previewLayout(2, one, 2)).toEqual({ blue: 'p1', green: 'bot', red: 'p2', yellow: 'bot' });
+  });
+  it('gives each person two colours, opposite or side by side', () => {
+    expect(previewLayout(2, opp, 0)).toEqual({ blue: 'p1', green: 'p2', red: 'p1', yellow: 'p2' });
+    expect(previewLayout(2, adj, 0)).toEqual({ blue: 'p1', green: 'p2', red: 'p2', yellow: 'p1' });
+  });
+  it('seats three players with or without a bot, and four players in every house', () => {
+    expect(previewLayout(3, one, 0)).toEqual({ blue: 'p1', green: 'p2', red: 'p3', yellow: 'empty' });
+    expect(previewLayout(3, one, 1)).toEqual({ blue: 'p1', green: 'p2', red: 'p3', yellow: 'bot' });
+    expect(previewLayout(4, one, 0)).toEqual({ blue: 'p1', green: 'p2', red: 'p3', yellow: 'p4' });
   });
 });

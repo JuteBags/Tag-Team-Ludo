@@ -17,6 +17,7 @@
 - Roll for order before every game, then pick your house; in 2-player games each person can take two houses, opposite or side by side.
 - Classic rules: a 6 brings a token out and rolls again, captures send tokens home, stars are safe, exact roll to finish.
 - The pair move: on an even roll a pair moves half the roll each (4 → 2 + 2). Single tokens can't jump an enemy pair (they can stop on it), and only a pair can cut a pair.
+- Prefer classic Ludo? Turn **Doubles** off in Settings and every token moves alone, with nothing blocking.
 - A board that shows the way: arrows at every turn, and after each roll a marker where every possible move lands.
 - Rolls and kills with feel: a cup throw with a camera push-in, kill impacts, banners, sounds and vibration.
 - Glossy 2.5D look drawn in vector code (SVG + CSS 3D dice), so it stays sharp on any screen and the app stays small.

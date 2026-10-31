@@ -16,7 +16,7 @@
 - `docs/RULES.md` — the source of truth for every game rule, including the pair (jodi) rule. Change it together with the engine. The dice are specified only in `src/engine/dice.ts`: keep how rolls are made out of every `.md` file and the website.
 - `src/engine/` — pure rules engine, no DOM:
   - `board.ts` constants and progress → square mapping
-  - `rules.ts` legal moves, pairs/blocks, captures, threats
+  - `rules.ts` legal moves, pairs/blocks, captures, threats; the `singles` flag (doubles off, `GameState.singles`, RULES.md section I) turns pairs, locks and blocks off
   - `dice.ts` the dice: the full spec lives in its header comment
   - `game.ts` turn flow (`createGame` from seats, `newGame` for the classic game, `roll`, `move`, `finalRanking`, `ownerRanking` for people)
   - `bot.ts` heuristic bots at three levels (`PlayerState.level`, normal when missing): **Easy** often plays a random move and ignores danger; **Normal** is `scoreMove`; **Hard** adds danger to all its tokens, locks a double on a normal square only when it blocks someone, and lines up next-turn kills. Levels change only how moves are chosen, never the dice (`chooseMove`, `botStep`)
@@ -32,13 +32,13 @@
   - `dice.ts` CSS 3D die and roll animation
   - `gameScreen.ts` turn loop, bot pacing, human move choice (via landing markers), banners, pause menu, the keep-playing vote when someone finishes (RULES.md rule 41), saving for Continue, stats, the result screen with Share. Going to the background pauses and saves
   - `homeScreen.ts` home screen: VS COMPUTER and WITH FRIENDS (both offline), player count, CONTINUE GAME when a game is saved, the colour-blind symbols switch, Stats and Settings buttons in the top corners; Online/Private tiles are locked placeholders
-  - `sheets.ts` the Settings sheet (board theme, symbols, dice face, sound) and the Stats sheet (with a two-tap reset)
+  - `sheets.ts` the Settings sheet (board theme, doubles on/off, symbols, dice face, sound) and the Stats sheet (with a two-tap reset)
   - `themes.ts` board themes (Classic, Wooden, Dark) and the colour-blind symbols: both are CSS on `<html>` (`data-theme`, `.symbols`), and the board art reads CSS variables (`--b-*` at the top of `styles.css`), so switching is instant. A new theme is one more block of variables
   - `store.ts` device storage via Capacitor Preferences: the saved game (written at the start of every turn, removed when the game ends or you quit) and the stats
   - `native.ts` the Android back button (`@capacitor/app`; Escape on the web) and the screen wake lock during a game
   - `shareCard.ts` the result card: drawn on a canvas on the device, shared through Android's share menu (`@capacitor/share` and `@capacitor/filesystem`), the Web Share API, or downloaded
-  - `setup.ts` pure and tested: `GameConfig`, ranking rolls, the house-picking rules (opposite / side by side)
-  - `setupScreen.ts` one step per screen (no scrolling): options (houses each, bots for empty houses), roll for order (ties roll again), pick houses one by one; steps with nothing to choose are skipped
+  - `setup.ts` pure and tested: `GameConfig`, ranking rolls, the house-picking rules (opposite / side by side), `previewLayout` for the options preview
+  - `setupScreen.ts` one step per screen (no scrolling): options as plain questions under a 2×2 preview of who plays each house (colours each, bots for empty colours, bot level), roll for order (ties roll again), pick houses one by one; steps with nothing to choose are skipped
   - `avatars.ts` generated Fun Emoji avatars (CC BY 4.0, credited on the home screen); regenerate with `node tools/make-avatars.mjs`
 - `tests/` — Vitest specs: rules, turn flow, dice (incl. Monte Carlo), bot simulations, teams (`teams.test.ts`), setup rules (`setup.test.ts`), UI logic (`targets.test.ts`), and rule invariants checked on every move of hundreds of random, bot and two-house games (`invariants.test.ts`). `tests/sim/` holds the long all-bot simulations (`npm run sim`): a shared `harness.ts`, and one `*.sim.ts` file per kind of game (`single-house.sim.ts`, `double-house.sim.ts`, `bot-levels.sim.ts`), each listing its setups. `bot-levels.sim.ts` fails if Hard doesn't beat Normal, or Normal doesn't beat Easy, by a clear margin.
 - `mockups/` — static UI mockup and its PNG screenshots.

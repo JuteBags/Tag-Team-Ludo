@@ -5,7 +5,7 @@ import { COLORS, type BotLevel, type Color, type Seat } from '../engine';
 import { PROFILES, cssVars, icons, pawnSVG } from './art';
 import { dieMarkup, rollDie } from './dice';
 import { saveSetting, settings } from './settings';
-import { pickSequence, pickable, rankRolls, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
+import { pickSequence, pickable, previewLayout, rankRolls, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
 
 const DIE = 30;
 const ROLL_MS = 900;
@@ -14,6 +14,10 @@ const NEUTRAL = '--l:#7cb0ff;--m:#2f66df;--d:#173f9e;--t:#cfe0ff';
 const BOT_NAMES = (['green', 'red', 'yellow'] as const).map((c) => PROFILES[c].name);
 /** Where each house sits, as on the board. */
 const GRID: Color[] = ['green', 'red', 'blue', 'yellow'];
+/** A tiny 2x2 board with two houses marked, for the Opposite / Side by side buttons (GRID order). */
+const mini = (marked: number[]) =>
+  `<svg class="mini" viewBox="0 0 20 20" aria-hidden="true">${GRID.map((_, i) => `<rect x="${(i % 2) * 11}" y="${Math.floor(i / 2) * 11}" width="9" height="9" rx="2" fill="${marked.includes(i) ? '#ffd65a' : 'rgba(255,255,255,.25)'}"/>`).join('')}</svg>`;
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 type Step = 'opts' | 'roll' | 'pick';
 interface Person {
@@ -74,13 +78,13 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     <ol class="steps">${steps.map((s) => `<li data-s="${s}"><i></i><span>${{ opts: 'Options', roll: 'Order', pick: 'Houses' }[s]}</span></li>`).join('')}</ol>
     ${hasOptions ? `<section class="wiz" data-step="opts">
       <h3 class="disp">Game options</h3><p class="sub">Set these before rolling</p>
+      <div class="pv" aria-hidden="true">${GRID.map((c) => `<div class="pvh" data-c="${c}" style="${cssVars(c)}"><span class="pw">${pawnSVG(c)}</span><b></b></div>`).join('')}</div>
       <div class="sp opts">
-        ${count === 2 ? `<div class="row2"><span class="lbl">Houses each</span><div class="tg" data-k="houses"><button data-v="1" class="on">1 house</button><button data-v="2">2 houses</button></div></div>
-        <div class="row2 pairs" hidden><span class="lbl">Pairs</span><div class="tg" data-k="pairing"><button data-v="opposite" class="on">Opposite</button><button data-v="adjacent">Side by side</button></div></div>` : ''}
-        ${mode === 'pvp' ? `<div class="row2 bots"><span class="lbl">Add bots</span><div class="tg" data-k="bots"></div></div>` : ''}
-        <div class="row2 lvl"><span class="lbl">Bots play</span><div class="tg" data-k="level">${(['easy', 'normal', 'hard'] as const).map((l) => `<button data-v="${l}"${l === level ? ' class="on"' : ''}>${l[0]!.toUpperCase() + l.slice(1)}</button>`).join('')}</div></div>
+        ${count === 2 ? `<div class="row2 q"><span class="lbl">How many colours does each player play?</span><div class="tg" data-k="houses"><button data-v="1" class="on">1 colour</button><button data-v="2">2 colours</button></div><small class="qh">With 2 colours you move both; they're one team</small></div>
+        <div class="row2 q pairs" hidden><span class="lbl">Where are your two colours?</span><div class="tg" data-k="pairing"><button data-v="opposite" class="on">${mini([1, 2])}Opposite</button><button data-v="adjacent">${mini([2, 3])}Side by side</button></div></div>` : ''}
+        ${mode === 'pvp' ? `<div class="row2 q bots"><span class="lbl">Fill the empty colours with computer players?</span><div class="tg" data-k="bots"></div><small class="qh"></small></div>` : ''}
+        <div class="row2 q lvl"><span class="lbl">How good are the bots?</span><div class="tg" data-k="level">${(['easy', 'normal', 'hard'] as const).map((l) => `<button data-v="${l}"${l === level ? ' class="on"' : ''}>${l[0]!.toUpperCase() + l.slice(1)}</button>`).join('')}</div></div>
       </div>
-      <p class="note"></p>
       <button class="b3 green disp go" data-act="to-roll">ROLL FOR ORDER</button>
     </section>` : ''}
     <section class="wiz" data-step="roll">
@@ -122,22 +126,30 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
   });
 
   // ----- step 1: options -----
-  /** The "Add bots" choice: 0 up to the number of empty houses; hidden when none are empty. */
+  /** The bots choice: none up to the number of empty houses; hidden when none are empty. */
   const drawOptions = () => {
     const tg = el.querySelector<HTMLElement>('.tg[data-k=bots]');
     if (tg) {
       addedBots = Math.min(addedBots, emptyHouses());
-      tg.innerHTML = Array.from({ length: emptyHouses() + 1 }, (_, n) => `<button data-v="${n}"${n === addedBots ? ' class="on"' : ''}>${n}</button>`).join('');
+      tg.innerHTML = Array.from({ length: emptyHouses() + 1 }, (_, n) => `<button data-v="${n}"${n === addedBots ? ' class="on"' : ''}>${n ? plural(n, 'bot', 'bots') : 'No, just us'}</button>`).join('');
       q('.bots').hidden = emptyHouses() === 0;
+      const left = emptyHouses() - addedBots;
+      q('.bots .qh').textContent = left ? `${plural(left, 'colour stays', 'colours stay')} empty` : 'Every colour is played';
     }
     const pairs = el.querySelector<HTMLElement>('.pairs');
     if (pairs) pairs.hidden = rules.houses === 1;
     // The level only matters when there are bots.
     const lvl = el.querySelector<HTMLElement>('.lvl');
     if (lvl) lvl.hidden = mode === 'pvp' && addedBots === 0;
-    const total = count * rules.houses + (mode === 'pvp' ? addedBots : 0);
-    const note = el.querySelector('.note');
-    if (note) note.textContent = rules.houses === 2 ? 'All four houses in play: two each' : `${total} of 4 houses in play${mode === 'pvp' && addedBots ? `, ${addedBots} played by bots` : ''}`;
+    // The preview: who plays each house. Houses are picked later, so it shows the layout, not names.
+    const layout = previewLayout(count, rules, mode === 'pvp' ? addedBots : 0);
+    el.querySelectorAll<HTMLElement>('.pvh').forEach((h) => {
+      const slot = layout[h.dataset.c as Color];
+      // vs Computer, person 1 is you and everyone else is a bot.
+      const label = slot === 'empty' ? 'Empty' : slot === 'bot' || (mode === 'pvc' && slot !== 'p1') ? 'Bot' : mode === 'pvc' ? 'You' : `Player ${slot.slice(1)}`;
+      h.classList.toggle('empty', slot === 'empty');
+      h.querySelector('b')!.textContent = label;
+    });
   };
   el.querySelectorAll<HTMLElement>('.tg').forEach((tg) =>
     tg.addEventListener('click', (e) => {
@@ -294,7 +306,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     start.hidden = false;
     start.onclick = () => {
       const seats: Seat[] = COLORS.filter((c) => picks[c] !== undefined).map((c) => ({ color: c, owner: picks[c]!, bot: people[picks[c]!]!.bot, ...(people[picks[c]!]!.bot ? { level } : {}) }));
-      onStart({ mode, seats, first, names });
+      onStart({ mode, seats, first, names, ...(settings.doubles ? {} : { singles: true }) });
     };
   };
 

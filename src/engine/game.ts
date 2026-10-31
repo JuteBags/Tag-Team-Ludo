@@ -13,8 +13,11 @@ export interface Seat {
   level?: BotLevel;
 }
 
-/** A game with these seats (kept in clockwise turn order), started by `first` (default: the first seat). */
-export function createGame(seats: Seat[], first?: Color): GameState {
+/**
+ * A game with these seats (kept in clockwise turn order), started by `first` (default: the first seat).
+ * `singles` turns doubles off.
+ */
+export function createGame(seats: Seat[], first?: Color, singles = false): GameState {
   const players = [...seats]
     .sort((a, b) => COLORS.indexOf(a.color) - COLORS.indexOf(b.color))
     .map((s) => ({ ...s, tokens: [BASE, BASE, BASE, BASE] }));
@@ -28,12 +31,13 @@ export function createGame(seats: Seat[], first?: Color): GameState {
     ranking: [],
     turnCount: 0,
     event: null,
+    singles,
   };
 }
 
 /** The classic game: one colour per person, Blue first. */
-export function newGame(playerCount: 2 | 3 | 4, humans: Color[] = ['blue']): GameState {
-  return createGame(SEATS[playerCount].map((color, owner) => ({ color, owner, bot: !humans.includes(color) })));
+export function newGame(playerCount: 2 | 3 | 4, humans: Color[] = ['blue'], singles = false): GameState {
+  return createGame(SEATS[playerCount].map((color, owner) => ({ color, owner, bot: !humans.includes(color) })), undefined, singles);
 }
 
 function nextPlayer(state: GameState): number {
@@ -57,12 +61,12 @@ const passTurn = (state: GameState): Pick<GameState, 'current' | 'sixes' | 'turn
 export function roll(state: GameState, rng: Rng, forced?: number): GameState {
   if (state.phase !== 'roll') throw new Error(`cannot roll in phase ${state.phase}`);
   const color = state.players[state.current]!.color;
-  const dice = forced ?? rollDice(state.players, color, rng);
+  const dice = forced ?? rollDice(state.players, color, rng, state.singles);
   const sixes = dice === 6 ? state.sixes + 1 : 0;
 
   if (sixes === 3) return { ...state, ...passTurn(state), dice, event: { type: 'three-sixes', color } };
 
-  const moves = legalMoves(state.players, color, dice);
+  const moves = legalMoves(state.players, color, dice, state.singles);
   if (moves.length === 0) {
     const event = { type: 'no-move', color, dice } as const;
     // A six still earns another roll even when nothing can move.
