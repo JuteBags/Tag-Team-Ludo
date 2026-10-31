@@ -8,7 +8,8 @@ Each generation k (all resumable: a step whose output exists is skipped):
      moves with a temperature steered so that about --explore (10%) of its choices are not its best move,
      60%; the previous net 15%, Hard 15%, the old Hard 10%), the game's dice;
   2. learn: warm-start from the current net, train on this generation's and the previous one's shards
-     (labels are only the real results);
+     (labels: the real results; with --target lambda, ludo-label's lambda-returns along each game, valued
+     by the net that played it, plus --pl-weight of the real results);
   3. check: the new net against the current one and against Hard, on a fresh block of paired seeds per
      generation. It is promoted only if it beats the current net clearly (above 50% by more than the 95%
      interval) AND is no worse against Hard than the current net (within the interval).
@@ -21,6 +22,7 @@ import argparse, json, math, os, pathlib, shutil, subprocess, sys, time
 ENTITY = os.environ.get('LUDO_WANDB_ENTITY', 'ablations-tinycompany-ai')
 SELFPLAY = os.environ.get('LUDO_SELFPLAY', 'node tools/ai/dist/selfplay.mjs')
 ARENA = os.environ.get('LUDO_ARENA', 'node tools/ai/dist/arena.mjs')
+LABEL = os.environ.get('LUDO_LABEL', 'sim-rs/target/release/ludo-label')
 
 
 def run_parallel(cmds):
@@ -66,6 +68,10 @@ def main():
     ap.add_argument('--target', type=float, default=0.8)
     ap.add_argument('--workers', type=int, default=14, help='self-play processes; keep the box responsive (at most 16 of 20 cores)')
     ap.add_argument('--wandb', default='ladder-r1')
+    ap.add_argument('--seed-base', type=int, default=0, help='added to every self-play seed (a second ladder line plays other games)')
+    ap.add_argument('--labels', default='outcome', choices=['outcome', 'lambda'], help="lambda: ludo-label's lambda-return targets (train.py --target lambda)")
+    ap.add_argument('--lam', type=float, default=0.7, help='lambda of the lambda-return targets')
+    ap.add_argument('--pl-weight', type=float, default=0.1, help='with --labels lambda, this much PL on the real finishing order')
     a = ap.parse_args()
     global DICE
     DICE = ' --dice fair' if a.dice == 'fair' else ''
@@ -95,7 +101,7 @@ def main():
         fast = f'{a.race}:{a.chance}:{a.cut}'  # how the nets search in self-play (the checks use the defaults)
         pool = f"net:{cur}:1:3:{temp}:{fast}:60,net:{prev}:1:3:{temp}:{fast}:15,net:{a.hard}:1:15,hard:10"
         per = math.ceil(n / a.workers)
-        todo = [f"{SELFPLAY} --games {per} --seed {k * 1000 + w} --pool {pool} --keep {a.keep} --commit {commit} --out {gd}/shard-{w}.bin{DICE}"
+        todo = [f"{SELFPLAY} --games {per} --seed {a.seed_base + k * 1000 + w} --pool {pool} --keep {a.keep} --commit {commit} --out {gd}/shard-{w}.bin{DICE}"
                 for w in range(a.workers) if not (gd / f'shard-{w}.bin').exists()]
         sampled = off = 0
         if todo:
@@ -110,12 +116,21 @@ def main():
             # Off-best share grows with the temperature; move it toward the target, at most 2x per generation.
             st['temp'] = temp * min(2.0, max(0.5, (a.explore / max(explored, 1e-3)) ** 0.7))
         t_play = time.time() - t0
-        # 2. learn (this generation and the previous one)
+        # 2. learn (this generation and the previous one, when this ladder played it)
         new = gd / 'net.json'
-        shards = f'{gd}/shard-*.bin' + (f',{d}/gen-{k - 1}/shard-*.bin' if k > 1 else '')
+        prev_dir = d / f'gen-{k - 1}'
+        shards = f'{gd}/shard-*.bin' + (f',{prev_dir}/shard-*.bin' if k > 1 and any(prev_dir.glob('shard-*.bin')) else '')
+        target = []
+        if a.labels == 'lambda':
+            # lambda-return targets for this generation's shards, valued by the net that played them (cur)
+            todo_l = [f'{LABEL} --shard {f} --net {cur} --lambda {a.lam} --out {f}.targets --threads 1'
+                      for f in sorted(gd.glob('shard-*.bin')) if not pathlib.Path(f'{f}.targets').exists()]
+            if todo_l:
+                run_parallel(todo_l)
+            target = ['--target', 'lambda', '--pl-weight', str(a.pl_weight)]
         if not new.exists():
             subprocess.run([sys.executable, '-u', 'tools/ai/train.py', '--shards', shards, '--init', cur, '--out', str(new),
-                            '--hidden', '128', '--layers', '2', '--epochs', '3', '--lr', '1e-3', '--wandb', f'{a.wandb}-gen{k}', '--group', 'ladder'], check=True)
+                            '--hidden', '128', '--layers', '2', '--epochs', '3', '--lr', '1e-3', '--wandb', f'{a.wandb}-gen{k}', '--group', 'ladder', *target], check=True)
         t_learn = time.time() - t0 - t_play
         # 3. check
         block = 1_000_000 + k * a.seeds  # fresh dice for every generation's checks
