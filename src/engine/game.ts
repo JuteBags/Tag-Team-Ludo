@@ -2,13 +2,15 @@
 import { BASE, COLORS, FINISHED, SEATS, type Color } from './board';
 import { rollDice } from './dice';
 import { applyMove, isDone, legalMoves } from './rules';
-import type { GameState, Move, Rng } from './types';
+import type { BotLevel, GameState, Move, Rng } from './types';
 
 /** One colour in a game and who plays it. Colours with the same owner are one person's houses. */
 export interface Seat {
   color: Color;
   owner: number;
   bot: boolean;
+  /** A bot's level (normal when missing). */
+  level?: BotLevel;
 }
 
 /** A game with these seats (kept in clockwise turn order), started by `first` (default: the first seat). */

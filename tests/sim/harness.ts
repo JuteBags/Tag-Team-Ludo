@@ -25,7 +25,7 @@ export interface Setup {
   make: () => GameState;
 }
 
-interface Stats {
+export interface Stats {
   games: number; unfinished: number; rolls: number; sixes: number; tripleSix: number; noMove: number;
   kills: number; pairKills: number; lostProgress: number; pairMoves: number; moves: number;
   killChance: number; killHit: number; escChance: number; escHit: number; finChance: number; finHit: number;
@@ -123,8 +123,15 @@ export const METRICS: { key: string; label: string; pct?: boolean; f: (s: Stats)
   { key: 'seatIdleStreak', label: 'Player: longest run of turns without a move', f: (s) => s.seatIdleStreak },
 ];
 
-/** Plays every setup with game dice and fair dice, checks them, and prints the table and the SIM_JSON line. */
-export function runSimulation(title: string, setups: Setup[]) {
+/** One setup's results, by column ("2p weighted", "2p fair", ...). */
+export type Results = Record<string, Stats>;
+export const winRate = (s: Stats) => s.seatWins / s.games;
+
+/**
+ * Plays every setup with game dice and fair dice, checks them, and prints the table and the SIM_JSON
+ * line. `check` runs last, on all the results, for a file's own expectations.
+ */
+export function runSimulation(title: string, setups: Setup[], check?: (results: Results) => void) {
   describe(`${title}: ${GAMES} all-bot games per setup`, () => {
     const results: Record<string, Stats> = {};
 
@@ -156,6 +163,7 @@ export function runSimulation(title: string, setups: Setup[]) {
         setups: Object.fromEntries(cols.map((c) => [c, Object.fromEntries(METRICS.map((m) => [m.key, m.f(results[c]!)]))])),
       };
       console.log(`SIM_JSON ${JSON.stringify(json)}`);
+      check?.(results);
     });
   });
 }
