@@ -1,8 +1,8 @@
 // Parity traces: what the TypeScript engine does, step by step, for ports of the rules (Rust, GPU) to
 // reproduce exactly.
-//   node trace.mjs --games 1000 --seed 1 --out traces.jsonl [--full] [--modes 2p,4p,...]
+//   node trace.mjs --games 1000 --seed 1 --out traces.jsonl [--from 0] [--full] [--modes 2p,4p,...]
 //                  [--policies random,easy,normal,hard]
-// Game g: rng = seeded(seed * 1_000_003 + g), mode = modes[g % modes], the person at owner o plays
+// Games g = from .. from + games - 1 (--from lets workers split one seed). Game g: rng = seeded(seed * 1_000_003 + g), mode = modes[g % modes], the person at owner o plays
 // policies[(g + o) % policies], the colour at index g % colours starts. One JSON line per game:
 // {g, seed, mode, first, policies, steps, ranking, hash}; with --full also `trace`, the list of steps.
 // A step is the state before it, then what happened:
@@ -18,6 +18,7 @@ import { MODES, flags, policy } from './common';
 
 const a = flags(process.argv.slice(2));
 const games = Number(a.games ?? 1000);
+const from = Number(a.from ?? 0);
 const seed = Number(a.seed ?? 1);
 const full = 'full' in a;
 const modes = (a.modes ?? Object.keys(MODES).join(',')).split(',');
@@ -35,7 +36,7 @@ function fnv1a(text: string, h = 0x811c9dc5): number {
 
 const lines: string[] = [];
 const t0 = Date.now();
-for (let g = 0; g < games; g++) {
+for (let g = from; g < from + games; g++) {
   const gameSeed = seed * 1_000_003 + g;
   const rng = seeded(gameSeed);
   const mode = modes[g % modes.length]!;
