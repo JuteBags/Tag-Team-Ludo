@@ -1,6 +1,6 @@
 """Trains the value net (src/engine/ai/net.ts) on self-play shards (tools/ai/selfplay.ts).
 
-    python train.py --shards 'data/*.bin' --out net.json [--inputs hand|all] [--hidden 128] [--epochs 6]
+    python train.py --shards 'data/*.bin' --out net.json [--inputs hand|raw|all] [--hidden 128] [--margin 0.2]
 
 Each colour gets a score from a shared MLP; the loss is Plackett-Luce over the finishing order of the
 colours still playing at that position, so P(first) = softmax(scores). Games are split into train and
@@ -16,7 +16,8 @@ F = 19  # hand features (features.ts); the rest of D is the raw block (encode.ts
 
 
 def load(path):
-    """One shard -> (X [P,4,D] float32, colours [P], first-place-ready order [P,4] with -1 padding, game ids)."""
+    """One shard -> X [P,4,D], finishing order of the colours still playing [P,4] (-1 padded), steps
+    each colour had left at the end / 228 [P,4], game ids, D."""
     buf = open(path, 'rb').read()
     (hl,) = struct.unpack_from('<I', buf, 0)
     head = json.loads(buf[4:4 + hl])
@@ -28,28 +29,33 @@ def load(path):
     X = np.frombuffer(buf, np.float32, P * 4 * D, off).reshape(P, 4, D)
     M = np.frombuffer(buf, np.int32, P * 4, off + P * 4 * D * 4).reshape(P, 4)
     order = np.full((P, 4), -1, np.int64)
+    left = np.zeros((P, 4), np.float32)
     for i, (g, _turn, n, _cur) in enumerate(M):
+        left[i, :n] = np.array(games[g].get('left', [0] * n), np.float32) / 228
         o = [c for c in games[g]['order'] if X[i, c, 2] < 0.999]  # colours already home are out
         order[i, :len(o)] = o
     gid = np.array([hash((head['seed'], int(g))) & 0x7FFFFFFF for g in M[:, 0]])
     ok = np.array([games[g]['over'] for g in M[:, 0]])
-    return X[ok], order[ok], gid[ok], D
+    return X[ok], order[ok], left[ok], gid[ok], D
 
 
 class Scorer(nn.Module):
+    """Shared MLP per colour. `lin` is the value path (exported); `margin` is a training-only head on
+    the last hidden layer that predicts the steps left at the end, a denser signal than who won."""
+
     def __init__(self, inputs, hidden, layers):
         super().__init__()
         self.inputs = inputs
         dims = [len(inputs)] + [hidden] * layers + [1]
         self.lin = nn.ModuleList(nn.Linear(a, b) for a, b in zip(dims, dims[1:]))
+        self.margin = nn.Linear(hidden, 1)
 
-    def forward(self, x):  # x: [B,4,D] -> scores [B,4]
+    def forward(self, x, with_margin=False):  # x: [B,4,D] -> scores [B,4] (and margins [B,4])
         a = x[..., self.inputs]
-        for i, l in enumerate(self.lin):
-            a = l(a)
-            if i < len(self.lin) - 1:
-                a = torch.tanh(a)
-        return a.squeeze(-1)
+        for l in self.lin[:-1]:
+            a = torch.tanh(l(a))
+        s = self.lin[-1](a).squeeze(-1)
+        return (s, self.margin(a).squeeze(-1)) if with_margin else s
 
 
 def pl_loss(scores, order):
@@ -68,7 +74,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--shards', required=True)
     ap.add_argument('--out', required=True)
-    ap.add_argument('--inputs', default='all', choices=['hand', 'all'])
+    ap.add_argument('--inputs', default='all', choices=['hand', 'raw', 'all'])
+    ap.add_argument('--margin', type=float, default=0.0, help='weight of the steps-left head (0 = off)')
     ap.add_argument('--hidden', type=int, default=128)
     ap.add_argument('--layers', type=int, default=2)
     ap.add_argument('--epochs', type=int, default=6)
@@ -79,15 +86,19 @@ def main():
     dev = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     parts = [load(p) for p in sorted(glob.glob(a.shards))]
-    D = parts[0][3]
+    D = parts[0][4]
     X = torch.from_numpy(np.concatenate([p[0] for p in parts]))
     O = torch.from_numpy(np.concatenate([p[1] for p in parts]))
-    G = np.concatenate([p[2] for p in parts])
+    L = torch.from_numpy(np.concatenate([p[2] for p in parts]))
+    G = np.concatenate([p[3] for p in parts])
+    del parts
     val = torch.from_numpy((G % 20) == 0)  # 5% of games
     print(f'POSITIONS {len(X)} train {int((~val).sum())} val {int(val.sum())} D {D}', flush=True)
-    Xt, Ot, Xv, Ov = X[~val].to(dev), O[~val].to(dev), X[val].to(dev), O[val].to(dev)
+    Xt, Ot, Lt, Xv, Ov = X[~val].to(dev), O[~val].to(dev), L[~val].to(dev), X[val].to(dev), O[val].to(dev)
+    del X
 
-    inputs = list(range(F)) if a.inputs == 'hand' else list(range(D))
+    # hand: the 19 hand features; raw: the token blocks plus the turn order; all: everything.
+    inputs = {'hand': list(range(F)), 'raw': list(range(14, 18)) + list(range(F, D)), 'all': list(range(D))}[a.inputs]
     net = Scorer(torch.tensor(inputs, device=dev), a.hidden, a.layers).to(dev)
     if a.init:
         js = json.load(open(a.init))
@@ -136,7 +147,12 @@ def main():
         perm = torch.randperm(len(Xt), device=dev)
         for i in range(0, len(Xt), a.batch):
             b = perm[i:i + a.batch]
-            loss, _ = pl_loss(net(Xt[b]), Ot[b])
+            sc, mg = net(Xt[b], with_margin=True)
+            loss, _ = pl_loss(sc, Ot[b])
+            if a.margin:
+                # Colours at the table have a turn-order flag set (padding colours are all zeros).
+                live = Xt[b, :, 14:18].sum(-1) > 0
+                loss = loss + a.margin * ((mg - Lt[b]) ** 2 * live).sum() / live.sum()
             opt.zero_grad()
             loss.backward()
             opt.step()
