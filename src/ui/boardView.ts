@@ -375,6 +375,7 @@ export class BoardView {
       const last = i === pts.length - 1;
       const to = offs.map(([ox, oy]) => ({ x: pt[0] + ox, y: pt[1] + oy, s }));
       // The killing hop is a big leap that slams down.
+      if (document.documentElement.dataset.theme === 'tron' && !calm()) this.lightTrail(from[0]!, to[0]!, PALETTE[m.color].m);
       await this.hop(keys, from, to, ((m.from < 0 ? 2 : 1) * HOP_MS * (last && kill ? 2.2 : 1)) / speed, last && kill ? 46 : 14);
       if (!(last && kill)) sfx.hop();
       void this.squash(keys, last ? 0.22 : 0.1, 140 / speed);
@@ -440,6 +441,16 @@ export class BoardView {
         this.set(k, { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e - height * air, s: a.s + (b.s - a.s) * e, q: -0.12 * air, r: t >= 1 ? 0 : r });
       });
     });
+  }
+
+  /** Tron: a line of light from one square to the next in the pawn's colour, fading out (a light-cycle trail). */
+  private lightTrail(a: Place, b: Place, color: string) {
+    const l = document.createElementNS(NS, 'line');
+    for (const [k, v] of [['x1', a.x], ['y1', a.y + 8], ['x2', b.x], ['y2', b.y + 8]] as const) l.setAttribute(k, String(v));
+    l.setAttribute('class', 'ltrail');
+    l.style.stroke = color;
+    this.deco.appendChild(l);
+    l.animate([{ opacity: 1, strokeWidth: 7 }, { opacity: 0.8, strokeWidth: 5, offset: 0.3 }, { opacity: 0, strokeWidth: 2 }], { duration: 1600, easing: 'ease-out' }).finished.finally(() => l.remove());
   }
 
   /** A captured pawn thrown home: up high, growing as it nears the camera, spinning, then dropping in. */
