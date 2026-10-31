@@ -1,6 +1,5 @@
 //! tools/ai/common.ts MODES and tools/ai/trace.ts: the same games, step lines, hash and JSON line.
 use crate::bot::Policy;
-use crate::dice::roll_face;
 use crate::game::{Game, PHASE_NAME, PHASE_OVER, PHASE_ROLL};
 use crate::rng::{Rng, Streams};
 use crate::rules::{Move, MoveList, COLOR_INITIAL, KIND_INITIAL};
@@ -72,8 +71,9 @@ pub struct GameResult {
 
 /// One trace.ts game: `hash_steps` builds the step lines (needed for the hash); without it the game
 /// is just played (speed runs).
-pub fn play_traced(seats: &[(u8, u8)], singles: bool, policies: &[Policy], first: usize, seed: i64, format: u32, hash_steps: bool, full: bool) -> GameResult {
+pub fn play_traced(seats: &[(u8, u8)], singles: bool, policies: &[Policy], first: usize, seed: i64, format: u32, hash_steps: bool, full: bool, fair: bool) -> GameResult {
     let mut st = Streams::new(Rng::seeded(seed), seed, format);
+    st.fair = fair;
     let mut g = Game::new(seats, singles);
     g.current = first;
     let mut ml = MoveList::new();
@@ -83,7 +83,7 @@ pub fn play_traced(seats: &[(u8, u8)], singles: bool, policies: &[Policy], first
     let mut steps = 0u32;
     while g.phase != PHASE_OVER && steps < 50000 {
         if g.phase == PHASE_ROLL {
-            let face = roll_face(&g.b, g.current_color(), st.dice(), g.singles, &mut ml);
+            let face = st.roll_face(&g.b, g.current_color(), g.singles, &mut ml);
             if hash_steps {
                 state_key(&g, &mut line);
                 write!(line, " R{face}").unwrap();
@@ -135,11 +135,14 @@ pub fn play_traced(seats: &[(u8, u8)], singles: bool, policies: &[Policy], first
 }
 
 /// The JSON line trace.ts writes for game `g` (same key order, no spaces).
-pub fn json_line(g: u64, seed: i64, mode: &str, first: usize, policies: &[&str], r: &GameResult, full: bool, format: u32) -> String {
+pub fn json_line(g: u64, seed: i64, mode: &str, first: usize, policies: &[&str], r: &GameResult, full: bool, format: u32, fair: bool) -> String {
     let mut s = String::with_capacity(160);
     s.push('{');
     if format >= 2 {
         write!(s, "\"v\":{format},").unwrap();
+    }
+    if fair {
+        s.push_str("\"dice\":\"fair\",");
     }
     write!(s, "\"g\":{g},\"seed\":{seed},\"mode\":\"{mode}\",\"first\":{first},\"policies\":[").unwrap();
     for (i, p) in policies.iter().enumerate() {

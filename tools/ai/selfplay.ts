@@ -67,4 +67,4 @@ buf.set(new Uint8Array(X.buffer), 4 + head.length);
 buf.set(new Uint8Array(M.buffer), 4 + head.length + X.byteLength);
 writeFileSync(a.out ?? 'shard.bin', buf);
 const capped = header.games.filter((x) => !(x as { over: boolean }).over).length;
-console.log(`DONE ${games} games ${xs.length} positions ${((games * 1000) / (Date.now() - t0)).toFixed(1)} games/s capped ${capped} sampled ${searchStats.sampled} offBest ${searchStats.offBest}`);
+console.log(`DONE ${games} games ${xs.length} positions ${((games * 1000) / (Date.now() - t0)).toFixed(1)} games/s capped ${capped} sampled ${searchStats.sampled} offBest ${searchStats.offBest} probes ${searchStats.probes} cuts ${searchStats.cuts}`);

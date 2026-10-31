@@ -205,7 +205,7 @@ pub fn choose_move(g: &Game, level: Level, rng: &mut Rng) -> usize {
     best
 }
 
-/// common.ts policy(): random | easy | normal | hard | net:<weights.json>[:depth[:theirK[:temperature[:race[:chance]]]]].
+/// common.ts policy(): random | easy | normal | hard | net:<weights.json>[:depth[:theirK[:temperature[:race[:chance[:cut]]]]]].
 /// The weights file can be a value net or linear rules (eval.rs); both play by search.rs.
 #[derive(Clone)]
 pub enum Policy {
@@ -237,7 +237,7 @@ impl Policy {
                 let parts: Vec<&str> = s.split(':').collect();
                 let num = |i: usize, d: f64| parts.get(i).map(|x| x.parse::<f64>().unwrap()).unwrap_or(d);
                 let race = parts.get(5) == Some(&"1");
-                let opts = crate::search::SearchOptions { depth: num(2, 1.0) as u32, chance: num(6, 2.0) as u32, their_k: num(3, 3.0) as usize, race };
+                let opts = crate::search::SearchOptions { depth: num(2, 1.0) as u32, chance: num(6, 2.0) as u32, their_k: num(3, 3.0) as usize, race, cut: num(7, 0.0) };
                 Policy::Search { eval: load_eval(parts[1]), opts, temperature: num(4, 0.0) }
             }
             _ => panic!("unknown policy {s}"),

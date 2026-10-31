@@ -127,6 +127,9 @@ pub fn weights(b: &Board, color: u8, rng: &mut Rng, singles: bool, ml: &mut Move
     out
 }
 
+/// common.ts FAIR: [1, 1, 1, 1, 1, 1].map((x) => x / 6).
+pub const FAIR: [f64; 6] = [1.0 / 6.0; 6];
+
 pub fn sample_face(weights: &[f64; 6], rng: &mut Rng) -> u8 {
     let mut r = rng.next();
     for (i, &w) in weights.iter().enumerate().take(5) {

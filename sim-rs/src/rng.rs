@@ -37,11 +37,23 @@ pub fn dice_rng_for(game_seed: i64) -> Rng {
 pub struct Streams {
     pub rng: Rng,
     dice: Option<Rng>,
+    /// common.ts DiceMode 'fair': every face 1 in 6 (one draw from the dice stream, no shuffle draws).
+    /// The engine trains and is measured on fair dice; false = the app's dice (dice.rs weights).
+    pub fair: bool,
 }
 
 impl Streams {
     pub fn new(rng: Rng, game_seed: i64, format: u32) -> Self {
-        Streams { rng, dice: if format >= 2 { Some(dice_rng_for(game_seed)) } else { None } }
+        Streams { rng, dice: if format >= 2 { Some(dice_rng_for(game_seed)) } else { None }, fair: false }
+    }
+
+    /// common.ts rollFace(s, dice, mode): the next face for `color`.
+    pub fn roll_face(&mut self, b: &crate::rules::Board, color: u8, singles: bool, ml: &mut crate::rules::MoveList) -> u8 {
+        if self.fair {
+            crate::dice::sample_face(&crate::dice::FAIR, self.dice())
+        } else {
+            crate::dice::roll_face(b, color, self.dice(), singles, ml)
+        }
     }
     /// The stream the dice draw from.
     #[inline]
