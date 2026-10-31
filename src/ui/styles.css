@@ -502,8 +502,10 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 /* With the reward panel the column moves up and the rows are tighter, so SHARE stays on screen. */
 .result:has(.reward) .trophy{top:22px;width:170px;margin-left:-85px}
 .result:has(.reward) .stars{top:176px}
-.result:has(.reward) .rescol{top:214px}
+.result:has(.reward) .rescol{top:204px}
 .result:has(.reward) .rank{padding:8px 10px}
+.result:has(.reward) .row{height:50px}
+.result:has(.reward) .row+.row{margin-top:6px}
 .result:has(.reward) .wbtns{margin-top:12px}
 .result:has(.reward) .sharebtn{margin-top:10px;height:46px}
 .reward{margin-top:10px;padding:10px 14px;border-radius:18px;background:rgba(0,0,0,.35);box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.5)}
@@ -517,6 +519,21 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .reward .goal .bar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#ffd23f,#ff9a1f)}
 .reward .goal em{font-style:normal;opacity:.85}
 .reward .goal.ready span{color:#7af06a}
+.reward .achs{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.reward .achs:empty{display:none}
+.reward .ach{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:10px;font-size:12px;font-weight:900;background:linear-gradient(180deg,#ffe58a,#ffbf2e);color:#5a2d00}
+.reward .ach em{font-style:normal;color:#8a3a00}
+/* Achievements in the Stats sheet. */
+.achh{margin:14px 0 6px;font-size:18px;font-weight:400;color:#ffd65a;text-align:left}
+.achlist{display:flex;flex-direction:column;gap:6px;max-height:230px;overflow-y:auto;text-align:left}
+.ar{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:12px;background:rgba(0,0,0,.25)}
+.ar.done{background:rgba(255,214,90,.16);box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.5)}
+.ar .ai{font-size:18px;width:22px;text-align:center}.ar:not(.done) .ai{opacity:.6}
+.ar .at{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+.ar .at b{font-size:13.5px}.ar .at small{font-size:11px;font-weight:700;opacity:.8}
+.ar .bar{display:block;height:5px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden;margin-top:2px}
+.ar .bar i{display:block;height:100%;background:linear-gradient(90deg,#ffd23f,#ff9a1f)}
+.ar em{font-style:normal;font-size:12px;font-weight:900;color:#ffd65a;display:flex;align-items:center;gap:4px;white-space:nowrap}
 /* The Store screen. */
 .store .devnote{position:absolute;top:70px;left:0;right:0;text-align:center;font-size:11.5px;font-weight:900;color:#7af06a}
 .store .shelves{position:absolute;top:92px;left:20px;right:20px}

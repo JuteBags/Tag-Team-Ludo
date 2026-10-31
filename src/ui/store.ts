@@ -79,8 +79,8 @@ export const EMPTY_STATS: Stats = { played: 0, wins: 0, best: 0, kills: 0, pairs
 export const loadStats = () => read<Partial<Stats>>(STATS).then((s) => ({ ...EMPTY_STATS, ...s }));
 export const resetStats = () => drop(STATS);
 
-/** Adds one finished game to the totals. */
-export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; pairs: number; sixes?: number }) {
+/** Adds one finished game to the totals and returns the new totals. */
+export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; pairs: number; sixes?: number }): Promise<Stats> {
   const s = await loadStats();
   if (g.mode === 'pvp') s.friends++;
   else {
@@ -94,4 +94,5 @@ export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills:
     s.bestStreak = Math.max(s.bestStreak, s.streak);
   }
   await write(STATS, s);
+  return s;
 }
