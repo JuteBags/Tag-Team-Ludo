@@ -9,10 +9,16 @@ interface Settings {
   /** Which face of the landed die is the roll: the one facing up, or the one facing you. */
   diceFace: DiceFace;
   throwStyle: ThrowStyle;
+  /** Board look (themes.ts). */
+  theme: Theme;
+  /** A shape for each colour on its pawns and base, for colour-blind players. */
+  symbols: boolean;
 }
 
+export type Theme = 'classic' | 'wood' | 'dark';
+
 const KEY = 'ludo-settings';
-const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup' };
+const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false };
 
 function load(): Settings {
   try {

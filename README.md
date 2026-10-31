@@ -11,7 +11,7 @@
 
 ![Design mockups: home screen, a game in progress and the winner screen](docs/assets/design-showcase.png)
 
-## What's in v1.0
+## What's in the game
 
 - Two offline modes: **vs Computer** (you against 1-3 bots) and **With friends** (2-4 people passing one phone).
 - Roll for order before every game, then pick your house; in 2-player games each person can take two houses, opposite or side by side.
@@ -20,6 +20,10 @@
 - A board that shows the way: arrows at every turn, and after each roll a marker where every possible move lands.
 - Rolls and kills with feel: a cup throw with a camera push-in, kill impacts, banners, sounds and vibration.
 - Glossy 2.5D look drawn in vector code (SVG + CSS 3D dice), so it stays sharp on any screen and the app stays small.
+- The palace: the centre of the board is a castle, and each colour's tokens are welcomed home with their own short cutscene.
+- Keep playing or stop: when someone finishes, the players still in vote on whether to play on for the next place.
+- Continue an unfinished game, even after the app was closed. The screen stays awake during a game, and the back button pauses.
+- Share your result as an image, see your stats, pick a board (Classic, Wooden, Dark), and turn on colour-blind symbols (● ▲ ■ ◆) from the home screen.
 
 Online play and private rooms are planned for a later update.
 

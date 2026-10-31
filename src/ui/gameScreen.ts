@@ -1,6 +1,6 @@
 // Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
 // a person passing the device; a person with two houses plays both colours' turns.
-import { FINISHED, chooseMove, createGame, cryptoRng, move, ownerRanking, roll, type Color, type GameState, type Move, type Rng } from '../engine';
+import { FINISHED, chooseMove, createGame, cryptoRng, isDone, move, ownerRanking, roll, type Color, type GameState, type Move, type Rng } from '../engine';
 import { PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
 import { playCutscene } from './palace';
@@ -8,12 +8,16 @@ import { dieMarkup, rollDie } from './dice';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
 import type { GameConfig } from './setup';
+import { keepAwake } from './native';
+import { drawCard, shareCard } from './shareCard';
+import { clearGame, recordGame, saveGame, type SavedGame } from './store';
 import { moveTargets, whyStuck, type Target } from './targets';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
 const DIE = 38;
 const ROLL_MS = 1150;
 const PLACES = ['', '1ST', '2ND', '3RD', '4TH'];
+const ORD = ['', '1st', '2nd', '3rd', '4th'];
 const faceLabel = () => (settings.diceFace === 'top' ? 'DICE: TOP FACE' : 'DICE: FRONT FACE');
 
 export type Exit = 'home' | 'again';
@@ -32,9 +36,24 @@ export class GameScreen {
   private lastFace = new Map<Color, number>();
   /** The person whose turn it was last, to announce a hand-over in "With friends". */
   private lastOwner = -1;
+  /** This game's kills and pairs formed by the person playing vs Computer, for the stats. */
+  private kills = 0;
+  private pairs = 0;
+  /** The players still in voted to stop: the game ends with the places as they stand. */
+  private ended = false;
+  /** Pauses the game and saves it when the app goes to the background. */
+  private onHidden = () => {
+    if (document.visibilityState !== 'hidden' || this.disposed) return;
+    this.save();
+    if (!this.el.querySelector('.cs, .vote')) this.openMenu();
+  };
 
-  constructor(readonly config: GameConfig, private exit: (to: Exit) => void, private rng: Rng = cryptoRng) {
-    this.state = createGame(config.seats, config.first);
+  /** Starts a game from `config`, or picks up `saved`. */
+  constructor(readonly config: GameConfig, private exit: (to: Exit) => void, private rng: Rng = cryptoRng, saved?: SavedGame) {
+    this.state = saved?.state ?? createGame(config.seats, config.first);
+    this.kills = saved?.kills ?? 0;
+    this.pairs = saved?.pairs ?? 0;
+    for (const [c, f] of saved?.faces ?? []) this.lastFace.set(c, f);
     const people = config.names.length;
     this.el.className = 'screen game';
     this.el.innerHTML = `
@@ -47,7 +66,31 @@ export class GameScreen {
     this.view = new BoardView(this.state.players, 370, this.state.players.filter((p) => !p.bot).map((p) => p.color));
     this.el.querySelector('.gboard')!.appendChild(this.view.el);
     this.el.querySelector('[data-act=menu]')!.addEventListener('click', () => this.openMenu());
+    // A continued game shows the dice as they were.
+    for (const [c, f] of this.lastFace) this.diceBox(c).innerHTML = dieMarkup(f, DIE);
+    keepAwake(true);
+    document.addEventListener('visibilitychange', this.onHidden);
     void this.run();
+  }
+
+  /** Saves the game so it can be continued after the app closes. Done at the start of every turn. */
+  private save() {
+    if (this.disposed || this.ended || this.state.phase !== 'roll') return;
+    void saveGame({ v: 1, config: this.config, state: this.state, kills: this.kills, pairs: this.pairs, faces: [...this.lastFace], savedAt: Date.now() });
+  }
+
+  /** The Android back button: skip a cutscene, close the pause menu, leave the result, or pause. */
+  back(): boolean {
+    const cs = this.el.querySelector<HTMLElement>('.cs');
+    if (cs) cs.click();
+    else if (this.el.querySelector('.vote')) {
+      // The vote needs an answer.
+    } else if (this.el.querySelector('.result')) this.exit('home');
+    else if (this.el.querySelector('.menu-ov')) {
+      this.el.querySelector('.menu-ov')!.remove();
+      this.resume();
+    } else this.openMenu();
+    return true;
   }
 
   private panelHTML(c: Color, bot: boolean) {
@@ -79,7 +122,8 @@ export class GameScreen {
 
   private async run() {
     await this.sleep(400);
-    while (!this.disposed && this.state.phase !== 'over' && !this.humanDone()) {
+    while (!this.disposed && !this.ended && this.state.phase !== 'over' && !this.humanDone()) {
+      this.save();
       const p = this.cur;
       this.markActive(p.color);
       if (p.bot) await this.botTurn(p.color);
@@ -150,6 +194,7 @@ export class GameScreen {
   }
 
   private async doMove(m: Move) {
+    const doneBefore = this.doneOwners();
     this.state = move(this.state, m);
     await this.view.animateMove(m, this.state.players, this.speed);
     const ev = this.state.event;
@@ -161,6 +206,66 @@ export class GameScreen {
     else if (m.finishes && human) await playCutscene(this.el, m.color, player.tokens, this.speed);
     else if (m.finishes) this.toast('HOME!', m.color, 'home');
     if (extra && human) this.toast('Roll again', m.color);
+    if (human && this.config.mode === 'pvc') this.count(m);
+    // Someone just finished: the people still playing decide whether to play on for the next place.
+    const fresh = this.doneOwners().filter((o) => !doneBefore.includes(o));
+    if (fresh.length && this.state.phase !== 'over' && !this.humanDone()) {
+      const voters = [...new Set(this.state.players.filter((p) => !p.bot && !isDone(p)).map((p) => p.owner))].filter((o) => !this.doneOwners().includes(o));
+      // Only bots left: nobody is watching for the rest of the places.
+      if (!voters.length || !(await this.vote(fresh[0]!, this.doneOwners().length, voters))) this.ended = true;
+    }
+  }
+
+  /** People with every one of their colours home. */
+  private doneOwners() {
+    const owners = [...new Set(this.state.players.map((p) => p.owner))];
+    return owners.filter((o) => this.state.players.filter((p) => p.owner === o).every(isDone));
+  }
+
+  /** Stats for the person playing vs Computer: kills, and pairs formed by landing on their own token. */
+  private count(m: Move) {
+    this.kills += m.captures.length;
+    const tokens = this.state.players.find((p) => p.color === m.color)!.tokens;
+    if (m.kind !== 'pair' && m.to >= 0 && m.to <= 50 && tokens.filter((t) => t === m.to).length === 2) this.pairs++;
+  }
+
+  /**
+   * Asks the people still playing whether to play on now that `owner` finished in `place`. Everyone
+   * has to agree to play on: one "stop" ends the game with the places as they stand. Bots always play on.
+   */
+  private vote(owner: number, place: number, voters: number[]): Promise<boolean> {
+    return new Promise((resolve) => {
+      const c = this.state.players.find((p) => p.owner === owner)!.color;
+      const next = ORD[place + 1]!;
+      const one = voters.length === 1;
+      const ov = document.createElement('div');
+      ov.className = 'menu-ov vote';
+      const who = (o: number) => this.state.players.find((p) => p.owner === o)!.color;
+      ov.innerHTML = `<div class="box"><div class="vav" style="${cssVars(c)}">${avatarSVG(c)}<span class="medal m${place}">${place}</span></div>
+        <h2>${this.config.names[owner]} finished ${ORD[place]}!</h2>
+        <p class="sub">${one ? `Keep playing for ${next} place?` : `Keep playing for ${next} place? Everyone still playing has to agree.`}</p>
+        ${one
+          ? `<button class="b3 green disp" data-o="${voters[0]}" data-v="yes">KEEP PLAYING</button><button class="b3 blue disp" data-o="${voters[0]}" data-v="no">END GAME</button>`
+          : voters.map((o) => `<div class="vrow" data-o="${o}"><span class="ra" style="${cssVars(who(o))}">${avatarSVG(who(o))}</span><b>${this.config.names[o]}</b>
+              <button data-o="${o}" data-v="yes">Play on</button><button data-o="${o}" data-v="no">Stop</button></div>`).join('')}</div>`;
+      const yes = new Set<number>();
+      ov.addEventListener('click', (e) => {
+        const b = (e.target as Element).closest<HTMLButtonElement>('button[data-v]');
+        if (!b) return;
+        sfx.tick();
+        const o = Number(b.dataset.o);
+        const done = (go: boolean) => {
+          ov.remove();
+          if (!go) this.toast('Game over by vote', c);
+          resolve(go);
+        };
+        if (b.dataset.v === 'no') return done(false);
+        yes.add(o);
+        ov.querySelector(`.vrow[data-o="${o}"]`)?.classList.add('agreed');
+        if (voters.every((v) => yes.has(v))) setTimeout(() => done(true), one ? 0 : 450);
+      });
+      this.el.appendChild(ov);
+    });
   }
 
   // ---------- human input ----------
@@ -269,7 +374,9 @@ export class GameScreen {
         sfx.setMuted(!sfx.muted);
         (e.target as Element).closest('button')!.textContent = sfx.muted ? 'SOUND: OFF' : 'SOUND: ON';
       } else if (act === 'quit') {
+        // Quitting gives the game up: there's nothing to continue.
         this.dispose();
+        void clearGame();
         this.exit('home');
       }
     });
@@ -283,6 +390,8 @@ export class GameScreen {
 
   dispose() {
     this.disposed = true;
+    keepAwake(false);
+    document.removeEventListener('visibilitychange', this.onHidden);
     this.resume();
   }
 
@@ -294,7 +403,8 @@ export class GameScreen {
 
   // ---------- result ----------
   private showResult() {
-    this.disposed = true;
+    this.dispose();
+    void clearGame();
     const order = ownerRanking(this.state);
     const pvp = this.config.mode === 'pvp';
     const colorsOf = (o: number) => this.state.players.filter((p) => p.owner === o);
@@ -315,6 +425,12 @@ export class GameScreen {
       .join('');
     const winner = this.config.names[order[0]!]!;
     const title = pvp ? `${winner.toUpperCase()} WINS!` : won ? 'YOU WIN!' : `${PLACES[place]} PLACE`;
+    void recordGame({ mode: this.config.mode, place, kills: this.kills, pairs: this.pairs });
+    const card = order.map((o) => {
+      const mine = colorsOf(o);
+      const home = mine.reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
+      return { name: this.config.names[o]!, color: mine[0]!.color, detail: `${home} / ${4 * mine.length} home` };
+    });
     const ov = document.createElement('div');
     ov.className = `result${won ? ' won' : ''}`;
     ov.innerHTML = `<div class="dim"></div>${won ? `<div class="rays"></div><div class="tglow"></div>${confettiHTML()}` : ''}
@@ -322,10 +438,20 @@ export class GameScreen {
       ${won ? `<div class="stars">${starBadge('s0')}${starBadge('s1')}${starBadge('s2')}</div>` : ''}
       <div class="rescol"><div class="ribbon">${ribbonSVG()}<span class="disp">${title}</span></div>
         <div class="rank">${rows}</div>
-        <div class="wbtns"><button class="b3 blue disp" data-act="home">HOME</button><button class="b3 green disp" data-act="again">PLAY AGAIN</button></div></div>`;
+        <div class="wbtns"><button class="b3 blue disp" data-act="home">HOME</button><button class="b3 green disp" data-act="again">PLAY AGAIN</button></div>
+        <button class="sharebtn disp" data-act="share">${icons.share}SHARE RESULT</button></div>`;
     ov.addEventListener('click', (e) => {
-      const act = (e.target as Element).closest('button')?.dataset.act;
+      const btn = (e.target as Element).closest<HTMLButtonElement>('button');
+      const act = btn?.dataset.act;
       if (act === 'home' || act === 'again') this.exit(act);
+      if (act === 'share' && !btn!.disabled) {
+        btn!.disabled = true;
+        const text = pvp ? `${winner} won our game of Tag Team Ludo!` : won ? 'I won at Tag Team Ludo!' : `I came ${PLACES[place]!.toLowerCase()} at Tag Team Ludo!`;
+        void drawCard(title, `${pvp ? 'WITH FRIENDS' : 'VS COMPUTER'} · ${order.length} PLAYERS`, card)
+          .then((png) => shareCard(png, text))
+          .catch(() => undefined)
+          .finally(() => (btn!.disabled = false));
+      }
     });
     this.el.appendChild(ov);
     if (won) sfx.win();
