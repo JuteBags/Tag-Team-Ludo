@@ -88,7 +88,7 @@ Tags and hand runs need real release notes (text, or the path of a committed `.m
 
 The Windows `.exe` is a portable Electron build of the web game ([`desktop/`](desktop/)), about 96 MB, so it's attached to GitHub Releases rather than hosted on the website.
 
-Every pull request also plays all-bot games on `main` and on the PR with the same seeds, and comments with the difference: kills, idle rolls, game length, pair moves, and one player's view (win rate, kills, tokens lost, time stuck at home). A PR that doesn't change the game shows "No change".
+Every pull request also plays all-bot games (with doubles on and off, one and two houses each, and the bot levels) on `main` and on the PR with the same seeds, and comments with the difference: kills, idle rolls, game length, pair moves, and one player's view (win rate, kills, tokens lost, time stuck at home). A PR that doesn't change the game shows "No change".
 
 Run the tests locally before pushing: `npm test`, plus `npm run sim` for the long all-bot simulation.
 

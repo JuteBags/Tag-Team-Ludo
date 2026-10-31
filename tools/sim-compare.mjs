@@ -52,7 +52,7 @@ const changed = head.metrics.some((m) => setups.some((s) => Math.abs((head.setup
 
 console.log(`### ${head.title ?? 'Simulation'}
 
-${head.games} all-bot games per setup. ${changed ? 'Changes of 5% or more are in **bold**.' : '**No change**: this PR does not change how these games play out.'}${baseNote}
+${head.games} all-bot games per setup and dice. ${changed ? 'Changes of 5% or more are in **bold**.' : '**No change**: this PR does not change how these games play out.'}${baseNote}
 
 ${table(weighted)}
 

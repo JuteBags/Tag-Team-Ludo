@@ -1,4 +1,5 @@
-// Classic games, one house per person: 2, 3 and 4 players. See harness.ts.
+// One house per person, doubles on: 2, 3 and 4 players. single-house-no-doubles.sim.ts is the same
+// with doubles off. See harness.ts.
 import { newGame } from '../../src/engine';
 import { runSimulation } from './harness';
 
