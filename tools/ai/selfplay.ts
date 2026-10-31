@@ -6,7 +6,7 @@
 // JSON (games with their finishing orders and policies), then float32 inputs (positions x 4 x D, unused
 // colours 0) and int32 meta (positions x 4: game, turn, colours, current).
 import { writeFileSync } from 'node:fs';
-import { finalRanking, seeded } from '../../src/engine';
+import { BASE, FINISHED, finalRanking, seeded } from '../../src/engine';
 import { D, encodeState } from '../../src/engine/ai/encode';
 import { MODES, flags, peopleIn, playGame, policy } from './common';
 
@@ -44,8 +44,10 @@ for (let g = 0; g < games; g++) {
     xs.push(x);
     meta.push(g, turn++, s.players.length, s.current);
   });
+  // By how much: steps each colour still needed when the game ended (a token in base needs 57).
+  const left = end.players.map((p) => p.tokens.reduce((n, t) => n + FINISHED - Math.max(t, BASE), 0));
   const order = finalRanking(end).map((c) => end.players.findIndex((p) => p.color === c));
-  header.games.push({ seed: gameSeed, mode, owners: end.players.map((p) => p.owner), order, policies: specs, over: end.phase === 'over', turns: turn });
+  header.games.push({ seed: gameSeed, mode, owners: end.players.map((p) => p.owner), order, policies: specs, over: end.phase === 'over', turns: turn, left });
   if ((g + 1) % 500 === 0) console.log(`PROGRESS ${g + 1}/${games} ${(((g + 1) * 1000) / (Date.now() - t0)).toFixed(1)} games/s`);
 }
 
