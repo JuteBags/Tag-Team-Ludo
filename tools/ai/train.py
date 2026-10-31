@@ -11,13 +11,15 @@ split into train and validation by game, never by position. Prints validation lo
 baseline, first-place log-loss, the double-house slice and calibration; writes the weights as JSON for
 net.ts plus parity data for parity.ts; with --wandb also logs to W&B and checks parity.
 """
-import argparse, glob, json, math, struct, subprocess
+import argparse, glob, json, math, os, struct, subprocess
 import numpy as np
 import torch
 import torch.nn as nn
 
 F = 19  # hand features (features.ts)
-ENTITY, PROJECT = 'shaurya-sharthak', 'tag-team-ludo-ai'
+# W&B: the account's only entity is a team; LUDO_WANDB_ENTITY moves runs elsewhere (e.g. a Ludo team).
+ENTITY = os.environ.get('LUDO_WANDB_ENTITY', 'ablations-tinycompany-ai')
+PROJECT = 'tag-team-ludo-ai'
 # Bump when the validation protocol changes, so numbers stay comparable across runs.
 EVAL_SUITE = 'v1: 5% of games by game id, PL over people, 10-bin calibration'
 MODES = [f'{m}{t}' for t in ('', '-singles') for m in ('2p', '3p', '4p', '2h-opposite', '2h-side')]
