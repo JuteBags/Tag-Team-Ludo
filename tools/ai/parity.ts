@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { D } from '../../src/engine/ai/encode';
 import { F, FEATURES } from '../../src/engine/ai/features';
-import type { LinearJSON } from '../../src/engine/ai/linear';
+import { TURN_RULES, type LinearJSON } from '../../src/engine/ai/linear';
 import { Net, type NetJSON } from '../../src/engine/ai/net';
 import { flags } from './common';
 
@@ -24,13 +24,16 @@ function npy(path: string): { shape: number[]; data: Float64Array } {
 const a = flags(process.argv.slice(2));
 const json = JSON.parse(readFileSync(a.net!, 'utf8')) as NetJSON | LinearJSON;
 // Linear rules: a person's score is the weights times the sum of their colours' hand features.
-const linear = 'kind' in json && json.kind === 'linear' ? FEATURES.map((f) => json.weights[f] ?? 0) : null;
+// Weights by input index: the hand features first, the turn rules over encode.ts's last 7 inputs.
+const linear = 'kind' in json && json.kind === 'linear'
+  ? [...FEATURES.map((f) => json.weights[f] ?? 0), ...new Array<number>(D - F - TURN_RULES.length).fill(0), ...TURN_RULES.map((f) => json.weights[f] ?? 0)]
+  : null;
 const net = linear ? null : new Net(json as NetJSON);
 function linearScores(x: Float64Array, base: number, owners: number[]): Float64Array {
   const s = new Float64Array(4).fill(NaN);
   owners.forEach((o, i) => {
     let v = 0;
-    for (let k = 0; k < F; k++) v += linear![k]! * x[base + i * D + k]!;
+    for (let k = 0; k < D; k++) if (linear![k]) v += linear![k]! * x[base + i * D + k]!;
     s[o] = (Number.isNaN(s[o]!) ? 0 : s[o]!) + v;
   });
   return s;

@@ -4,12 +4,13 @@
                      [--gens 20] [--games 300000] [--grow 1.25] [--max-games 2000000] [--target 0.8]
 
 Each generation k (all resumable: a step whose output exists is skipped):
-  1. play: `games` self-play games, each person drawn from the pool (current net at depth 1 with a little
-     temperature 60%, the previous net 15%, Hard 15%, the old Hard 10%), the game's dice;
+  1. play: `games` self-play games, each person drawn from the pool (current net at depth 1, sampling its
+     moves with a small temperature so about 5-15% of choices explore, 60%; the previous net 15%, Hard 15%, the old Hard 10%), the game's dice;
   2. learn: warm-start from the current net, train on this generation's and the previous one's shards
      (labels are only the real results);
-  3. check: the new net against the current one and against Hard, 10k paired seeds each. It is promoted
-     only if it beats the current net clearly (win rate above 50% by more than the 95% interval).
+  3. check: the new net against the current one and against Hard, on a fresh block of paired seeds per
+     generation. It is promoted only if it beats the current net clearly (above 50% by more than the 95%
+     interval) AND is no worse against Hard than the current net (within the interval).
 Games per generation start at --games and grow by --grow after every promotion (more rollouts as the
 nets get stronger), up to --max-games. Self-play and arena commands come from LUDO_SELFPLAY and
 LUDO_ARENA (Node by default, the Rust engine once it passes its parity gate). Logs to W&B (group ladder).
@@ -30,11 +31,11 @@ def run_parallel(cmds):
     return outs
 
 
-def match(a, b, seeds, workers, mode='2p'):
-    """A's win rate vs B over paired seeds, with the 95% interval over seeds."""
+def match(a, b, seeds, workers, base=0, mode='2p'):
+    """A's win rate vs B over paired seeds base .. base + seeds, with the 95% interval over seeds."""
     step = math.ceil(seeds / workers)
     rows = [json.loads(o.split('ARENA ', 1)[1]) for o in run_parallel(
-        [f'{ARENA} --a {a} --b {b} --mode {mode} --from {k * step} --to {min(seeds, (k + 1) * step)}' for k in range(workers) if k * step < seeds])]
+        [f'{ARENA} --a {a} --b {b} --mode {mode} --from {base + k * step} --to {base + min(seeds, (k + 1) * step)}' for k in range(workers) if k * step < seeds])]
     g, w, s = sum(r['games'] for r in rows), sum(r['wins'] for r in rows), sum(r['seeds'] for r in rows)
     m = w / s
     se = math.sqrt(max(0.0, sum(r['seedSq'] for r in rows) / s - m * m) / s) / rows[0]['people']
@@ -51,7 +52,7 @@ def main():
     ap.add_argument('--grow', type=float, default=1.25)
     ap.add_argument('--max-games', type=int, default=2_000_000)
     ap.add_argument('--keep', type=float, default=0.012)
-    ap.add_argument('--temp', type=float, default=0.1, help='move temperature of the net in self-play (exploration)')
+    ap.add_argument('--temp', type=float, default=0.01, help='move temperature of the net in self-play (values are P(win), so gaps are small)')
     ap.add_argument('--seeds', type=int, default=5000, help='paired seeds per check')
     ap.add_argument('--target', type=float, default=0.8)
     ap.add_argument('--workers', type=int, default=18)
@@ -66,6 +67,9 @@ def main():
     run = wandb.init(entity=ENTITY, project='tag-team-ludo-ai', name=a.wandb, group='ladder', job_type='ladder',
                      config={**vars(a), 'engine_commit': commit, 'selfplay': SELFPLAY, 'arena': ARENA}, resume='allow', id=a.wandb)
     print(f'WANDB {run.url}', flush=True)
+    if 'vs_hard_current' not in st:
+        st['vs_hard_current'] = match(f"net:{st['current']}:1", f'net:{a.hard}:1', a.seeds, a.workers, base=10_000_000)[0]
+        print(f"START vs Hard {st['vs_hard_current']:.4f}", flush=True)
     while st['gen'] < a.gens:
         k = st['gen'] + 1
         gd = d / f'gen-{k}'
@@ -88,9 +92,10 @@ def main():
                             '--hidden', '128', '--layers', '2', '--epochs', '3', '--lr', '1e-3', '--wandb', f'{a.wandb}-gen{k}', '--group', 'ladder'], check=True)
         t_learn = time.time() - t0 - t_play
         # 3. check
-        vs_cur, ci_cur, games_cur = match(f'net:{new}:1', f'net:{cur}:1', a.seeds, a.workers)
-        vs_hard, ci_hard, _ = match(f'net:{new}:1', f'net:{a.hard}:1', a.seeds, a.workers)
-        promoted = vs_cur - ci_cur > 0.5
+        block = 1_000_000 + k * a.seeds  # fresh dice for every generation's checks
+        vs_cur, ci_cur, games_cur = match(f'net:{new}:1', f'net:{cur}:1', a.seeds, a.workers, block)
+        vs_hard, ci_hard, _ = match(f'net:{new}:1', f'net:{a.hard}:1', a.seeds, a.workers, block)
+        promoted = vs_cur - ci_cur > 0.5 and vs_hard >= st['vs_hard_current'] - ci_hard
         line = {'gen': k, 'games': n, 'vs_current': vs_cur, 'vs_current_ci': ci_cur, 'vs_hard': vs_hard, 'vs_hard_ci': ci_hard,
                 'promoted': promoted, 'play_s': round(t_play), 'learn_s': round(t_learn), 'total_s': round(time.time() - t0)}
         print('GEN ' + json.dumps(line), flush=True)
@@ -98,6 +103,7 @@ def main():
         if promoted:
             st['previous'], st['current'] = cur, str(new)
             st['games'] = min(a.max_games, int(n * a.grow))
+            st['vs_hard_current'] = vs_hard
             shutil.copy(new, d / 'best.json')
         st['gen'] = k
         st['history'].append(line)

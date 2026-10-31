@@ -3,9 +3,13 @@
     python tune.py --start hard2-fit.json --out hard2-tuned.json --opponent net:hard2-fit.json:1
                    [--pop 16] [--seeds 5000] [--gens 30] [--sigma 0.3] [--workers 18] [--wandb hard2-tune]
 
-Fitness of a candidate = its win rate at depth 1 (whole-turn planning with these weights) against a fixed
-opponent over paired seeds (A in every seat of each seed, the game's dice), from tools/ai/arena.mjs.
-Every generation re-plays the current mean too, since one noisy lucky score must not carry the search.
+Fitness of a candidate = its mean win rate at depth 1 (whole-turn planning with these weights) against
+the opponents (comma-separated policy specs) over paired seeds, from the arena (LUDO_ARENA). All
+candidates of a generation share one fresh block of seeds (common random numbers within a generation,
+new dice every generation, so the weights cannot fit one set of games). Every generation re-plays the
+current mean too. The final weights are scored once more on a held-out block never used in tuning.
+Every rule is tuned, including ones the fit left at 0 (the full feature list, without the per-game
+singles flag, plus the turn-in-progress rules).
 Weights are searched in units of each weight's own size (sigma x |w| + 0.1), so small and large rules
 move alike. Writes the best mean so far after every generation; logs to W&B with --wandb.
 """
@@ -16,27 +20,30 @@ ENTITY = os.environ.get('LUDO_WANDB_ENTITY', 'ablations-tinycompany-ai')
 ARENA = os.environ.get('LUDO_ARENA', 'node tools/ai/dist/arena.mjs')
 
 
-def play(weights, names, opponent, mode, seeds, workers, tmp, tag):
-    """Win rate of rules `weights` at depth 1 against `opponent`, over `seeds` paired seeds split over workers."""
+def play(weights, names, opponents, mode, seeds, workers, tmp, tag, base=0):
+    """Mean win rate of rules `weights` at depth 1 against `opponents`, over paired seeds base .. base + seeds."""
     path = pathlib.Path(tmp) / f'{tag}.json'
     path.write_text(json.dumps({'kind': 'linear', 'weights': dict(zip(names, map(float, weights)))}))
     step = math.ceil(seeds / workers)
-    procs = [subprocess.Popen(f'{ARENA} --a net:{path}:1 --b {opponent} --mode {mode} --from {k * step} --to {min(seeds, (k + 1) * step)}',
-                              shell=True, stdout=subprocess.PIPE, text=True) for k in range(workers) if k * step < seeds]
-    games = wins = 0
-    for p in procs:
-        out = p.communicate()[0]
-        r = json.loads(out.split('ARENA ', 1)[1])
-        games += r['games']
-        wins += r['wins']
-    return wins / games
+    rates = []
+    for opponent in opponents:
+        procs = [subprocess.Popen(f'{ARENA} --a net:{path}:1 --b {opponent} --mode {mode} --from {base + k * step} --to {base + min(seeds, (k + 1) * step)}',
+                                  shell=True, stdout=subprocess.PIPE, text=True) for k in range(workers) if k * step < seeds]
+        games = wins = 0
+        for p in procs:
+            r = json.loads(p.communicate()[0].split('ARENA ', 1)[1])
+            games += r['games']
+            wins += r['wins']
+        rates.append(wins / games)
+    return sum(rates) / len(rates)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--start', required=True, help='linear rules to start from (train.py --linear)')
     ap.add_argument('--out', required=True)
-    ap.add_argument('--opponent', required=True, help='policy spec the candidates play against')
+    ap.add_argument('--opponent', required=True, help='policy specs the candidates play against, comma-separated (fitness = mean)')
+    ap.add_argument('--holdout', type=int, default=10_000, help='paired seeds for the final, held-out score')
     ap.add_argument('--mode', default='2p')
     ap.add_argument('--pop', type=int, default=16)
     ap.add_argument('--seeds', type=int, default=5000, help='paired seeds per candidate (2 games each in 2p)')
@@ -48,8 +55,12 @@ def main():
     ap.add_argument('--tmp', default='', help='folder for candidate files (default: a new temp folder)')
     a = ap.parse_args()
     start = json.load(open(a.start))['weights']
-    names = list(start)
-    w0 = np.array([start[n] for n in names])
+    # Every rule, including ones the start leaves out (they start at 0).
+    names = ['pipsLeft', 'base', 'home', 'column', 'danger', 'dangerProg', 'prey', 'preyProg', 'safe', 'blocks',
+             'blocking', 'ambush', 'maxProg', 'minProg', 'turn0', 'turn1', 'turn2', 'turn3',
+             'tray1', 'tray2', 'tray3', 'tray4', 'tray5', 'tray6', 'sixes']
+    w0 = np.array([start.get(n, 0.0) for n in names])
+    opponents = a.opponent.split(',')
     scale = np.abs(w0) + 0.1
     n = len(names)
     rng = np.random.default_rng(a.seed)
@@ -81,8 +92,9 @@ def main():
         zs = rng.standard_normal((lam, n))
         ys = zs @ np.diag(Dg) @ B.T
         xs = mean + sigma * ys
-        fit = np.array([play(w0 + scale * x, names, a.opponent, a.mode, a.seeds, a.workers, tmp, f'g{gen}c{i}') for i, x in enumerate(xs)])
-        incumbent = play(w0 + scale * mean, names, a.opponent, a.mode, a.seeds, a.workers, tmp, f'g{gen}mean')
+        block = gen * a.seeds  # fresh dice every generation, shared by its candidates
+        fit = np.array([play(w0 + scale * x, names, opponents, a.mode, a.seeds, a.workers, tmp, f'g{gen}c{i}', block) for i, x in enumerate(xs)])
+        incumbent = play(w0 + scale * mean, names, opponents, a.mode, a.seeds, a.workers, tmp, f'g{gen}mean', block)
         if incumbent > best[0]:
             best = (incumbent, w0 + scale * mean)
             json.dump({'kind': 'linear', 'weights': dict(zip(names, map(float, best[1])))}, open(a.out, 'w'), indent=1)
@@ -101,10 +113,12 @@ def main():
         print('GEN ' + json.dumps(line), flush=True)
         if run:
             run.log({f'tune/{k}': v for k, v in line.items()} | {f'rules/{k}': float(v) for k, v in zip(names, w0 + scale * mean)})
+    # The honest number: the chosen weights on seeds no generation ever played.
+    held = play(best[1], names, opponents, a.mode, a.holdout, a.workers, tmp, 'holdout', 50_000_000)
     if run:
-        run.summary.update({'tune/best_mean_win': best[0]})
+        run.summary.update({'tune/best_mean_win': best[0], 'tune/holdout_win': held})
         run.finish()
-    print(f'DONE best mean win {best[0]:.4f} -> {a.out}', flush=True)
+    print(f'DONE best mean win {best[0]:.4f}, held-out {held:.4f} -> {a.out}', flush=True)
 
 
 if __name__ == '__main__':

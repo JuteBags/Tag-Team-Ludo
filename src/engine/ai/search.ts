@@ -20,7 +20,8 @@ export interface SearchOptions {
 
 const FACES = [1, 2, 3, 4, 5, 6];
 const noRng: Rng = () => 0.5;
-const key = (s: GameState) => `${s.current}|${s.phase}|${s.sixes}|${s.rolls.join('')}|${s.players.map((p) => p.tokens.join(',')).join(';')}`;
+// The finishing order is part of the key: two positions with the same tokens can differ in who is home first.
+const key = (s: GameState) => `${s.current}|${s.phase}|${s.sixes}|${s.rolls.join('')}|${s.ranking.join('')}|${s.players.map((p) => p.tokens.join(',')).join(';')}`;
 
 /** Each person's chance of winning, by owner. */
 export function ownerValues(net: Evaluator, s: GameState, owners: number): Float64Array {
@@ -76,6 +77,9 @@ export function searchValues(net: Evaluator, state: GameState, opts: SearchOptio
   return state.moves.map((m) => ({ move: m, value: node(move(state, m), root, depth, 0)[me]! }));
 }
 
+/** How often sampling (temperature > 0) picked a move other than the best: exploration, counted for logs. */
+export const searchStats = { sampled: 0, offBest: 0 };
+
 /** The best move by the search; `temperature` > 0 samples moves by softmax of their values instead. */
 export function chooseExtreme(net: Evaluator, state: GameState, rng: Rng, opts?: SearchOptions, temperature = 0): Move {
   if (state.moves.length === 1) return state.moves[0]!;
@@ -84,7 +88,13 @@ export function chooseExtreme(net: Evaluator, state: GameState, rng: Rng, opts?:
     const top = Math.max(...vals.map((x) => x.value));
     const w = vals.map((x) => Math.exp((x.value - top) / temperature));
     let r = rng() * w.reduce((a, b) => a + b, 0);
-    for (let i = 0; i < w.length; i++) if ((r -= w[i]!) <= 0) return vals[i]!.move;
+    for (let i = 0; i < w.length; i++) {
+      if ((r -= w[i]!) <= 0) {
+        searchStats.sampled++;
+        if (vals[i]!.value < top) searchStats.offBest++;
+        return vals[i]!.move;
+      }
+    }
   }
   let best = vals[0]!;
   for (const x of vals) if (x.value + rng() * 1e-9 > best.value) best = x;
