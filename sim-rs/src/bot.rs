@@ -12,7 +12,7 @@ pub enum Level {
 }
 
 /// isThreatened on one board, each (colour, progress) answered once (rules.ts caches it per board).
-pub(crate) struct Lazy<'a> {
+pub struct Lazy<'a> {
     b: &'a Board,
     singles: bool,
     /// per colour: bit p known, bit p threatened
@@ -21,7 +21,7 @@ pub(crate) struct Lazy<'a> {
 }
 
 impl<'a> Lazy<'a> {
-    fn new(b: &'a Board, singles: bool) -> Self {
+    pub fn new(b: &'a Board, singles: bool) -> Self {
         Lazy { b, singles, known: [0; 4], val: [0; 4] }
     }
     #[inline]
@@ -42,7 +42,7 @@ impl<'a> Lazy<'a> {
 }
 
 /// Normal (bot.ts scoreMove). `tb`: threats on the board before the move.
-pub(crate) fn score_move(b: &Board, tb: &mut Lazy, singles: bool, m: &Move) -> f64 {
+pub fn score_move(b: &Board, tb: &mut Lazy, singles: bool, m: &Move) -> f64 {
     let after = apply_move(b, m);
     let mut ta = Lazy::new(&after, singles);
     score_move_with(b, tb, &after, &mut ta, singles, m)
@@ -205,10 +205,24 @@ pub fn choose_move(g: &Game, level: Level, rng: &mut Rng) -> usize {
     best
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// common.ts policy(): random | easy | normal | hard | net:<weights.json>[:depth[:theirK[:temperature]]].
+/// The weights file can be a value net or linear rules (eval.rs); both play by search.rs.
+#[derive(Clone)]
 pub enum Policy {
     Random,
     Bot(Level),
+    Search { eval: std::sync::Arc<crate::eval::Evaluator>, opts: crate::search::SearchOptions, temperature: f64 },
+}
+
+fn load_eval(path: &str) -> std::sync::Arc<crate::eval::Evaluator> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<String, Arc<crate::eval::Evaluator>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut c = cache.lock().unwrap();
+    c.entry(path.to_string())
+        .or_insert_with(|| Arc::new(crate::eval::Evaluator::from_json_text(&std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}")))))
+        .clone()
 }
 
 impl Policy {
@@ -218,6 +232,13 @@ impl Policy {
             "easy" => Policy::Bot(Level::Easy),
             "normal" => Policy::Bot(Level::Normal),
             "hard" => Policy::Bot(Level::Hard),
+            _ if s.starts_with("net:") => {
+                // Number(x ?? default): a missing part takes the default
+                let parts: Vec<&str> = s.split(':').collect();
+                let num = |i: usize, d: f64| parts.get(i).map(|x| x.parse::<f64>().unwrap()).unwrap_or(d);
+                let opts = crate::search::SearchOptions { depth: num(2, 1.0) as u32, chance: 2, their_k: num(3, 3.0) as usize };
+                Policy::Search { eval: load_eval(parts[1]), opts, temperature: num(4, 0.0) }
+            }
             _ => panic!("unknown policy {s}"),
         }
     }
@@ -226,6 +247,7 @@ impl Policy {
         match self {
             Policy::Random => (rng.next() * g.moves.len() as f64).floor() as usize,
             Policy::Bot(l) => choose_move(g, *l, rng),
+            Policy::Search { eval, opts, temperature } => crate::search::choose_extreme(eval, g, rng, *opts, *temperature),
         }
     }
 }

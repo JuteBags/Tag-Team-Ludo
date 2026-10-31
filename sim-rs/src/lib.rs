@@ -7,7 +7,10 @@
 pub mod bot;
 pub mod dice;
 pub mod encode;
+pub mod eval;
 pub mod game;
+pub mod jsmath;
 pub mod rng;
 pub mod rules;
+pub mod search;
 pub mod trace;
