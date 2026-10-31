@@ -190,6 +190,7 @@ fn main() {
         let mut active: Vec<Live> = Vec::new();
         let mut next = 0;
         let (mut rounds, mut nleaves) = (0usize, 0usize);
+        let mut tt = [0.0f64; 4]; // seconds in: advance, collect, batch values, choose
         loop {
             while active.len() < lockstep && next < games {
                 active.push(start(next));
@@ -199,7 +200,9 @@ fn main() {
                 break;
             }
             // every game to its next search decision; the finished ones leave
+            let t = Instant::now();
             let need: Vec<bool> = active.par_iter_mut().map(|l| l.advance(keep)).collect();
+            tt[0] += t.elapsed().as_secs_f64();
             let mut still = Vec::with_capacity(active.len());
             for (l, n) in active.drain(..).zip(need) {
                 if n {
@@ -214,6 +217,7 @@ fn main() {
                 continue;
             }
             // pass 1: the leaves of every decision; one batch; pass 2: each game chooses
+            let t = Instant::now();
             let leaves: Vec<Vec<Game>> = active
                 .par_iter()
                 .map(|l| {
@@ -223,7 +227,11 @@ fn main() {
                 .collect();
             let arcs: Vec<_> = active.iter().map(|l| l.search().0).collect();
             let evals: Vec<&ludo_sim::eval::Evaluator> = arcs.iter().map(|a| &**a).collect();
+            tt[1] += t.elapsed().as_secs_f64();
+            let t = Instant::now();
             let vals = ludo_sim::eval::batch_values(&evals, &leaves);
+            tt[2] += t.elapsed().as_secs_f64();
+            let t = Instant::now();
             rounds += 1;
             nleaves += vals.iter().map(|v| v.len()).sum::<usize>();
             active.par_iter_mut().zip(leaves.into_par_iter().zip(vals.into_par_iter())).for_each(|(l, (ls, vs))| {
@@ -237,8 +245,16 @@ fn main() {
                 l.gm.play(&m);
                 l.steps += 1;
             });
+            tt[3] += t.elapsed().as_secs_f64();
         }
-        eprintln!("LOCKSTEP rounds {rounds} leaves {nleaves} ({:.1} per round)", nleaves as f64 / rounds.max(1) as f64);
+        eprintln!(
+            "LOCKSTEP rounds {rounds} leaves {nleaves} ({:.1} per round) secs advance {:.2} collect {:.2} values {:.2} choose {:.2}",
+            nleaves as f64 / rounds.max(1) as f64,
+            tt[0],
+            tt[1],
+            tt[2],
+            tt[3]
+        );
         outs.into_iter().map(|o| o.unwrap()).collect()
     } else {
         (0..games)
