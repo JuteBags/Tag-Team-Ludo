@@ -301,9 +301,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .prow.due{background:rgba(255,214,90,.14);box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.6)}
 .prow .chip{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#0c2a74;border:2px solid #ffd65a;font-size:16px;flex:none}
 .prow.ranked .chip{background:#ffd65a;color:#5a2d00}
-.prow b{font-size:18px}
+.prow b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* The status ("2nd · rolled 3 · 6") wraps; the name never does. */
+.prow .st{flex:1 1 0;min-width:0}
 /* A person's name on the Order step: tap to change it. */
-.pname{display:flex;align-items:center;gap:6px;min-height:44px;padding:0 10px;margin-left:-10px;border-radius:12px;font-family:'Nunito';font-size:18px;font-weight:900;color:#fff;max-width:170px}
+.pname{white-space:nowrap;flex:none;display:flex;align-items:center;gap:6px;min-height:44px;padding:0 10px;margin-left:-10px;border-radius:12px;font-family:'Nunito';font-size:18px;font-weight:900;color:#fff;max-width:170px}
 .pname svg{width:15px;height:15px;flex:none;opacity:.6}
 .pname:active{background:rgba(255,255,255,.1)}
 .pname-in{width:150px;height:40px;padding:0 10px;border-radius:12px;border:2px solid #ffd65a;background:#0c2a74;color:#fff;font:900 17px 'Nunito';outline:none}
@@ -325,7 +327,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 [hidden]{display:none!important}
 
 /* The palace cutscene: a letterboxed scene, the welcome above it, the count below. */
-.cs{position:absolute;inset:0;z-index:70;background:#05060c;overflow:hidden;cursor:pointer}
+/* The scene fills the whole screen on tall phones: the screen stops clipping and the backdrop extends past the stage. */
+.screen:has(>.cs){overflow:visible}
+.cs{position:absolute;inset:0;z-index:70;background:#05060c;overflow:hidden;cursor:pointer;box-shadow:0 0 0 600px #05060c}
 .cs svg{position:absolute;left:0;top:150px;width:390px;height:560px;display:block}
 .cs::after{content:'';position:absolute;left:0;right:0;top:150px;height:560px;box-shadow:inset 0 0 22px 4px #05060c;pointer-events:none}
 .cs-cam{transform-origin:195px 390px}

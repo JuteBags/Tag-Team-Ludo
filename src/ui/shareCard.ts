@@ -93,10 +93,12 @@ export async function drawCard(title: string, mode: string, rows: CardRow[]): Pr
 
   // Places.
   const avatars = await Promise.all(rows.map((r) => image(AVATARS[r.color]).catch(() => null)));
-  const rowH = 150;
-  const top = 560 + (4 - rows.length) * 40;
+  // Rows fit between the title (ends ~520) and the footer (from ~1190): four rows are shorter.
+  const rowH = rows.length > 3 ? 128 : 150;
+  const gap = rows.length > 3 ? 16 : 22;
+  const top = 556 + (4 - rows.length) * 40;
   rows.forEach((r, i) => {
-    const y = top + i * (rowH + 22);
+    const y = top + i * (rowH + gap);
     round(ctx, 90, y, W - 180, rowH, 34);
     ctx.fillStyle = i === 0 ? 'rgba(255,214,90,.28)' : 'rgba(255,255,255,.12)';
     ctx.fill();
@@ -125,10 +127,10 @@ export async function drawCard(title: string, mode: string, rows: CardRow[]): Pr
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = '60px "Lilita One"';
-    ctx.fillText(r.name, 386, y + 78, 400);
+    ctx.fillText(r.name, 386, y + rowH * 0.52, 400);
     ctx.font = '800 30px Nunito';
     ctx.fillStyle = 'rgba(255,255,255,.75)';
-    ctx.fillText(r.detail, 386, y + 120, 400);
+    ctx.fillText(r.detail, 386, y + rowH * 0.8, 400);
     ctx.textAlign = 'right';
     ctx.font = '44px "Lilita One"';
     ctx.fillStyle = i === 0 ? '#ffd65a' : 'rgba(255,255,255,.6)';
