@@ -33,6 +33,8 @@ html[data-theme=tron] .bframe{box-shadow:inset 0 0 0 2px #00e5ff,inset 0 0 14px 
 :is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .bsr{stroke:var(--glow);stroke-opacity:1;stroke-width:2}
 :is(html[data-theme=tron] .bframe,.mini-board[data-theme=tron]) .base .sym{fill:var(--glow)}
 .b-blue{--glow:#2fd6ff}.b-green{--glow:#3dffa0}.b-red{--glow:#ff4a3d}.b-yellow{--glow:#ff9a1f}
+.ltrail{stroke-linecap:round;filter:drop-shadow(0 0 4px currentColor)}
+html[data-theme=tron] .bframe .binner::before{background:linear-gradient(155deg,rgba(0,229,255,.12) 0%,transparent 40%)}
 [data-theme=halloween]{--b-side:#4b2a6b;--b-bg:#1a0f24;--b-tile1:#f7e2c4;--b-tile2:#e9b980;--b-shade:#000;--b-panel1:#f4d9b0;--b-panel2:#d99a52;--b-star:#ff7a1a;--b-ink:#2a1030;
   --b-stone:#3a2550;--b-stone-d:#24143a;--b-rim:#140a1c;--b-frame:linear-gradient(150deg,#ffb347 0%,#ff7a1a 30%,#6a2c91 64%,#2a1038 100%)}
 [data-theme=classic]{--b-side:#b9a27a;--b-bg:#a8916b;--b-tile1:#fffaf0;--b-tile2:#efe3cb;--b-shade:#5a4320;--b-panel1:#ffffff;--b-panel2:#ece3d2;--b-star:#cbbfa9;--b-ink:#3b2a17;
@@ -89,7 +91,11 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .dbox .scene{position:absolute;inset:0;display:grid;place-items:center;transform-origin:50% 55%}
 .dbox .cup{position:absolute;left:50%;top:50%;width:40px;height:46px;margin:-23px 0 0 -20px;transform-origin:50% 80%;z-index:2;pointer-events:none}
 .dbox .cup svg{display:block;width:100%;height:100%;filter:drop-shadow(0 3px 3px rgba(0,0,0,.45))}
-/* Throwers (skins.ts): three cups, the dice gun. */
+/* Throwers (skins.ts): the skull, three cups, the dice gun. */
+.dbox .skull{position:absolute;left:50%;top:50%;z-index:3;pointer-events:none;transform-origin:50% 70%}
+.dbox .skull .sk-head{position:absolute;inset:0 0 auto 0;aspect-ratio:1}
+.dbox .skull .sk-jaw{position:absolute;left:0;right:0;top:47.2%;aspect-ratio:60/24;transform-origin:50% 0}
+.dbox .skull svg{display:block;width:100%;height:100%;filter:drop-shadow(0 3px 3px rgba(0,0,0,.5))}
 .dbox .mcup{position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;z-index:2;pointer-events:none}
 .dbox .mcup svg,.dbox .gun svg{display:block;width:100%;height:100%;filter:drop-shadow(0 3px 3px rgba(0,0,0,.5))}
 /* The dice gun: sized and placed from the die size in gunRoll (dice.ts). */
