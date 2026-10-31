@@ -27,12 +27,14 @@ interface Settings {
   /** Gold earned by playing (rewards.ts), and the skins bought with it ("pawn:skull"). */
   gold: number;
   owned: string[];
+  /** Bots play at double speed, for shorter games against the computer. */
+  fastBots: boolean;
 }
 
 export type Theme = 'classic' | 'wood' | 'dark' | 'metal' | 'tron' | 'halloween';
 
 const KEY = 'ludo-settings';
-const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true, friendNames: [], myName: '', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [] };
+const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true, friendNames: [], myName: '', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false };
 
 function load(): Settings {
   try {

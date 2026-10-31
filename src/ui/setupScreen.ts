@@ -99,6 +99,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       <h3 class="disp">Roll for order</h3><p class="sub">Highest roll picks first and plays first. Tap a name to change it</p>
       <p class="porder" hidden></p>
       <div class="sp people"></div>
+      <button class="b3 blue disp go" data-act="roll-all">ROLL FOR EVERYONE</button>
       <button class="b3 green disp go" data-act="to-pick" hidden>PICK HOUSES</button>
     </section>
     <section class="wiz" data-step="pick">
@@ -198,6 +199,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     round.clear();
     order = [];
     q('[data-act=to-pick]').hidden = true;
+    q('[data-act=roll-all]').hidden = !people.some((p) => !p.bot) || people.filter((p) => !p.bot).length < 2;
     peopleEl.innerHTML = people
       .map((p, i) => `<div class="prow" data-p="${i}"><span class="chip disp">${i + 1}</span>${p.bot ? `<b>${p.name}</b>` : `<button class="pname" data-p="${i}" aria-label="Change name">${p.name}${PENCIL}</button>`}<span class="st"></span><button class="dbox" style="${NEUTRAL}" aria-label="Roll">${QDIE}</button></div>`)
       .join('');
@@ -295,8 +297,18 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
    * Every place is decided: the rows slide into play order (1st at the top), each with its rank, and a
    * line spells the order out. Names can still be changed; a rename doesn't move anyone.
    */
+  // One tap rolls for every person still due, one after another (ties too).
+  q('[data-act=roll-all]').addEventListener('click', async () => {
+    const e = epoch;
+    for (let guard = 0; guard < 40 && e === epoch && deciding(); guard++) {
+      const next = due().find((i) => !people[i]!.bot);
+      if (next === undefined) await new Promise((r) => setTimeout(r, 200));
+      else await rollFor(next);
+    }
+  });
   const finishRoll = () => {
     order = groups.flat();
+    q('[data-act=roll-all]').hidden = true;
     const rows = [...peopleEl.querySelectorAll<HTMLElement>('.prow')];
     const before = new Map(rows.map((r) => [r, r.getBoundingClientRect().top]));
     rows.forEach((row) => {
