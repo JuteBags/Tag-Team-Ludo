@@ -8,6 +8,7 @@ import { scoreMove } from '../bot';
 import { move, ownerRanking, roll } from '../game';
 import type { GameState, Move, Rng } from '../types';
 import type { Evaluator } from './linear';
+import { raceChances } from './race';
 
 export interface SearchOptions {
   /** Turns looked at: 1 = my turn only, 2 = also the next player's, and so on. */
@@ -16,6 +17,8 @@ export interface SearchOptions {
   chance?: number;
   /** Moves other players consider at each decision, best first by the Hard rules (0 = all). */
   theirK?: number;
+  /** Value v1 race positions (every token in a home column) exactly with the race database (race.ts). */
+  race?: boolean;
 }
 
 const FACES = [1, 2, 3, 4, 5, 6];
@@ -23,12 +26,16 @@ const noRng: Rng = () => 0.5;
 // The finishing order is part of the key: two positions with the same tokens can differ in who is home first.
 const key = (s: GameState) => `${s.current}|${s.phase}|${s.sixes}|${s.rolls.join('')}|${s.ranking.join('')}|${s.players.map((p) => p.tokens.join(',')).join(';')}`;
 
-/** Each person's chance of winning, by owner. */
-export function ownerValues(net: Evaluator, s: GameState, owners: number): Float64Array {
+/** Each person's chance of winning, by owner; with `race`, exact in v1 race positions. */
+export function ownerValues(net: Evaluator, s: GameState, owners: number, race = false): Float64Array {
   if (s.phase === 'over') {
     const v = new Float64Array(owners);
     v[ownerRanking(s)[0]!] = 1;
     return v;
+  }
+  if (race) {
+    const r = raceChances(s);
+    if (r) return r;
   }
   return net.ownerChances(s);
 }
@@ -38,6 +45,7 @@ export function searchValues(net: Evaluator, state: GameState, opts: SearchOptio
   const depth = opts.depth ?? 1;
   const maxChance = opts.chance ?? 2;
   const theirK = opts.theirK ?? 3;
+  const race = opts.race ?? false;
   const owners = Math.max(...state.players.map((p) => p.owner)) + 1;
   const root = state.current;
   const memo = new Map<string, Float64Array>();
@@ -45,8 +53,8 @@ export function searchValues(net: Evaluator, state: GameState, opts: SearchOptio
 
   // `turnsLeft` counts the turns still to search, this one included; `who` is whose turn it is.
   function node(s: GameState, who: number, turnsLeft: number, chance: number): Float64Array {
-    if (s.phase === 'over') return ownerValues(net, s, owners);
-    if (s.current !== who) return turnsLeft > 1 ? node(s, s.current, turnsLeft - 1, 0) : ownerValues(net, s, owners);
+    if (s.phase === 'over') return ownerValues(net, s, owners, race);
+    if (s.current !== who) return turnsLeft > 1 ? node(s, s.current, turnsLeft - 1, 0) : ownerValues(net, s, owners, race);
     const k = `${key(s)}|${turnsLeft}|${chance}`;
     const hit = memo.get(k);
     if (hit) return hit;
@@ -61,7 +69,7 @@ export function searchValues(net: Evaluator, state: GameState, opts: SearchOptio
         if (c[me]! > v[me]!) v = c;
       }
     } else if (chance >= maxChance) {
-      v = ownerValues(net, s, owners);
+      v = ownerValues(net, s, owners, race);
     } else {
       v = new Float64Array(owners);
       for (const f of FACES) {

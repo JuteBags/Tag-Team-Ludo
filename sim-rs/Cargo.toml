@@ -1,0 +1,17 @@
+[package]
+name = "ludo-sim"
+version = "0.1.0"
+edition = "2021"
+description = "Rust port of the Tag Team Ludo engine (src/engine) for fast self-play; traces must match tools/ai/trace.ts exactly"
+publish = false
+
+[dependencies]
+rayon = "1.10"
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = false
