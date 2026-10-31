@@ -97,7 +97,11 @@ function playChecked(seed: number, players: 2 | 3 | 4, policy: Policy, start?: G
       const legal = trayMoves(before.players, before.players[before.current]!.color, [...before.rolls, st.dice!]);
       if (ev?.type === 'three-sixes') {
         if (before.sixes !== 2) return `step ${step}: three sixes after ${before.sixes} sixes`;
-        if (st.rolls.length) return `step ${step}: three sixes left dice in the tray`;
+        // Only the three 6s go: the dice kept from before stay, and are played if any can move.
+        const kept = before.rolls.slice(0, -2);
+        const left = trayMoves(before.players, before.players[before.current]!.color, kept);
+        if (left.length ? st.rolls.join() !== kept.join() || JSON.stringify(st.moves) !== JSON.stringify(left) : st.rolls.length || st.current === before.current)
+          return `step ${step}: three sixes left ${st.rolls.join() || 'no dice'} from ${before.rolls.join()}`;
       } else if (st.dice === 6) {
         if (st.phase !== 'roll' || st.current !== before.current || st.moves.length) return `step ${step}: a 6 did not roll again first`;
       } else if (ev?.type === 'no-move') {

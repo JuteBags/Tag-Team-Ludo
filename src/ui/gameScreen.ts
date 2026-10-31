@@ -214,7 +214,11 @@ export class GameScreen {
     }
     if (ev?.type === 'three-sixes') {
       sfx.bust();
-      this.toast('Three 6s! Turn lost', c, 'bust');
+      // The three 6s leave the tray at once. Dice kept from before a kill stay and are still played.
+      this.drawTrays();
+      const goesOn = this.state.phase === 'move';
+      this.setHint(c, 'Three 6s in a row', goesOn ? `Those 6s are cancelled. You still have ${this.state.rolls.join(' · ')}` : 'Those 6s are cancelled and the turn ends');
+      this.toast(goesOn ? 'Three 6s! Cancelled' : 'Three 6s! Turn lost', c, 'bust');
       await this.sleep(800);
     } else if (ev?.type === 'no-move') {
       // Show the tray that just ran out (nothing can use it) while the note is up.

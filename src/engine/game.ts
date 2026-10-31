@@ -66,8 +66,9 @@ export function trayMoves(players: GameState['players'], color: Color, rolls: nu
 }
 
 /**
- * Rolls for the current player and puts the die in the tray. A 6 rolls again before anything moves;
- * the third 6 in a row ends the turn and empties the tray. `forced` fixes the face (tests, replays).
+ * Rolls for the current player and puts the die in the tray. A 6 rolls again before anything moves.
+ * The third 6 in a row cancels those three 6s only: dice kept from before (rolled before a kill) stay
+ * and can still be played; with nothing else in the tray the turn passes. `forced` fixes the face.
  */
 export function roll(state: GameState, rng: Rng, forced?: number): GameState {
   if (state.phase !== 'roll') throw new Error(`cannot roll in phase ${state.phase}`);
@@ -75,7 +76,13 @@ export function roll(state: GameState, rng: Rng, forced?: number): GameState {
   const dice = forced ?? rollDice(state.players, color, rng, state.singles);
   const sixes = dice === 6 ? state.sixes + 1 : 0;
 
-  if (sixes === 3) return { ...state, ...passTurn(state), dice, event: { type: 'three-sixes', color } };
+  if (sixes === 3) {
+    // This run's first two 6s are the last two dice in the tray.
+    const kept = state.rolls.slice(0, -2);
+    const moves = trayMoves(state.players, color, kept, state.singles);
+    const event = { type: 'three-sixes', color } as const;
+    return moves.length ? { ...state, dice, rolls: kept, sixes: 0, moves, phase: 'move', event } : { ...state, ...passTurn(state), dice, event };
+  }
 
   const rolls = [...state.rolls, dice];
   if (dice === 6) return { ...state, dice, rolls, sixes, moves: [], event: { type: 'rolled', color, dice } };
