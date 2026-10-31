@@ -1,6 +1,7 @@
 // Live board: places pawns, stacks shared squares, shows where moves land, animates moves and captures.
 import { isSafe, type Color, type Move, type PlayerState } from '../engine';
 import { PALETTE, boardSVG, pawnArt } from './art';
+import { playFinisher } from './finishers';
 import { spot, stepPoints, type Pt } from './geometry';
 import { sfx } from './sfx';
 import { nearest, type Target } from './targets';
@@ -357,7 +358,7 @@ export class BoardView {
    * Hops the moving pawns square by square, sends captured pawns home, then re-lays the board. `onHit`
    * runs at the moment of a capture's impact, so the KILL banner lands with the blow.
    */
-  async animateMove(m: Move, after: PlayerState[], speed = 1, onHit?: () => void) {
+  async animateMove(m: Move, after: PlayerState[], speed = 1, onHit?: () => void, finisherMs = 0) {
     this.clearMovable();
     this.deco.innerHTML = '';
     this.badges.innerHTML = '';
@@ -366,6 +367,8 @@ export class BoardView {
     const offs: Pt[] = keys.length === 2 ? STACK[2]!.o : [[0, 0]];
     const s = keys.length === 2 ? STACK[2]!.s : TRACK_SCALE;
     let from = keys.map((k) => this.placed.get(k)!);
+    // Where the attacker started: Green's shot is fired from there.
+    const origin: Pt = [from[0]!.x, from[0]!.y];
     const pts = stepPoints(m.color, m.from, m.to);
     const kill = m.captures.length > 0;
     for (const [i, pt] of pts.entries()) {
@@ -383,18 +386,36 @@ export class BoardView {
       this.pop(x, y, PALETTE[m.color].l);
     }
     if (kill) {
+      // The attacker's colour finishes the kill its own way (finishers.ts) and takes the victim out:
+      // swept away, burnt, cut in two or shot back. The victim then reappears in its base.
+      const finisher = finisherMs > 0 && !calm();
+      if (finisher) {
+        const victims = m.captures.map((c) => ({ art: this.pawns.get(c.color + c.token)!.querySelector<SVGGElement>('.pawn-art')!, home: spot(c.color, -1, c.token).pt, s: this.placed.get(c.color + c.token)!.s }));
+        await playFinisher(this.badges, m.color, origin, [x, y], finisherMs / speed, victims);
+        onHit?.();
+      }
       sfx.kill(m.captures.length);
       // Hit-stop: the attacker lands and everything holds for a beat before the victim flies.
       await this.squash(keys, 0.35, 120 / speed);
       this.impact(x, y, PALETTE[m.captures[0]!.color].m, m.captures.length);
-      onHit?.();
+      if (!finisher) onHit?.();
       await Promise.all(
         m.captures.map((c, j) => {
           const k = c.color + c.token;
           const { pt } = spot(c.color, -1, c.token);
           this.pieces.appendChild(this.pawns.get(k)!);
           const start = this.placed.get(k)!;
-          return this.launch(k, start, { x: pt[0], y: pt[1], s: BASE_SCALE, r: (j ? -1 : 1) * 900 }, (980 + j * 90) / speed).then(() => {
+          const home = { x: pt[0], y: pt[1], s: BASE_SCALE };
+          if (finisher) {
+            // Already taken out by the finisher: it just reappears at home.
+            this.set(k, home);
+            const art = this.pawns.get(k)!.querySelector('.pawn-art')!;
+            art.getAnimations().forEach((a) => a.cancel());
+            (art as SVGGElement).style.opacity = '';
+            this.pop(pt[0], pt[1], PALETTE[c.color].l);
+            return art.animate([{ opacity: 0, transform: 'scale(.3)' }, { opacity: 1, transform: 'scale(1.15)', offset: 0.7 }, { opacity: 1, transform: 'scale(1)' }], { duration: 380 / speed, easing: 'cubic-bezier(.3,.8,.4,1.2)' }).finished;
+          }
+          return this.launch(k, start, { ...home, r: (j ? -1 : 1) * 900 }, (980 + j * 90) / speed).then(() => {
             this.pop(pt[0], pt[1], PALETTE[c.color].l);
             return this.squash([k], 0.3, 220 / speed);
           });
