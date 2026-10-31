@@ -68,6 +68,7 @@ def main():
     ap.add_argument('--target', type=float, default=0.8)
     ap.add_argument('--workers', type=int, default=14, help='self-play processes; keep the box responsive (at most 16 of 20 cores)')
     ap.add_argument('--wandb', default='ladder-r1')
+    ap.add_argument('--replay', type=int, default=3, help='generations of games each training step uses (this one and the ones before)')
     ap.add_argument('--seed-base', type=int, default=0, help='added to every self-play seed (a second ladder line plays other games)')
     ap.add_argument('--labels', default='outcome', choices=['outcome', 'lambda'], help="lambda: ludo-label's lambda-return targets (train.py --target lambda)")
     ap.add_argument('--lam', type=float, default=0.7, help='lambda of the lambda-return targets')
@@ -116,10 +117,10 @@ def main():
             # Off-best share grows with the temperature; move it toward the target, at most 2x per generation.
             st['temp'] = temp * min(2.0, max(0.5, (a.explore / max(explored, 1e-3)) ** 0.7))
         t_play = time.time() - t0
-        # 2. learn (this generation and the previous one, when this ladder played it)
+        # 2. learn: the last --replay generations' games that this ladder played (this one included)
         new = gd / 'net.json'
-        prev_dir = d / f'gen-{k - 1}'
-        shards = f'{gd}/shard-*.bin' + (f',{prev_dir}/shard-*.bin' if k > 1 and any(prev_dir.glob('shard-*.bin')) else '')
+        shards = ','.join(f'{d}/gen-{j}/shard-*.bin' for j in range(max(1, k - a.replay + 1), k + 1)
+                          if any((d / f'gen-{j}').glob('shard-*.bin')))
         target = []
         if a.labels == 'lambda':
             # lambda-return targets for this generation's shards, valued by the net that played them (cur)
@@ -153,7 +154,7 @@ def main():
         # W&B artifact. Shards are gzipped in parallel first; W&B uploads in the background.
         subprocess.run(f'ls {gd}/shard-*.bin | xargs -P {a.workers} -n 1 nice -n 10 gzip -1 -k -f', shell=True, check=False)
         import wandb as _wb
-        art = _wb.Artifact(f'{a.wandb}-gen{k}', type='generation', metadata=line | {'pool': pool, 'commit': commit})
+        art = _wb.Artifact(f'{a.wandb}-gen{k}-data', type='generation', metadata=line | {'pool': pool, 'commit': commit})
         for f in sorted(gd.glob('shard-*.bin.gz')):
             art.add_file(str(f))
         art.add_file(str(new), name='net.json')
