@@ -15,7 +15,7 @@
 // hash is FNV-1a (32-bit) over every step line joined by '\n', so millions of games compare cheaply.
 import { writeFileSync } from 'node:fs';
 import { analyzeDice, createGame, move, ownerRanking, roll, sampleFace, seeded, type GameState, type Move } from '../../src/engine';
-import { FORMAT, MODES, diceRngFor, flags, policy } from './common';
+import { FORMAT, MODES, diceRngFor, flags, policy, rollFace, type DiceMode } from './common';
 
 const a = flags(process.argv.slice(2));
 const games = Number(a.games ?? 1000);
@@ -24,6 +24,8 @@ const seed = Number(a.seed ?? 1);
 const full = 'full' in a;
 const modes = (a.modes ?? Object.keys(MODES).join(',')).split(',');
 const policies = (a.policies ?? 'random,easy,normal,hard').split(',');
+// --dice fair: every face 1 in 6; default: the app's dice.
+const diceMode = (a.dice ?? 'game') as DiceMode;
 
 export const stateKey = (s: GameState) =>
   `${s.current}|${s.phase}|${s.rolls.join('')}|${s.sixes}|${s.players.map((p) => p.tokens.join(',')).join(';')}`;
@@ -59,7 +61,7 @@ for (let g = from; g < from + games; g++) {
   for (; s.phase !== 'over' && steps < 50000; steps++) {
     const before = stateKey(s);
     if (s.phase === 'roll') {
-      const face = sampleFace(analyzeDice(s.players, s.players[s.current]!.color, dice, s.singles).weights, dice);
+      const face = rollFace(s, dice, diceMode);
       step(`${before} R${face}`);
       s = roll(s, dice, face);
     } else {
@@ -70,7 +72,7 @@ for (let g = from; g < from + games; g++) {
   }
   const ranking = ownerRanking(s);
   step(`${stateKey(s)} END${ranking.join('')}`);
-  lines.push(JSON.stringify({ v: FORMAT, g, seed: gameSeed, mode, first, policies: specs, steps, ranking, hash: h.toString(16).padStart(8, '0'), ...(full ? { trace } : {}) }));
+  lines.push(JSON.stringify({ v: FORMAT, ...(diceMode === 'fair' ? { dice: 'fair' } : {}), g, seed: gameSeed, mode, first, policies: specs, steps, ranking, hash: h.toString(16).padStart(8, '0'), ...(full ? { trace } : {}) }));
 }
 writeFileSync(a.out ?? 'traces.jsonl', lines.join('\n') + '\n');
 console.log(`TRACE ${games} games ${((games * 1000) / (Date.now() - t0)).toFixed(1)} games/s`);

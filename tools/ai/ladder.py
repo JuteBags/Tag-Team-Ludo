@@ -54,6 +54,9 @@ def main():
     ap.add_argument('--max-games', type=int, default=2_000_000)
     ap.add_argument('--keep', type=float, default=0.012)
     ap.add_argument('--temp', type=float, default=0.01, help='starting move temperature in self-play (values are P(win), so gaps are small)')
+    ap.add_argument('--race', type=int, default=0, help='self-play nets use the race endgame tables (policy field 6)')
+    ap.add_argument('--chance', type=int, default=2, help='self-play chance cap (policy field 7); checks always use the full search')
+    ap.add_argument('--cut', type=float, default=0.0, help='self-play probe cut (policy field 8)')
     ap.add_argument('--explore', type=float, default=0.10, help='target share of sampled moves that are not the best; steers the temperature')
     ap.add_argument('--seeds', type=int, default=5000, help='paired seeds per check')
     ap.add_argument('--target', type=float, default=0.8)
@@ -83,7 +86,8 @@ def main():
         t0 = time.time()
         # 1. play
         temp = st.get('temp', a.temp)
-        pool = f"net:{cur}:1:3:{temp}:60,net:{prev}:1:3:{temp}:15,net:{a.hard}:1:15,hard:10"
+        fast = f'{a.race}:{a.chance}:{a.cut}'  # how the nets search in self-play (the checks use the defaults)
+        pool = f"net:{cur}:1:3:{temp}:{fast}:60,net:{prev}:1:3:{temp}:{fast}:15,net:{a.hard}:1:15,hard:10"
         per = math.ceil(n / a.workers)
         todo = [f"{SELFPLAY} --games {per} --seed {k * 1000 + w} --pool {pool} --keep {a.keep} --commit {commit} --out {gd}/shard-{w}.bin"
                 for w in range(a.workers) if not (gd / f'shard-{w}.bin').exists()]
