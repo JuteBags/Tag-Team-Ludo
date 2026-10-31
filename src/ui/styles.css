@@ -1,9 +1,9 @@
 /* Board themes (themes.ts sets data-theme on <html>): the board's colours, frame and arrow ink. */
-:root{--b-bg:#d6cbb6;--b-tile1:#ffffff;--b-tile2:#eee6d8;--b-shade:#5a4320;--b-panel1:#ffffff;--b-panel2:#ece3d2;--b-star:#cbbfa9;--b-ink:#3b2a17;
+:root{--b-side:#b9a27a;--b-bg:#a8916b;--b-tile1:#fffaf0;--b-tile2:#efe3cb;--b-shade:#5a4320;--b-panel1:#ffffff;--b-panel2:#ece3d2;--b-star:#cbbfa9;--b-ink:#3b2a17;
   --b-stone:#f6ecd6;--b-stone-d:#cdb994;--b-rim:#8a4a08;--b-frame:linear-gradient(150deg,#ffe28e 0%,#f3ab3c 38%,#cf7714 72%,#9a520a 100%)}
-:root[data-theme=wood]{--b-bg:#5e3a1c;--b-tile1:#f6e2b8;--b-tile2:#e2c08a;--b-shade:#2a1606;--b-panel1:#f8e6c2;--b-panel2:#e4c48f;--b-star:#b89058;--b-ink:#4a2a10;
+:root[data-theme=wood]{--b-side:#a9824c;--b-bg:#5e3a1c;--b-tile1:#f6e2b8;--b-tile2:#e2c08a;--b-shade:#2a1606;--b-panel1:#f8e6c2;--b-panel2:#e4c48f;--b-star:#b89058;--b-ink:#4a2a10;
   --b-stone:#ecd3a4;--b-stone-d:#b08a55;--b-rim:#3a2008;--b-frame:linear-gradient(150deg,#b07a44 0%,#7a4a22 40%,#5a3414 75%,#3a2008 100%)}
-:root[data-theme=dark]{--b-bg:#0d1424;--b-tile1:#3a4a74;--b-tile2:#2c3a60;--b-shade:#000;--b-panel1:#2e3a5c;--b-panel2:#1c2540;--b-star:#8fa0d0;--b-ink:#c9d6ff;
+:root[data-theme=dark]{--b-side:#1c2644;--b-bg:#0d1424;--b-tile1:#3a4a74;--b-tile2:#2c3a60;--b-shade:#000;--b-panel1:#2e3a5c;--b-panel2:#1c2540;--b-star:#8fa0d0;--b-ink:#c9d6ff;
   --b-stone:#3d4b70;--b-stone-d:#232c48;--b-rim:#0a0f1e;--b-frame:linear-gradient(150deg,#7c8cff 0%,#3b4aa8 40%,#232c6e 75%,#121842 100%)}
 /* Colour-blind symbols show only when turned on. */
 :root:not(.symbols) .sym{display:none}
@@ -17,6 +17,7 @@ body{overflow:hidden;color:#fff;font-family:'Nunito',system-ui,sans-serif;-webki
   background-size:56px 56px,100% 100%;background-color:#071a4f;
   user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparent 55%,rgba(0,0,0,.45) 100%),linear-gradient(180deg,#0b1f5c 0%,#061236 100%);background-color:#061236}
 #app{position:fixed;inset:0;overflow:hidden}
 /* Area clear of status/navigation bars; Capacitor injects --safe-area-inset-* on Android. */
 .safe{position:absolute;
@@ -58,15 +59,21 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .dbox .cup svg{display:block;width:100%;height:100%;filter:drop-shadow(0 3px 3px rgba(0,0,0,.45))}
 
 /* board */
-.bframe{position:relative;padding:9px;border-radius:22px;
+.bframe{position:relative;padding:14px;border-radius:26px;
   background:var(--b-frame);
-  box-shadow:inset 0 2px 0 rgba(255,255,255,.55),inset 0 -3px 0 rgba(0,0,0,.25),0 0 0 2px rgba(40,15,0,.35),0 18px 30px rgba(0,0,0,.5)}
+  box-shadow:inset 3px 4px 0 rgba(255,255,255,.65),inset -3px -7px 0 rgba(0,0,0,.35),0 0 0 2px rgba(40,15,0,.45),0 12px 0 rgba(70,30,0,.8),0 30px 40px rgba(0,0,0,.6)}
 .binner{position:relative;width:100%;height:100%;border-radius:13px;overflow:hidden;box-shadow:0 0 0 2px var(--b-rim)}
 .binner svg{display:block;width:100%;height:100%}
 .binner::before{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;
   background:linear-gradient(155deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,.05) 32%,transparent 45%)}
 .binner::after{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:13px;box-shadow:inset 0 2px 9px rgba(0,0,0,.35)}
 .pawn .hit{fill:transparent;pointer-events:none}
+.pawn:not(.mine) .halo,.pawn:not(.mine) .mineglow{display:none}
+.cs-pawn .mineglow,.house .mineglow,.hint .mineglow,.tw .mineglow{display:none}
+/* 1. The game board leans back in perspective, with a heavy shadow under it (taps are mapped back in boardView). */
+.gboard{perspective:1100px}
+.bframe.tilted{transform:rotateX(18deg);transform-origin:50% 50%}
+.gboard::after{content:'';position:absolute;left:4%;right:4%;bottom:-6px;height:44px;border-radius:50%;background:rgba(0,0,12,.6);filter:blur(14px);z-index:-1}
 .pawn.movable{cursor:pointer}
 .pawn.movable .hit{pointer-events:all}
 .pawn.movable .pawn-art{animation:bob .6s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:50% 100%}
@@ -129,7 +136,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .gboard{position:absolute;top:166px;left:10px}
 .pl{position:absolute;display:flex;align-items:center;gap:12px;z-index:3}
 .pl.tl{top:80px;left:20px}.pl.tr{top:80px;right:20px;flex-direction:row-reverse}
-.pl.bl{top:554px;left:20px}.pl.br{top:554px;right:20px;flex-direction:row-reverse}
+.pl.bl{top:584px;left:20px}.pl.br{top:584px;right:20px;flex-direction:row-reverse}
 .who{position:relative}
 .av{width:62px;height:62px;border-radius:17px;padding:3px;background:var(--m);box-shadow:0 4px 0 var(--d),0 8px 14px rgba(0,0,0,.35);transition:box-shadow .2s}
 .av svg{width:100%;height:100%;border-radius:13px;display:block}
@@ -152,7 +159,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .dbox.can-roll{animation:nudge .9s ease-in-out infinite}
 /* The tray beside the current player's dice: this turn's dice not played yet, in columns of three. */
 /* The action bar under the hint, by the thumb: this turn's dice, then the big ROLL button. */
-.act{position:absolute;top:732px;left:22px;right:22px;height:64px;display:flex;align-items:center;gap:12px;z-index:3}
+.act{position:absolute;top:756px;left:22px;right:22px;height:64px;display:flex;align-items:center;gap:12px;z-index:3}
 .dicebar{display:flex;gap:8px;flex:none}
 .dicebar:empty{display:none}
 .dicebar.bot{pointer-events:none}
@@ -169,7 +176,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 @keyframes tdIn{from{transform:scale(.4);opacity:0}}
 @media (prefers-reduced-motion:reduce){.tdie{animation:none}}
 @keyframes nudge{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
-.hint{position:absolute;top:650px;left:22px;right:22px;display:flex;gap:12px;align-items:center;padding:11px 14px;border-radius:18px;z-index:3;
+.hint{position:absolute;top:676px;left:22px;right:22px;display:flex;gap:12px;align-items:center;padding:11px 14px;border-radius:18px;z-index:3;
   background:linear-gradient(180deg,rgba(14,38,104,.92),rgba(7,21,64,.92));border:1.5px solid rgba(255,214,90,.65);box-shadow:0 8px 22px rgba(0,0,0,.4)}
 .hint .tw{width:46px;height:46px;flex:none;border-radius:14px;background:rgba(255,214,90,.14);display:grid;place-items:center}
 .hint .tw svg{width:40px;height:40px}

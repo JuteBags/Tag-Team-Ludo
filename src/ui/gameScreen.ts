@@ -80,7 +80,7 @@ export class GameScreen {
       <div class="hint"><span class="tw"></span><span><b></b><small></small></span></div>
       <div class="act"><div class="dicebar" aria-label="Dice this turn"></div><button class="rollbtn disp" data-act="roll" hidden>${icons.play}<span>ROLL</span></button></div>
       <div class="toasts"></div>`;
-    this.view = new BoardView(this.state.players, 370, this.state.players.filter((p) => !p.bot).map((p) => p.color), !!this.state.singles);
+    this.view = new BoardView(this.state.players, 370, this.state.players.filter((p) => !p.bot).map((p) => p.color), !!this.state.singles, true);
     this.el.querySelector('.gboard')!.appendChild(this.view.el);
     this.el.querySelector('[data-act=menu]')!.addEventListener('click', () => this.openMenu());
     this.el.querySelector('.dicebar')!.addEventListener('click', (e) => {

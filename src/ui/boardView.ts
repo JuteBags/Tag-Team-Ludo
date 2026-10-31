@@ -7,9 +7,12 @@ import { nearest, type Target } from './targets';
 
 const NS = 'http://www.w3.org/2000/svg';
 const HOP_MS = 150;
-const BASE_SCALE = 1.45;
-/** A lone pawn on the track: as big as fits inside a square reads best on a phone. */
-const TRACK_SCALE = 1.22;
+const BASE_SCALE = 1.75;
+/** A lone pawn on the track: taller than its square, so it reads as a piece standing on the board. */
+const TRACK_SCALE = 1.62;
+/** The game board's tilt toward the player (CSS, see .tilted in styles.css) and its perspective. */
+const TILT = (18 * Math.PI) / 180;
+const PERSPECTIVE = 1100;
 /** Tap radius in board units (the board is 600 wide): about 20px on a phone, well over a 40px target. */
 const HIT = 34;
 const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -17,9 +20,9 @@ const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Offsets and scale for 1-4 pawns sharing a square. */
 const STACK: Record<number, { o: Pt[]; s: number }> = {
   1: { o: [[0, 0]], s: TRACK_SCALE },
-  2: { o: [[-6, 2], [6, -1]], s: 1.05 },
-  3: { o: [[-8, 4], [8, 4], [0, -4]], s: 0.8 },
-  4: { o: [[-8, 5], [8, 5], [-8, -5], [8, -5]], s: 0.72 },
+  2: { o: [[-7, 2], [7, -1]], s: 1.3 },
+  3: { o: [[-9, 4], [9, 4], [0, -5]], s: 1.0 },
+  4: { o: [[-9, 5], [9, 5], [-9, -6], [9, -6]], s: 0.9 },
 };
 
 /** Position, scale, squash (+ wide/short, - tall/thin) and spin of a pawn. */
@@ -95,8 +98,11 @@ export class BoardView {
    */
   private riskTip: string;
 
-  /** `singles`: doubles are off, so stacked tokens are just a stack (no lock, no "cut here" tip). */
-  constructor(players: PlayerState[], size: number, private humans: Color[] = [], private singles = false) {
+  /**
+   * `singles`: doubles are off, so stacked tokens are just a stack (no lock, no "cut here" tip).
+   * `tilted`: the board leans back in perspective (the game board; the home screen has its own tilt).
+   */
+  constructor(players: PlayerState[], size: number, private humans: Color[] = [], private singles = false, private tilted = false) {
     let seen = false;
     try {
       seen = localStorage.getItem('ludo-tip-risk') === '1';
@@ -105,7 +111,7 @@ export class BoardView {
     }
     this.riskTip = seen ? 'done' : 'unseen';
     this.el = document.createElement('div');
-    this.el.className = 'bframe';
+    this.el.className = tilted ? 'bframe tilted' : 'bframe';
     this.el.style.width = this.el.style.height = `${size}px`;
     this.el.innerHTML = `<div class="binner">${boardSVG()}</div>`;
     const q = (c: string) => this.el.querySelector<SVGGElement>(`.${c}`)!;
@@ -118,7 +124,8 @@ export class BoardView {
     for (const p of players) {
       p.tokens.forEach((_, i) => {
         const g = document.createElementNS(NS, 'g');
-        g.setAttribute('class', 'pawn');
+        // Your own pawns wear the white halo, so they're easy to tell apart from everyone else's.
+        g.setAttribute('class', humans.includes(p.color) ? 'pawn mine' : 'pawn');
         g.innerHTML = pawnArt(p.color);
         this.pieces.appendChild(g);
         this.pawns.set(p.color + i, g);
@@ -322,6 +329,21 @@ export class BoardView {
   }
 
   private toBoard(e: MouseEvent): Pt {
+    if (this.tilted) {
+      // The frame is rotated about its centre by TILT around the x axis, seen through PERSPECTIVE px.
+      // Its parent is not transformed, so its box (and the stage scale k) give the centre on screen.
+      const host = this.el.parentElement!;
+      const r = host.getBoundingClientRect();
+      const k = r.width / host.offsetWidth;
+      const xs = (e.clientX - (r.left + r.width / 2)) / k;
+      const ys = (e.clientY - (r.top + r.height / 2)) / k;
+      const sin = Math.sin(TILT), cos = Math.cos(TILT);
+      const y = (ys * PERSPECTIVE) / (PERSPECTIVE * cos + ys * sin);
+      const x = (xs * (PERSPECTIVE - y * sin)) / PERSPECTIVE;
+      // From frame px (centre origin) to board units: the SVG fills the frame inside its padding.
+      const size = this.el.offsetWidth, pad = (size - this.svg.clientWidth) / 2;
+      return [((x + size / 2 - pad) / this.svg.clientWidth) * 600, ((y + size / 2 - pad) / this.svg.clientWidth) * 600];
+    }
     const p = this.svg.createSVGPoint();
     p.x = e.clientX;
     p.y = e.clientY;
