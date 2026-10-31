@@ -8,6 +8,11 @@ publish = false
 [dependencies]
 rayon = "1.10"
 serde_json = { version = "1", features = ["float_roundtrip"] }
+cudarc = { version = "0.19", optional = true, default-features = false, features = ["std", "driver", "nvrtc", "dynamic-loading", "cuda-12060"] }
+
+[features]
+# the GPU leaf evaluator (gpu.rs): cargo build --release --features cuda
+cuda = ["dep:cudarc"]
 
 [profile.release]
 opt-level = 3
@@ -15,3 +20,7 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 debug = false
+
+[[bin]]
+name = "gpu-check"
+required-features = ["cuda"]

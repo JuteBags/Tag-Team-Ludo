@@ -1,10 +1,11 @@
 //! tools/ai/selfplay.ts in Rust: the same games, the same kept positions, the same v1 shard bytes.
 //!   ludo-selfplay --games 2000 --seed 7 --out shard.bin --pool hard:65,normal:22,easy:10,random:3
 //!                 [--modes 2p,3p,...] [--keep 0.1] [--commit <sha>] [--threads N] [--format 2]
-//!                 [--lockstep W]
+//!                 [--lockstep W [--gpu]]
 //! --lockstep W: W games in flight, stepped together. At every round each game plays on to its next
 //! search decision, the search's leaves for all of them are valued in one batch (search::collect_leaves,
 //! then eval::batch_values), and each game chooses from its own values. Same bytes as without it.
+//! --gpu (build with --features cuda): that batch is valued on the GPU (gpu.rs), still the same bytes.
 //! One invocation writes one shard (like one selfplay.mjs worker); its games run in parallel and are
 //! concatenated in game order, so the file is byte-identical to selfplay.mjs with the same flags.
 use ludo_sim::bot::Policy;
@@ -173,6 +174,13 @@ fn main() {
         Live { g, game_seed, mode: mode.to_string(), specs, pols, keep_rng, gm, st, ml: MoveList::new(), buf: vec![0.0; 4 * D], x: Vec::new(), meta: Vec::new(), turn: 0, steps: 0 }
     };
     let lockstep: usize = flags.get("lockstep").map(|s| s.parse().unwrap()).unwrap_or(0);
+    if flags.contains_key("gpu") {
+        assert!(lockstep > 0, "--gpu needs --lockstep W");
+        #[cfg(feature = "cuda")]
+        ludo_sim::eval::use_gpu(true);
+        #[cfg(not(feature = "cuda"))]
+        panic!("--gpu: build with --features cuda");
+    }
 
     let t0 = Instant::now();
     let outs: Vec<GameOut> = if lockstep > 0 {
