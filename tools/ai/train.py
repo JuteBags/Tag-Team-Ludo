@@ -178,7 +178,9 @@ def main():
     # hand: the 19 hand features; raw: the token blocks, the turn order and the turn in progress; all: everything.
     inputs = {'hand': list(range(F)), 'raw': list(range(14, 18)) + list(range(F, D)), 'all': list(range(D))}[a.inputs]
     if a.linear:
-        inputs = list(range(F))
+        # 'singles' is the same for every person in a game, so it cancels in the softmax and its weight
+        # would only drift: readable rules leave it out.
+        inputs = [i for i in range(F) if HAND[i] != 'singles']
     net = Scorer(torch.tensor(inputs, device=dev), a.hidden, a.layers, linear=a.linear).to(dev)
     if a.init:
         js = json.load(open(a.init))
@@ -223,7 +225,7 @@ def main():
 
     def health():
         if a.linear:
-            return {f'rules/{n}': w for n, w in zip(HAND, net.linear.weight.detach().cpu().flatten().tolist())}
+            return {f'rules/{HAND[i]}': w for i, w in zip(inputs, net.linear.weight.detach().cpu().flatten().tolist())}
         """Per trunk layer: weight norm, share of saturated tanh units (|a| > 0.99) and of dead ones (no spread)."""
         out = {}
         with torch.no_grad():
@@ -287,7 +289,7 @@ def main():
 
     dump = lambda l: {'W': l.weight.detach().cpu().double().tolist(), 'b': l.bias.detach().cpu().double().tolist()}
     if a.linear:
-        weights = dict(zip(HAND, net.linear.weight.detach().cpu().double().flatten().tolist()))
+        weights = {HAND[i]: w for i, w in zip(inputs, net.linear.weight.detach().cpu().double().flatten().tolist())}
         json.dump({'kind': 'linear', 'weights': weights}, open(a.out, 'w'), indent=1)
         print('RULES ' + ' '.join(f'{k}:{v:+.3f}' for k, v in sorted(weights.items(), key=lambda kv: -abs(kv[1]))), flush=True)
     else:
