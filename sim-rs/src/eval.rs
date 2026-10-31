@@ -43,8 +43,12 @@ pub struct Net {
     hidden: usize,
 }
 
+/// linear.ts TURN_RULES: dice in the tray by face (count / 3) and the 6s in a row (/ 2).
+pub const TURN_RULES: [&str; 7] = ["tray1", "tray2", "tray3", "tray4", "tray5", "tray6", "sixes"];
+
 pub enum Evaluator {
-    Linear([f64; F]),
+    /// hand-feature weights, turn-rule weights
+    Linear([f64; F], [f64; 7]),
     Net(Net),
 }
 
@@ -53,11 +57,16 @@ impl Evaluator {
     pub fn from_json_text(text: &str) -> Evaluator {
         let v: Value = serde_json::from_str(text).unwrap();
         if v.get("kind").and_then(|k| k.as_str()) == Some("linear") {
+            let get = |name: &str| v["weights"].get(name).and_then(|x| x.as_f64()).unwrap_or(0.0);
             let mut w = [0.0; F];
             for (k, name) in FEATURE_NAMES.iter().enumerate() {
-                w[k] = v["weights"].get(*name).and_then(|x| x.as_f64()).unwrap_or(0.0);
+                w[k] = get(name);
             }
-            return Evaluator::Linear(w);
+            let mut t = [0.0; 7];
+            for (k, name) in TURN_RULES.iter().enumerate() {
+                t[k] = get(name);
+            }
+            return Evaluator::Linear(w, t);
         }
         let trunk: Vec<Dense> = v["trunk"].as_array().unwrap().iter().map(Dense::from_json).collect();
         let hidden = trunk.last().unwrap().out;
@@ -70,8 +79,8 @@ impl Evaluator {
         })
     }
 
-    pub fn linear(weights: [f64; F]) -> Evaluator {
-        Evaluator::Linear(weights)
+    pub fn linear(weights: [f64; F], turn: [f64; 7]) -> Evaluator {
+        Evaluator::Linear(weights, turn)
     }
 
     /// ownerChances(): each person's chance of winning (people = max owner + 1), into out[..people].
@@ -80,7 +89,7 @@ impl Evaluator {
         let people = ps.iter().map(|p| p.owner).max().unwrap() as usize + 1;
         let mut s = [0.0f64; 4];
         match self {
-            Evaluator::Linear(w) => {
+            Evaluator::Linear(w, turn) => {
                 let mut f = [0.0f64; 4 * F];
                 features(&g.b, g.current, g.singles, &mut f);
                 for (i, p) in ps.iter().enumerate() {
@@ -88,6 +97,11 @@ impl Evaluator {
                         s[p.owner as usize] += w[k] * f[i * F + k];
                     }
                 }
+                let me = ps[g.current].owner as usize;
+                for &r in g.tray() {
+                    s[me] += turn[r as usize - 1] / 3.0;
+                }
+                s[me] += (turn[6] * g.sixes as f64) / 2.0;
             }
             Evaluator::Net(net) => net.owner_scores(g, people, &mut s),
         }

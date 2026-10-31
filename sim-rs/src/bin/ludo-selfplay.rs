@@ -161,5 +161,8 @@ fn main() {
         }
     }
     f.flush().unwrap();
-    println!("DONE {games} games {positions} positions {:.1} games/s", games as f64 / secs);
+    let capped = outs.iter().filter(|o| o.header.contains("\"over\":false")).count();
+    let sampled = ludo_sim::search::SAMPLED.load(std::sync::atomic::Ordering::Relaxed);
+    let off_best = ludo_sim::search::OFF_BEST.load(std::sync::atomic::Ordering::Relaxed);
+    println!("DONE {games} games {positions} positions {:.1} games/s capped {capped} sampled {sampled} offBest {off_best}", games as f64 / secs);
 }

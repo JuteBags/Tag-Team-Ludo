@@ -23,10 +23,10 @@ impl Default for SearchOptions {
     }
 }
 
-type Key = [u8; 56];
+type Key = [u8; 64];
 
 fn key(s: &Game, turns_left: u32, chance: u32) -> Key {
-    let mut k = [0u8; 56];
+    let mut k = [0u8; 64];
     k[0] = s.current as u8;
     k[1] = s.phase;
     k[2] = s.sixes;
@@ -42,6 +42,11 @@ fn key(s: &Game, turns_left: u32, chance: u32) -> Key {
     k[52] = turns_left as u8;
     k[53] = chance as u8;
     k[54] = s.b.n as u8;
+    // the finishing order (search.ts key: ...|ranking|tokens)
+    k[55] = s.nrank as u8;
+    for (i, &c) in s.ranking[..s.nrank].iter().enumerate() {
+        k[56 + i] = c + 1;
+    }
     k
 }
 
@@ -145,6 +150,10 @@ pub fn search_values(eval: &Evaluator, state: &Game, opts: SearchOptions) -> Vec
         .collect()
 }
 
+/// search.ts searchStats: how often temperature sampling picked a move whose value is below the best.
+pub static SAMPLED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static OFF_BEST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// chooseExtreme(): index of the chosen move; `temperature` > 0 samples by softmax of the values.
 pub fn choose_extreme(eval: &Evaluator, state: &Game, rng: &mut Rng, opts: SearchOptions, temperature: f64) -> usize {
     if state.moves.len() == 1 {
@@ -165,6 +174,10 @@ pub fn choose_extreme(eval: &Evaluator, state: &Game, rng: &mut Rng, opts: Searc
         for (i, &x) in w.iter().enumerate() {
             r -= x;
             if r <= 0.0 {
+                SAMPLED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if vals[i] < top {
+                    OFF_BEST.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
                 return i;
             }
         }
