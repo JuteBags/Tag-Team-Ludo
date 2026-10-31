@@ -4,7 +4,7 @@
 // the same dice stream. Prints ARENA {...} with A's games, wins and summed places, plus per seed the
 // sum of squared wins (seedSq), so the error bar can be taken over seeds: the paired outcomes.
 import { ownerRanking, seeded } from '../../src/engine';
-import { flags, peopleIn, playGame, policy } from './common';
+import { diceRngFor, flags, peopleIn, playGame, policy } from './common';
 
 const a = flags(process.argv.slice(2));
 const A = policy(a.a!);
@@ -23,8 +23,9 @@ const t0 = Date.now();
 for (let seed = Number(a.from ?? 0); seed < Number(a.to ?? 1000); seed++) {
   let seedWins = 0;
   for (let seat = 0; seat < people; seat++) {
+    // Both seats of a seed get the same dice stream (and the same policy stream).
     const rng = seeded(seed * 7919 + 13);
-    const end = playGame(mode, Array.from({ length: people }, (_, o) => (o === seat ? A : B)), rng, seed % 4);
+    const end = playGame(mode, Array.from({ length: people }, (_, o) => (o === seat ? A : B)), rng, diceRngFor(seed * 7919 + 13), seed % 4);
     const place = ownerRanking(end).indexOf(seat) + 1;
     const first = end.players[(seed % 4) % end.players.length]!.owner === seat;
     games++;

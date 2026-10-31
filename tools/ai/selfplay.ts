@@ -8,7 +8,7 @@
 import { writeFileSync } from 'node:fs';
 import { BASE, FINISHED, ownerRanking, seeded } from '../../src/engine';
 import { D, encodeState } from '../../src/engine/ai/encode';
-import { MODES, flags, peopleIn, playGame, policy } from './common';
+import { FORMAT, MODES, diceRngFor, flags, peopleIn, playGame, policy } from './common';
 
 const a = flags(process.argv.slice(2));
 const games = Number(a.games ?? 1000);
@@ -27,7 +27,7 @@ function pick(r: number): string {
 
 const xs: Float32Array[] = [];
 const meta: number[] = [];
-const header = { D, commit: a.commit ?? '', seed, keep, games: [] as unknown[] };
+const header = { v: FORMAT, D, commit: a.commit ?? '', seed, keep, games: [] as unknown[] };
 const t0 = Date.now();
 for (let g = 0; g < games; g++) {
   const gameSeed = seed * 1_000_003 + g;
@@ -37,7 +37,7 @@ for (let g = 0; g < games; g++) {
   let turn = 0;
   // A separate stream decides what is kept, so --keep never changes how the game plays out.
   const keepRng = seeded(gameSeed ^ 0x5bd1e995);
-  const end = playGame(mode, specs.map(policy), rng, Math.floor(rng() * 4), (s) => {
+  const end = playGame(mode, specs.map(policy), rng, diceRngFor(gameSeed), Math.floor(rng() * 4), (s) => {
     if (keepRng() >= keep) return void turn++;
     const x = new Float32Array(4 * D);
     x.set(encodeState(s));

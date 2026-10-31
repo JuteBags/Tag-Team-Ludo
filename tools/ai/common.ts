@@ -1,12 +1,21 @@
 // Shared by the self-play worker and the arena (tools/ai). Bundled with rolldown (build.sh) and run with
 // Node, so the rules are the game's own TypeScript, never a copy.
 import { readFileSync } from 'node:fs';
-import { SEATS, analyzeDice, chooseMove, createGame, move, roll, sampleFace, type BotLevel, type GameState, type Move, type Rng, type Seat } from '../../src/engine';
+import { SEATS, analyzeDice, chooseMove, createGame, move, roll, sampleFace, seeded, type BotLevel, type GameState, type Move, type Rng, type Seat } from '../../src/engine';
 import { LinearRules, type Evaluator, type LinearJSON } from '../../src/engine/ai/linear';
 import { Net, type NetJSON } from '../../src/engine/ai/net';
 import { chooseExtreme } from '../../src/engine/ai/search';
 
 export type Policy = (s: GameState, rng: Rng) => Move;
+
+/**
+ * Version 2 of shards and traces: the dice draw from their own stream, seeded(gameSeed ^ DICE_SALT), and
+ * the policies (tie-breaks, random picks, temperature) from the game's rng. Policies then cannot move the
+ * dice, and paired games in the arena use the same stream of dice numbers for both seats.
+ */
+export const FORMAT = 2;
+export const DICE_SALT = 0x2545f491;
+export const diceRngFor = (gameSeed: number) => seeded(gameSeed ^ DICE_SALT);
 
 // A weights file is a value net (net.ts) or readable linear rules (linear.ts, "kind": "linear").
 const nets = new Map<string, Evaluator>();
@@ -51,18 +60,18 @@ for (const singles of [false, true]) {
 export const peopleIn = (mode: string) => Math.max(...MODES[mode]!.seats().map((s) => s.owner)) + 1;
 
 /**
- * Plays one game with the game's real dice. `byOwner[o]` plays every colour of person o, `first` is the
- * index of the colour that starts. `onRoll` sees every position before a roll: turn starts, and mid-turn
+ * Plays one game with the game's real dice, drawn from `dice`; the policies draw from `rng`. `byOwner[o]`
+ * plays every colour of person o, `first` is the index of the colour that starts. `onRoll` sees every position before a roll: turn starts, and mid-turn
  * ones (after a 6, a kill or a token home), which the search also scores.
  */
-export function playGame(mode: string, byOwner: Policy[], rng: Rng, first: number, onRoll?: (s: GameState) => void): GameState {
+export function playGame(mode: string, byOwner: Policy[], rng: Rng, dice: Rng, first: number, onRoll?: (s: GameState) => void): GameState {
   const m = MODES[mode]!;
   let s = createGame(m.seats(), undefined, m.singles);
   s = { ...s, current: first % s.players.length };
   for (let steps = 0; s.phase !== 'over' && steps < 50000; steps++) {
     if (s.phase === 'roll') {
       onRoll?.(s);
-      s = roll(s, rng, sampleFace(analyzeDice(s.players, s.players[s.current]!.color, rng, s.singles).weights, rng));
+      s = roll(s, dice, sampleFace(analyzeDice(s.players, s.players[s.current]!.color, dice, s.singles).weights, dice));
     } else s = move(s, byOwner[s.players[s.current]!.owner]!(s, rng));
   }
   return s;

@@ -1,7 +1,8 @@
 // Parity: the TypeScript net (src/engine/ai/net.ts) must score people exactly as torch did.
 //   node parity.mjs --net net.json   (reads net.json.parity-{x,o,s}.npy written by train.py)
 // x: inputs [N,4,D]; o: each colour's owner [N,4] (-1 for no colour); s: people's scores [N,4] (NaN for
-// nobody). Prints PARITY {positions, max, ok}; ok needs every score within 1e-5 of torch's.
+// nobody). Prints PARITY {positions, max, rel, ok}; ok needs every score within 1e-5 of torch's, relative to
+// the score's size (1 + |score|): torch trains in float32, so large linear weights round at about 1e-7 of the sum.
 import { readFileSync } from 'node:fs';
 import { D } from '../../src/engine/ai/encode';
 import { F, FEATURES } from '../../src/engine/ai/features';
@@ -39,12 +40,15 @@ const o = npy(`${a.net}.parity-o.npy`);
 const s = npy(`${a.net}.parity-s.npy`);
 const n = x.shape[0]!;
 let max = 0;
+let rel = 0;
 for (let i = 0; i < n; i++) {
   const owners = Array.from(o.data.subarray(i * 4, i * 4 + 4)).filter((v) => v >= 0);
   const got = net ? net.ownerScores(x.data, i * 4 * D, owners, 4) : linearScores(x.data, i * 4 * D, owners);
   for (let p = 0; p < 4; p++) {
     const want = s.data[i * 4 + p]!;
-    if (!Number.isNaN(want)) max = Math.max(max, Math.abs(got[p]! - want));
+    if (Number.isNaN(want)) continue;
+    max = Math.max(max, Math.abs(got[p]! - want));
+    rel = Math.max(rel, Math.abs(got[p]! - want) / (1 + Math.abs(want)));
   }
 }
-console.log(`PARITY ${JSON.stringify({ positions: n, max, ok: max < 1e-5 })}`);
+console.log(`PARITY ${JSON.stringify({ positions: n, max, rel, ok: rel < 1e-5 })}`);
