@@ -90,3 +90,18 @@ export function previewLayout(count: 2 | 3 | 4, rules: PickRules, bots: number):
   for (const c of COLORS.filter((x) => layout[x] === 'empty').slice(0, bots)) layout[c] = 'bot';
   return layout;
 }
+
+/** Longest name a person can give themselves. */
+export const NAME_MAX = 12;
+
+/**
+ * A name typed by a person, made safe to show: no characters that could form markup, single spaces, at
+ * most NAME_MAX characters. An empty result falls back to `fallback` ("Player 2", "You").
+ */
+export function cleanName(raw: string, fallback: string): string {
+  const name = raw.replace(/[<>&"'`]/g, '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX).trim();
+  return name || fallback;
+}
+
+/** The name a seat starts with: what was typed there last time, or the default. */
+export const defaultName = (mode: Mode, seat: number) => (mode === 'pvp' ? `Player ${seat + 1}` : 'You');

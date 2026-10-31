@@ -19,12 +19,15 @@ interface Settings {
   botLevel: BotLevel;
   /** Doubles (pairs) in new games; off is classic single-token Ludo. */
   doubles: boolean;
+  /** Names people gave themselves, by seat: With friends seats, and your own name vs Computer. */
+  friendNames: string[];
+  myName: string;
 }
 
 export type Theme = 'classic' | 'wood' | 'dark';
 
 const KEY = 'ludo-settings';
-const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true };
+const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true, friendNames: [], myName: '' };
 
 function load(): Settings {
   try {
