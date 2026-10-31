@@ -10,6 +10,13 @@ that position, so P(win) = softmax over people. Labels are only the games' real 
 split into train and validation by game, never by position. Prints validation loss next to a uniform
 baseline, first-place log-loss, the double-house slice and calibration; writes the weights as JSON for
 net.ts plus parity data for parity.ts; with --wandb also logs to W&B and checks parity.
+
+Residual mode (--rules <linear rules json> --alpha a): a person's score is net(x) + a * rules(x), where
+rules(x) is the frozen readable rules (linear.ts ownerScores: the hand features of the person's colours
+plus the turn rules, from the same inputs as --linear) and the loss runs on that sum; the net learns
+what the rules miss. The saved JSON is the net alone; play it as blend:<net>:<rules>:<a> (blend.ts).
+Parity: the net against net.ts as always, and the rules part against linear.ts on the same positions,
+so the blend (their sum, as blend.ts adds them) is checked through both.
 """
 import argparse, glob, json, math, os, struct, subprocess
 import numpy as np
@@ -155,7 +162,11 @@ def main():
     ap.add_argument('--wandb', default='', help='W&B run name')
     ap.add_argument('--group', default='phase1-bootstrap')
     ap.add_argument('--max-games', type=int, default=0, help='train on only the first shards, up to about this many games')
+    ap.add_argument('--rules', default='', help='residual mode: frozen linear rules json added to the net score')
+    ap.add_argument('--alpha', type=float, default=0.0, help='residual mode: weight of --rules in the score (blend.ts alpha)')
     a = ap.parse_args()
+    assert not (a.rules and a.linear), '--rules is for training a net as a residual over readable rules'
+    assert bool(a.rules) == (a.alpha != 0), '--rules and --alpha go together'
     dev = 'cuda' if torch.cuda.is_available() else 'cpu'
     commit = subprocess.run(['git', 'log', '-1', '--format=%h'], capture_output=True, text=True).stdout.strip()
     run = None
@@ -217,6 +228,29 @@ def main():
         # A warm start keeps the starting net's shape and inputs.
         a.hidden, a.layers, inputs = len(js['trunk'][0]['b']), len(js['trunk']), js['inputs']
     net = Scorer(torch.tensor(inputs, device=dev), a.hidden, a.layers, linear=a.linear).to(dev)
+    # Residual mode: the frozen rules as one weight per input (hand features, then the 7 turn rules at the
+    # end of the encoding; a rule the json does not name gets 0), summed over a person's colours.
+    rules_w = None
+    if a.rules:
+        rj = json.load(open(a.rules))
+        assert rj.get('kind') == 'linear', f'{a.rules} is not readable rules'
+        wv = torch.zeros(D, dtype=torch.float64)
+        for i in range(F):
+            wv[i] = rj['weights'].get(HAND[i], 0.0)  # as linear.ts / parity.ts: a missing rule is 0
+        for j, name in enumerate(TURN_RULES):
+            wv[D - 7 + j] = rj['weights'].get(name, 0.0)
+        rules_w = wv
+
+    def rules_scores(x, ow, dtype=torch.float32):
+        c = x.to(dtype) @ rules_w.to(x.device, dtype)
+        return torch.stack([(c * (ow == o)).sum(1) for o in range(4)], 1)
+
+    def score(x, ow):
+        """The training score: the net's, plus alpha times the frozen rules' in residual mode."""
+        sc, mg = net(x, ow)
+        if rules_w is not None:
+            sc = sc + a.alpha * rules_scores(x, ow)
+        return sc, mg
     if a.init:
         for l, j in [*zip(net.trunk, js['trunk']), (net.pool, js['pool']), (net.out, js['out'])]:
             l.weight.data = torch.tensor(j['W'], device=dev, dtype=torch.float32)
@@ -229,7 +263,7 @@ def main():
         losses, firsts, probs, wins = [], [], [], []
         with torch.no_grad():
             for i in range(0, len(Xv), 65536):
-                sc, _ = net(Xv[i:i + 65536], OWv[i:i + 65536])
+                sc, _ = score(Xv[i:i + 65536], OWv[i:i + 65536])
                 o = Ov[i:i + 65536]
                 l, lp = pl_rows(sc, o)
                 losses.append(l.cpu())
@@ -279,7 +313,7 @@ def main():
         net.eval()
         x, ow, o = Xv[:n], OWv[:n], Ov[:n]
         with torch.no_grad():
-            base = pl_rows(net(x, ow)[0], o)[0].mean().item()
+            base = pl_rows(score(x, ow)[0], o)[0].mean().item()
             rows = []
             for name, cols in GROUPS:
                 if not any(c in set(inputs) for c in cols):
@@ -287,7 +321,7 @@ def main():
                 xs = x.clone()
                 perm = torch.randperm(len(x), device=x.device)
                 xs[:, :, cols] = x[perm][:, :, cols]
-                rows.append([name, pl_rows(net(xs, ow)[0], o)[0].mean().item() - base])
+                rows.append([name, pl_rows(score(xs, ow)[0], o)[0].mean().item() - base])
         net.train()
         return sorted(rows, key=lambda r: -r[1])
 
@@ -296,7 +330,7 @@ def main():
         perm = torch.randperm(len(Xt), device=dev)
         for i in range(0, len(Xt), a.batch):
             b = perm[i:i + a.batch]
-            sc, mg = net(Xt[b], OWt[b])
+            sc, mg = score(Xt[b], OWt[b])
             l_pl = pl_rows(sc, Ot[b])[0].mean()
             if TGt is not None:
                 # Cross-entropy between the lambda-return targets and the net's chances over the people still playing.
@@ -349,6 +383,20 @@ def main():
     res = subprocess.run(['node', 'tools/ai/dist/parity.mjs', '--net', a.out], capture_output=True, text=True).stdout
     print(res.strip(), flush=True)
     par = json.loads(res.split('PARITY ', 1)[1]) if 'PARITY ' in res else {'max': float('nan'), 'ok': False}
+    if rules_w is not None:
+        # The rules part on the same positions, against linear.ts (the blend adds the two as blend.ts does).
+        rp = a.out + '.rules.json'
+        json.dump(json.load(open(a.rules)), open(rp, 'w'))
+        with torch.no_grad():
+            rs = rules_scores(x, ow, torch.float64).masked_fill(~present, float('nan'))
+        np.save(rp + '.parity-x.npy', x.cpu().numpy())
+        np.save(rp + '.parity-o.npy', ow.double().cpu().numpy())
+        np.save(rp + '.parity-s.npy', rs.cpu().numpy())
+        res_r = subprocess.run(['node', 'tools/ai/dist/parity.mjs', '--net', rp], capture_output=True, text=True).stdout
+        print('RULES ' + res_r.strip(), flush=True)
+        par_r = json.loads(res_r.split('PARITY ', 1)[1]) if 'PARITY ' in res_r else {'max': float('nan'), 'ok': False}
+        par = {'max': max(par['max'], par_r['max']), 'ok': par['ok'] and par_r['ok'], 'net': par, 'rules': par_r}
+        print(f"BLEND blend:{a.out}:{a.rules}:{a.alpha}", flush=True)
     if run:
         run.summary.update({'parity/max_abs_diff': par['max'], 'parity/ok': par['ok'], 'val/final_loss_pl': vl, 'val/final_ece': ece})
         cal_t = wandb.Table(columns=['bin', 'mean_pred', 'actual_rate', 'n'], data=table)
