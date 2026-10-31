@@ -84,10 +84,14 @@ jobs:
           FILE: ${{ matrix.file }}
           NAME: ${{ steps.name.outputs.name }}
         run: |
-          # Logs are named after the file, so the report job can download them all into one folder.
-          (cd base && npx vitest run --config vitest.sim.config.ts "$FILE" > "../$NAME.base.log" 2>&1) & b=$!
-          (cd head && npx vitest run --config vitest.sim.config.ts "$FILE" > "../$NAME.head.log" 2>&1) & h=$!
-          bs=0; hs=0; wait $b || bs=$?; wait $h || hs=$?
+          # Each side is split into two processes (SIM_PART), so main and the PR use all four cores.
+          # The parts' logs are joined; logs are named after the file, for the report job.
+          sim() { (cd "$1" && SIM_PART="$2" npx vitest run --config vitest.sim.config.ts "$FILE" > "../$NAME.$1.$3.log" 2>&1); }
+          sim base 1/2 a & b1=$!; sim base 2/2 b & b2=$!
+          sim head 1/2 a & h1=$!; sim head 2/2 b & h2=$!
+          bs=0; hs=0; wait $b1 || bs=$?; wait $b2 || bs=$?; wait $h1 || hs=$?; wait $h2 || hs=$?
+          cat "$NAME.base.a.log" "$NAME.base.b.log" > "$NAME.base.log"
+          cat "$NAME.head.a.log" "$NAME.head.b.log" > "$NAME.head.log"
           grep -v '^SIM_JSON ' "$NAME.head.log" | tail -45
           [ $bs -eq 0 ] || echo "::warning::$FILE could not run on main (it may need engine changes from this PR)"
           if [ $hs -ne 0 ]; then echo "::error::$FILE failed on this PR (a game never ended, or the dice changed behaviour)"; exit 1; fi

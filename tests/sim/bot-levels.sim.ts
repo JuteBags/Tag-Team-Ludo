@@ -16,10 +16,12 @@ runSimulation(
     { name: '4p Hard', seed: 709, make: game(4, 'hard') },
   ],
   (r) => {
-    // A fair seat wins 1 in 2 games (2 players) or 1 in 4 (4 players).
-    expect(winRate(r['2p Hard weighted']!)).toBeGreaterThan(0.55);
-    expect(winRate(r['2p Easy weighted']!)).toBeLessThan(0.45);
-    expect(winRate(r['4p Hard weighted']!)).toBeGreaterThan(0.28);
-    expect(winRate(r['4p Easy weighted']!)).toBeLessThan(0.21);
+    // A fair seat wins 1 in 2 games (2 players) or 1 in 4 (4 players). With SIM_PART each process
+    // checks the setups it ran.
+    const check = (k: string, f: (rate: number) => void) => r[k] && f(winRate(r[k]));
+    check('2p Hard weighted', (w) => expect(w).toBeGreaterThan(0.55));
+    check('2p Easy weighted', (w) => expect(w).toBeLessThan(0.45));
+    check('4p Hard weighted', (w) => expect(w).toBeGreaterThan(0.28));
+    check('4p Easy weighted', (w) => expect(w).toBeLessThan(0.21));
   },
 );
