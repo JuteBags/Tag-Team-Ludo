@@ -46,12 +46,17 @@ export function globalDefs(): string {
   let g = '';
   for (const c of COLORS) {
     const v = PALETTE[c];
-    g += `<linearGradient id="pb-${c}" x1="0" x2="1"><stop offset="0" stop-color="${v.l}"/><stop offset=".42" stop-color="${v.m}"/><stop offset="1" stop-color="${v.d}"/></linearGradient>
+    g += `<radialGradient id="pb-${c}" cx=".3" cy=".25" r="1"><stop offset="0" stop-color="${v.l}"/><stop offset=".42" stop-color="${v.m}"/><stop offset=".82" stop-color="${v.d}"/><stop offset="1" stop-color="${v.d}"/></radialGradient>
     <radialGradient id="ph-${c}" cx=".36" cy=".32" r=".78"><stop offset="0" stop-color="${v.l}"/><stop offset=".45" stop-color="${v.m}"/><stop offset="1" stop-color="${v.d}"/></radialGradient>
     <linearGradient id="base-${c}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${v.l}"/><stop offset=".5" stop-color="${v.m}"/><stop offset="1" stop-color="${v.d}"/></linearGradient>
     <linearGradient id="tile-${c}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${v.l}"/><stop offset="1" stop-color="${v.m}"/></linearGradient>`;
   }
-  g += `<linearGradient id="tileW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--b-tile1)"/><stop offset="1" style="stop-color:var(--b-tile2)"/></linearGradient>
+  // Light from the top left: a bright top-left edge, a darker bottom-right one.
+  g += `<linearGradient id="bevel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".22" stop-color="#fff" stop-opacity=".08"/><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".2"/></linearGradient>
+  <linearGradient id="sunk" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".38"/><stop offset=".2" stop-color="#000" stop-opacity="0"/><stop offset=".85" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".35"/></linearGradient>
+  <radialGradient id="mglow"><stop offset="0" stop-color="#fff7c2" stop-opacity=".95"/><stop offset=".55" stop-color="#ffd23f" stop-opacity=".55"/><stop offset="1" stop-color="#ffd23f" stop-opacity="0"/></radialGradient>
+  <radialGradient id="pao"><stop offset="0" stop-color="#000" stop-opacity=".5"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+  <linearGradient id="tileW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--b-tile1)"/><stop offset="1" style="stop-color:var(--b-tile2)"/></linearGradient>
   <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--b-panel1)"/><stop offset="1" style="stop-color:var(--b-panel2)"/></linearGradient>
   <radialGradient id="slotShade" cx=".5" cy=".42" r=".6"><stop offset=".5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></radialGradient>
   <radialGradient id="gCoin" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#fff5b8"/><stop offset=".5" stop-color="#ffd23f"/><stop offset="1" stop-color="#f09a0a"/></radialGradient>
@@ -63,7 +68,7 @@ export function globalDefs(): string {
   <linearGradient id="gSilver" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#9aa8bd"/></linearGradient>
   <linearGradient id="gBronze" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd0a0"/><stop offset="1" stop-color="#b85f22"/></linearGradient>
   <linearGradient id="gPlain" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fb4ff"/><stop offset="1" stop-color="#3a5fb0"/></linearGradient>
-  <radialGradient id="pshadow"><stop offset="0" stop-color="#000" stop-opacity=".42"/><stop offset=".6" stop-color="#000" stop-opacity=".22"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>`;
+  <radialGradient id="pshadow"><stop offset="0" stop-color="#000" stop-opacity=".55"/><stop offset=".6" stop-color="#000" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>`;
   return `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${g}</defs></svg>`;
 }
 
@@ -94,18 +99,24 @@ export function pawnArt(c: Color): string {
   const outline = (color: string, w: number) =>
     `<g fill="${color}" stroke="${color}" stroke-width="${w}" stroke-linejoin="round">${PAWN_BASE(10.4)}${PAWN_BODY}${PAWN_HEAD}</g>`;
   // The shadow is a gradient, not a blur filter: filters are redrawn on every frame of every hop.
-  return `<ellipse cx="1.5" cy="13.4" rx="14" ry="4.6" fill="url(#pshadow)"/>
+  return `<ellipse cx="4.5" cy="14.6" rx="15" ry="5" fill="url(#pshadow)"/>
 <circle class="hit" cx="0" cy="0" r="20" fill="transparent"/>
-<g class="pawn-art">${outline('#fff', 5.2)}${outline(v.d, 2.6)}
-<g fill="${v.d}">${PAWN_BASE(10.4)}</g>
-<g fill="url(#pb-${c})">${PAWN_BASE(8.6)}</g>
-<path d="M-11.5,8.6 A11.5,4 0 0 0 11.5,8.6" fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="1"/>
+<ellipse class="mineglow" cx="0" cy="11" rx="18" ry="7" fill="url(#mglow)"/>
+<g class="pawn-art"><g class="halo">${outline('#fff', 5.2)}</g>${outline(v.d, 2.6)}
+<ellipse cx="1" cy="12.6" rx="12" ry="3.4" fill="#000" opacity=".45"/>
+<g fill="${v.d}">${PAWN_BASE(11.4)}<rect x="-11.5" y="8.2" width="23" height="3.2"/></g>
+<g fill="url(#pb-${c})">${PAWN_BASE(8.2)}</g>
+<path d="M-11.5,8.2 A11.5,4 0 0 0 11.5,8.2" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.1"/>
 <g fill="url(#pb-${c})">${PAWN_BODY}</g>
+<path d="M3.6,-3.4 C4.6,-.2 8.6,2.6 8.6,8.6 Q6.6,9.6 4.2,10 C5.4,5 3.4,1 2.2,-3.4Z" fill="${v.d}" opacity=".45"/>
+<path d="M-7.6,8.4 Q0,11 7.6,8.4" fill="none" stroke="${v.l}" stroke-opacity=".7" stroke-width="1.1" stroke-linecap="round"/>
 <ellipse cx="0" cy="-3.4" rx="5.8" ry="2.2" fill="${v.d}"/>
 <ellipse cx="0" cy="-4.1" rx="5.8" ry="2.2" fill="${v.m}"/>
 <g fill="url(#ph-${c})">${PAWN_HEAD}</g>
-<path d="M-5.8,7 C-5.6,3.2 -3.4,1 -2.6,-1.8" stroke="#fff" stroke-opacity=".45" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-<ellipse cx="-2.4" cy="-11" rx="2.6" ry="1.6" fill="#fff" opacity=".85"/>
+<path d="M3.2,-13.6 A6.4,6.4 0 0 1 4.6,-3.9" fill="none" stroke="${v.l}" stroke-opacity=".55" stroke-width="1.1" stroke-linecap="round"/>
+<path d="M-5.6,7 C-5.4,3.2 -3.4,1 -2.6,-1.8" stroke="#fff" stroke-opacity=".7" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+<ellipse cx="-2.3" cy="-10.8" rx="3.2" ry="2" fill="#fff" opacity=".6"/>
+<circle cx="-3" cy="-11.5" r="1.15" fill="#fff"/>
 <path class="sym" d="${symbolPath(c, 5.4)}" transform="translate(0 3.6)" fill="#fff" stroke="${v.d}" stroke-width="1.4" stroke-linejoin="round"/></g>`;
 }
 export const pawnSVG = (c: Color) => `<svg viewBox="-15 -17 30 34">${pawnArt(c)}</svg>`;
@@ -116,15 +127,21 @@ export const twinsSVG = (c: Color) =>
 function tile(x: number, y: number, f: string): string {
   const px = x * S + 1.5, py = y * S + 1.5, w = S - 3;
   const fill = f === 'w' ? 'url(#tileW)' : `url(#tile-${f})`;
-  return `<rect x="${px}" y="${py + 1.8}" width="${w}" height="${w}" rx="6" style="fill:var(--b-shade)" opacity=".2"/><rect x="${px}" y="${py}" width="${w}" height="${w}" rx="6" fill="${fill}"/>`;
+  const side = f === 'w' ? 'fill:var(--b-side)' : `fill:${PALETTE[f as Color].d}`;
+  const h = w - 6.5;
+  return `<rect x="${px + 2.5}" y="${py + 4}" width="${w}" height="${w}" rx="6" style="fill:var(--b-shade)" opacity=".35"/><rect x="${px}" y="${py + 6.5}" width="${w}" height="${h}" rx="6" style="${side}"/><rect x="${px}" y="${py}" width="${w}" height="${h}" rx="6" fill="${fill}"/><rect x="${px}" y="${py}" width="${w}" height="${h}" rx="6" fill="url(#bevel)"/><path d="M${px + 6},${py + 1} h${w - 12}" stroke="#fff" stroke-opacity=".8" stroke-width="1.4" stroke-linecap="round"/>`;
 }
 
 function base(c: Color): string {
   const [cx, cy] = CORNER[c], bx = cx * S, by = cy * S, v = PALETTE[c];
-  let s = `<rect x="${bx + 3}" y="${by + 3}" width="234" height="234" rx="20" fill="url(#base-${c})"/>
+  let s = `<rect x="${bx + 8}" y="${by + 12}" width="232" height="228" rx="20" fill="#000" opacity=".35"/>
+  <rect x="${bx + 3}" y="${by + 17}" width="234" height="220" rx="20" fill="${v.d}"/>
+  <rect x="${bx + 3}" y="${by + 3}" width="234" height="220" rx="20" fill="url(#base-${c})"/>
+  <rect x="${bx + 3}" y="${by + 3}" width="234" height="220" rx="20" fill="url(#bevel)" opacity=".8"/>
   <path d="M${bx + 23},${by + 3} h194 a20,20 0 0 1 20,20 v40 C${bx + 170},${by + 50} ${bx + 70},${by + 40} ${bx + 3},${by + 90} v-67 a20,20 0 0 1 20,-20z" fill="#fff" opacity=".13"/>
-  <rect x="${bx + 38}" y="${by + 41}" width="164" height="164" rx="30" fill="#000" opacity=".2"/>
-  <rect x="${bx + 38}" y="${by + 36}" width="164" height="164" rx="30" fill="url(#panel)"/>
+  <rect x="${bx + 34}" y="${by + 26}" width="172" height="172" rx="33" fill="${v.d}" opacity=".7"/>
+  <rect x="${bx + 38}" y="${by + 30}" width="164" height="164" rx="30" fill="url(#panel)"/>
+  <rect x="${bx + 38}" y="${by + 30}" width="164" height="164" rx="30" fill="url(#sunk)"/>
   <path class="sym" d="${symbolPath(c, 12)}" transform="translate(${bx + 120} ${by + 118})" fill="${v.m}" opacity=".7"/>`;
   for (const [sx, sy] of SLOT) {
     s += `<circle cx="${bx + sx}" cy="${by + sy}" r="25" fill="${v.t}"/><circle cx="${bx + sx}" cy="${by + sy}" r="25" fill="url(#slotShade)"/><circle cx="${bx + sx}" cy="${by + sy}" r="25" fill="none" stroke="${v.m}" stroke-opacity=".55" stroke-width="2.5"/>`;
