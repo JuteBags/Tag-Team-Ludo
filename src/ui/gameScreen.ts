@@ -19,6 +19,18 @@ const ROLL_MS = 1150;
 const PLACES = ['', '1ST', '2ND', '3RD', '4TH'];
 const ORD = ['', '1st', '2nd', '3rd', '4th'];
 const faceLabel = () => (settings.diceFace === 'top' ? 'DICE: TOP FACE' : 'DICE: FRONT FACE');
+/** Pip spots on a 24-unit die face. */
+const PIPS: Record<number, [number, number][]> = {
+  1: [[12, 12]],
+  2: [[7, 7], [17, 17]],
+  3: [[7, 7], [12, 12], [17, 17]],
+  4: [[7, 7], [17, 7], [7, 17], [17, 17]],
+  5: [[7, 7], [17, 7], [12, 12], [7, 17], [17, 17]],
+  6: [[7, 6], [17, 6], [7, 12], [17, 12], [7, 18], [17, 18]],
+};
+/** A flat die for the tray. */
+const flatDie = (n: number) =>
+  `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#fff" stroke="rgba(0,0,0,.25)"/>${PIPS[n]!.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.4" fill="${n === 6 ? '#d2203c' : '#1b2a4a'}"/>`).join('')}</svg>`;
 
 export type Exit = 'home' | 'again';
 
@@ -41,6 +53,8 @@ export class GameScreen {
   private pairs = 0;
   /** The players still in voted to stop: the game ends with the places as they stand. */
   private ended = false;
+  /** While a person picks a move: a tap on a die in their tray. */
+  private trayPick: ((roll: number) => void) | null = null;
   /** Pauses the game and saves it when the app goes to the background. */
   private onHidden = () => {
     if (document.visibilityState !== 'hidden' || this.disposed) return;
@@ -66,8 +80,15 @@ export class GameScreen {
     this.view = new BoardView(this.state.players, 370, this.state.players.filter((p) => !p.bot).map((p) => p.color), !!this.state.singles);
     this.el.querySelector('.gboard')!.appendChild(this.view.el);
     this.el.querySelector('[data-act=menu]')!.addEventListener('click', () => this.openMenu());
+    this.el.querySelectorAll<HTMLElement>('.tray').forEach((tray) =>
+      tray.addEventListener('click', (e) => {
+        const b = (e.target as Element).closest<HTMLElement>('.tdie');
+        if (b && !this.paused) this.trayPick?.(Number(b.dataset.r));
+      }),
+    );
     // A continued game shows the dice as they were.
     for (const [c, f] of this.lastFace) this.diceBox(c).innerHTML = dieMarkup(f, DIE);
+    this.drawTrays();
     keepAwake(true);
     document.addEventListener('visibilitychange', this.onHidden);
     void this.run();
@@ -96,7 +117,7 @@ export class GameScreen {
   private panelHTML(c: Color, bot: boolean) {
     return `<div class="pl ${SEAT_CLASS[c]} idle" data-c="${c}" style="${cssVars(c)}">
       <div class="who"><div class="av">${avatarSVG(c)}</div><span class="nm">${this.name(c)}</span>${bot ? '<span class="bot">BOT</span>' : ''}<span class="ptr"></span></div>
-      <button class="dbox" aria-label="Roll dice">${dieMarkup(6, DIE)}</button></div>`;
+      <button class="dbox" aria-label="Roll dice">${dieMarkup(6, DIE)}</button><div class="tray" aria-label="Dice this turn"></div></div>`;
   }
 
   // ---------- turn loop ----------
@@ -135,43 +156,51 @@ export class GameScreen {
     if (!this.disposed) this.showResult();
   }
 
+  // A turn is one roll or one move at a time: the whole turn is rolled into the tray first (a 6 rolls
+  // again), then its dice are played in any order; a kill or a token home rolls again first.
+
   private async botTurn(c: Color) {
     this.setHint(c, `${this.name(c)} is playing…`, 'Bot turn');
-    await this.sleep(380);
-    if (this.disposed) return;
-    await this.doRoll(c);
-    if (this.disposed || this.state.phase !== 'move') return;
-    await this.sleep(320);
-    if (this.disposed) return;
-    await this.doMove(chooseMove(this.state, this.rng));
+    if (this.state.phase === 'roll') {
+      await this.sleep(380);
+      if (!this.disposed) await this.doRoll(c);
+      return;
+    }
+    const m = chooseMove(this.state, this.rng);
+    // Light up the die the bot plays, so its turn is easy to follow.
+    this.drawTrays(m.roll);
+    await this.sleep(420);
+    if (!this.disposed) await this.doMove(m);
   }
 
   private async humanTurn(c: Color) {
     const pvp = this.config.mode === 'pvp';
-    // Passing the device: announce whose turn it is when it changes hands.
-    if (pvp && this.ownerOf(c) !== this.lastOwner) this.toast(`${this.name(c)}'s turn`, c, 'turn');
-    this.lastOwner = this.ownerOf(c);
-    this.setHint(c, pvp ? `${this.name(c)}'s turn` : 'Your turn', 'Tap the dice to roll');
-    await this.waitRollTap(c);
-    if (this.disposed) return;
-    await this.doRoll(c);
-    if (this.disposed || this.state.phase !== 'move') return;
-
-    const targets = moveTargets(this.state.players, this.state.moves);
-    if (targets.length === 1) {
-      await this.sleep(250);
-      if (!this.disposed) await this.doMove(targets[0]!.move);
+    const who = pvp ? this.name(c) : 'You';
+    if (this.state.phase === 'roll') {
+      const again = this.state.rolls.length > 0;
+      // Passing the device: announce whose turn it is when it changes hands.
+      if (!again && pvp && this.ownerOf(c) !== this.lastOwner) this.toast(`${this.name(c)}'s turn`, c, 'turn');
+      this.lastOwner = this.ownerOf(c);
+      if (again) this.setHint(c, 'Roll again', `Kept ${this.state.rolls.join(' · ')}. Tap the dice to roll`);
+      else this.setHint(c, pvp ? `${this.name(c)}'s turn` : 'Your turn', 'Tap the dice to roll');
+      await this.waitRollTap(c);
+      if (!this.disposed) await this.doRoll(c);
       return;
     }
-    const d = this.state.dice!;
-    const who = this.config.mode === 'pvp' ? this.name(c) : 'You';
-    if (targets.some((t) => t.move.kind === 'pair')) this.setHint(c, `Pair move! ${who} rolled ${d}`, `Pair moves ${d / 2} + ${d / 2}. Tap a token or where it lands`, true);
-    else this.setHint(c, `${who} rolled ${d}`, 'Tap a token, or the spot where it lands');
-    const m = await this.pickMove(c, targets);
+    // Only one thing to do with the whole tray: just do it.
+    const all = moveTargets(this.state.players, this.state.moves);
+    if (all.length === 1) {
+      this.drawTrays(all[0]!.move.roll);
+      await this.sleep(250);
+      if (!this.disposed) await this.doMove(all[0]!.move);
+      return;
+    }
+    const m = await this.pickMove(c, who);
     if (!this.disposed) await this.doMove(m);
   }
 
   private async doRoll(c: Color) {
+    const kept = this.state.rolls;
     this.state = roll(this.state, this.rng, this.forced.shift());
     const box = this.diceBox(c);
     await rollDie(box, this.state.dice!, DIE, ROLL_MS / this.speed);
@@ -181,16 +210,45 @@ export class GameScreen {
       box.classList.remove('six');
       void box.offsetWidth; // restart the flare animation
       box.classList.add('six');
-      this.toast('SIX!', c, 'six');
+      this.toast('SIX! Roll again', c, 'six');
     }
     if (ev?.type === 'three-sixes') {
       sfx.bust();
       this.toast('Three 6s! Turn lost', c, 'bust');
       await this.sleep(800);
     } else if (ev?.type === 'no-move') {
-      this.toast(ev.dice === 6 ? 'No moves · roll again' : 'No moves', c);
+      // Show the tray that just ran out (nothing can use it) while the note is up.
+      this.drawTrays(undefined, { c, dice: [...kept, ev.dice] });
+      this.toast('No moves', c);
       await this.sleep(700);
     }
+    this.drawTrays();
+  }
+
+  /** The dice shown in a colour's tray: the current player's unplayed dice, nobody else's. */
+  private trayOf(c: Color) {
+    return this.cur.color === c ? this.state.rolls : [];
+  }
+
+  /**
+   * Draws the tray beside the current player's dice: their dice for this turn, not played yet. `lit` is
+   * the die being played; dice no token can use right now are dimmed. `show` puts other dice in one
+   * colour's tray (one that just ran out). Every other tray is empty.
+   */
+  private drawTrays(lit?: number, show?: { c: Color; dice: number[] }) {
+    const usable = this.state.phase === 'move' ? new Set(this.state.moves.map((m) => m.roll)) : null;
+    this.el.querySelectorAll<HTMLElement>('.pl').forEach((pl) => {
+      const c = pl.dataset.c as Color;
+      const dice = show ? (c === show.c ? show.dice : []) : this.trayOf(c);
+      let on = false;
+      pl.querySelector('.tray')!.innerHTML = dice
+        .map((r) => {
+          const here = r === lit && !on;
+          on ||= here;
+          return `<button class="tdie${here ? ' on' : ''}${usable && !usable.has(r) ? ' off' : ''}" data-r="${r}" aria-label="Play the ${r}">${flatDie(r)}</button>`;
+        })
+        .join('');
+    });
   }
 
   private async doMove(m: Move) {
@@ -206,6 +264,8 @@ export class GameScreen {
     else if (m.finishes && human) await playCutscene(this.el, m.color, player.tokens, this.speed);
     else if (m.finishes) this.toast('HOME!', m.color, 'home');
     if (extra && human) this.toast('Roll again', m.color);
+    if (ev?.type === 'moved' && ev.lost.length) this.toast(`Can't use the ${ev.lost.join(' and ')}`, m.color);
+    this.drawTrays();
     if (human && this.config.mode === 'pvc') this.count(m);
     // Someone just finished: the people still playing decide whether to play on for the next place.
     const fresh = this.doneOwners().filter((o) => !doneBefore.includes(o));
@@ -283,19 +343,38 @@ export class GameScreen {
     });
   }
 
-  /** Landing markers on the board; a pair on a star shows "pair" and "one token" as two markers. */
-  private pickMove(c: Color, targets: Target[]): Promise<Move> {
+  /**
+   * A die from the tray (the biggest usable one to start; tap another to switch), then a token or its
+   * landing marker. A pair on a star shows "pair" and "one token" as two markers.
+   */
+  private pickMove(c: Color, who: string): Promise<Move> {
+    const usable = [...new Set(this.state.moves.map((m) => m.roll))];
     return new Promise((resolve) => {
-      this.view.showTargets(
-        targets,
-        (t) => resolve(t.move),
-        (own) => {
-          const pair = own.find((t) => t.move.kind === 'pair');
-          const one = own.find((t) => t.move.kind === 'single');
-          if (pair && one) this.setHint(c, 'Pair or one token?', `Tap a spot: pair moves ${pair.move.steps} + ${pair.move.steps}, one token moves ${one.move.steps}`, true);
-        },
-        (pawn) => this.setHint(c, "That token can't move", whyStuck(this.state.players, c, Number(pawn.slice(c.length)), this.state.dice!, (o) => this.name(o), this.state.singles)),
-      );
+      const play = (r: number) => {
+        this.drawTrays(r);
+        const targets: Target[] = moveTargets(this.state.players, this.state.moves.filter((m) => m.roll === r));
+        const other = usable.length > 1 ? ', or another die' : '';
+        if (targets.some((t) => t.move.kind === 'pair')) this.setHint(c, `Pair move with the ${r}`, `Pair moves ${r / 2} + ${r / 2}. Tap a token${other}`, true);
+        else this.setHint(c, `${who} rolled ${this.state.rolls.join(' · ')}`, `Playing the ${r}: tap a token${other}`);
+        this.view.showTargets(
+          targets,
+          (t) => {
+            this.trayPick = null;
+            resolve(t.move);
+          },
+          (own) => {
+            const pair = own.find((t) => t.move.kind === 'pair');
+            const one = own.find((t) => t.move.kind === 'single');
+            if (pair && one) this.setHint(c, 'Pair or one token?', `Tap a spot: pair moves ${pair.move.steps} + ${pair.move.steps}, one token moves ${one.move.steps}`, true);
+          },
+          (pawn) => this.setHint(c, "That token can't move", whyStuck(this.state.players, c, Number(pawn.slice(c.length)), r, (o) => this.name(o), this.state.singles)),
+        );
+      };
+      this.trayPick = (r) => {
+        if (usable.includes(r)) play(r);
+        else this.setHint(c, `No token can use the ${r} now`, 'Pick another die');
+      };
+      play(Math.max(...usable));
     });
   }
 

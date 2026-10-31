@@ -10,13 +10,13 @@ import {
   countAt,
   createGame,
   isSafe,
-  legalMoves,
   move,
   newGame,
   roll,
   sameSide,
   seeded,
   squareOf,
+  trayMoves,
   type GameState,
   type Move,
   type PlayerState,
@@ -93,14 +93,21 @@ function playChecked(seed: number, players: 2 | 3 | 4, policy: Policy, start?: G
       st = roll(st, rng);
       const ev = st.event;
       if (st.dice! < 1 || st.dice! > 6) return `step ${step}: rolled ${st.dice}`;
-      const legal = legalMoves(before.players, before.players[before.current]!.color, st.dice!);
-      if (ev?.type === 'no-move' && legal.length) return `step ${step}: "no move" with ${legal.length} legal moves`;
-      if (ev?.type === 'rolled' && JSON.stringify(st.moves) !== JSON.stringify(legal)) return `step ${step}: offered moves differ from the rules`;
-      if (ev?.type === 'three-sixes' && before.sixes !== 2) return `step ${step}: three sixes after ${before.sixes} sixes`;
+      // Every die goes in the tray; the moves offered are those of every die in it.
+      const legal = trayMoves(before.players, before.players[before.current]!.color, [...before.rolls, st.dice!]);
+      if (ev?.type === 'three-sixes') {
+        if (before.sixes !== 2) return `step ${step}: three sixes after ${before.sixes} sixes`;
+        if (st.rolls.length) return `step ${step}: three sixes left dice in the tray`;
+      } else if (st.dice === 6) {
+        if (st.phase !== 'roll' || st.current !== before.current || st.moves.length) return `step ${step}: a 6 did not roll again first`;
+      } else if (ev?.type === 'no-move') {
+        if (legal.length) return `step ${step}: "no move" with ${legal.length} legal moves`;
+      } else if (JSON.stringify(st.moves) !== JSON.stringify(legal)) return `step ${step}: offered moves differ from the rules`;
       continue;
     }
     const m = policy(st, rng);
-    const problems = moveProblems(st.players, m, st.dice!);
+    const problems = moveProblems(st.players, m, m.roll);
+    if (!st.rolls.includes(m.roll)) problems.push(`used a ${m.roll} that is not in the tray`);
     const after = move(st, m);
     problems.push(...boardProblems(after.players));
     for (const i of m.tokens) if (tokensOf(after.players, m.color)[i] !== m.to) problems.push(`token ${i} did not end on ${m.to}`);
@@ -108,9 +115,14 @@ function playChecked(seed: number, players: 2 | 3 | 4, policy: Policy, start?: G
     const ev = after.event;
     if (ev?.type === 'moved' && after.phase !== 'over') {
       const done = after.players[st.current]!.tokens.every((t) => t === FINISHED);
-      const earned = !done && (st.dice === 6 || m.captures.length > 0 || m.finishes > 0);
+      const earned = !done && (m.captures.length > 0 || m.finishes > 0);
       if (ev.extraTurn !== earned) problems.push(`extra roll ${ev.extraTurn}, earned ${earned}`);
-      if (earned && after.current !== st.current) problems.push('extra roll went to someone else');
+      if (earned && (after.current !== st.current || after.phase !== 'roll')) problems.push('extra roll went to someone else');
+      // Each die is used once: the tray loses exactly the move's die (or empties when the turn passes).
+      const left = [...st.rolls];
+      left.splice(left.indexOf(m.roll), 1);
+      if (after.current === st.current && after.rolls.join() !== left.join()) problems.push(`tray ${after.rolls.join()} after using ${m.roll} from ${st.rolls.join()}`);
+      if (after.current !== st.current && after.rolls.length) problems.push('the next player starts with dice in the tray');
     }
     if (problems.length) return `step ${step} (${m.kind} ${m.color} ${m.from}->${m.to}, dice ${st.dice}): ${problems.join('; ')}`;
     st = after;

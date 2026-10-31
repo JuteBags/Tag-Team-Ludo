@@ -1,4 +1,5 @@
-// Turn flow: roll -> (move) -> next roll. Pure functions over GameState.
+// Turn flow: roll the whole turn into the tray (a 6 rolls again), then play the tray's dice in any order;
+// a capture or a token home rolls again first. Pure functions over GameState. See docs/RULES.md section C.
 import { BASE, COLORS, FINISHED, SEATS, type Color } from './board';
 import { rollDice } from './dice';
 import { applyMove, isDone, legalMoves } from './rules';
@@ -26,6 +27,7 @@ export function createGame(seats: Seat[], first?: Color, singles = false): GameS
     current: Math.max(0, first ? players.findIndex((p) => p.color === first) : 0),
     phase: 'roll',
     dice: null,
+    rolls: [],
     sixes: 0,
     moves: [],
     ranking: [],
@@ -49,15 +51,24 @@ function nextPlayer(state: GameState): number {
   return state.current;
 }
 
-const passTurn = (state: GameState): Pick<GameState, 'current' | 'sixes' | 'turnCount' | 'phase' | 'moves'> => ({
+const passTurn = (state: GameState): Pick<GameState, 'current' | 'rolls' | 'sixes' | 'turnCount' | 'phase' | 'moves'> => ({
   current: nextPlayer(state),
+  rolls: [],
   sixes: 0,
   turnCount: state.turnCount + 1,
   phase: 'roll',
   moves: [],
 });
 
-/** Rolls for the current player. `forced` fixes the face (tests, replays). */
+/** Legal moves for every distinct die in the tray, biggest die first. */
+export function trayMoves(players: GameState['players'], color: Color, rolls: number[], singles = false): Move[] {
+  return [...new Set(rolls)].sort((a, b) => b - a).flatMap((r) => legalMoves(players, color, r, singles));
+}
+
+/**
+ * Rolls for the current player and puts the die in the tray. A 6 rolls again before anything moves;
+ * the third 6 in a row ends the turn and empties the tray. `forced` fixes the face (tests, replays).
+ */
 export function roll(state: GameState, rng: Rng, forced?: number): GameState {
   if (state.phase !== 'roll') throw new Error(`cannot roll in phase ${state.phase}`);
   const color = state.players[state.current]!.color;
@@ -66,13 +77,11 @@ export function roll(state: GameState, rng: Rng, forced?: number): GameState {
 
   if (sixes === 3) return { ...state, ...passTurn(state), dice, event: { type: 'three-sixes', color } };
 
-  const moves = legalMoves(state.players, color, dice, state.singles);
-  if (moves.length === 0) {
-    const event = { type: 'no-move', color, dice } as const;
-    // A six still earns another roll even when nothing can move.
-    return dice === 6 ? { ...state, dice, sixes, moves: [], event } : { ...state, ...passTurn(state), dice, event };
-  }
-  return { ...state, dice, sixes, moves, phase: 'move', event: { type: 'rolled', color, dice } };
+  const rolls = [...state.rolls, dice];
+  if (dice === 6) return { ...state, dice, rolls, sixes, moves: [], event: { type: 'rolled', color, dice } };
+  const moves = trayMoves(state.players, color, rolls, state.singles);
+  if (moves.length === 0) return { ...state, ...passTurn(state), dice, event: { type: 'no-move', color, dice } };
+  return { ...state, dice, rolls, sixes, moves, phase: 'move', event: { type: 'rolled', color, dice } };
 }
 
 export function move(state: GameState, m: Move): GameState {
@@ -92,11 +101,17 @@ export function move(state: GameState, m: Move): GameState {
     return { ...state, players, ranking, phase: 'over', moves: [], event: { type: 'game-over', ranking } };
   }
 
-  const extraTurn = !isDone(me) && (state.dice === 6 || m.captures.length > 0 || m.finishes > 0);
-  const after = { ...state, players, ranking };
-  return extraTurn
-    ? { ...after, phase: 'roll', moves: [], event: { type: 'moved', move: m, extraTurn } }
-    : { ...after, ...passTurn(after), event: { type: 'moved', move: m, extraTurn } };
+  // The move's die leaves the tray.
+  const rolls = [...state.rolls];
+  rolls.splice(rolls.indexOf(m.roll), 1);
+  const after = { ...state, players, ranking, rolls };
+  // A capture or a token home rolls again right away; the new dice join what's left in the tray.
+  const extraTurn = !isDone(me) && (m.captures.length > 0 || m.finishes > 0);
+  if (extraTurn) return { ...after, phase: 'roll', sixes: 0, moves: [], event: { type: 'moved', move: m, extraTurn, lost: [] } };
+  const moves = isDone(me) ? [] : trayMoves(players, me.color, rolls, state.singles);
+  if (moves.length) return { ...after, moves, event: { type: 'moved', move: m, extraTurn, lost: [] } };
+  // Nothing left that can move: the turn passes and any dice still in the tray are lost.
+  return { ...after, ...passTurn(after), event: { type: 'moved', move: m, extraTurn, lost: isDone(me) ? [] : rolls } };
 }
 
 /** Finishing order first, then anyone still playing by total progress. */

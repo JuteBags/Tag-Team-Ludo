@@ -71,7 +71,7 @@ export function legalMoves(players: PlayerState[], color: Color, roll: number, s
   // Start squares are stars, so a release never captures and is never blocked.
   if (roll === 6) {
     me.tokens.forEach((t, i) => {
-      if (t === BASE) moves.push({ kind: 'release', color, tokens: [i], from: BASE, to: 0, steps: 0, captures: [], finishes: 0 });
+      if (t === BASE) moves.push({ kind: 'release', color, tokens: [i], from: BASE, to: 0, steps: 0, roll, captures: [], finishes: 0 });
     });
   }
 
@@ -83,7 +83,7 @@ export function legalMoves(players: PlayerState[], color: Color, roll: number, s
     seen.add(t);
     if (isLocked(players, color, t, singles)) return;
     const w = walk(players, color, t, roll, false, singles);
-    if (w) moves.push({ kind: 'single', color, tokens: [i], from: t, to: w.to, steps: roll, captures: w.captures, finishes: w.to === FINISHED ? 1 : 0 });
+    if (w) moves.push({ kind: 'single', color, tokens: [i], from: t, to: w.to, steps: roll, roll, captures: w.captures, finishes: w.to === FINISHED ? 1 : 0 });
   });
 
   if (roll % 2 === 0 && !singles) {
@@ -98,7 +98,7 @@ export function legalMoves(players: PlayerState[], color: Color, roll: number, s
     for (const [t, idx] of groups) {
       if (idx.length < 2) continue;
       const w = walk(players, color, t, half, true, false);
-      if (w) moves.push({ kind: 'pair', color, tokens: idx.slice(0, 2), from: t, to: w.to, steps: half, captures: w.captures, finishes: w.to === FINISHED ? 2 : 0 });
+      if (w) moves.push({ kind: 'pair', color, tokens: idx.slice(0, 2), from: t, to: w.to, steps: half, roll, captures: w.captures, finishes: w.to === FINISHED ? 2 : 0 });
     }
   }
   return moves;
