@@ -22,10 +22,29 @@ export function sameSide(players: PlayerState[], a: Color, b: Color): boolean {
   return playerOf(players, a).owner === playerOf(players, b).owner;
 }
 
+/** For each normal square holding a double, the people (owners) whose double it is. Cached per board. */
+const blockCache = new WeakMap<PlayerState[], Map<number, number[]>>();
+function blockers(players: PlayerState[]): Map<number, number[]> {
+  let b = blockCache.get(players);
+  if (b) return b;
+  b = new Map();
+  for (const p of players) {
+    const n = new Map<number, number>();
+    for (const t of p.tokens) {
+      const sq = squareOf(p.color, t);
+      if (sq !== null && !isSafe(sq)) n.set(sq, (n.get(sq) ?? 0) + 1);
+    }
+    for (const [sq, k] of n) if (k >= 2) b.set(sq, [...(b.get(sq) ?? []), p.owner]);
+  }
+  blockCache.set(players, b);
+  return b;
+}
+
 /** True when an enemy of `mover` (another person) has a double (2+ tokens) on a non-star square. */
 export function isBlockedFor(players: PlayerState[], square: number, mover: Color, singles = false): boolean {
   if (singles || isSafe(square)) return false;
-  return players.some((p) => !sameSide(players, p.color, mover) && countAt(players, p.color, square) >= 2);
+  const owners = blockers(players).get(square);
+  return !!owners && owners.some((o) => o !== playerOf(players, mover).owner);
 }
 
 /** True when `color`'s tokens at `progress` are all locked in doubles: a normal square holding an even count. */
@@ -63,7 +82,26 @@ function walk(players: PlayerState[], color: Color, from: number, steps: number,
   return { to, captures };
 }
 
+// Both functions below are pure, and the same board is asked about many times in a row (the dice look
+// at every face, then the bots score every move), so their answers are cached per board. A board is a
+// players array: every move makes a new one, so a cached answer can never go stale.
+const moveCache = new WeakMap<PlayerState[], Map<number, Move[]>>();
+const threatCache = new WeakMap<PlayerState[], Map<number, boolean>>();
+const CI: Record<Color, number> = { blue: 0, green: 1, red: 2, yellow: 3 };
+function cached<T>(cache: WeakMap<PlayerState[], Map<number, T>>, players: PlayerState[], key: number, f: () => T): T {
+  let m = cache.get(players);
+  if (!m) cache.set(players, (m = new Map()));
+  let v = m.get(key);
+  if (v === undefined) m.set(key, (v = f()));
+  return v;
+}
+
+/** Every legal move for `color` with `roll` (callers must not change the array or its moves). */
 export function legalMoves(players: PlayerState[], color: Color, roll: number, singles = false): Move[] {
+  return cached(moveCache, players, CI[color] * 16 + roll * 2 + (singles ? 1 : 0), () => computeMoves(players, color, roll, singles));
+}
+
+function computeMoves(players: PlayerState[], color: Color, roll: number, singles: boolean): Move[] {
   const me = playerOf(players, color);
   const moves: Move[] = [];
 
@@ -114,6 +152,10 @@ export function applyMove(players: PlayerState[], move: Move): PlayerState[] {
 
 /** Could some enemy capture `color`'s token(s) at `progress` with a single roll of 1-6? */
 export function isThreatened(players: PlayerState[], color: Color, progress: number, singles = false): boolean {
+  return cached(threatCache, players, CI[color] * 256 + (progress + 1) * 2 + (singles ? 1 : 0), () => computeThreat(players, color, progress, singles));
+}
+
+function computeThreat(players: PlayerState[], color: Color, progress: number, singles: boolean): boolean {
   const sq = squareOf(color, progress);
   if (sq === null || isSafe(sq)) return false;
   const mine = playerOf(players, color).tokens;
