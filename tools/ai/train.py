@@ -263,8 +263,27 @@ def main():
         for l, j in [*zip(net.trunk, js['trunk']), (net.pool, js['pool']), (net.out, js['out'])]:
             l.weight.data = torch.tensor(j['W'], device=dev, dtype=torch.float32)
             l.bias.data = torch.tensor(j['b'], device=dev, dtype=torch.float32)
-    opt = torch.optim.AdamW([*net.parameters(), *([log_tau] if a.learn_temp else [])], lr=a.lr, weight_decay=1e-4)
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=a.epochs * math.ceil(len(Xt) / a.batch))
+    if a.learn_temp:
+        # Fit tau alone first (net frozen; a scalar needs far more than a few steps at the net's rate), then
+        # train it with the net in its own group at a higher rate.
+        opt_t = torch.optim.Adam([log_tau], lr=0.05)
+        n_fit = min(len(Xt), 65536)
+        for _ in range(300):
+            b = torch.randint(0, len(Xt), (n_fit,), device=dev)
+            with torch.no_grad():
+                base_sc, _ = net(Xt[b], OWt[b])
+                if rules_w is not None:
+                    base_sc = base_sc + a.alpha * rules_scores(Xt[b], OWt[b])
+            l_t = pl_rows(base_sc * log_tau.exp(), Ot[b])[0].mean()
+            opt_t.zero_grad()
+            l_t.backward()
+            opt_t.step()
+        print(f'TEMP fit tau {log_tau.exp().item():.4f} (net frozen)', flush=True)
+    groups = [{'params': list(net.parameters()), 'lr': a.lr, 'weight_decay': 1e-4}]
+    if a.learn_temp:
+        groups.append({'params': [log_tau], 'lr': 10 * a.lr, 'weight_decay': 0.0})
+    opt = torch.optim.AdamW(groups)
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=[g['lr'] for g in groups], total_steps=a.epochs * math.ceil(len(Xt) / a.batch))
 
     def evaluate():
         net.eval()
