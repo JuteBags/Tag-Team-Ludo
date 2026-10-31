@@ -70,7 +70,20 @@ def load(path):
     gid = np.array([hash((head['seed'], int(g))) & 0x7FFFFFFF for g in gi])
     ok = over_g[gi]
     phase = np.minimum(2, (3 * M[:, 1] // turns_g[gi])).astype(np.int64)
-    return X[ok], owner[ok], order[ok], left_g[gi][ok], gid[ok], D, mode_g[gi][ok], phase[ok]
+    # Turns left in the game from this position, / 500 (an auxiliary target: how far from the end).
+    tleft = ((turns_g[gi] - M[:, 1]) / 500).astype(np.float32)
+    return X[ok], owner[ok], order[ok], left_g[gi][ok], gid[ok], D, mode_g[gi][ok], phase[ok], ok, tleft[ok]
+
+
+def load_targets(path, ok):
+    """ludo-label's sidecar for a shard: per position, each person's target chance of finishing first next
+    (a lambda-return along the real game, by owner index), rows in shard order."""
+    buf = open(path, 'rb').read()
+    (hl,) = struct.unpack_from('<I', buf, 0)
+    head = json.loads(buf[4:4 + hl])
+    T = np.frombuffer(buf, np.float32, head['positions'] * 4, 4 + hl).reshape(-1, 4)
+    assert len(T) == len(ok), f'{path}: {len(T)} target rows for {len(ok)} positions'
+    return T[ok]
 
 
 class Scorer(nn.Module):
@@ -87,6 +100,9 @@ class Scorer(nn.Module):
         self.pool = nn.Linear(3 * hidden, pool)
         self.out = nn.Linear(pool, 1)
         self.margin = nn.Linear(hidden, 1)
+        # Training-only: turns left in the game, from the mean of the colours' trunk vectors.
+        self.turns = nn.Linear(hidden, 1)
+        self.last_turns = None
 
     def forward(self, x, owner):
         """x [B,4,D], owner [B,4] -> people's scores [B,4] (0 for nobody) and predicted steps left [B,4]."""
@@ -98,6 +114,8 @@ class Scorer(nn.Module):
         for l in self.trunk:
             h = torch.tanh(l(h))
         m = self.margin(h).squeeze(-1)
+        present = (owner >= 0).unsqueeze(-1)
+        self.last_turns = self.turns((h * present).sum(1) / present.sum(1).clamp(min=1)).squeeze(-1)
         scores, margins = [], []
         for o in range(4):
             mine = owner == o
@@ -124,6 +142,7 @@ def main():
     ap.add_argument('--out', required=True)
     ap.add_argument('--inputs', default='all', choices=['hand', 'raw', 'all'])
     ap.add_argument('--margin', type=float, default=0.0, help='weight of the steps-left head (0 = off)')
+    ap.add_argument('--aux-turns', type=float, default=0.0, help='weight of the turns-left head (0 = off)')
     ap.add_argument('--linear', action='store_true', help='fit readable linear rules on the hand features (linear.ts)')
     ap.add_argument('--hidden', type=int, default=128)
     ap.add_argument('--layers', type=int, default=2)
@@ -131,6 +150,8 @@ def main():
     ap.add_argument('--batch', type=int, default=8192)
     ap.add_argument('--lr', type=float, default=2e-3)
     ap.add_argument('--init', default='', help='warm start from a net.json')
+    ap.add_argument('--target', default='outcome', help="outcome (PL on the real finishing order) or lambda (ludo-label's <shard>.targets)")
+    ap.add_argument('--pl-weight', type=float, default=0.0, help='with --target lambda, also this much PL on the real order')
     ap.add_argument('--wandb', default='', help='W&B run name')
     ap.add_argument('--group', default='phase1-bootstrap')
     ap.add_argument('--max-games', type=int, default=0, help='train on only the first shards, up to about this many games')
@@ -152,10 +173,15 @@ def main():
     for path in paths:
         if a.max_games and sum(len(np.unique(q[4])) for q in parts) >= a.max_games:
             break
-        parts.append(load(path))
+        part = load(path)
+        if a.target == 'lambda':
+            part = (*part, load_targets(path + '.targets', part[8]))
+        parts.append(part)
     print(f'SHARDS {len(parts)} of {len(paths)}', flush=True)
     D = parts[0][5]
     X, OW, O, L = (torch.from_numpy(np.concatenate([p[k] for p in parts])) for k in range(4))
+    TG = torch.from_numpy(np.concatenate([p[10] for p in parts])) if a.target == 'lambda' else None
+    TL = torch.from_numpy(np.concatenate([p[9] for p in parts]))
     G = np.concatenate([p[4] for p in parts])
     MODE = torch.from_numpy(np.concatenate([p[6] for p in parts]))
     PHASE = torch.from_numpy(np.concatenate([p[7] for p in parts]))
@@ -165,6 +191,8 @@ def main():
     if run:
         run.config.update({'positions_train': int((~val).sum()), 'positions_val': int(val.sum()), 'D': D, 'games': len(np.unique(G))})
     Xt, OWt, Ot, Lt = X[~val].to(dev), OW[~val].to(dev), O[~val].to(dev), L[~val].to(dev)
+    TGt = TG[~val].to(dev) if TG is not None else None
+    TLt = TL[~val].to(dev)
     Xv, OWv, Ov = X[val].to(dev), OW[val].to(dev), O[val].to(dev)
     Mv, PHv = MODE[val], PHASE[val]
     del X
@@ -270,7 +298,15 @@ def main():
             b = perm[i:i + a.batch]
             sc, mg = net(Xt[b], OWt[b])
             l_pl = pl_rows(sc, Ot[b])[0].mean()
-            loss = l_pl
+            if TGt is not None:
+                # Cross-entropy between the lambda-return targets and the net's chances over the people still playing.
+                live = torch.zeros_like(sc, dtype=torch.bool).scatter_(1, Ot[b].clamp(min=0), Ot[b] >= 0)
+                logp = torch.log_softmax(sc.masked_fill(~live, -1e9), 1).masked_fill(~live, 0)
+                loss = -(TGt[b] * logp).sum(1).mean() + a.pl_weight * l_pl
+            else:
+                loss = l_pl
+            if a.aux_turns and net.last_turns is not None:
+                loss = loss + a.aux_turns * ((net.last_turns - TLt[b]) ** 2).mean()
             if a.margin:
                 here = torch.stack([(OWt[b] == o).any(1) for o in range(4)], 1)
                 l_m = (((mg - Lt[b]) ** 2) * here).sum() / here.sum()

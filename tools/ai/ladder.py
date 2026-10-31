@@ -5,7 +5,8 @@
 
 Each generation k (all resumable: a step whose output exists is skipped):
   1. play: `games` self-play games, each person drawn from the pool (current net at depth 1, sampling its
-     moves with a small temperature so about 5-15% of choices explore, 60%; the previous net 15%, Hard 15%, the old Hard 10%), the game's dice;
+     moves with a temperature steered so that about --explore (10%) of its choices are not its best move,
+     60%; the previous net 15%, Hard 15%, the old Hard 10%), the game's dice;
   2. learn: warm-start from the current net, train on this generation's and the previous one's shards
      (labels are only the real results);
   3. check: the new net against the current one and against Hard, on a fresh block of paired seeds per
@@ -52,7 +53,8 @@ def main():
     ap.add_argument('--grow', type=float, default=1.25)
     ap.add_argument('--max-games', type=int, default=2_000_000)
     ap.add_argument('--keep', type=float, default=0.012)
-    ap.add_argument('--temp', type=float, default=0.01, help='move temperature of the net in self-play (values are P(win), so gaps are small)')
+    ap.add_argument('--temp', type=float, default=0.01, help='starting move temperature in self-play (values are P(win), so gaps are small)')
+    ap.add_argument('--explore', type=float, default=0.10, help='target share of sampled moves that are not the best; steers the temperature')
     ap.add_argument('--seeds', type=int, default=5000, help='paired seeds per check')
     ap.add_argument('--target', type=float, default=0.8)
     ap.add_argument('--workers', type=int, default=18)
@@ -61,11 +63,14 @@ def main():
     d = pathlib.Path(a.dir)
     d.mkdir(parents=True, exist_ok=True)
     state_file = d / 'state.json'
-    st = json.loads(state_file.read_text()) if state_file.exists() else {'gen': 0, 'current': a.start, 'previous': a.start, 'games': a.games, 'history': []}
+    st = json.loads(state_file.read_text()) if state_file.exists() else {'gen': 0, 'current': a.start, 'previous': a.start, 'games': a.games, 'temp': a.temp, 'history': []}
     commit = subprocess.run(['git', 'log', '-1', '--format=%h'], capture_output=True, text=True).stdout.strip()
     import wandb
+    # One W&B run per ladder, its id kept in the state file so a resumed ladder logs to the same run.
+    st.setdefault('wandb_id', f"{a.wandb}-{time.strftime('%Y%m%d-%H%M%S')}")
+    state_file.write_text(json.dumps(st, indent=1))
     run = wandb.init(entity=ENTITY, project='tag-team-ludo-ai', name=a.wandb, group='ladder', job_type='ladder',
-                     config={**vars(a), 'engine_commit': commit, 'selfplay': SELFPLAY, 'arena': ARENA}, resume='allow', id=a.wandb)
+                     config={**vars(a), 'engine_commit': commit, 'selfplay': SELFPLAY, 'arena': ARENA}, resume='allow', id=st['wandb_id'])
     print(f'WANDB {run.url}', flush=True)
     if 'vs_hard_current' not in st:
         st['vs_hard_current'] = match(f"net:{st['current']}:1", f'net:{a.hard}:1', a.seeds, a.workers, base=10_000_000)[0]
@@ -77,12 +82,23 @@ def main():
         cur, prev, n = st['current'], st['previous'], int(st['games'])
         t0 = time.time()
         # 1. play
-        pool = f"net:{cur}:1:3:{a.temp}:60,net:{prev}:1:3:{a.temp}:15,net:{a.hard}:1:15,hard:10"
+        temp = st.get('temp', a.temp)
+        pool = f"net:{cur}:1:3:{temp}:60,net:{prev}:1:3:{temp}:15,net:{a.hard}:1:15,hard:10"
         per = math.ceil(n / a.workers)
         todo = [f"{SELFPLAY} --games {per} --seed {k * 1000 + w} --pool {pool} --keep {a.keep} --commit {commit} --out {gd}/shard-{w}.bin"
                 for w in range(a.workers) if not (gd / f'shard-{w}.bin').exists()]
+        sampled = off = 0
         if todo:
-            run_parallel(todo)
+            for out in run_parallel(todo):
+                done = [l for l in out.splitlines() if l.startswith('DONE ')]
+                if done and 'offBest' in done[-1]:
+                    words = done[-1].split()
+                    sampled += int(words[words.index('sampled') + 1])
+                    off += int(words[words.index('offBest') + 1])
+        explored = off / sampled if sampled else None
+        if explored is not None:
+            # Off-best share grows with the temperature; move it toward the target, at most 2x per generation.
+            st['temp'] = temp * min(2.0, max(0.5, (a.explore / max(explored, 1e-3)) ** 0.7))
         t_play = time.time() - t0
         # 2. learn (this generation and the previous one)
         new = gd / 'net.json'
@@ -96,7 +112,7 @@ def main():
         vs_cur, ci_cur, games_cur = match(f'net:{new}:1', f'net:{cur}:1', a.seeds, a.workers, block)
         vs_hard, ci_hard, _ = match(f'net:{new}:1', f'net:{a.hard}:1', a.seeds, a.workers, block)
         promoted = vs_cur - ci_cur > 0.5 and vs_hard >= st['vs_hard_current'] - ci_hard
-        line = {'gen': k, 'games': n, 'vs_current': vs_cur, 'vs_current_ci': ci_cur, 'vs_hard': vs_hard, 'vs_hard_ci': ci_hard,
+        line = {'gen': k, 'games': n, 'temp': temp, 'explored': explored, 'vs_current': vs_cur, 'vs_current_ci': ci_cur, 'vs_hard': vs_hard, 'vs_hard_ci': ci_hard,
                 'promoted': promoted, 'play_s': round(t_play), 'learn_s': round(t_learn), 'total_s': round(time.time() - t0)}
         print('GEN ' + json.dumps(line), flush=True)
         run.log({f'ladder/{key}': v for key, v in line.items() if key != 'gen'} | {'ladder/gen': k})
