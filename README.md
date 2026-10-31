@@ -21,6 +21,7 @@
 - Rolls and kills with feel: a cup throw with a camera push-in, kill impacts, banners, sounds and vibration.
 - Glossy 2.5D look drawn in vector code (SVG + CSS 3D dice), so it stays sharp on any screen and the app stays small.
 - The palace: the centre of the board is a castle, and each colour's tokens are welcomed home with their own short cutscene.
+- Bots at three levels: Easy, Normal and Hard (picked in setup; the last choice is remembered).
 - Keep playing or stop: when someone finishes, the players still in vote on whether to play on for the next place.
 - Continue an unfinished game, even after the app was closed. The screen stays awake during a game, and the back button pauses.
 - Share your result as an image, see your stats, pick a board (Classic, Wooden, Dark), and turn on colour-blind symbols (● ▲ ■ ◆) from the home screen.

@@ -1,3 +1,5 @@
+import type { BotLevel } from '../engine';
+
 // Player preferences, kept in localStorage (per device). Every read and write is guarded: storage
 // can be blocked, and then the defaults simply apply for the session.
 
@@ -13,12 +15,14 @@ interface Settings {
   theme: Theme;
   /** A shape for each colour on its pawns and base, for colour-blind players. */
   symbols: boolean;
+  /** How well bots play; the last choice is kept. */
+  botLevel: BotLevel;
 }
 
 export type Theme = 'classic' | 'wood' | 'dark';
 
 const KEY = 'ludo-settings';
-const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false };
+const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal' };
 
 function load(): Settings {
   try {

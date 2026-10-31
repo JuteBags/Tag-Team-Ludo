@@ -19,7 +19,7 @@
   - `rules.ts` legal moves, pairs/blocks, captures, threats
   - `dice.ts` the dice: the full spec lives in its header comment
   - `game.ts` turn flow (`createGame` from seats, `newGame` for the classic game, `roll`, `move`, `finalRanking`, `ownerRanking` for people)
-  - `bot.ts` single-level heuristic bot (`chooseMove`, `botStep`)
+  - `bot.ts` heuristic bots at three levels (`PlayerState.level`, normal when missing): **Easy** often plays a random move and ignores danger; **Normal** is `scoreMove`; **Hard** adds danger to all its tokens, locks a double on a normal square only when it blocks someone, and lines up next-turn kills. Levels change only how moves are chosen, never the dice (`chooseMove`, `botStep`)
   - `rng.ts` seeded RNG for tests, `cryptoRng` for real play
 - `src/ui/` — the game UI (DOM + SVG), driven by the engine:
   - `app.ts` fixed 390 x 844 stage scaled to fit any screen, routing home → setup → game (or straight to a saved game), and the back button: it closes a sheet, pauses or resumes a game, steps back in setup, and on the home screen closes the app
@@ -40,7 +40,7 @@
   - `setup.ts` pure and tested: `GameConfig`, ranking rolls, the house-picking rules (opposite / side by side)
   - `setupScreen.ts` one step per screen (no scrolling): options (houses each, bots for empty houses), roll for order (ties roll again), pick houses one by one; steps with nothing to choose are skipped
   - `avatars.ts` generated Fun Emoji avatars (CC BY 4.0, credited on the home screen); regenerate with `node tools/make-avatars.mjs`
-- `tests/` — Vitest specs: rules, turn flow, dice (incl. Monte Carlo), bot simulations, teams (`teams.test.ts`), setup rules (`setup.test.ts`), UI logic (`targets.test.ts`), and rule invariants checked on every move of hundreds of random, bot and two-house games (`invariants.test.ts`). `tests/sim/` holds the long all-bot simulations (`npm run sim`): a shared `harness.ts`, and one `*.sim.ts` file per kind of game (`single-house.sim.ts`, `double-house.sim.ts`), each listing its setups.
+- `tests/` — Vitest specs: rules, turn flow, dice (incl. Monte Carlo), bot simulations, teams (`teams.test.ts`), setup rules (`setup.test.ts`), UI logic (`targets.test.ts`), and rule invariants checked on every move of hundreds of random, bot and two-house games (`invariants.test.ts`). `tests/sim/` holds the long all-bot simulations (`npm run sim`): a shared `harness.ts`, and one `*.sim.ts` file per kind of game (`single-house.sim.ts`, `double-house.sim.ts`, `bot-levels.sim.ts`), each listing its setups. `bot-levels.sim.ts` fails if Hard doesn't beat Normal, or Normal doesn't beat Easy, by a clear margin.
 - `mockups/` — static UI mockup and its PNG screenshots.
 - `docs/` — the public website (GitHub Pages): `index.html` plus `assets/`. `docs/RULES.md` lives here too but CI leaves it out of the site.
 - `android/` — Capacitor Android project. Signing and version come from CI (`android/app/build.gradle`).

@@ -3,11 +3,16 @@ import type { Color } from './board';
 /** Returns a float in [0, 1). */
 export type Rng = () => number;
 
+/** How well a bot plays. Only changes how it picks moves, never the dice. */
+export type BotLevel = 'easy' | 'normal' | 'hard';
+
 export interface PlayerState {
   color: Color;
   /** The person (seat) playing this colour. A person with two houses owns two colours; they are one side. */
   owner: number;
   bot: boolean;
+  /** A bot's level (normal when missing). */
+  level?: BotLevel;
   /** Progress of each of the 4 tokens: -1 base, 0-50 track, 51-55 home column, 56 finished. */
   tokens: number[];
 }

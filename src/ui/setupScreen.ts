@@ -1,9 +1,10 @@
 // Setup before a game, one step per screen: options (houses each in 2-player games, bots for empty houses
-// in With friends), a roll for order, then picking houses one by one in that order. The highest roller
+// in With friends, how well bots play), a roll for order, then picking houses one by one in that order. The highest roller
 // picks first and plays first. Steps with nothing to choose are skipped. Rules live in setup.ts.
-import { COLORS, type Color, type Seat } from '../engine';
+import { COLORS, type BotLevel, type Color, type Seat } from '../engine';
 import { PROFILES, cssVars, icons, pawnSVG } from './art';
 import { dieMarkup, rollDie } from './dice';
+import { saveSetting, settings } from './settings';
 import { pickSequence, pickable, rankRolls, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
 
 const DIE = 30;
@@ -25,8 +26,13 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
   /** With friends: bots added to houses nobody plays. */
   let addedBots = 0;
   const emptyHouses = () => 4 - count * rules.houses;
-  /** Is there anything to choose before rolling? Houses each (2 players), or bots (With friends, empty houses). */
-  const hasOptions = count === 2 || (mode === 'pvp' && count < 4);
+  /** How well the bots play (the last choice is remembered). */
+  let level: BotLevel = settings.botLevel;
+  /**
+   * Is there anything to choose before rolling? vs Computer always has the bot level; With friends has
+   * houses each (2 players) or bots for empty houses.
+   */
+  const hasOptions = mode === 'pvc' || count === 2 || count < 4;
   const steps: Step[] = hasOptions ? ['opts', 'roll', 'pick'] : ['roll', 'pick'];
   /** Everyone in the game: the people (or you and the bots), then any added bots. Bots keep one name throughout. */
   const makePeople = (): Person[] => {
@@ -72,6 +78,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
         ${count === 2 ? `<div class="row2"><span class="lbl">Houses each</span><div class="tg" data-k="houses"><button data-v="1" class="on">1 house</button><button data-v="2">2 houses</button></div></div>
         <div class="row2 pairs" hidden><span class="lbl">Pairs</span><div class="tg" data-k="pairing"><button data-v="opposite" class="on">Opposite</button><button data-v="adjacent">Side by side</button></div></div>` : ''}
         ${mode === 'pvp' ? `<div class="row2 bots"><span class="lbl">Add bots</span><div class="tg" data-k="bots"></div></div>` : ''}
+        <div class="row2 lvl"><span class="lbl">Bots play</span><div class="tg" data-k="level">${(['easy', 'normal', 'hard'] as const).map((l) => `<button data-v="${l}"${l === level ? ' class="on"' : ''}>${l[0]!.toUpperCase() + l.slice(1)}</button>`).join('')}</div></div>
       </div>
       <p class="note"></p>
       <button class="b3 green disp go" data-act="to-roll">ROLL FOR ORDER</button>
@@ -125,6 +132,9 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     }
     const pairs = el.querySelector<HTMLElement>('.pairs');
     if (pairs) pairs.hidden = rules.houses === 1;
+    // The level only matters when there are bots.
+    const lvl = el.querySelector<HTMLElement>('.lvl');
+    if (lvl) lvl.hidden = mode === 'pvp' && addedBots === 0;
     const total = count * rules.houses + (mode === 'pvp' ? addedBots : 0);
     const note = el.querySelector('.note');
     if (note) note.textContent = rules.houses === 2 ? 'All four houses in play: two each' : `${total} of 4 houses in play${mode === 'pvp' && addedBots ? `, ${addedBots} played by bots` : ''}`;
@@ -136,6 +146,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       tg.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
       if (tg.dataset.k === 'houses') rules.houses = Number(b.dataset.v) as 1 | 2;
       else if (tg.dataset.k === 'bots') addedBots = Number(b.dataset.v);
+      else if (tg.dataset.k === 'level') saveSetting('botLevel', (level = b.dataset.v as BotLevel));
       else rules.pairing = b.dataset.v as Pairing;
       drawOptions();
     }),
@@ -282,7 +293,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     const start = q<HTMLButtonElement>('[data-act=start]');
     start.hidden = false;
     start.onclick = () => {
-      const seats: Seat[] = COLORS.filter((c) => picks[c] !== undefined).map((c) => ({ color: c, owner: picks[c]!, bot: people[picks[c]!]!.bot }));
+      const seats: Seat[] = COLORS.filter((c) => picks[c] !== undefined).map((c) => ({ color: c, owner: picks[c]!, bot: people[picks[c]!]!.bot, ...(people[picks[c]!]!.bot ? { level } : {}) }));
       onStart({ mode, seats, first, names });
     };
   };
