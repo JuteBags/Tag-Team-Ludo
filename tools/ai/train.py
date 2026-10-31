@@ -1,21 +1,23 @@
 """Trains the value net (src/engine/ai/net.ts) on self-play shards (tools/ai/selfplay.ts).
 
-    python train.py --shards 'data/*.bin' --out net.json [--inputs hand|raw|all] [--hidden 128] [--margin 0.2]
+    python train.py --shards 'data/*.bin' --out net.json [--inputs hand|raw|all] [--hidden 128]
+                    [--margin 0.2] [--wandb <run name> --group <phase>]
 
-A shared MLP scores each colour; a person's score is the sum of their colours' scores (with two houses,
-a person wins only when both are home). The loss is Plackett-Luce over the finishing order of the
-people still playing at that position, so P(win) = softmax over people. Labels are only the games'
-real results. Games are split into train and validation by game, never by position. Prints validation
-loss next to a uniform baseline, first-place log-loss and calibration, and writes the weights as JSON
-for net.ts (the inputs it reads, then the dense layers) plus parity data for parity.ts.
+A shared trunk turns each colour into a vector; a person's colours are pooled (sum, max, min: with two
+houses a person wins only when both are home, and a stranded colour shows in the min) and a small head
+scores the person. The loss is Plackett-Luce over the finishing order of the people still playing at
+that position, so P(win) = softmax over people. Labels are only the games' real results. Games are
+split into train and validation by game, never by position. Prints validation loss next to a uniform
+baseline, first-place log-loss, the double-house slice and calibration; writes the weights as JSON for
+net.ts plus parity data for parity.ts; with --wandb also logs to W&B and checks parity.
 """
-import argparse, glob, json, math, struct
+import argparse, glob, json, math, struct, subprocess
 import numpy as np
 import torch
 import torch.nn as nn
 
 F = 19  # hand features (features.ts)
-RAW = 52  # one colour's raw block (encode.ts)
+ENTITY, PROJECT = 'ablations-tinycompany-ai', 'tag-team-ludo-ai'
 
 
 def load(path):
@@ -55,36 +57,42 @@ def load(path):
 
 
 class Scorer(nn.Module):
-    """Shared MLP per colour. `lin` is the value path (exported); `margin` is a training-only head on
-    the last hidden layer predicting the steps left at the end (summed per person), a denser signal."""
+    """The value net, mirroring net.ts. `margin` is a training-only head per colour predicting the steps
+    left at the end, summed per person: a denser signal than who won."""
 
-    def __init__(self, inputs, hidden, layers):
+    def __init__(self, inputs, hidden, layers, pool=32):
         super().__init__()
         self.inputs = inputs
-        dims = [len(inputs)] + [hidden] * layers + [1]
-        self.lin = nn.ModuleList(nn.Linear(a, b) for a, b in zip(dims, dims[1:]))
+        dims = [len(inputs)] + [hidden] * layers
+        self.trunk = nn.ModuleList(nn.Linear(a, b) for a, b in zip(dims, dims[1:]))
+        self.pool = nn.Linear(3 * hidden, pool)
+        self.out = nn.Linear(pool, 1)
         self.margin = nn.Linear(hidden, 1)
 
     def forward(self, x, owner):
-        """x [B,4,D], owner [B,4] -> people's scores [B,4] and margins [B,4] (by owner index)."""
-        a = x[..., self.inputs]
-        for l in self.lin[:-1]:
-            a = torch.tanh(l(a))
-        s = self.lin[-1](a).squeeze(-1)
-        m = self.margin(a).squeeze(-1)
-        idx = owner.clamp(min=0) + 4 * (owner < 0)  # missing colours go to a 5th slot that is dropped
-        z = torch.zeros(len(x), 5, device=x.device, dtype=s.dtype)
-        return z.scatter_add(1, idx, s)[:, :4], z.scatter_add(1, idx, m)[:, :4]
+        """x [B,4,D], owner [B,4] -> people's scores [B,4] (0 for nobody) and predicted steps left [B,4]."""
+        h = x[..., self.inputs]
+        for l in self.trunk:
+            h = torch.tanh(l(h))
+        m = self.margin(h).squeeze(-1)
+        scores, margins = [], []
+        for o in range(4):
+            mine = owner == o
+            k = mine.unsqueeze(-1)
+            pooled = torch.cat([(h * k).sum(1), h.masked_fill(~k, -2).amax(1), h.masked_fill(~k, 2).amin(1)], -1)
+            sc = self.out(torch.tanh(self.pool(pooled))).squeeze(-1)
+            scores.append(torch.where(mine.any(1), sc, torch.zeros_like(sc)))
+            margins.append((m * mine).sum(1))
+        return torch.stack(scores, 1), torch.stack(margins, 1)
 
 
-def pl_loss(scores, order):
-    """Negative log Plackett-Luce likelihood of `order` (people, -1 padded) under `scores`, and log P(first)."""
+def pl_rows(scores, order):
+    """Per position: negative log Plackett-Luce likelihood of `order` (people, -1 padded), and log P(first)."""
     valid = order >= 0
     s = torch.gather(scores, 1, order.clamp(min=0)).masked_fill(~valid, -1e9)
     tail = torch.logcumsumexp(s.flip(1), 1).flip(1)  # log-sum-exp from place k to the end
-    m = valid.sum(1, keepdim=True)
-    use = valid & (torch.arange(4, device=s.device)[None] < m - 1)
-    return -((s - tail) * use).sum(1).mean(), s[:, 0] - tail[:, 0]
+    use = valid & (torch.arange(4, device=s.device)[None] < valid.sum(1, keepdim=True) - 1)
+    return -((s - tail) * use).sum(1), s[:, 0] - tail[:, 0]
 
 
 def main():
@@ -99,8 +107,19 @@ def main():
     ap.add_argument('--batch', type=int, default=8192)
     ap.add_argument('--lr', type=float, default=2e-3)
     ap.add_argument('--init', default='', help='warm start from a net.json')
+    ap.add_argument('--wandb', default='', help='W&B run name')
+    ap.add_argument('--group', default='phase1-bootstrap')
     a = ap.parse_args()
     dev = 'cuda' if torch.cuda.is_available() else 'cpu'
+    commit = subprocess.run(['git', 'log', '-1', '--format=%h'], capture_output=True, text=True).stdout.strip()
+    run = None
+    if a.wandb:
+        import wandb
+        run = wandb.init(entity=ENTITY, project=PROJECT, name=a.wandb, group=a.group, job_type='train',
+                         config={**vars(a), 'engine_commit': commit})
+        wandb.define_metric('epoch')
+        wandb.define_metric('val/*', step_metric='epoch')
+        print(f'WANDB {run.url}', flush=True)
 
     parts = [load(p) for p in sorted(glob.glob(a.shards))]
     D = parts[0][5]
@@ -109,19 +128,25 @@ def main():
     del parts
     val = torch.from_numpy((G % 20) == 0)  # 5% of games
     print(f'POSITIONS {len(X)} train {int((~val).sum())} val {int(val.sum())} D {D}', flush=True)
+    if run:
+        run.config.update({'positions_train': int((~val).sum()), 'positions_val': int(val.sum()), 'D': D, 'games': len(np.unique(G))})
     Xt, OWt, Ot, Lt = X[~val].to(dev), OW[~val].to(dev), O[~val].to(dev), L[~val].to(dev)
     Xv, OWv, Ov = X[val].to(dev), OW[val].to(dev), O[val].to(dev)
     del X
 
     # A uniform guess over the people still playing: PL loss log(m!), first-place loss log(m).
     mv = (Ov >= 0).sum(1).double()
-    print(f'BASELINE uniform val {torch.lgamma(mv + 1).mean():.4f} first-logloss {mv.log().mean():.4f}', flush=True)
+    base_pl, base_first = torch.lgamma(mv + 1).mean().item(), mv.log().mean().item()
+    print(f'BASELINE uniform val {base_pl:.4f} first-logloss {base_first:.4f}', flush=True)
+    # Positions with a two-house person, for the double-house loss on its own.
+    dh = (torch.stack([(OWv == o).sum(1) for o in range(4)], 1).amax(1) > 1).cpu()
 
     # hand: the 19 hand features; raw: the token blocks, the turn order and the turn in progress; all: everything.
     inputs = {'hand': list(range(F)), 'raw': list(range(14, 18)) + list(range(F, D)), 'all': list(range(D))}[a.inputs]
     net = Scorer(torch.tensor(inputs, device=dev), a.hidden, a.layers).to(dev)
     if a.init:
-        for l, j in zip(net.lin, json.load(open(a.init))['layers']):
+        js = json.load(open(a.init))
+        for l, j in [*zip(net.trunk, js['trunk']), (net.pool, js['pool']), (net.out, js['out'])]:
             l.weight.data = torch.tensor(j['W'], device=dev, dtype=torch.float32)
             l.bias.data = torch.tensor(j['b'], device=dev, dtype=torch.float32)
     opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=1e-4)
@@ -129,53 +154,84 @@ def main():
 
     def evaluate():
         net.eval()
-        tot, first, probs, wins = 0.0, 0.0, [], []
+        losses, firsts, probs, wins = [], [], [], []
         with torch.no_grad():
             for i in range(0, len(Xv), 65536):
                 sc, _ = net(Xv[i:i + 65536], OWv[i:i + 65536])
                 o = Ov[i:i + 65536]
-                l, lp = pl_loss(sc, o)
-                tot += l.item() * len(sc)
-                first += -lp.sum().item()
+                l, lp = pl_rows(sc, o)
+                losses.append(l.cpu())
+                firsts.append(-lp.cpu())
                 live = torch.zeros_like(sc, dtype=torch.bool).scatter_(1, o.clamp(min=0), o >= 0)
                 probs.append(torch.softmax(sc.masked_fill(~live, -1e9), 1).masked_fill(~live, -1).cpu())
                 wins.append(o[:, 0].cpu())
         net.train()
-        P, W = torch.cat(probs), torch.cat(wins)
+        loss, first, P, W = torch.cat(losses), torch.cat(firsts), torch.cat(probs), torch.cat(wins)
         won = torch.zeros_like(P)
         won[torch.arange(len(P)), W] = 1
         # Calibration over every person still playing: predicted P(win) in 10 bins -> how often they won.
         pr, wr = P[P >= 0], won[P >= 0]
-        bins = [f'{pr[m].mean():.2f}->{wr[m].mean():.2f}' for b in range(10) if (m := (pr >= b / 10) & (pr < (b + 1) / 10)).sum() > 100]
-        return tot / len(Xv), first / len(Xv), ' '.join(bins)
+        table = []
+        for b in range(10):
+            m = (pr >= b / 10) & (pr < (b + 1) / 10)
+            if m.sum() > 100:
+                table.append([b, pr[m].mean().item(), wr[m].mean().item(), int(m.sum())])
+        ece = sum(n * abs(p - w) for _, p, w, n in table) / max(1, sum(n for *_, n in table))
+        return loss.mean().item(), first.mean().item(), table, ece, loss[dh].mean().item() if dh.any() else float('nan')
 
+    step = 0
     for ep in range(a.epochs):
         perm = torch.randperm(len(Xt), device=dev)
         for i in range(0, len(Xt), a.batch):
             b = perm[i:i + a.batch]
             sc, mg = net(Xt[b], OWt[b])
-            loss, _ = pl_loss(sc, Ot[b])
+            l_pl = pl_rows(sc, Ot[b])[0].mean()
+            loss = l_pl
             if a.margin:
-                here = torch.zeros_like(sc, dtype=torch.bool).scatter_(1, OWt[b].clamp(min=0), OWt[b] >= 0)
-                loss = loss + a.margin * (((mg - Lt[b]) ** 2) * here).sum() / here.sum()
+                here = torch.stack([(OWt[b] == o).any(1) for o in range(4)], 1)
+                l_m = (((mg - Lt[b]) ** 2) * here).sum() / here.sum()
+                loss = loss + a.margin * l_m
             opt.zero_grad()
             loss.backward()
+            gn = torch.nn.utils.clip_grad_norm_(net.parameters(), 10.0)
             opt.step()
             sched.step()
-        vl, vf, cal = evaluate()
-        print(f'EPOCH {ep + 1} train {loss.item():.4f} val {vl:.4f} first-logloss {vf:.4f} calib {cal}', flush=True)
+            step += 1
+            if run and step % 50 == 0:
+                run.log({'train/loss_pl': l_pl.item(), 'train/loss_margin': l_m.item() if a.margin else 0.0,
+                         'train/grad_norm': gn.item(), 'lr': sched.get_last_lr()[0]}, step=step)
+        vl, vf, table, ece, vdh = evaluate()
+        cal = ' '.join(f'{p:.2f}->{w:.2f}' for _, p, w, _ in table)
+        print(f'EPOCH {ep + 1} train {l_pl.item():.4f} val {vl:.4f} first-logloss {vf:.4f} double-house {vdh:.4f} ece {ece:.4f} calib {cal}', flush=True)
+        if run:
+            run.log({'epoch': ep + 1, 'val/loss_pl': vl, 'val/first_logloss': vf, 'val/baseline_uniform': base_pl,
+                     'val/baseline_first': base_first, 'val/gain_vs_uniform': base_pl - vl, 'val/calib_ece': ece,
+                     'val/loss_double_house': vdh}, step=step)
 
-    json.dump({'inputs': inputs, 'layers': [{'W': l.weight.detach().cpu().double().tolist(), 'b': l.bias.detach().cpu().double().tolist()} for l in net.lin]}, open(a.out, 'w'))
-    # Parity data for parity.ts: per-colour scores of 2000 validation positions.
+    dump = lambda l: {'W': l.weight.detach().cpu().double().tolist(), 'b': l.bias.detach().cpu().double().tolist()}
+    json.dump({'inputs': inputs, 'trunk': [dump(l) for l in net.trunk], 'pool': dump(net.pool), 'out': dump(net.out)}, open(a.out, 'w'))
+    # Parity data for parity.ts: people's scores on 2000 validation positions (NaN for nobody).
     with torch.no_grad():
-        x = Xv[:2000]
-        h = x[..., net.inputs]
-        for l in net.lin[:-1]:
-            h = torch.tanh(l(h))
-        sc = net.lin[-1](h).squeeze(-1)
+        x, ow = Xv[:2000], OWv[:2000]
+        sc, _ = net(x, ow)
+        present = torch.stack([(ow == o).any(1) for o in range(4)], 1)
+        sc = sc.double().masked_fill(~present, float('nan'))
     np.save(a.out + '.parity-x.npy', x.cpu().numpy())
-    np.save(a.out + '.parity-s.npy', sc.double().cpu().numpy())
+    np.save(a.out + '.parity-o.npy', ow.double().cpu().numpy())
+    np.save(a.out + '.parity-s.npy', sc.cpu().numpy())
     print(f'SAVED {a.out}', flush=True)
+    res = subprocess.run(['node', 'tools/ai/dist/parity.mjs', '--net', a.out], capture_output=True, text=True).stdout
+    print(res.strip(), flush=True)
+    par = json.loads(res.split('PARITY ', 1)[1]) if 'PARITY ' in res else {'max': float('nan'), 'ok': False}
+    if run:
+        run.summary.update({'parity/max_abs_diff': par['max'], 'parity/ok': par['ok'], 'val/final_loss_pl': vl, 'val/final_ece': ece})
+        run.log({'val/calibration': wandb.Table(columns=['bin', 'mean_pred', 'actual_rate', 'n'], data=table)}, step=step)
+        art = wandb.Artifact(a.wandb, type='model', metadata={'engine_commit': commit, 'inputs': a.inputs})
+        art.add_file(a.out)
+        run.log_artifact(art)
+        run.finish(exit_code=0 if par['ok'] else 1)
+    if not par['ok']:
+        raise SystemExit(f'parity failed: {par}')
 
 
 if __name__ == '__main__':
