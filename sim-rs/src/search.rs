@@ -15,15 +15,36 @@ pub struct SearchOptions {
     pub chance: u32,
     /// Moves other people consider at each decision, best first by scoreMove (0 = all).
     pub their_k: usize,
+    /// Value v1 race positions exactly with the race database (race.rs).
+    pub race: bool,
 }
 
 impl Default for SearchOptions {
     fn default() -> Self {
-        SearchOptions { depth: 1, chance: 2, their_k: 3 }
+        SearchOptions { depth: 1, chance: 2, their_k: 3, race: false }
     }
 }
 
 type Key = [u8; 64];
+
+/// FxHash-style hasher for the fixed 64-byte keys (SipHash is far slower and needs no DoS resistance here).
+#[derive(Default)]
+pub struct KeyHasher(u64);
+
+impl std::hash::Hasher for KeyHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        for c in bytes.chunks(8) {
+            let mut w = [0u8; 8];
+            w[..c.len()].copy_from_slice(c);
+            self.0 = (self.0.rotate_left(5) ^ u64::from_le_bytes(w)).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+        }
+    }
+}
+
+type Map<V> = HashMap<Key, V, std::hash::BuildHasherDefault<KeyHasher>>;
 
 fn key(s: &Game, turns_left: u32, chance: u32) -> Key {
     let mut k = [0u8; 64];
@@ -55,17 +76,31 @@ struct Ctx<'a> {
     opts: SearchOptions,
     owners: usize,
     root_owner: u8,
-    memo: HashMap<Key, [f64; 4]>,
+    memo: Map<[f64; 4]>,
+    /// Leaf values by position alone: the evaluator (and the race database) depend only on the position,
+    /// so a position reached again (other dice order, other chance depth) reuses the value exactly.
+    leaves: Map<[f64; 4]>,
 }
 
 impl<'a> Ctx<'a> {
-    fn owner_values(&self, s: &Game) -> [f64; 4] {
+    fn owner_values(&mut self, s: &Game) -> [f64; 4] {
         let mut v = [0.0; 4];
         if s.phase == PHASE_OVER {
             v[s.owner_ranking()[0] as usize] = 1.0;
             return v;
         }
+        let k = key(s, 0, 255);
+        if let Some(v) = self.leaves.get(&k) {
+            return *v;
+        }
+        if self.opts.race {
+            if let Some(r) = crate::race::race_chances(s) {
+                self.leaves.insert(k, r);
+                return r;
+            }
+        }
         self.eval.owner_chances(s, &mut v);
+        self.leaves.insert(k, v);
         v
     }
 
@@ -136,7 +171,7 @@ impl<'a> Ctx<'a> {
 pub fn state_values(eval: &Evaluator, state: &Game, opts: SearchOptions) -> [f64; 4] {
     let owners = state.b.players().iter().map(|p| p.owner).max().unwrap() as usize + 1;
     let root_owner = state.b.p[state.current].owner;
-    let mut ctx = Ctx { eval, opts, owners, root_owner, memo: HashMap::new() };
+    let mut ctx = Ctx { eval, opts, owners, root_owner, memo: Map::default(), leaves: Map::default() };
     ctx.node(state, state.current, opts.depth, 0)
 }
 
@@ -145,7 +180,7 @@ pub fn search_values(eval: &Evaluator, state: &Game, opts: SearchOptions) -> Vec
     let owners = state.b.players().iter().map(|p| p.owner).max().unwrap() as usize + 1;
     let root = state.current;
     let root_owner = state.b.p[root].owner;
-    let mut ctx = Ctx { eval, opts, owners, root_owner, memo: HashMap::new() };
+    let mut ctx = Ctx { eval, opts, owners, root_owner, memo: Map::default(), leaves: Map::default() };
     let me = root_owner as usize;
     state
         .moves

@@ -131,7 +131,7 @@ fn main() {
                     if depth == 0 {
                         eval.owner_chances(&g, &mut v);
                     } else {
-                        v = state_values(&eval, &g, SearchOptions { depth, chance: 2, their_k: 3 });
+                        v = state_values(&eval, &g, SearchOptions { depth, chance: 2, their_k: 3, race: false });
                     }
                     vals.push(v);
                     live.push(live_mask(&g));

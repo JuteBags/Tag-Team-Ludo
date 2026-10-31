@@ -12,6 +12,7 @@ pub mod game;
 pub mod jsmath;
 pub mod rng;
 pub mod rules;
+pub mod race;
 pub mod search;
 pub mod simd;
 pub mod trace;
