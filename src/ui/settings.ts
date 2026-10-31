@@ -17,12 +17,14 @@ interface Settings {
   symbols: boolean;
   /** How well bots play; the last choice is kept. */
   botLevel: BotLevel;
+  /** Doubles (pairs) in new games; off is classic single-token Ludo. */
+  doubles: boolean;
 }
 
 export type Theme = 'classic' | 'wood' | 'dark';
 
 const KEY = 'ludo-settings';
-const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal' };
+const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true };
 
 function load(): Settings {
   try {

@@ -50,7 +50,7 @@ export class GameScreen {
 
   /** Starts a game from `config`, or picks up `saved`. */
   constructor(readonly config: GameConfig, private exit: (to: Exit) => void, private rng: Rng = cryptoRng, saved?: SavedGame) {
-    this.state = saved?.state ?? createGame(config.seats, config.first);
+    this.state = saved?.state ?? createGame(config.seats, config.first, config.singles);
     this.kills = saved?.kills ?? 0;
     this.pairs = saved?.pairs ?? 0;
     for (const [c, f] of saved?.faces ?? []) this.lastFace.set(c, f);
@@ -58,12 +58,12 @@ export class GameScreen {
     this.el.className = 'screen game';
     this.el.innerHTML = `
       <div class="gtop"><button class="rbtn" data-act="menu" aria-label="Menu">${icons.menu}</button>
-        <div class="mode"><small>${config.mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}</small><b>${people} PLAYERS</b></div><span class="rbtn-space"></span></div>
+        <div class="mode"><small>${config.mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}${this.state.singles ? ' · NO DOUBLES' : ''}</small><b>${people} PLAYERS</b></div><span class="rbtn-space"></span></div>
       ${this.state.players.map((p) => this.panelHTML(p.color, p.bot)).join('')}
       <div class="gboard"></div>
       <div class="hint"><span class="tw"></span><span><b></b><small></small></span></div>
       <div class="toasts"></div>`;
-    this.view = new BoardView(this.state.players, 370, this.state.players.filter((p) => !p.bot).map((p) => p.color));
+    this.view = new BoardView(this.state.players, 370, this.state.players.filter((p) => !p.bot).map((p) => p.color), !!this.state.singles);
     this.el.querySelector('.gboard')!.appendChild(this.view.el);
     this.el.querySelector('[data-act=menu]')!.addEventListener('click', () => this.openMenu());
     // A continued game shows the dice as they were.
@@ -226,7 +226,7 @@ export class GameScreen {
   private count(m: Move) {
     this.kills += m.captures.length;
     const tokens = this.state.players.find((p) => p.color === m.color)!.tokens;
-    if (m.kind !== 'pair' && m.to >= 0 && m.to <= 50 && tokens.filter((t) => t === m.to).length === 2) this.pairs++;
+    if (!this.state.singles && m.kind !== 'pair' && m.to >= 0 && m.to <= 50 && tokens.filter((t) => t === m.to).length === 2) this.pairs++;
   }
 
   /**
@@ -294,7 +294,7 @@ export class GameScreen {
           const one = own.find((t) => t.move.kind === 'single');
           if (pair && one) this.setHint(c, 'Pair or one token?', `Tap a spot: pair moves ${pair.move.steps} + ${pair.move.steps}, one token moves ${one.move.steps}`, true);
         },
-        (pawn) => this.setHint(c, "That token can't move", whyStuck(this.state.players, c, Number(pawn.slice(c.length)), this.state.dice!, (o) => this.name(o))),
+        (pawn) => this.setHint(c, "That token can't move", whyStuck(this.state.players, c, Number(pawn.slice(c.length)), this.state.dice!, (o) => this.name(o), this.state.singles)),
       );
     });
   }

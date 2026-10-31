@@ -6,6 +6,7 @@ import type { GameState, Move, PlayerState, Rng } from './types';
 
 export function scoreMove(state: GameState, m: Move): number {
   const { players } = state;
+  const singles = !!state.singles;
   const after = applyMove(players, m);
   const onTrack = m.to <= LAST_TRACK;
   const toSq = squareOf(m.color, m.to);
@@ -16,17 +17,18 @@ export function scoreMove(state: GameState, m: Move): number {
   if (m.kind === 'release') s += 45;
   if (m.from < HOME_FIRST && m.to >= HOME_FIRST && m.to < FINISHED) s += 50;
 
-  const wasThreatened = m.kind !== 'release' && isThreatened(players, m.color, m.from);
-  const nowThreatened = onTrack && isThreatened(after, m.color, m.to);
+  const wasThreatened = m.kind !== 'release' && isThreatened(players, m.color, m.from, singles);
+  const nowThreatened = onTrack && isThreatened(after, m.color, m.to, singles);
   if (wasThreatened && !nowThreatened) s += 60;
   if (nowThreatened) s -= 50 + m.to * 0.8; // losing an advanced token hurts more
 
   if (toSq !== null && isSafe(toSq)) s += 15;
-  if (toSq !== null && !isSafe(toSq) && countAt(after, m.color, toSq) >= 2) s += 35; // forms or keeps a block
+  // Forms or keeps a block. With doubles off a stack blocks nobody; it's just more to lose to one capture.
+  if (toSq !== null && !isSafe(toSq) && countAt(after, m.color, toSq) >= 2) s += singles ? -20 : 35;
 
   // Breaking a block can leave the token behind exposed.
   const fromSq = squareOf(m.color, m.from);
-  if (m.kind === 'single' && fromSq !== null && !isSafe(fromSq) && countAt(players, m.color, fromSq) >= 2) {
+  if (!singles && m.kind === 'single' && fromSq !== null && !isSafe(fromSq) && countAt(players, m.color, fromSq) >= 2) {
     s -= 25;
     if (isThreatened(after, m.color, m.from)) s -= 30;
   }
@@ -50,19 +52,19 @@ function scoreEasy(state: GameState, m: Move): number {
 }
 
 /** Value at risk: each token of `color` an enemy could hit next turn, worth more the further it has got. */
-function exposure(players: PlayerState[], color: Color): number {
+function exposure(players: PlayerState[], color: Color, singles: boolean): number {
   let risk = 0;
   const seen = new Set<number>();
   for (const t of playerOf(players, color).tokens) {
     if (t < 0 || t > LAST_TRACK || seen.has(t)) continue;
     seen.add(t);
-    if (isThreatened(players, color, t)) risk += (20 + t * 1.4) * countAt(players, color, squareOf(color, t)!);
+    if (isThreatened(players, color, t, singles)) risk += (20 + t * 1.4) * countAt(players, color, squareOf(color, t)!);
   }
   return risk;
 }
 
 /** Enemy singles that `color`'s token at `progress` could hit with one roll next turn, by their progress. */
-function prey(players: PlayerState[], color: Color, progress: number): number {
+function prey(players: PlayerState[], color: Color, progress: number, singles: boolean): number {
   const from = squareOf(color, progress);
   if (from === null) return 0;
   let value = 0;
@@ -70,7 +72,7 @@ function prey(players: PlayerState[], color: Color, progress: number): number {
     if (sameSide(players, p.color, color)) continue;
     for (const e of p.tokens) {
       const sq = squareOf(p.color, e);
-      if (sq === null || isSafe(sq) || countAt(players, p.color, sq) > 1) continue;
+      if (sq === null || isSafe(sq) || (!singles && countAt(players, p.color, sq) > 1)) continue;
       const gap = (sq - from + TRACK_LEN) % TRACK_LEN;
       if (gap >= 1 && gap <= 6 && progress + gap <= LAST_TRACK) value += 10 + e * 0.3;
     }
@@ -91,16 +93,17 @@ function blocksSomeone(players: PlayerState[], color: Color, square: number): bo
 /** Hard: Normal's score, corrected for whole-board danger, locked doubles and next-turn kills. */
 function scoreHard(state: GameState, m: Move): number {
   const { players } = state;
+  const singles = !!state.singles;
   const after = applyMove(players, m);
   let s = scoreMove(state, m);
   // Danger to every token, not just the one that moved (Normal already counts the mover).
-  s -= 0.9 * (exposure(after, m.color) - exposure(players, m.color));
+  s -= 0.9 * (exposure(after, m.color, singles) - exposure(players, m.color, singles));
   const toSq = squareOf(m.color, m.to);
-  if (toSq !== null && !isSafe(toSq) && countAt(after, m.color, toSq) >= 2 && m.kind !== 'pair') {
+  if (!singles && toSq !== null && !isSafe(toSq) && countAt(after, m.color, toSq) >= 2 && m.kind !== 'pair') {
     // A double on a normal square is locked: it only moves on even rolls. Worth it to block someone.
     s += blocksSomeone(after, m.color, toSq) ? 10 : -55;
   }
-  if (m.to <= LAST_TRACK && m.kind !== 'pair') s += 1.2 * prey(after, m.color, m.to);
+  if (m.to <= LAST_TRACK && m.kind !== 'pair') s += 1.2 * prey(after, m.color, m.to, singles);
   // Few tokens out: getting another one out matters more.
   if (m.kind === 'release' && playerOf(players, m.color).tokens.filter((t) => t >= 0 && t < FINISHED).length <= 1) s += 20;
   return s;

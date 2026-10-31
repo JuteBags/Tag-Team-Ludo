@@ -67,6 +67,14 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1). The engine in `sr
 40. A person is done when all their tokens (4, or 8 with two houses) are home. With friends, play continues for the other places until only one person still has tokens out, and that person comes last. vs Computer, the game ends for you once all your tokens are home.
 41. Each time someone is done and the game isn't over yet, the people still playing vote on whether to keep playing for the next place. Everyone still playing has to agree: one "stop" ends the game there, and everyone not yet done is ranked by how far their tokens have got. Bots always vote to play on. vs Computer, the one voter is you, and you're asked when a bot finishes before you. With friends, once every person is done, the game ends without waiting for the bots.
 
+## I. Doubles off (classic Ludo)
+
+42. Doubles are on by default. **Settings → Doubles → Off** (on the home screen) plays every new game without them; section E doesn't apply. The choice is saved with each game, so a continued game or Play again keeps its rules.
+43. Every token moves alone, with the full roll. There are no pair moves.
+44. Your own tokens can share any square. They never lock and never block anyone, and any token can pass any token.
+45. A token landing on a normal square captures **every** enemy token there, two or more included. Teammates (a person's two houses) are never captured.
+46. Everything else is as above: 6s and extra rolls, stars, the home column, the exact roll to finish, two houses each, the keep-playing vote.
+
 ## Known risks (accepted for v1, revisit after playtests)
 
 - A pair parked on a normal square holds back enemy singles until they land on it exactly, and a locked pair can sit stuck through a run of odd rolls.

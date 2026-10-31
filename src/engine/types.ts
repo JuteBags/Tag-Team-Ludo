@@ -59,4 +59,6 @@ export interface GameState {
   ranking: Color[];
   turnCount: number;
   event: GameEvent | null;
+  /** Doubles are off: classic single-token Ludo (RULES.md section I). Missing in older saved games. */
+  singles?: boolean;
 }

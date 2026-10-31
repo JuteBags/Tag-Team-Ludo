@@ -95,7 +95,8 @@ export class BoardView {
    */
   private riskTip: string;
 
-  constructor(players: PlayerState[], size: number, private humans: Color[] = []) {
+  /** `singles`: doubles are off, so stacked tokens are just a stack (no lock, no "cut here" tip). */
+  constructor(players: PlayerState[], size: number, private humans: Color[] = [], private singles = false) {
     let seen = false;
     try {
       seen = localStorage.getItem('ludo-tip-risk') === '1';
@@ -157,7 +158,7 @@ export class BoardView {
         this.set(it.key, { x: it.pt[0] + ox, y: it.pt[1] + oy, s: inBase ? BASE_SCALE : stack.s });
       });
       if (!gk.startsWith('t') || list.length < 2) continue;
-      const block = !isSafe(Number(gk.slice(1)));
+      const block = !this.singles && !isSafe(Number(gk.slice(1)));
       const counts = new Map<Color, number>();
       for (const it of list) counts.set(it.color, (counts.get(it.color) ?? 0) + 1);
       const [x, y] = list[0]!.pt;
@@ -171,7 +172,7 @@ export class BoardView {
           deco += `<ellipse cx="${x}" cy="${y + 12}" rx="19" ry="6.5" fill="#ffd23f" opacity=".65"/><ellipse cx="${x}" cy="${y + 12}" rx="19" ry="6.5" fill="none" stroke="#fff3b0" stroke-width="1.5"/>`;
           badges += `<g transform="translate(${bx} ${by})"><circle r="10" fill="#ffd23f" stroke="#7a4200" stroke-width="1.8"/><path d="M-3.4,-1 V-3.2 a3.4,3.4 0 0 1 6.8,0 V-1" fill="none" stroke="#5a2d00" stroke-width="1.8"/><rect x="-5" y="-1.5" width="10" height="7.5" rx="1.8" fill="#5a2d00"/></g>`;
         } else {
-          // A pair on a star: split, it can move together or one at a time.
+          // A pair on a star: split, it can move together or one at a time. With doubles off, just a stack.
           badges += `<g transform="translate(${bx} ${by})"><circle r="10" fill="#fff" stroke="#7a4200" stroke-width="1.8"/><text y="4" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="12" fill="#5a2d00">×${n}</text></g>`;
         }
       }

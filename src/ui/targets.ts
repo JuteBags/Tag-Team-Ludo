@@ -44,17 +44,17 @@ export function moveTargets(players: PlayerState[], moves: Move[]): Target[] {
 
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 
-/** Why `color`'s token can't move with `roll`, in a few words for the hint bar. */
-export function whyStuck(players: PlayerState[], color: Color, token: number, roll: number, nameOf: (c: Color) => string = cap): string {
+/** Why `color`'s token can't move with `roll`, in a few words for the hint bar. `singles`: doubles are off. */
+export function whyStuck(players: PlayerState[], color: Color, token: number, roll: number, nameOf: (c: Color) => string = cap, singles = false): string {
   const t = players.find((p) => p.color === color)!.tokens[token]!;
   if (t === FINISHED) return 'Already home';
   if (t === BASE) return 'Needs a 6 to come out';
   const sq = squareOf(color, t);
-  if (sq !== null && !isSafe(sq) && countAt(players, color, sq) % 2 === 0 && roll % 2 === 1) return 'Locked double: needs an even roll';
+  if (!singles && sq !== null && !isSafe(sq) && countAt(players, color, sq) % 2 === 0 && roll % 2 === 1) return 'Locked double: needs an even roll';
   if (t + roll > FINISHED) return `Needs exactly ${FINISHED - t} to finish`;
   for (let p = t + 1; p < t + roll; p++) {
     const s = squareOf(color, p);
-    if (s === null || !isBlockedFor(players, s, color)) continue;
+    if (s === null || !isBlockedFor(players, s, color, singles)) continue;
     const owner = players.find((o) => !sameSide(players, o.color, color) && countAt(players, o.color, s) >= 2)!;
     return `Blocked by ${nameOf(owner.color)}'s double`;
   }

@@ -35,11 +35,18 @@ function toggle(ov: HTMLElement, key: string, set: (v: string) => void) {
 const tg = (key: string, options: [string, string, boolean][]) =>
   `<div class="tg" data-k="${key}">${options.map(([v, label, on]) => `<button class="${on ? 'on' : ''}" data-v="${v}">${label}</button>`).join('')}</div>`;
 
+/** What the Doubles setting means, under its switch. It applies to new games. */
+const DOUBLES_HINT = {
+  true: 'Two of your tokens on one square are a double: they move together and block. New games.',
+  false: 'Classic Ludo: every token moves alone and nothing blocks. New games.',
+};
+
 export function settingsSheet(host: HTMLElement, changed: () => void) {
   const ov = sheet(
     host,
     'Settings',
     `<div class="set"><span>Board</span><div class="themes">${THEMES.map((t) => `<button class="th${t.id === settings.theme ? ' on' : ''}" data-t="${t.id}"><i style="background:${t.swatch}"></i>${t.name}</button>`).join('')}</div></div>
+    <div class="set"><span>Doubles</span>${tg('doubles', [['on', 'On', settings.doubles], ['off', 'Off', !settings.doubles]])}<small class="qh">${DOUBLES_HINT[String(settings.doubles) as 'true' | 'false']}</small></div>
     <div class="set"><span>Colour-blind symbols ${symbolRow()}</span>${tg('sym', [['on', 'On', settings.symbols], ['off', 'Off', !settings.symbols]])}</div>
     <div class="set"><span>Dice counts the</span>${tg('face', [['top', 'Top face', settings.diceFace === 'top'], ['front', 'Front face', settings.diceFace === 'front']])}</div>
     <div class="set"><span>Sound</span>${tg('sound', [['on', 'On', !sfx.muted], ['off', 'Off', sfx.muted]])}</div>`,
@@ -53,6 +60,10 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
   toggle(ov, 'sym', (v) => {
     setSymbols(v === 'on');
     changed();
+  });
+  toggle(ov, 'doubles', (v) => {
+    saveSetting('doubles', v === 'on');
+    ov.querySelector('.set .qh')!.textContent = DOUBLES_HINT[String(v === 'on') as 'true' | 'false'];
   });
   toggle(ov, 'face', (v) => saveSetting('diceFace', v as 'top' | 'front'));
   toggle(ov, 'sound', (v) => sfx.setMuted(v === 'off'));

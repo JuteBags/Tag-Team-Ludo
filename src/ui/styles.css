@@ -274,11 +274,24 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .wiz h3{font-size:28px;font-weight:400;color:#ffd65a;text-align:center;line-height:1.1}
 .wiz .sub{font-size:14px;font-weight:800;opacity:.85;text-align:center;margin:6px 0 18px}
 .wiz .go{position:absolute;left:4px;right:4px;bottom:34px}
-.wiz .note{margin-top:14px;text-align:center;font-weight:800;font-size:13px;opacity:.8}
+/* Options preview: the four houses and who plays each. */
+.pv{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:236px;margin:0 auto 14px}
+.pvh{height:46px;border-radius:14px;display:flex;align-items:center;gap:6px;padding:0 10px;background:linear-gradient(180deg,var(--l),var(--m));box-shadow:inset 0 2px 0 rgba(255,255,255,.35),0 3px 0 var(--d);transition:opacity .2s,filter .2s}
+.pvh .pw svg{width:22px;height:26px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+.pvh b{font-family:'Lilita One';font-weight:400;font-size:15px;text-shadow:0 1px 0 rgba(0,0,0,.3);white-space:nowrap}
+.pvh.empty{opacity:.35;filter:saturate(.4)}
+.pvh.empty .pw{visibility:hidden}
 .sp{border-radius:22px;padding:16px;background:linear-gradient(180deg,rgba(14,38,104,.92),rgba(7,21,64,.92));border:1.5px solid rgba(255,214,90,.45)}
 .row2{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .row2+.row2{margin-top:14px}
 .row2 .lbl{font-weight:900;font-size:12px;letter-spacing:1px;text-transform:uppercase;opacity:.8}
+/* A question row: the question, its choices full width, then a short hint. */
+.row2.q{flex-direction:column;align-items:stretch;gap:7px}
+.row2.q+.row2.q{margin-top:16px}
+.row2.q .lbl{font-size:14px;letter-spacing:0;text-transform:none;opacity:1}
+.row2.q .tg button{flex:1;padding:0 8px;display:flex;align-items:center;justify-content:center;gap:6px}
+.row2 .qh{font-size:12px;font-weight:700;opacity:.7}
+.tg .mini{width:18px;height:18px;flex:none}
 .tg{display:flex;gap:6px;padding:4px;border-radius:14px;background:rgba(0,0,0,.25)}
 .tg button{min-height:44px;min-width:48px;padding:0 14px;border-radius:11px;font-family:'Lilita One';font-size:15px;color:rgba(255,255,255,.7)}
 .tg button.on{background:linear-gradient(180deg,#5795ff,#2459d6);color:#fff;box-shadow:inset 0 2px 0 rgba(255,255,255,.4),0 3px 0 #10307e}
@@ -352,6 +365,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .set{display:flex;flex-direction:column;gap:6px;margin-top:14px;text-align:left}
 .set>span{font-weight:800;font-size:13px;opacity:.85;display:flex;align-items:center;gap:8px}
 .set .tg button{flex:1}
+.set .qh{font-size:11.5px;font-weight:700;opacity:.7;line-height:1.3}
 .themes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .th{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;border-radius:13px;background:rgba(0,0,0,.25);font-family:'Lilita One';font-size:14px;color:rgba(255,255,255,.75)}
 .th i{width:44px;height:30px;border-radius:8px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.35)}

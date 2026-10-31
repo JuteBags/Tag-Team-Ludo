@@ -39,15 +39,15 @@ function shuffle<T>(a: T[], rng: Rng): T[] {
   return a;
 }
 
-/** Probability of each face 1-6 for `color`'s next roll, plus why. */
-export function analyzeDice(players: PlayerState[], color: Color, rng: Rng): { weights: number[]; why: DiceAnalysis } {
+/** Probability of each face 1-6 for `color`'s next roll, plus why. `singles`: doubles are off (rules.ts). */
+export function analyzeDice(players: PlayerState[], color: Color, rng: Rng, singles = false): { weights: number[]; why: DiceAnalysis } {
   const kill: number[] = [];
   const escape: number[] = [];
   const finish: number[] = [];
   for (let f = 1; f <= 6; f++) {
-    const moves = legalMoves(players, color, f);
+    const moves = legalMoves(players, color, f, singles);
     if (moves.some((m) => m.captures.length > 0)) kill.push(f);
-    if (moves.some((m) => isEscape(players, m))) escape.push(f);
+    if (moves.some((m) => isEscape(players, m, singles))) escape.push(f);
     if (moves.some((m) => m.finishes > 0)) finish.push(f);
   }
   const boosted = [...shuffle([...kill], rng), ...shuffle(escape.filter((f) => !kill.includes(f)), rng)].slice(0, MAX_BOOSTED);
@@ -73,7 +73,7 @@ function rebalance(w: number[], faces: number[]) {
   for (const i of faces) w[i]! -= diff / faces.length;
 }
 
-export const diceWeights = (players: PlayerState[], color: Color, rng: Rng) => analyzeDice(players, color, rng).weights;
+export const diceWeights = (players: PlayerState[], color: Color, rng: Rng, singles = false) => analyzeDice(players, color, rng, singles).weights;
 
 /** Samples a face 1-6 from the weights. */
 export function sampleFace(weights: number[], rng: Rng): number {
@@ -85,4 +85,4 @@ export function sampleFace(weights: number[], rng: Rng): number {
   return 6;
 }
 
-export const rollDice = (players: PlayerState[], color: Color, rng: Rng) => sampleFace(diceWeights(players, color, rng), rng);
+export const rollDice = (players: PlayerState[], color: Color, rng: Rng, singles = false) => sampleFace(diceWeights(players, color, rng, singles), rng);

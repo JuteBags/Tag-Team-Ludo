@@ -1,5 +1,5 @@
 // Game setup logic, pure and tested: rolling for order and the house-picking rules. See setupScreen.ts.
-import { COLORS, type Color, type Seat } from '../engine';
+import { COLORS, SEATS, type Color, type Seat } from '../engine';
 
 /** vs Computer (you and bots) or With friends (pass-and-play, every seat a person). Both offline. */
 export type Mode = 'pvc' | 'pvp';
@@ -13,6 +13,8 @@ export interface GameConfig {
   first: Color;
   /** Name of each person, by owner index. */
   names: string[];
+  /** Doubles are off for this game (the Settings choice when it was set up). */
+  singles?: boolean;
 }
 
 export type Pairing = 'opposite' | 'adjacent';
@@ -67,4 +69,24 @@ function feasible(picks: Picks, pairing: Pairing): boolean {
     return partners(own, pairing).some((c) => free.includes(c) && !used.has(c) && go(i + 1, new Set([...used, c])));
   };
   return go(0, new Set());
+}
+
+/** What the setup preview shows on a house: a person (by number), a bot, or nobody. */
+export type Slot = 'p1' | 'p2' | 'p3' | 'p4' | 'bot' | 'empty';
+
+/**
+ * Who plays each house, for the preview before houses are picked: the layout, not the final houses.
+ * People take the usual seats (with two colours each, person 1 has Blue and the house opposite or beside
+ * it), bots fill the next free houses in turn order, and the rest stay empty.
+ */
+export function previewLayout(count: 2 | 3 | 4, rules: PickRules, bots: number): Record<Color, Slot> {
+  const layout = Object.fromEntries(COLORS.map((c) => [c, 'empty'])) as Record<Color, Slot>;
+  if (rules.houses === 2) {
+    const mate: Color = rules.pairing === 'opposite' ? 'red' : 'yellow';
+    for (const c of COLORS) layout[c] = c === 'blue' || c === mate ? 'p1' : 'p2';
+    return layout;
+  }
+  SEATS[count].forEach((c, i) => (layout[c] = `p${i + 1}` as Slot));
+  for (const c of COLORS.filter((x) => layout[x] === 'empty').slice(0, bots)) layout[c] = 'bot';
+  return layout;
 }
