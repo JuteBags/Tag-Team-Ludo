@@ -267,6 +267,24 @@ impl Evaluator {
     }
 }
 
+/// Leaf values for a batch of searches: leaves[i] are valued by evals[i] (ownerChances, by owner).
+/// CPU backend: every position on the thread pool; a GPU backend must give the same bits.
+pub fn batch_values(evals: &[&Evaluator], leaves: &[Vec<Game>]) -> Vec<Vec<[f64; 4]>> {
+    use rayon::prelude::*;
+    let flat: Vec<(usize, &Game)> = leaves.iter().enumerate().flat_map(|(i, ls)| ls.iter().map(move |g| (i, g))).collect();
+    let vals: Vec<[f64; 4]> = flat
+        .par_iter()
+        .with_min_len(64)
+        .map(|&(i, g)| {
+            let mut v = [0.0; 4];
+            evals[i].owner_chances(g, &mut v);
+            v
+        })
+        .collect();
+    let mut it = vals.into_iter();
+    leaves.iter().map(|ls| it.by_ref().take(ls.len()).collect()).collect()
+}
+
 /// Per-thread scratch for the net (no large zero-filled stack arrays per evaluation).
 struct Scratch {
     x: [f64; 4 * D],

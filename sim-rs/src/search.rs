@@ -28,7 +28,7 @@ impl Default for SearchOptions {
     }
 }
 
-type Key = [u8; 64];
+pub type Key = [u8; 64];
 
 /// FxHash-style hasher for the fixed 64-byte keys (SipHash is far slower and needs no DoS resistance here).
 #[derive(Default)]
@@ -47,7 +47,12 @@ impl std::hash::Hasher for KeyHasher {
     }
 }
 
-type Map<V> = HashMap<Key, V, std::hash::BuildHasherDefault<KeyHasher>>;
+pub type Map<V> = HashMap<Key, V, std::hash::BuildHasherDefault<KeyHasher>>;
+
+/// The leaf cache key of a position (the evaluator's value depends on the position alone).
+pub fn leaf_key(s: &Game) -> Key {
+    key(s, 0, 255)
+}
 
 fn key(s: &Game, turns_left: u32, chance: u32) -> Key {
     let mut k = [0u8; 64];
@@ -83,6 +88,9 @@ struct Ctx<'a> {
     /// Leaf values by position alone: the evaluator (and the race database) depend only on the position,
     /// so a position reached again (other dice order, other chance depth) reuses the value exactly.
     leaves: Map<[f64; 4]>,
+    /// Collecting (collect_leaves): positions the evaluator would be asked for are listed (once each)
+    /// and valued 0 instead. With cut 0 the search visits the same nodes whatever the values are.
+    collect: Option<Vec<Game>>,
 }
 
 impl<'a> Ctx<'a> {
@@ -101,6 +109,11 @@ impl<'a> Ctx<'a> {
                 self.leaves.insert(k, r);
                 return r;
             }
+        }
+        if let Some(c) = self.collect.as_mut() {
+            c.push(*s);
+            self.leaves.insert(k, v);
+            return v;
         }
         self.eval.owner_chances(s, &mut v);
         self.leaves.insert(k, v);
@@ -128,7 +141,9 @@ impl<'a> Ctx<'a> {
         for (i, t) in ts.iter().enumerate() {
             if deep(t) {
                 probes.push((i, self.owner_values(t)));
-                PROBES.fetch_add(1, Relaxed);
+                if self.collect.is_none() {
+                    PROBES.fetch_add(1, Relaxed);
+                }
             } else {
                 vals[i] = self.node(t, who, turns_left, chance);
                 if vals[i][me] > a {
@@ -150,7 +165,9 @@ impl<'a> Ctx<'a> {
         for (i, p) in probes {
             if p[me] + self.opts.cut <= a {
                 vals[i] = p;
-                CUTS.fetch_add(1, Relaxed);
+                if self.collect.is_none() {
+                    CUTS.fetch_add(1, Relaxed);
+                }
             } else {
                 vals[i] = self.node(&ts[i], who, turns_left, chance);
                 if vals[i][me] > a {
@@ -224,19 +241,37 @@ impl<'a> Ctx<'a> {
 pub fn state_values(eval: &Evaluator, state: &Game, opts: SearchOptions) -> [f64; 4] {
     let owners = state.b.players().iter().map(|p| p.owner).max().unwrap() as usize + 1;
     let root_owner = state.b.p[state.current].owner;
-    let mut ctx = Ctx { eval, opts, owners, root_owner, memo: Map::default(), leaves: Map::default() };
+    let mut ctx = Ctx { eval, opts, owners, root_owner, memo: Map::default(), leaves: Map::default(), collect: None };
     ctx.node(state, state.current, opts.depth, 0)
+}
+
+fn root_values(eval: &Evaluator, state: &Game, opts: SearchOptions, leaves: Map<[f64; 4]>, collect: Option<Vec<Game>>) -> (Vec<f64>, Option<Vec<Game>>) {
+    let owners = state.b.players().iter().map(|p| p.owner).max().unwrap() as usize + 1;
+    let root = state.current;
+    let root_owner = state.b.p[root].owner;
+    let mut ctx = Ctx { eval, opts, owners, root_owner, memo: Map::default(), leaves, collect };
+    let me = root_owner as usize;
+    let idx: Vec<usize> = (0..state.moves.len()).collect();
+    let vals = ctx.children(state, &idx, root, opts.depth, 0, me).iter().map(|v| v[me]).collect();
+    (vals, ctx.collect)
 }
 
 /// searchValues(): the search's value of each of the current player's moves, as their chance of winning.
 pub fn search_values(eval: &Evaluator, state: &Game, opts: SearchOptions) -> Vec<f64> {
-    let owners = state.b.players().iter().map(|p| p.owner).max().unwrap() as usize + 1;
-    let root = state.current;
-    let root_owner = state.b.p[root].owner;
-    let mut ctx = Ctx { eval, opts, owners, root_owner, memo: Map::default(), leaves: Map::default() };
-    let me = root_owner as usize;
-    let idx: Vec<usize> = (0..state.moves.len()).collect();
-    ctx.children(state, &idx, root, opts.depth, 0, me).iter().map(|v| v[me]).collect()
+    root_values(eval, state, opts, Map::default(), None).0
+}
+
+/// Batched search, pass 1: every distinct position search_values would hand the evaluator (the race
+/// database and finished games aside). Value them together (eval_batch, or a GPU), put them in a map by
+/// leaf_key, and search_values_with gives exactly search_values. With cut > 0 the walk depends on the
+/// values, so the list can miss some; search_values_with then evaluates those itself (still exact).
+pub fn collect_leaves(eval: &Evaluator, state: &Game, opts: SearchOptions) -> Vec<Game> {
+    root_values(eval, state, opts, Map::default(), Some(Vec::new())).1.unwrap()
+}
+
+/// search_values with leaf values already known (pass 2 of the batched search).
+pub fn search_values_with(eval: &Evaluator, state: &Game, opts: SearchOptions, leaves: Map<[f64; 4]>) -> Vec<f64> {
+    root_values(eval, state, opts, leaves, None).0
 }
 
 /// search.ts searchStats: how often temperature sampling picked a move whose value is below the best.
@@ -251,7 +286,19 @@ pub fn choose_extreme(eval: &Evaluator, state: &Game, rng: &mut Rng, opts: Searc
     if state.moves.len() == 1 {
         return 0;
     }
-    let vals = search_values(eval, state, opts);
+    pick(search_values(eval, state, opts), rng, temperature)
+}
+
+/// choose_extreme with leaf values already known (the batched search).
+pub fn choose_extreme_with(eval: &Evaluator, state: &Game, rng: &mut Rng, opts: SearchOptions, temperature: f64, leaves: Map<[f64; 4]>) -> usize {
+    if state.moves.len() == 1 {
+        return 0;
+    }
+    pick(search_values_with(eval, state, opts, leaves), rng, temperature)
+}
+
+/// chooseExtreme's choice from the move values: softmax sampling, or the best with tiny random ties.
+fn pick(vals: Vec<f64>, rng: &mut Rng, temperature: f64) -> usize {
     if temperature > 0.0 {
         let mut top = f64::NEG_INFINITY;
         for &v in &vals {

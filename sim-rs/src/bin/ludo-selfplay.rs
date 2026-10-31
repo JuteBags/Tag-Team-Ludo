@@ -1,6 +1,10 @@
 //! tools/ai/selfplay.ts in Rust: the same games, the same kept positions, the same v1 shard bytes.
 //!   ludo-selfplay --games 2000 --seed 7 --out shard.bin --pool hard:65,normal:22,easy:10,random:3
 //!                 [--modes 2p,3p,...] [--keep 0.1] [--commit <sha>] [--threads N] [--format 2]
+//!                 [--lockstep W]
+//! --lockstep W: W games in flight, stepped together. At every round each game plays on to its next
+//! search decision, the search's leaves for all of them are valued in one batch (search::collect_leaves,
+//! then eval::batch_values), and each game chooses from its own values. Same bytes as without it.
 //! One invocation writes one shard (like one selfplay.mjs worker); its games run in parallel and are
 //! concatenated in game order, so the file is byte-identical to selfplay.mjs with the same flags.
 use ludo_sim::bot::Policy;
@@ -20,6 +24,89 @@ struct GameOut {
     x: Vec<f32>,
     meta: Vec<i32>,
     header: String,
+}
+
+/// One game being played: everything the plain loop keeps in locals.
+struct Live {
+    g: usize,
+    game_seed: i64,
+    mode: String,
+    specs: Vec<String>,
+    pols: Vec<Policy>,
+    keep_rng: Rng,
+    gm: Game,
+    st: Streams,
+    ml: MoveList,
+    buf: Vec<f64>,
+    x: Vec<f32>,
+    meta: Vec<i32>,
+    turn: i32,
+    steps: usize,
+}
+
+impl Live {
+    /// Plays rolls and non-search moves until a search policy must choose among several moves (true)
+    /// or the game is over (false).
+    fn advance(&mut self, keep: f64) -> bool {
+        while self.gm.phase != PHASE_OVER && self.steps < 50000 {
+            if self.gm.phase == PHASE_ROLL {
+                if self.keep_rng.next() < keep {
+                    let gm = &self.gm;
+                    let buf: &mut [f64; 4 * D] = (&mut self.buf[..]).try_into().unwrap();
+                    encode(&gm.b, gm.current, gm.singles, gm.tray(), gm.sixes, buf);
+                    let n = gm.b.n;
+                    self.x.extend(self.buf[..n * D].iter().map(|&v| v as f32));
+                    self.x.extend(std::iter::repeat(0.0f32).take((4 - n) * D));
+                    self.meta.extend_from_slice(&[self.g as i32, self.turn, n as i32, gm.current as i32]);
+                }
+                self.turn += 1;
+                let f = roll_face(&self.gm.b, self.gm.current_color(), self.st.dice(), self.gm.singles, &mut self.ml);
+                self.gm.roll(f);
+            } else {
+                let o = self.gm.b.p[self.gm.current].owner as usize;
+                if matches!(self.pols[o], Policy::Search { .. }) && self.gm.moves.len() > 1 {
+                    return true;
+                }
+                let k = self.pols[o].choose(&self.gm, &mut self.st.rng);
+                let m = self.gm.moves.m[k];
+                self.gm.play(&m);
+            }
+            self.steps += 1;
+        }
+        false
+    }
+
+    fn search(&self) -> (std::sync::Arc<ludo_sim::eval::Evaluator>, ludo_sim::search::SearchOptions, f64) {
+        match &self.pols[self.gm.b.p[self.gm.current].owner as usize] {
+            Policy::Search { eval, opts, temperature } => (eval.clone(), *opts, *temperature),
+            _ => unreachable!(),
+        }
+    }
+}
+
+/// The game's entry in the shard header.
+fn header(game_seed: i64, mode: &str, specs: &[String], gm: &Game, turn: i32) -> String {
+    let order = gm.owner_ranking();
+    let mut left = vec![0i32; order.len()];
+    for p in gm.b.players() {
+        left[p.owner as usize] += p.tokens.iter().map(|&t| FINISHED as i32 - t.max(BASE) as i32).sum::<i32>();
+    }
+    let mut h = String::new();
+    let list = |v: &mut String, xs: &[String]| {
+        v.push('[');
+        v.push_str(&xs.join(","));
+        v.push(']');
+    };
+    write!(h, "{{\"seed\":{game_seed},\"mode\":\"{mode}\",\"owners\":").unwrap();
+    list(&mut h, &gm.b.players().iter().map(|p| p.owner.to_string()).collect::<Vec<_>>());
+    h.push_str(",\"order\":");
+    list(&mut h, &order.iter().map(|o| o.to_string()).collect::<Vec<_>>());
+    h.push_str(",\"policies\":");
+    list(&mut h, &specs.iter().map(|s| format!("\"{s}\"")).collect::<Vec<_>>());
+    write!(h, ",\"over\":{},\"turns\":{turn},\"left\":", gm.phase == PHASE_OVER).unwrap();
+    list(&mut h, &left.iter().map(|o| o.to_string()).collect::<Vec<_>>());
+    h.push('}');
+    h
 }
 
 fn main() {
@@ -72,8 +159,79 @@ fn main() {
         rayon::ThreadPoolBuilder::new().num_threads(t.parse().unwrap()).build_global().unwrap();
     }
 
+    let start = |g: usize| -> Live {
+        let game_seed = seed * 1_000_003 + g as i64;
+        let mut rng = Rng::seeded(game_seed);
+        let (mode, seats, singles) = &mode_list[g % mode_list.len()];
+        let people = seats.iter().map(|s| s.1).max().unwrap() as usize + 1;
+        let specs: Vec<String> = (0..people).map(|_| pick(rng.next()).to_string()).collect();
+        let pols: Vec<Policy> = specs.iter().map(|s| Policy::parse(s)).collect();
+        let keep_rng = Rng::seeded(((game_seed as u32) ^ 0x5bd1_e995) as i64);
+        let mut gm = Game::new(seats, *singles);
+        gm.current = ((rng.next() * 4.0).floor() as usize) % seats.len();
+        let st = Streams::new(rng, game_seed, format);
+        Live { g, game_seed, mode: mode.to_string(), specs, pols, keep_rng, gm, st, ml: MoveList::new(), buf: vec![0.0; 4 * D], x: Vec::new(), meta: Vec::new(), turn: 0, steps: 0 }
+    };
+    let lockstep: usize = flags.get("lockstep").map(|s| s.parse().unwrap()).unwrap_or(0);
+
     let t0 = Instant::now();
-    let outs: Vec<GameOut> = (0..games)
+    let outs: Vec<GameOut> = if lockstep > 0 {
+        let mut outs: Vec<Option<GameOut>> = (0..games).map(|_| None).collect();
+        let mut active: Vec<Live> = Vec::new();
+        let mut next = 0;
+        let (mut rounds, mut nleaves) = (0usize, 0usize);
+        loop {
+            while active.len() < lockstep && next < games {
+                active.push(start(next));
+                next += 1;
+            }
+            if active.is_empty() {
+                break;
+            }
+            // every game to its next search decision; the finished ones leave
+            let need: Vec<bool> = active.par_iter_mut().map(|l| l.advance(keep)).collect();
+            let mut still = Vec::with_capacity(active.len());
+            for (l, n) in active.drain(..).zip(need) {
+                if n {
+                    still.push(l);
+                } else {
+                    let h = header(l.game_seed, &l.mode, &l.specs, &l.gm, l.turn);
+                    outs[l.g] = Some(GameOut { x: l.x, meta: l.meta, header: h });
+                }
+            }
+            active = still;
+            if active.is_empty() {
+                continue;
+            }
+            // pass 1: the leaves of every decision; one batch; pass 2: each game chooses
+            let leaves: Vec<Vec<Game>> = active
+                .par_iter()
+                .map(|l| {
+                    let (eval, opts, _) = l.search();
+                    ludo_sim::search::collect_leaves(&eval, &l.gm, opts)
+                })
+                .collect();
+            let arcs: Vec<_> = active.iter().map(|l| l.search().0).collect();
+            let evals: Vec<&ludo_sim::eval::Evaluator> = arcs.iter().map(|a| &**a).collect();
+            let vals = ludo_sim::eval::batch_values(&evals, &leaves);
+            rounds += 1;
+            nleaves += vals.iter().map(|v| v.len()).sum::<usize>();
+            active.par_iter_mut().zip(leaves.into_par_iter().zip(vals.into_par_iter())).for_each(|(l, (ls, vs))| {
+                let mut map = ludo_sim::search::Map::default();
+                for (s, v) in ls.iter().zip(vs) {
+                    map.insert(ludo_sim::search::leaf_key(s), v);
+                }
+                let (eval, opts, temperature) = l.search();
+                let k = ludo_sim::search::choose_extreme_with(&eval, &l.gm, &mut l.st.rng, opts, temperature, map);
+                let m = l.gm.moves.m[k];
+                l.gm.play(&m);
+                l.steps += 1;
+            });
+        }
+        eprintln!("LOCKSTEP rounds {rounds} leaves {nleaves} ({:.1} per round)", nleaves as f64 / rounds.max(1) as f64);
+        outs.into_iter().map(|o| o.unwrap()).collect()
+    } else {
+        (0..games)
         .into_par_iter()
         .map(|g| {
             let game_seed = seed * 1_000_003 + g as i64;
@@ -133,7 +291,8 @@ fn main() {
             h.push('}');
             GameOut { x, meta, header: h }
         })
-        .collect();
+        .collect()
+    };
     let secs = t0.elapsed().as_secs_f64();
 
     let positions: usize = outs.iter().map(|o| o.meta.len() / 4).sum();
