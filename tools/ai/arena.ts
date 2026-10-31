@@ -16,6 +16,9 @@ let wins = 0;
 let placeSum = 0;
 let seeds = 0;
 let seedSq = 0;
+// Seat effect: A's games and wins when one of A's colours moves first.
+let firstGames = 0;
+let firstWins = 0;
 const t0 = Date.now();
 for (let seed = Number(a.from ?? 0); seed < Number(a.to ?? 1000); seed++) {
   let seedWins = 0;
@@ -23,12 +26,17 @@ for (let seed = Number(a.from ?? 0); seed < Number(a.to ?? 1000); seed++) {
     const rng = seeded(seed * 7919 + 13);
     const end = playGame(mode, Array.from({ length: people }, (_, o) => (o === seat ? A : B)), rng, seed % 4);
     const place = ownerRanking(end).indexOf(seat) + 1;
+    const first = end.players[(seed % 4) % end.players.length]!.owner === seat;
     games++;
-    if (place === 1) seedWins++;
+    if (first) firstGames++;
+    if (place === 1) {
+      seedWins++;
+      if (first) firstWins++;
+    }
     placeSum += place;
   }
   wins += seedWins;
   seeds++;
   seedSq += seedWins * seedWins;
 }
-console.log(`ARENA ${JSON.stringify({ a: a.a, b: a.b, mode, people, games, wins, placeSum, seeds, seedSq, ms: Date.now() - t0 })}`);
+console.log(`ARENA ${JSON.stringify({ a: a.a, b: a.b, mode, people, games, wins, placeSum, seeds, seedSq, firstGames, firstWins, ms: Date.now() - t0 })}`);
