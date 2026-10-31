@@ -213,6 +213,7 @@ export class BoardView {
    */
   showTargets(targets: Target[], onChoose: (t: Target) => void, onSelect?: (ts: Target[]) => void, onStuck?: (pawn: string) => void) {
     this.clearMovable();
+    this.svg.classList.toggle('choosing', targets.length > 0);
     this.targets = targets;
     this.onChoose = onChoose;
     this.onSelect = onSelect ?? null;
@@ -230,6 +231,7 @@ export class BoardView {
     this.fx.innerHTML = this.marks.innerHTML = '';
     this.svg.style.cursor = '';
     for (const g of this.pawns.values()) g.classList.remove('movable');
+    this.svg.classList.remove('choosing');
   }
 
   private targetsOf(pawn: string) {
@@ -310,7 +312,7 @@ export class BoardView {
         : t.tag === 'safe' ? `<path d="M0,-7 L2,-2 7,-2 3,1.5 4.5,6.5 0,3.5 -4.5,6.5 -3,1.5 -7,-2 -2,-2Z" fill="#fff"/>`
         : t.tag === 'home' || t.tag === 'finish' ? `<path d="M-6,1 L0,-6 L6,1 M-4,0 V6 H4 V0" fill="none" stroke="#5a2d00" stroke-width="2.2" stroke-linejoin="round"/>`
         : `<circle r="4" fill="#fff"/>`;
-      m += `<g class="mark ${t.tag}${on.includes(t) ? ' on' : ''}${this.fresh ? ' fresh' : ''}" transform="translate(${x} ${y})" style="--c:${c}">
+      m += `<g class="mark ${t.tag}${on.includes(t) ? ' on' : ''}${this.fresh ? ' fresh' : ''}" transform="translate(${x} ${y}) scale(1.22)" style="--c:${c}">
         <circle class="ring" r="18"/><circle class="core" r="13"/>${icon}
         <g transform="translate(${lx} ${ly})"><rect x="${-w / 2}" y="-13" width="${w}" height="26" rx="13" class="pill"/><text y="6.5" text-anchor="middle">${text}</text></g></g>`;
     }
@@ -329,8 +331,11 @@ export class BoardView {
 
   // ---------- animation ----------
 
-  /** Hops the moving pawns square by square, sends captured pawns home, then re-lays the board. */
-  async animateMove(m: Move, after: PlayerState[], speed = 1) {
+  /**
+   * Hops the moving pawns square by square, sends captured pawns home, then re-lays the board. `onHit`
+   * runs at the moment of a capture's impact, so the KILL banner lands with the blow.
+   */
+  async animateMove(m: Move, after: PlayerState[], speed = 1, onHit?: () => void) {
     this.clearMovable();
     this.deco.innerHTML = '';
     this.badges.innerHTML = '';
@@ -357,14 +362,17 @@ export class BoardView {
     }
     if (kill) {
       sfx.kill(m.captures.length);
+      // Hit-stop: the attacker lands and everything holds for a beat before the victim flies.
+      await this.squash(keys, 0.35, 120 / speed);
       this.impact(x, y, PALETTE[m.captures[0]!.color].m, m.captures.length);
+      onHit?.();
       await Promise.all(
         m.captures.map((c, j) => {
           const k = c.color + c.token;
           const { pt } = spot(c.color, -1, c.token);
           this.pieces.appendChild(this.pawns.get(k)!);
           const start = this.placed.get(k)!;
-          return this.hop([k], [{ ...start, r: 0 }], [{ x: pt[0], y: pt[1], s: BASE_SCALE, r: (j ? -1 : 1) * 720 }], (760 + j * 80) / speed, 150).then(() => {
+          return this.launch(k, start, { x: pt[0], y: pt[1], s: BASE_SCALE, r: (j ? -1 : 1) * 900 }, (980 + j * 90) / speed).then(() => {
             this.pop(pt[0], pt[1], PALETTE[c.color].l);
             return this.squash([k], 0.3, 220 / speed);
           });
@@ -391,6 +399,15 @@ export class BoardView {
     });
   }
 
+  /** A captured pawn thrown home: up high, growing as it nears the camera, spinning, then dropping in. */
+  private launch(k: string, a: Place, b: Place, ms: number) {
+    return tween(ms, (t) => {
+      const e = ease(t);
+      const air = Math.sin(Math.PI * t);
+      this.set(k, { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e - 240 * air, s: (a.s + (b.s - a.s) * e) * (1 + 0.9 * air), q: -0.1 * air, r: t >= 1 ? 0 : (b.r ?? 0) * e });
+    });
+  }
+
   /** A quick landing squash that springs back. */
   private squash(keys: string[], amount: number, ms: number) {
     if (calm()) return Promise.resolve();
@@ -410,8 +427,8 @@ export class BoardView {
     if (calm()) return;
     this.sparks(x, y, [color, '#fff', '#ffd23f'], 14 * n, 70 + 30 * n);
     this.el.animate(
-      [{ transform: 'translate(0,0)' }, { transform: 'translate(-7px,4px) rotate(-.6deg)' }, { transform: 'translate(6px,-5px) rotate(.5deg)' }, { transform: 'translate(-4px,3px)' }, { transform: 'translate(2px,-1px)' }, { transform: 'translate(0,0)' }],
-      { duration: 360, easing: 'cubic-bezier(.2,.8,.3,1)' },
+      [{ transform: 'translate(0,0)' }, { transform: 'translate(-11px,6px) rotate(-1deg)' }, { transform: 'translate(10px,-8px) rotate(.9deg)' }, { transform: 'translate(-7px,5px) rotate(-.5deg)' }, { transform: 'translate(4px,-3px)' }, { transform: 'translate(-2px,1px)' }, { transform: 'translate(0,0)' }],
+      { duration: 480, easing: 'cubic-bezier(.2,.8,.3,1)' },
     );
     const flash = document.createElementNS(NS, 'rect');
     flash.setAttribute('width', '600');

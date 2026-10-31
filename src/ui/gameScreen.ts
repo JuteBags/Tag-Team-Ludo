@@ -78,16 +78,15 @@ export class GameScreen {
       ${this.state.players.map((p) => this.panelHTML(p.color, p.bot)).join('')}
       <div class="gboard"></div>
       <div class="hint"><span class="tw"></span><span><b></b><small></small></span></div>
+      <div class="act"><div class="dicebar" aria-label="Dice this turn"></div><button class="rollbtn disp" data-act="roll" hidden>${icons.play}<span>ROLL</span></button></div>
       <div class="toasts"></div>`;
     this.view = new BoardView(this.state.players, 370, this.state.players.filter((p) => !p.bot).map((p) => p.color), !!this.state.singles);
     this.el.querySelector('.gboard')!.appendChild(this.view.el);
     this.el.querySelector('[data-act=menu]')!.addEventListener('click', () => this.openMenu());
-    this.el.querySelectorAll<HTMLElement>('.tray').forEach((tray) =>
-      tray.addEventListener('click', (e) => {
-        const b = (e.target as Element).closest<HTMLElement>('.tdie');
-        if (b && !this.paused) this.trayPick?.(Number(b.dataset.r));
-      }),
-    );
+    this.el.querySelector('.dicebar')!.addEventListener('click', (e) => {
+      const b = (e.target as Element).closest<HTMLElement>('.tdie');
+      if (b && !this.paused) this.trayPick?.(Number(b.dataset.r));
+    });
     // A continued game shows the dice as they were.
     for (const [c, f] of this.lastFace) this.diceBox(c).innerHTML = dieMarkup(f, DIE);
     this.drawTrays();
@@ -120,7 +119,7 @@ export class GameScreen {
     return `<div class="pl ${SEAT_CLASS[c]} idle" data-c="${c}" style="${cssVars(c)}">
       <div class="who"><div class="av">${avatarSVG(c)}</div><span class="nm">${this.name(c)}</span>${bot ? '<span class="bot">BOT</span>' : ''}<span class="ptr"></span>
         <svg class="psym sym" viewBox="-11 -11 22 22" aria-hidden="true"><circle r="10.5" fill="#fff"/><path d="${symbolPath(c, 6.5)}" fill="${PALETTE[c].m}" stroke="${PALETTE[c].d}" stroke-width="1.2" stroke-linejoin="round"/></svg></div>
-      <button class="dbox" aria-label="Roll dice">${dieMarkup(6, DIE)}</button><div class="tray" aria-label="Dice this turn"></div></div>`;
+      <button class="dbox" aria-label="Roll dice">${dieMarkup(6, DIE)}</button></div>`;
   }
 
   // ---------- turn loop ----------
@@ -181,11 +180,16 @@ export class GameScreen {
     const who = pvp ? this.name(c) : 'You';
     if (this.state.phase === 'roll') {
       const again = this.state.rolls.length > 0;
-      // Passing the device: announce whose turn it is when it changes hands.
-      if (!again && pvp && this.ownerOf(c) !== this.lastOwner) this.toast(`${this.name(c)}'s turn`, c, 'turn');
+      // Passing the device: when it changes hands, the next person takes it first.
+      if (!again && pvp && this.ownerOf(c) !== this.lastOwner) {
+        this.lastOwner = this.ownerOf(c);
+        this.setHint(c, `${this.name(c)}'s turn`, 'Pass the phone');
+        await this.passTo(c);
+        if (this.disposed) return;
+      }
       this.lastOwner = this.ownerOf(c);
-      if (again) this.setHint(c, 'Roll again', `Kept ${this.state.rolls.join(' · ')}. Tap the dice to roll`);
-      else this.setHint(c, pvp ? `${this.name(c)}'s turn` : 'Your turn', 'Tap the dice to roll');
+      if (again) this.setHint(c, 'Roll again', `Your ${this.state.rolls.join(' · ')} wait below. Tap ROLL AGAIN`);
+      else this.setHint(c, pvp ? `${this.name(c)}'s turn` : 'Your turn', 'Tap ROLL');
       await this.waitRollTap(c);
       if (!this.disposed) await this.doRoll(c);
       return;
@@ -244,32 +248,36 @@ export class GameScreen {
    */
   private drawTrays(lit?: number, show?: { c: Color; dice: number[] }) {
     const usable = this.state.phase === 'move' ? new Set(this.state.moves.map((m) => m.roll)) : null;
-    this.el.querySelectorAll<HTMLElement>('.pl').forEach((pl) => {
-      const c = pl.dataset.c as Color;
-      const dice = show ? (c === show.c ? show.dice : []) : this.trayOf(c);
-      let on = false;
-      pl.querySelector('.tray')!.innerHTML = dice
-        .map((r) => {
-          const here = r === lit && !on;
-          on ||= here;
-          return `<button class="tdie${here ? ' on' : ''}${usable && !usable.has(r) ? ' off' : ''}" data-r="${r}" aria-label="Play the ${r}">${flatDie(r)}</button>`;
-        })
-        .join('');
-    });
+    const c = show?.c ?? this.cur.color;
+    const dice = show ? show.dice : this.trayOf(c);
+    const bar = this.el.querySelector<HTMLElement>('.dicebar')!;
+    bar.setAttribute('style', cssVars(c));
+    bar.classList.toggle('bot', !!this.state.players.find((p) => p.color === c)?.bot);
+    let on = false;
+    bar.innerHTML = dice
+      .map((r) => {
+        const here = r === lit && !on;
+        on ||= here;
+        return `<button class="tdie${here ? ' on' : ''}${usable && !usable.has(r) ? ' off' : ''}" data-r="${r}" aria-label="Play the ${r}">${flatDie(r)}</button>`;
+      })
+      .join('');
   }
 
   private async doMove(m: Move) {
     const doneBefore = this.doneOwners();
     this.state = move(this.state, m);
-    await this.view.animateMove(m, this.state.players, this.speed);
+    // The KILL banner and red flash land with the blow, while the victim is still flying home.
+    await this.view.animateMove(m, this.state.players, this.speed, () => this.killBanner(m));
     const ev = this.state.event;
     const extra = ev?.type === 'moved' && ev.extraTurn;
     const player = this.state.players.find((p) => p.color === m.color)!;
     const human = !player.bot;
-    if (m.captures.length) this.toast(m.captures.length > 1 ? 'DOUBLE KILL!' : 'KILL!', m.color, 'kill');
-    // A person's token reaching home is welcomed into the palace; a bot's just gets the banner.
-    else if (m.finishes && human) await playCutscene(this.el, m.color, player.tokens, this.speed);
-    else if (m.finishes) this.toast('HOME!', m.color, 'home');
+    // A kill's banner already landed with the blow (killBanner). A person's token reaching home is
+    // welcomed into the palace; a bot's just gets the banner.
+    if (!m.captures.length && m.finishes) {
+      if (human) await playCutscene(this.el, m.color, player.tokens, this.speed);
+      else this.toast('HOME!', m.color, 'home');
+    }
     if (extra && human) this.toast('Roll again', m.color);
     if (ev?.type === 'moved' && ev.lost.length) this.toast(`Can't use the ${ev.lost.join(' and ')}`, m.color);
     this.drawTrays();
@@ -326,7 +334,13 @@ export class GameScreen {
           if (!go) this.toast('Game over by vote', c);
           resolve(go);
         };
-        if (b.dataset.v === 'no') return done(false);
+        // One "stop" ends the game for everyone, so it takes a second tap.
+        if (b.dataset.v === 'no') {
+          if (b.classList.contains('sure')) return done(false);
+          b.classList.add('sure');
+          b.textContent = one ? 'TAP AGAIN TO END' : 'Sure?';
+          return;
+        }
         yes.add(o);
         ov.querySelector(`.vrow[data-o="${o}"]`)?.classList.add('agreed');
         if (voters.every((v) => yes.has(v))) setTimeout(() => done(true), one ? 0 : 450);
@@ -336,17 +350,44 @@ export class GameScreen {
   }
 
   // ---------- human input ----------
+  /** Waits for a tap on the big ROLL button (in the player's colour, by the thumb) or on their dice box. */
   private waitRollTap(c: Color): Promise<void> {
     const box = this.diceBox(c);
+    const btn = this.el.querySelector<HTMLButtonElement>('.rollbtn')!;
     box.classList.add('can-roll');
+    btn.setAttribute('style', cssVars(c));
+    btn.querySelector('span')!.textContent = this.state.rolls.length ? 'ROLL AGAIN' : 'ROLL';
+    btn.hidden = false;
     return new Promise((done) => {
       const on = () => {
         if (this.paused) return;
         box.removeEventListener('click', on);
+        btn.removeEventListener('click', on);
         box.classList.remove('can-roll');
+        btn.hidden = true;
         done();
       };
       box.addEventListener('click', on);
+      btn.addEventListener('click', on);
+    });
+  }
+
+  /**
+   * With friends, when the phone changes hands: a card asks the next person to take it, and their turn
+   * starts when they tap. Easy to miss as a banner; impossible to miss as a card.
+   */
+  private passTo(c: Color): Promise<void> {
+    return new Promise((done) => {
+      const ov = document.createElement('div');
+      ov.className = 'menu-ov passov';
+      ov.innerHTML = `<div class="box" style="${cssVars(c)}"><div class="pav">${avatarSVG(c)}</div><small>Pass the phone to</small><h2>${this.name(c)}</h2><p class="sub">Tap when you have it</p></div>`;
+      ov.addEventListener('click', () => {
+        if (this.paused) return;
+        sfx.tick();
+        ov.remove();
+        done();
+      });
+      this.el.appendChild(ov);
     });
   }
 
@@ -406,7 +447,32 @@ export class GameScreen {
   }
 
   /** A banner over the board. Big moments (kill, six, home) slam in larger and tilted. */
+  /** A kill: the banner and red at the screen edges. */
+  private killBanner(m: Move) {
+    this.toast(m.captures.length > 1 ? 'DOUBLE KILL!' : 'KILL!', m.color, 'kill');
+    const f = document.createElement('div');
+    f.className = 'killflash';
+    this.el.appendChild(f);
+    f.animate([{ opacity: 0 }, { opacity: 1, offset: 0.15 }, { opacity: 0 }], { duration: 700 / this.speed, easing: 'ease-out' }).finished.finally(() => f.remove());
+  }
+
+  /** When the banner on screen stops holding the stage (ms, performance.now time). */
+  private bannerFree = 0;
+
+  /**
+   * A banner over the board. Banners queue: each holds the stage (a kill longest) before the next one
+   * starts, so "Roll again" never covers "KILL!". Big moments (kill, six, home) slam in larger and tilted.
+   */
   private toast(text: string, c: Color, kind: 'kill' | 'six' | 'home' | 'bust' | 'turn' | '' = '') {
+    const now = performance.now();
+    const wait = Math.max(0, this.bannerFree - now);
+    const hold = (kind === 'kill' ? 950 : kind === 'six' || kind === 'home' || kind === 'bust' ? 650 : 420) / this.speed;
+    this.bannerFree = now + wait + hold;
+    if (wait > 0) setTimeout(() => !this.disposed && this.showBanner(text, c, kind), wait);
+    else this.showBanner(text, c, kind);
+  }
+
+  private showBanner(text: string, c: Color, kind: 'kill' | 'six' | 'home' | 'bust' | 'turn' | '') {
     const t = document.createElement('div');
     t.className = `toast ${kind}`;
     t.setAttribute('style', cssVars(c));
@@ -460,7 +526,14 @@ export class GameScreen {
         sfx.setMuted(!sfx.muted);
         (e.target as Element).closest('button')!.textContent = sfx.muted ? 'SOUND: OFF' : 'SOUND: ON';
       } else if (act === 'quit') {
-        // Quitting gives the game up: there's nothing to continue.
+        // Quitting gives the game up, so it takes a second tap.
+        const b = (e.target as Element).closest('button')!;
+        if (!b.classList.contains('sure')) {
+          b.classList.add('sure');
+          b.textContent = 'TAP AGAIN TO QUIT';
+          b.insertAdjacentHTML('afterend', '<p class="sub warn">This game will be lost</p>');
+          return;
+        }
         this.dispose();
         void clearGame();
         this.exit('home');
