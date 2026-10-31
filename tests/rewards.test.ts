@@ -1,6 +1,7 @@
 // Gold (src/ui/rewards.ts) and spending it in the Store (src/ui/skins.ts).
 import { describe, expect, it } from 'vitest';
-import { goldFor, total } from '../src/ui/rewards';
+import { ACHIEVEMENTS, goldFor, newAchievements, total } from '../src/ui/rewards';
+import { EMPTY_STATS } from '../src/ui/store';
 import { settings } from '../src/ui/settings';
 import { SKINS, buy, earn, isUnlocked, nextGoal } from '../src/ui/skins';
 
@@ -35,5 +36,25 @@ describe('spending gold', () => {
     expect(nextGoal()).not.toBe(bone);
     settings.gold = 0;
     settings.owned = [];
+  });
+});
+
+describe('achievements', () => {
+  const stats = { ...EMPTY_STATS };
+  const game = { mode: 'pvc' as const, place: 1, lost: 0, hard: false };
+  it('gives a first win, and a flawless win when no token was lost', () => {
+    const ids = newAchievements({ ...stats, wins: 1, played: 1 }, game, []).map((a) => a.id);
+    expect(ids).toEqual(['first-win', 'flawless']);
+    expect(newAchievements({ ...stats, wins: 1 }, { ...game, lost: 2 }, []).map((a) => a.id)).toEqual(['first-win']);
+  });
+  it('never gives the same achievement twice', () => {
+    expect(newAchievements({ ...stats, wins: 1 }, game, ['first-win', 'flawless'])).toEqual([]);
+  });
+  it('counts totals and wins against Hard bots', () => {
+    const ids = newAchievements({ ...stats, wins: 10, kills: 60, sixes: 100, bestStreak: 3, friends: 5 }, { ...game, lost: 1, hard: true }, []).map((a) => a.id);
+    expect(ids).toEqual(['first-win', 'wins-10', 'streak-3', 'kills-50', 'sixes-100', 'hard-win', 'friends-5']);
+  });
+  it('shows progress toward the totals', () => {
+    expect(ACHIEVEMENTS.find((a) => a.id === 'kills-50')!.progress!({ ...stats, kills: 12 })).toEqual([12, 50]);
   });
 });
