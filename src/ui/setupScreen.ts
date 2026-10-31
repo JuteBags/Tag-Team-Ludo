@@ -5,11 +5,13 @@ import { COLORS, type BotLevel, type Color, type Seat } from '../engine';
 import { PROFILES, cssVars, icons, pawnSVG } from './art';
 import { dieMarkup, rollDie } from './dice';
 import { saveSetting, settings } from './settings';
-import { pickSequence, pickable, previewLayout, rankRolls, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
+import { NAME_MAX, cleanName, defaultName, pickSequence, pickable, previewLayout, rankRolls, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
 
 const DIE = 30;
 const ROLL_MS = 900;
 const NEUTRAL = '--l:#7cb0ff;--m:#2f66df;--d:#173f9e;--t:#cfe0ff';
+/** A small pencil: this name can be changed. */
+const PENCIL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></svg>';
 /** Names bots can have (the human seat's character is "You"). */
 const BOT_NAMES = (['green', 'red', 'yellow'] as const).map((c) => PROFILES[c].name);
 /** Where each house sits, as on the board. */
@@ -43,7 +45,8 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     const humans = mode === 'pvp' ? count : 1;
     const bots = mode === 'pvp' ? addedBots : count - 1;
     return [
-      ...Array.from({ length: humans }, (_, i) => ({ name: mode === 'pvp' ? `Player ${i + 1}` : 'You', bot: false })),
+      // People keep the names they typed last time, seat by seat.
+      ...Array.from({ length: humans }, (_, i) => ({ name: cleanName((mode === 'pvp' ? settings.friendNames[i] : settings.myName) ?? '', defaultName(mode, i)), bot: false })),
       ...Array.from({ length: bots }, (_, i) => ({ name: BOT_NAMES[i]!, bot: true })),
     ];
   };
@@ -88,7 +91,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       <button class="b3 green disp go" data-act="to-roll">ROLL FOR ORDER</button>
     </section>` : ''}
     <section class="wiz" data-step="roll">
-      <h3 class="disp">Roll for order</h3><p class="sub">Highest roll picks first and plays first</p>
+      <h3 class="disp">Roll for order</h3><p class="sub">Highest roll picks first and plays first. Tap a name to change it</p>
       <div class="sp people"></div>
       <button class="b3 green disp go" data-act="to-pick" hidden>PICK HOUSES</button>
     </section>
@@ -181,7 +184,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     order = [];
     q('[data-act=to-pick]').hidden = true;
     peopleEl.innerHTML = people
-      .map((p, i) => `<div class="prow" data-p="${i}"><span class="chip disp">${i + 1}</span><b>${p.name}</b><span class="st"></span><button class="dbox" style="${NEUTRAL}" aria-label="Roll">${dieMarkup(6, DIE)}</button></div>`)
+      .map((p, i) => `<div class="prow" data-p="${i}"><span class="chip disp">${i + 1}</span>${p.bot ? `<b>${p.name}</b>` : `<button class="pname" data-p="${i}" aria-label="Change name">${p.name}${PENCIL}</button>`}<span class="st"></span><button class="dbox" style="${NEUTRAL}" aria-label="Roll">${dieMarkup(6, DIE)}</button></div>`)
       .join('');
     refreshRoll();
   };
@@ -198,7 +201,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       const mine = rolls[i]!;
       const waiting = now.includes(i);
       row.classList.toggle('due', waiting);
-      row.querySelector('.st')!.textContent = waiting && mine.length ? 'Tie! Roll again' : mine.length ? `rolled ${mine.join(' · ')}` : people[i]!.bot ? '' : 'Tap to roll';
+      row.querySelector('.st')!.textContent = waiting && mine.length ? 'Tie! Roll again' : mine.length ? `rolled ${mine.join(' · ')}` : people[i]!.bot ? '' : 'Tap the dice';
       row.querySelector('.dbox')!.classList.toggle('can-roll', waiting && !people[i]!.bot);
     });
     if (!deciding()) return finishRoll();
@@ -230,7 +233,44 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     }
     refreshRoll();
   };
+  // Tap a person's name to change it; it is remembered for that seat.
+  const editName = (i: number) => {
+    const btn = peopleEl.querySelector<HTMLElement>(`.pname[data-p="${i}"]`);
+    if (!btn) return;
+    const input = document.createElement('input');
+    input.className = 'pname-in';
+    input.maxLength = NAME_MAX;
+    input.value = people[i]!.name === defaultName(mode, i) ? '' : people[i]!.name;
+    input.placeholder = defaultName(mode, i);
+    input.setAttribute('aria-label', 'Name');
+    input.enterKeyHint = 'done';
+    btn.replaceWith(input);
+    input.focus();
+    let done = false;
+    const commit = () => {
+      if (done) return;
+      done = true;
+      const name = cleanName(input.value, defaultName(mode, i));
+      people[i]!.name = name;
+      if (mode === 'pvp') {
+        const names = [...settings.friendNames];
+        names[i] = name === defaultName(mode, i) ? '' : name;
+        saveSetting('friendNames', names);
+      } else saveSetting('myName', name === defaultName(mode, i) ? '' : name);
+      const back = document.createElement('button');
+      back.className = 'pname';
+      back.dataset.p = String(i);
+      back.setAttribute('aria-label', 'Change name');
+      back.innerHTML = name + PENCIL;
+      input.replaceWith(back);
+    };
+    input.addEventListener('keydown', (e) => e.key === 'Enter' && input.blur());
+    input.addEventListener('blur', commit);
+  };
   peopleEl.addEventListener('click', (e) => {
+    const nameBtn = (e.target as Element).closest<HTMLElement>('.pname');
+    if (nameBtn) return editName(Number(nameBtn.dataset.p));
+    if ((e.target as Element).closest('.pname-in')) return;
     const row = (e.target as Element).closest<HTMLElement>('.prow');
     if (row && !people[Number(row.dataset.p)]!.bot) void rollFor(Number(row.dataset.p));
   });

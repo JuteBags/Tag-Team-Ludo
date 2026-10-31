@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pickSequence, pickable, previewLayout, rankRolls, type PickRules } from '../src/ui/setup';
+import { NAME_MAX, cleanName, defaultName, pickSequence, pickable, previewLayout, rankRolls, type PickRules } from '../src/ui/setup';
 
 const one: PickRules = { houses: 1, pairing: 'opposite' };
 const opp: PickRules = { houses: 2, pairing: 'opposite' };
@@ -59,5 +59,25 @@ describe('the options preview', () => {
     expect(previewLayout(3, one, 0)).toEqual({ blue: 'p1', green: 'p2', red: 'p3', yellow: 'empty' });
     expect(previewLayout(3, one, 1)).toEqual({ blue: 'p1', green: 'p2', red: 'p3', yellow: 'bot' });
     expect(previewLayout(4, one, 0)).toEqual({ blue: 'p1', green: 'p2', red: 'p3', yellow: 'p4' });
+  });
+});
+
+describe('player names', () => {
+  it('keeps ordinary names as typed, trimmed', () => {
+    expect(cleanName('  Ashu ', 'Player 1')).toBe('Ashu');
+    expect(cleanName('Ravi  Kumar', 'Player 2')).toBe('Ravi Kumar');
+  });
+  it('drops characters that could form markup', () => {
+    expect(cleanName('<b>Bo</b>', 'Player 1')).toBe('bBo/b');
+    expect(cleanName('"Tom" & \'Jo\'', 'Player 1')).toBe('Tom Jo');
+  });
+  it('cuts long names and falls back when empty', () => {
+    expect(cleanName('Abcdefghijklmnop', 'Player 1')).toHaveLength(NAME_MAX);
+    expect(cleanName('   ', 'Player 3')).toBe('Player 3');
+    expect(cleanName('<>', 'You')).toBe('You');
+  });
+  it('names seats Player 1, 2... with friends and You against the computer', () => {
+    expect(defaultName('pvp', 1)).toBe('Player 2');
+    expect(defaultName('pvc', 0)).toBe('You');
   });
 });
