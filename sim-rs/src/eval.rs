@@ -6,32 +6,170 @@ use crate::jsmath;
 use crate::rules::is_done;
 use serde_json::Value;
 
+/// A dense layer, weights stored column-major (wt[c * out + r]) so 8 output rows advance together.
+/// Each row still sums b[r] + w[r][0] a[0] + w[r][1] a[1] + ... in net.ts's order (lanes are
+/// independent rows, no reassociation, no FMA), so every output is bit-identical to the TS.
 struct Dense {
-    w: Vec<f64>,
+    wt: Vec<f64>,
     b: Vec<f64>,
     out: usize,
     inn: usize,
 }
 
+const MAXW: usize = 384;
+
+/// NB vectors through one layer at once (all colours of a position, or all people): each weight is
+/// loaded once for every vector. Per (vector, row) the sum order is the scalar one.
+#[inline(always)]
+fn dense_batch_scalar<const NB: usize>(wt: &[f64], b: &[f64], out: usize, cols: &[usize], a: &[[f64; MAXW]], z: &mut [[f64; MAXW]]) {
+    for j in 0..NB {
+        for r in 0..out {
+            let mut s = b[r];
+            for &c in cols {
+                s += wt[c * out + r] * a[j][c];
+            }
+            z[j][r] = s;
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn dense_batch_avx2<const NB: usize>(wt: &[f64], b: &[f64], out: usize, cols: &[usize], a: &[[f64; MAXW]], z: &mut [[f64; MAXW]]) {
+    use std::arch::x86_64::*;
+    let wp = wt.as_ptr();
+    let mut r0 = 0;
+    // 16 rows x NB vectors per pass: 4*NB independent add chains keep the adders busy
+    while r0 + 16 <= out {
+        let bb = [
+            _mm256_loadu_pd(b.as_ptr().add(r0)),
+            _mm256_loadu_pd(b.as_ptr().add(r0 + 4)),
+            _mm256_loadu_pd(b.as_ptr().add(r0 + 8)),
+            _mm256_loadu_pd(b.as_ptr().add(r0 + 12)),
+        ];
+        let mut acc = [bb; NB];
+        for &c in cols {
+            let p = wp.add(c * out + r0);
+            let w = [_mm256_loadu_pd(p), _mm256_loadu_pd(p.add(4)), _mm256_loadu_pd(p.add(8)), _mm256_loadu_pd(p.add(12))];
+            for j in 0..NB {
+                let av = _mm256_set1_pd(*a.get_unchecked(j).get_unchecked(c));
+                for q in 0..4 {
+                    acc[j][q] = _mm256_add_pd(acc[j][q], _mm256_mul_pd(w[q], av));
+                }
+            }
+        }
+        for j in 0..NB {
+            for q in 0..4 {
+                _mm256_storeu_pd(z[j].as_mut_ptr().add(r0 + 4 * q), acc[j][q]);
+            }
+        }
+        r0 += 16;
+    }
+    while r0 + 8 <= out {
+        let b0 = _mm256_loadu_pd(b.as_ptr().add(r0));
+        let b1 = _mm256_loadu_pd(b.as_ptr().add(r0 + 4));
+        let mut lo = [b0; NB];
+        let mut hi = [b1; NB];
+        for &c in cols {
+            let p = wp.add(c * out + r0);
+            let w0 = _mm256_loadu_pd(p);
+            let w1 = _mm256_loadu_pd(p.add(4));
+            for j in 0..NB {
+                let av = _mm256_set1_pd(*a.get_unchecked(j).get_unchecked(c));
+                lo[j] = _mm256_add_pd(lo[j], _mm256_mul_pd(w0, av));
+                hi[j] = _mm256_add_pd(hi[j], _mm256_mul_pd(w1, av));
+            }
+        }
+        for j in 0..NB {
+            _mm256_storeu_pd(z[j].as_mut_ptr().add(r0), lo[j]);
+            _mm256_storeu_pd(z[j].as_mut_ptr().add(r0 + 4), hi[j]);
+        }
+        r0 += 8;
+    }
+    for j in 0..NB {
+        for r in r0..out {
+            let mut s = b[r];
+            for &c in cols {
+                s += wt[c * out + r] * a[j][c];
+            }
+            z[j][r] = s;
+        }
+    }
+}
+
 impl Dense {
+    /// z = act(W a + b) (net.ts dense()) for nb <= 4 vectors at once.
+    /// Inputs that are exactly 0 (in every vector) are skipped: s + w*0 == s for any s != 0, and for
+    /// s = +-0 only the sign of that zero can differ, which no later step can turn into a different
+    /// non-zero value (tanh, max/min and products keep +-0 as +-0, exp(+-0) = 1).
+    fn apply_batch(&self, a: &[[f64; MAXW]], z: &mut [[f64; MAXW]], nb: usize, tanh: bool) {
+        let mut cols = [0usize; MAXW];
+        let mut n = 0;
+        for c in 0..self.inn {
+            if (0..nb).any(|j| a[j][c] != 0.0) {
+                cols[n] = c;
+                n += 1;
+            }
+        }
+        let cols = &cols[..n];
+        macro_rules! run {
+            ($nb:literal) => {{
+                #[cfg(target_arch = "x86_64")]
+                {
+                    if std::is_x86_feature_detected!("avx2") {
+                        unsafe { dense_batch_avx2::<$nb>(&self.wt, &self.b, self.out, cols, a, z) }
+                    } else {
+                        dense_batch_scalar::<$nb>(&self.wt, &self.b, self.out, cols, a, z)
+                    }
+                }
+                #[cfg(not(target_arch = "x86_64"))]
+                dense_batch_scalar::<$nb>(&self.wt, &self.b, self.out, cols, a, z)
+            }};
+        }
+        match nb {
+            1 => run!(1),
+            2 => run!(2),
+            3 => run!(3),
+            4 => run!(4),
+            _ => unreachable!(),
+        }
+        if tanh {
+            #[cfg(target_arch = "x86_64")]
+            let simd = std::is_x86_feature_detected!("avx2");
+            #[cfg(not(target_arch = "x86_64"))]
+            let simd = false;
+            for j in 0..nb {
+                let mut r = 0;
+                #[cfg(target_arch = "x86_64")]
+                if simd {
+                    while r + 4 <= self.out {
+                        let mut q = [z[j][r], z[j][r + 1], z[j][r + 2], z[j][r + 3]];
+                        unsafe { crate::simd::tanh4(&mut q) };
+                        z[j][r..r + 4].copy_from_slice(&q);
+                        r += 4;
+                    }
+                }
+                let _ = simd;
+                for v in z[j][r..self.out].iter_mut() {
+                    *v = jsmath::tanh(*v);
+                }
+            }
+        }
+    }
+
     fn from_json(v: &Value) -> Dense {
         let rows: Vec<Vec<f64>> = v["W"].as_array().unwrap().iter().map(|r| r.as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect()).collect();
         let b: Vec<f64> = v["b"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
         let inn = rows[0].len();
-        Dense { w: rows.concat(), out: b.len(), inn, b }
-    }
-
-    /// z = act(W a + b), net.ts dense().
-    #[inline]
-    fn apply(&self, a: &[f64], z: &mut [f64], tanh: bool) {
-        for r in 0..self.out {
-            let mut s = self.b[r];
-            let row = &self.w[r * self.inn..(r + 1) * self.inn];
-            for c in 0..self.inn {
-                s += row[c] * a[c];
+        let out = b.len();
+        assert!(inn <= MAXW && out <= MAXW, "layer wider than {MAXW}");
+        let mut wt = vec![0.0; inn * out];
+        for r in 0..out {
+            for c in 0..inn {
+                wt[c * out + r] = rows[r][c];
             }
-            z[r] = if tanh { jsmath::tanh(s) } else { s };
         }
+        Dense { wt, out, inn, b }
     }
 }
 
@@ -129,45 +267,68 @@ impl Evaluator {
     }
 }
 
+/// Per-thread scratch for the net (no large zero-filled stack arrays per evaluation).
+struct Scratch {
+    x: [f64; 4 * D],
+    a: [[f64; MAXW]; 4],
+    z: [[f64; MAXW]; 4],
+    pooled: [[f64; MAXW]; 4],
+    zz: [[f64; MAXW]; 4],
+    one: [[f64; MAXW]; 4],
+}
+
+thread_local! {
+    static SCRATCH: std::cell::RefCell<Box<Scratch>> = std::cell::RefCell::new(Box::new(Scratch {
+        x: [0.0; 4 * D],
+        a: [[0.0; MAXW]; 4],
+        z: [[0.0; MAXW]; 4],
+        pooled: [[0.0; MAXW]; 4],
+        zz: [[0.0; MAXW]; 4],
+        one: [[0.0; MAXW]; 4],
+    }));
+}
+
 impl Net {
     fn owner_scores(&self, g: &Game, people: usize, s: &mut [f64; 4]) {
-        let mut x = [0.0f64; 4 * D];
-        encode(&g.b, g.current, g.singles, g.tray(), g.sixes, &mut x);
+        SCRATCH.with(|sc| self.owner_scores_in(g, people, s, &mut sc.borrow_mut()))
+    }
+
+    fn owner_scores_in(&self, g: &Game, people: usize, s: &mut [f64; 4], sc: &mut Scratch) {
+        let Scratch { x, a, z, pooled, zz, one } = sc;
+        encode(&g.b, g.current, g.singles, g.tray(), g.sixes, x);
         let h = self.hidden;
         let n = g.b.n;
-        let widest = self.trunk.iter().map(|l| l.out).max().unwrap().max(self.inputs.len());
-        let mut a = vec![0.0f64; widest];
-        let mut z = vec![0.0f64; widest];
-        let mut hs = vec![0.0f64; 4 * h];
+        // every colour through the trunk together
         for i in 0..n {
             for (k, &ix) in self.inputs.iter().enumerate() {
-                a[k] = x[i * D + ix];
+                a[i][k] = x[i * D + ix];
             }
-            for l in &self.trunk {
-                l.apply(&a, &mut z, true);
-                std::mem::swap(&mut a, &mut z);
-            }
-            hs[i * h..(i + 1) * h].copy_from_slice(&a[..h]);
         }
-        let mut pooled = vec![0.0f64; 3 * h];
-        let mut zz = vec![0.0f64; self.pool.out];
-        let mut one = [0.0f64; 1];
+        let (mut a, mut z) = (a, z);
+        for l in &self.trunk {
+            l.apply_batch(a, z, n, true);
+            std::mem::swap(&mut a, &mut z);
+        }
+        // pool each person's colours (in colour order), then the head for every person together
+        let mut who = [0usize; 4];
+        let mut np = 0;
         for o in 0..people {
             let mut count = 0;
             for i in 0..n {
                 if g.b.p[i].owner as usize != o {
                     continue;
                 }
+                let pl = &mut pooled[np];
                 for k in 0..h {
-                    let v = hs[i * h + k];
+                    let v = a[i][k];
                     if count == 0 {
-                        pooled[k] = v;
-                        pooled[h + k] = v;
-                        pooled[2 * h + k] = v;
+                        pl[k] = v;
+                        pl[h + k] = v;
+                        pl[2 * h + k] = v;
                     } else {
-                        pooled[k] += v;
-                        pooled[h + k] = jsmath::max(pooled[h + k], v);
-                        pooled[2 * h + k] = jsmath::min(pooled[2 * h + k], v);
+                        pl[k] += v;
+                        pl[h + k] = jsmath::max(pl[h + k], v);
+                        pl[2 * h + k] = jsmath::min(pl[2 * h + k], v);
                     }
                 }
                 count += 1;
@@ -176,9 +337,13 @@ impl Net {
                 s[o] = f64::NAN;
                 continue;
             }
-            self.pool.apply(&pooled, &mut zz, true);
-            self.out.apply(&zz, &mut one, false);
-            s[o] = one[0];
+            who[np] = o;
+            np += 1;
+        }
+        self.pool.apply_batch(pooled, zz, np, true);
+        self.out.apply_batch(zz, one, np, false);
+        for j in 0..np {
+            s[who[j]] = one[j][0];
         }
     }
 }

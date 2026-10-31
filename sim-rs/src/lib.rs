@@ -13,4 +13,5 @@ pub mod jsmath;
 pub mod rng;
 pub mod rules;
 pub mod search;
+pub mod simd;
 pub mod trace;

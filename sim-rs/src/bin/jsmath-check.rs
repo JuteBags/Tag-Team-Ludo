@@ -18,4 +18,36 @@ fn main() {
         n += 1;
     }
     println!("JSMATH n {n} exp mismatches {bad_e} tanh mismatches {bad_t}");
+    // tanh4 (AVX2) against scalar tanh: the reference inputs plus a wide random sweep
+    #[cfg(target_arch = "x86_64")]
+    if std::is_x86_feature_detected!("avx2") {
+        let mut xs: Vec<f64> = text.lines().map(|l| f64::from_bits(u64::from_str_radix(l.split(' ').next().unwrap(), 16).unwrap())).collect();
+        let mut s = 12345u64;
+        for _ in 0..4_000_000 {
+            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let u = (s >> 11) as f64 / (1u64 << 53) as f64;
+            let e = ((s >> 3) % 40) as i32 - 30;
+            xs.push((u - 0.5) * 2f64.powi(e));
+        }
+        for i in 0..100_000 {
+            xs.push(i as f64 * 0.0005 - 25.0);
+        }
+        let mut bad = 0;
+        for c in xs.chunks(4) {
+            if c.len() < 4 {
+                break;
+            }
+            let mut v = [c[0], c[1], c[2], c[3]];
+            unsafe { ludo_sim::simd::tanh4(&mut v) };
+            for j in 0..4 {
+                if v[j].to_bits() != ludo_sim::jsmath::tanh(c[j]).to_bits() {
+                    if bad < 5 {
+                        eprintln!("tanh4({:e}) {:e} vs {:e}", c[j], v[j], ludo_sim::jsmath::tanh(c[j]));
+                    }
+                    bad += 1;
+                }
+            }
+        }
+        println!("TANH4 n {} mismatches {bad}", xs.len());
+    }
 }
