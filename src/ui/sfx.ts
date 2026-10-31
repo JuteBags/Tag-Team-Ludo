@@ -21,7 +21,8 @@ function ac(): AudioContext | null {
 }
 // Every tap may (re)start audio: if sound was muted at the first tap and turned on later, the next
 // tap is what unlocks it. ac() is cheap once the context is running.
-addEventListener('pointerdown', () => void ac(), { capture: true, passive: true });
+// Not in a browser (the unit tests): no audio to unlock.
+if (typeof addEventListener === 'function') addEventListener('pointerdown', () => void ac(), { capture: true, passive: true });
 
 /** One oscillator note with a quick attack and exponential decay. */
 function tone(freq: number, dur: number, { type = 'sine' as OscillatorType, vol = 0.2, at = 0, slide = 0 } = {}) {

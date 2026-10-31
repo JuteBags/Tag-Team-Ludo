@@ -5,6 +5,7 @@ import { homeScreen } from './homeScreen';
 import { handleBack } from './native';
 import type { GameConfig, Mode } from './setup';
 import { setupScreen } from './setupScreen';
+import { storeScreen } from './storeScreen';
 import { clearGame, loadGame, type SavedGame } from './store';
 import { applyLook } from './themes';
 
@@ -30,7 +31,7 @@ export function mountApp(root: HTMLElement) {
     game = null;
     const saved = await loadGame();
     if (game) return; // a game started while the save was loading
-    stage.replaceChildren(homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved)));
+    stage.replaceChildren(homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => stage.replaceChildren(storeScreen(() => void home()))));
   };
   // Home -> setup (houses, roll for order, pick houses) -> game. Play again keeps the same houses.
   const setup = (mode: Mode) => stage.replaceChildren(setupScreen(mode, count, (cfg) => play(cfg), () => void home()));

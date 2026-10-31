@@ -2,6 +2,7 @@
 import { COLORS, SAFE_SQUARES, START, type Color } from '../engine';
 import { ARROW, CELL as S, CORNER, HOME_COL, SLOT, TIPS, TRACK, TURNS, centerOf } from './geometry';
 import { AVATARS } from './avatars';
+import { equipped } from './skins';
 
 export const PALETTE: Record<Color, { l: string; m: string; d: string; t: string }> = {
   blue: { l: '#7cc0ff', m: '#1f7bff', d: '#0a3c9c', t: '#dcecff' },
@@ -54,6 +55,7 @@ export function globalDefs(): string {
   // Light from the top left: a bright top-left edge, a darker bottom-right one.
   g += `<linearGradient id="bevel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".22" stop-color="#fff" stop-opacity=".08"/><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".2"/></linearGradient>
   <linearGradient id="sunk" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".38"/><stop offset=".2" stop-color="#000" stop-opacity="0"/><stop offset=".85" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".35"/></linearGradient>
+  <radialGradient id="boneG" cx=".35" cy=".28" r=".9"><stop offset="0" stop-color="#fffaf0"/><stop offset=".55" stop-color="#efe5cc"/><stop offset="1" stop-color="#c9b98f"/></radialGradient>
   <radialGradient id="mglow"><stop offset="0" stop-color="#fff7c2" stop-opacity=".95"/><stop offset=".55" stop-color="#ffd23f" stop-opacity=".55"/><stop offset="1" stop-color="#ffd23f" stop-opacity="0"/></radialGradient>
   <radialGradient id="pao"><stop offset="0" stop-color="#000" stop-opacity=".5"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
   <linearGradient id="tileW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--b-tile1)"/><stop offset="1" style="stop-color:var(--b-tile2)"/></linearGradient>
@@ -94,19 +96,29 @@ const PAWN_HEAD = '<circle cx="0" cy="-8.4" r="6.4"/>';
  * it stands on and fits inside a 40-unit square up to scale 1.3. Shadow, an invisible tap target,
  * a white halo and a dark outline so it reads on any tile (its own colour too), then the glossy body.
  */
-export function pawnArt(c: Color): string {
+/** A pawn skin: its silhouette (for the halo, outline and the board's hit area) and its painted art. */
+interface PawnSkin {
+  sil: string;
+  art: (c: Color) => string;
+  /** Where the colour-blind symbol sits, on the skin's body. */
+  sym: [number, number];
+}
+
+const BASE_ART = (c: Color) => {
   const v = PALETTE[c];
-  const outline = (color: string, w: number) =>
-    `<g fill="${color}" stroke="${color}" stroke-width="${w}" stroke-linejoin="round">${PAWN_BASE(10.4)}${PAWN_BODY}${PAWN_HEAD}</g>`;
-  // The shadow is a gradient, not a blur filter: filters are redrawn on every frame of every hop.
-  return `<ellipse cx="4.5" cy="14.6" rx="15" ry="5" fill="url(#pshadow)"/>
-<circle class="hit" cx="0" cy="0" r="20" fill="transparent"/>
-<ellipse class="mineglow" cx="0" cy="11" rx="18" ry="7" fill="url(#mglow)"/>
-<g class="pawn-art"><g class="halo">${outline('#fff', 5.2)}</g>${outline(v.d, 2.6)}
-<ellipse cx="1" cy="12.6" rx="12" ry="3.4" fill="#000" opacity=".45"/>
-<g fill="${v.d}">${PAWN_BASE(11.4)}<rect x="-11.5" y="8.2" width="23" height="3.2"/></g>
+  return `<g fill="${v.d}">${PAWN_BASE(11.4)}<rect x="-11.5" y="8.2" width="23" height="3.2"/></g>
 <g fill="url(#pb-${c})">${PAWN_BASE(8.2)}</g>
-<path d="M-11.5,8.2 A11.5,4 0 0 0 11.5,8.2" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.1"/>
+<path d="M-11.5,8.2 A11.5,4 0 0 0 11.5,8.2" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.1"/>`;
+};
+
+const PAWN_SKINS: Record<string, PawnSkin> = {
+  // The glossy original.
+  classic: {
+    sil: `${PAWN_BASE(10.4)}${PAWN_BODY}${PAWN_HEAD}`,
+    sym: [0, 3.6],
+    art: (c) => {
+      const v = PALETTE[c];
+      return `${BASE_ART(c)}
 <g fill="url(#pb-${c})">${PAWN_BODY}</g>
 <path d="M3.6,-3.4 C4.6,-.2 8.6,2.6 8.6,8.6 Q6.6,9.6 4.2,10 C5.4,5 3.4,1 2.2,-3.4Z" fill="${v.d}" opacity=".45"/>
 <path d="M-7.6,8.4 Q0,11 7.6,8.4" fill="none" stroke="${v.l}" stroke-opacity=".7" stroke-width="1.1" stroke-linecap="round"/>
@@ -116,10 +128,101 @@ export function pawnArt(c: Color): string {
 <path d="M3.2,-13.6 A6.4,6.4 0 0 1 4.6,-3.9" fill="none" stroke="${v.l}" stroke-opacity=".55" stroke-width="1.1" stroke-linecap="round"/>
 <path d="M-5.6,7 C-5.4,3.2 -3.4,1 -2.6,-1.8" stroke="#fff" stroke-opacity=".7" stroke-width="2.2" fill="none" stroke-linecap="round"/>
 <ellipse cx="-2.3" cy="-10.8" rx="3.2" ry="2" fill="#fff" opacity=".6"/>
-<circle cx="-3" cy="-11.5" r="1.15" fill="#fff"/>
-<path class="sym" d="${symbolPath(c, 5.4)}" transform="translate(0 3.6)" fill="#fff" stroke="${v.d}" stroke-width="1.4" stroke-linejoin="round"/></g>`;
+<circle cx="-3" cy="-11.5" r="1.15" fill="#fff"/>`;
+    },
+  },
+  // Halloween: a real skull (a big round cranium narrowing to a small jaw) on a base in the player's
+  // colour; the eyes glow in that colour.
+  skull: {
+    sil: `${PAWN_BASE(10.4)}<path d="M-8.6,-3 C-10.4,-9.4 -6.8,-16 0,-16 C6.8,-16 10.4,-9.4 8.6,-3 C8.2,.2 6.8,1.6 5.2,2.4 L4.8,7.4 Q0,9.6 -4.8,7.4 L-5.2,2.4 C-6.8,1.6 -8.2,.2 -8.6,-3Z"/>`,
+    sym: [0, -10.2],
+    art: (c) => {
+      const v = PALETTE[c];
+      return `${BASE_ART(c)}
+<path d="M-8.6,-3 C-10.4,-9.4 -6.8,-16 0,-16 C6.8,-16 10.4,-9.4 8.6,-3 C8.2,.2 6.8,1.6 5.2,2.4 L4.8,7.4 Q0,9.6 -4.8,7.4 L-5.2,2.4 C-6.8,1.6 -8.2,.2 -8.6,-3Z" fill="url(#boneG)"/>
+<path d="M5.2,2.4 L4.8,7.4 Q0,9.6 -4.8,7.4 L-5.2,2.4 C-2,3.4 2,3.4 5.2,2.4Z" fill="#d9ccab"/>
+<path d="M8.6,-3 C8.2,.2 6.8,1.6 5.2,2.4 C6.4,-1 7.4,-6 6,-11 C8.8,-9 9.8,-6 8.6,-3Z" fill="#b8a780" opacity=".55"/>
+<path d="M-7.2,-6.6 C-7,-9 -4.6,-10 -1.4,-8.8 C-.4,-7.6 -.6,-4.6 -2.2,-3.2 C-4,-2.2 -6.6,-3 -7.2,-6.6Z" fill="#1a120c"/>
+<path d="M7.2,-6.6 C7,-9 4.6,-10 1.4,-8.8 C.4,-7.6 .6,-4.6 2.2,-3.2 C4,-2.2 6.6,-3 7.2,-6.6Z" fill="#1a120c"/>
+<circle cx="-3.9" cy="-5.8" r="1.4" fill="${v.l}"/><circle cx="3.9" cy="-5.8" r="1.4" fill="${v.l}"/>
+<circle cx="-4.3" cy="-6.2" r=".5" fill="#fff"/><circle cx="3.5" cy="-6.2" r=".5" fill="#fff"/>
+<path d="M0,-2.2 L-1.4,.6 Q0,1.2 1.4,.6Z" fill="#1a120c"/>
+<path d="M-4,3.6 Q0,4.8 4,3.6 L3.8,6.6 Q0,7.8 -3.8,6.6Z" fill="#f4ecd8"/>
+<path d="M-2.6,3.9 v3.2 M-.9,4.1 v3.4 M.9,4.1 v3.4 M2.6,3.9 v3.2 M-3.8,5.3 Q0,6.3 3.8,5.3" stroke="#5a4a32" stroke-width=".6" fill="none"/>
+<path d="M2.6,-15.4 L3.4,-12.6 L2.2,-11" stroke="#9a8a68" stroke-width=".6" fill="none"/>
+<ellipse cx="-3.6" cy="-12.6" rx="3" ry="1.6" fill="#fff" opacity=".85" transform="rotate(-18 -3.6 -12.6)"/>`;
+    },
+  },
+  // One scoop in the player's colour on a waffle cone, standing in a little holder.
+  cone: {
+    sil: `${PAWN_BASE(10.4)}<path d="M-7.2,-2 L7.2,-2 L0,10Z"/><circle cx="0" cy="-7.4" r="7.6"/>`,
+    sym: [0, -7.4],
+    art: (c) => {
+      const v = PALETTE[c];
+      return `${BASE_ART(c)}
+<path d="M-7.2,-2 L7.2,-2 L0,10Z" fill="#d79a4e"/>
+<path d="M-5.2,-2 L1.6,8 M-1.6,-2 L3.6,5.2 M2,-2 L5.4,2.4 M5.2,-2 L-1.6,8 M1.6,-2 L-3.6,5.2 M-2,-2 L-5.4,2.4" stroke="#a96a26" stroke-width=".8"/>
+<path d="M3.6,-2 L0,10 L7.2,-2Z" fill="#8a5a22" opacity=".35"/>
+<circle cx="0" cy="-7.4" r="7.6" fill="url(#ph-${c})"/>
+<path d="M-7.4,-5.6 Q-6.6,-1 -5.2,-3.8 Q-4,-.4 -2.6,-3.6 Q-1.2,0 .4,-3.4 Q2,-.6 3.4,-3.6 Q5,-.8 6,-4 Q7.2,-2.2 7.4,-5.6Z" fill="${v.m}"/>
+<rect x="-3.6" y="-11" width="2" height=".8" rx=".4" fill="#fff" transform="rotate(30 -2.6 -10.6)"/><rect x="1.6" y="-9" width="2" height=".8" rx=".4" fill="#ffe14d" transform="rotate(-40 2.6 -8.6)"/><rect x="-1" y="-6.4" width="2" height=".8" rx=".4" fill="#7af06a" transform="rotate(70 0 -6)"/>
+<circle cx="0" cy="-15.2" r="2.1" fill="#e8102c"/><circle cx="-.6" cy="-15.8" r=".6" fill="#fff"/>
+<ellipse cx="-3" cy="-10.6" rx="2.4" ry="1.4" fill="#fff" opacity=".55"/>`;
+    },
+  },
+  // A boxy robot: a body in the player's colour, a steel head with a glowing visor and an antenna.
+  robot: {
+    sil: `${PAWN_BASE(10.4)}<rect x="-7.4" y="-3.4" width="14.8" height="12.4" rx="3"/><rect x="-6.4" y="-14.4" width="12.8" height="10" rx="3"/><circle cx="0" cy="-17.2" r="1.8"/>`,
+    sym: [0, 3],
+    art: (c) => {
+      const v = PALETTE[c];
+      return `${BASE_ART(c)}
+<rect x="-7.4" y="-3.4" width="14.8" height="12.4" rx="3" fill="url(#pb-${c})"/>
+<rect x="2.6" y="-3.4" width="4.8" height="12.4" rx="2" fill="${v.d}" opacity=".4"/>
+<rect x="-3" y="-5" width="6" height="2" fill="#9aa6b8"/>
+<rect x="-6.4" y="-14.4" width="12.8" height="10" rx="3" fill="#cfd8e6"/>
+<rect x="1.6" y="-14.4" width="4.8" height="10" rx="2" fill="#8d99ad" opacity=".7"/>
+<rect x="-4.8" y="-11.6" width="9.6" height="4" rx="2" fill="#16203a"/>
+<rect x="-3.6" y="-10.6" width="2.6" height="2" rx="1" fill="${v.l}"/><rect x="1" y="-10.6" width="2.6" height="2" rx="1" fill="${v.l}"/>
+<path d="M0,-14.4 V-16" stroke="#8d99ad" stroke-width="1.2"/><circle cx="0" cy="-17.2" r="1.8" fill="${v.m}"/>
+<rect x="-5.4" y="-13.8" width="5" height="1.4" rx=".7" fill="#fff" opacity=".8"/>`;
+    },
+  },
+  // A chess knight in the player's colour.
+  knight: {
+    sil: `${PAWN_BASE(10.4)}<path d="M-7.8,9 L-6.8,1 C-8.4,-5 -6.6,-11.6 -.6,-15.4 C2.6,-16.6 4.6,-15.4 5.8,-13.2 L9,-8.4 C10,-6.4 8.4,-5 6.4,-6 L3.2,-5.6 C5.2,-1.6 7.6,3 7.8,9Z"/>`,
+    sym: [-0.6, 3.6],
+    art: (c) => {
+      const v = PALETTE[c];
+      return `${BASE_ART(c)}
+<path d="M-7.8,9 L-6.8,1 C-8.4,-5 -6.6,-11.6 -.6,-15.4 C2.6,-16.6 4.6,-15.4 5.8,-13.2 L9,-8.4 C10,-6.4 8.4,-5 6.4,-6 L3.2,-5.6 C5.2,-1.6 7.6,3 7.8,9Z" fill="url(#pb-${c})"/>
+<path d="M3.2,-5.6 C5.2,-1.6 7.6,3 7.8,9 L4,9 C4,4 2.4,0 .8,-4.4Z" fill="${v.d}" opacity=".45"/>
+<path d="M-.6,-15.4 C-4.4,-12.6 -6.2,-8 -5.6,-3.4 C-6.6,1 -6.6,5 -6.4,8.6" fill="none" stroke="${v.d}" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="1.6 1.4"/>
+<circle cx="3.4" cy="-10.6" r="1.2" fill="#14203a"/><circle cx="3.1" cy="-10.9" r=".4" fill="#fff"/>
+<path d="M-3.4,-12.6 C-2,-14 0,-14.8 1.6,-14.6" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.6" stroke-linecap="round"/>`;
+    },
+  },
+};
+
+/**
+ * A pawn centred on (0, 0), in the pawn skin in use (skins.ts): it sits in the middle of whatever it
+ * stands on and fits inside a 40-unit square up to scale 1.3. Shadow, an invisible tap target, a glow
+ * and white halo for your own pawns, a dark outline so it reads on any tile, then the skin's art.
+ */
+export function pawnArt(c: Color, skin: string = equipped('pawn').id): string {
+  const v = PALETTE[c];
+  const k = PAWN_SKINS[skin] ?? PAWN_SKINS.classic!;
+  const outline = (color: string, w: number) => `<g fill="${color}" stroke="${color}" stroke-width="${w}" stroke-linejoin="round">${k.sil}</g>`;
+  // The shadow is a gradient, not a blur filter: filters are redrawn on every frame of every hop.
+  return `<ellipse cx="4.5" cy="14.6" rx="15" ry="5" fill="url(#pshadow)"/>
+<circle class="hit" cx="0" cy="0" r="20" fill="transparent"/>
+<ellipse class="mineglow" cx="0" cy="11" rx="18" ry="7" fill="url(#mglow)"/>
+<g class="pawn-art"><g class="halo">${outline('#fff', 5.2)}</g>${outline(v.d, 2.6)}
+<ellipse cx="1" cy="12.6" rx="12" ry="3.4" fill="#000" opacity=".45"/>
+${k.art(c)}
+<path class="sym" d="${symbolPath(c, 5.4)}" transform="translate(${k.sym[0]} ${k.sym[1]})" fill="#fff" stroke="${v.d}" stroke-width="1.4" stroke-linejoin="round"/></g>`;
 }
-export const pawnSVG = (c: Color) => `<svg viewBox="-15 -17 30 34">${pawnArt(c)}</svg>`;
+export const pawnSVG = (c: Color, skin?: string) => `<svg viewBox="-15 -17 30 34">${pawnArt(c, skin)}</svg>`;
 export const twinsSVG = (c: Color) =>
   `<svg viewBox="-22 -19 44 38"><ellipse cx="0" cy="13" rx="19" ry="5.5" fill="#ffd23f" opacity=".5"/><g transform="translate(7 -1) scale(.9)">${pawnArt(c)}</g><g transform="translate(-7 3) scale(.9)">${pawnArt(c)}</g></svg>`;
 
@@ -129,24 +232,25 @@ function tile(x: number, y: number, f: string): string {
   const fill = f === 'w' ? 'url(#tileW)' : `url(#tile-${f})`;
   const side = f === 'w' ? 'fill:var(--b-side)' : `fill:${PALETTE[f as Color].d}`;
   const h = w - 6.5;
-  return `<rect x="${px + 2.5}" y="${py + 4}" width="${w}" height="${w}" rx="6" style="fill:var(--b-shade)" opacity=".35"/><rect x="${px}" y="${py + 6.5}" width="${w}" height="${h}" rx="6" style="${side}"/><rect x="${px}" y="${py}" width="${w}" height="${h}" rx="6" fill="${fill}"/><rect x="${px}" y="${py}" width="${w}" height="${h}" rx="6" fill="url(#bevel)"/><path d="M${px + 6},${py + 1} h${w - 12}" stroke="#fff" stroke-opacity=".8" stroke-width="1.4" stroke-linecap="round"/>`;
+  // Classes let a board theme restyle the parts (the Tron board draws them as lines of light).
+  return `<rect class="tsh" x="${px + 2.5}" y="${py + 4}" width="${w}" height="${w}" rx="6" style="fill:var(--b-shade)" opacity=".35"/><rect class="tsd" x="${px}" y="${py + 6.5}" width="${w}" height="${h}" rx="6" style="${side}"/><rect class="tf t-${f}" x="${px}" y="${py}" width="${w}" height="${h}" rx="6" fill="${fill}"/><rect class="tbv" x="${px}" y="${py}" width="${w}" height="${h}" rx="6" fill="url(#bevel)"/><path class="thl" d="M${px + 6},${py + 1} h${w - 12}" stroke="#fff" stroke-opacity=".8" stroke-width="1.4" stroke-linecap="round"/>`;
 }
 
 function base(c: Color): string {
   const [cx, cy] = CORNER[c], bx = cx * S, by = cy * S, v = PALETTE[c];
-  let s = `<rect x="${bx + 8}" y="${by + 12}" width="232" height="228" rx="20" fill="#000" opacity=".35"/>
-  <rect x="${bx + 3}" y="${by + 17}" width="234" height="220" rx="20" fill="${v.d}"/>
-  <rect x="${bx + 3}" y="${by + 3}" width="234" height="220" rx="20" fill="url(#base-${c})"/>
-  <rect x="${bx + 3}" y="${by + 3}" width="234" height="220" rx="20" fill="url(#bevel)" opacity=".8"/>
-  <path d="M${bx + 23},${by + 3} h194 a20,20 0 0 1 20,20 v40 C${bx + 170},${by + 50} ${bx + 70},${by + 40} ${bx + 3},${by + 90} v-67 a20,20 0 0 1 20,-20z" fill="#fff" opacity=".13"/>
-  <rect x="${bx + 34}" y="${by + 26}" width="172" height="172" rx="33" fill="${v.d}" opacity=".7"/>
-  <rect x="${bx + 38}" y="${by + 30}" width="164" height="164" rx="30" fill="url(#panel)"/>
-  <rect x="${bx + 38}" y="${by + 30}" width="164" height="164" rx="30" fill="url(#sunk)"/>
+  let s = `<g class="base b-${c}"><rect class="bsh" x="${bx + 8}" y="${by + 12}" width="232" height="228" rx="20" fill="#000" opacity=".35"/>
+  <rect class="bsd" x="${bx + 3}" y="${by + 17}" width="234" height="220" rx="20" fill="${v.d}"/>
+  <rect class="bt" x="${bx + 3}" y="${by + 3}" width="234" height="220" rx="20" fill="url(#base-${c})"/>
+  <rect class="bbv" x="${bx + 3}" y="${by + 3}" width="234" height="220" rx="20" fill="url(#bevel)" opacity=".8"/>
+  <path class="bgl" d="M${bx + 23},${by + 3} h194 a20,20 0 0 1 20,20 v40 C${bx + 170},${by + 50} ${bx + 70},${by + 40} ${bx + 3},${by + 90} v-67 a20,20 0 0 1 20,-20z" fill="#fff" opacity=".13"/>
+  <rect class="bpr" x="${bx + 34}" y="${by + 26}" width="172" height="172" rx="33" fill="${v.d}" opacity=".7"/>
+  <rect class="bp" x="${bx + 38}" y="${by + 30}" width="164" height="164" rx="30" fill="url(#panel)"/>
+  <rect class="bsk" x="${bx + 38}" y="${by + 30}" width="164" height="164" rx="30" fill="url(#sunk)"/>
   <path class="sym" d="${symbolPath(c, 12)}" transform="translate(${bx + 120} ${by + 118})" fill="${v.m}" opacity=".7"/>`;
   for (const [sx, sy] of SLOT) {
-    s += `<circle cx="${bx + sx}" cy="${by + sy}" r="25" fill="${v.t}"/><circle cx="${bx + sx}" cy="${by + sy}" r="25" fill="url(#slotShade)"/><circle cx="${bx + sx}" cy="${by + sy}" r="25" fill="none" stroke="${v.m}" stroke-opacity=".55" stroke-width="2.5"/>`;
+    s += `<circle class="bsl" cx="${bx + sx}" cy="${by + sy}" r="25" fill="${v.t}"/><circle class="bss" cx="${bx + sx}" cy="${by + sy}" r="25" fill="url(#slotShade)"/><circle class="bsr" cx="${bx + sx}" cy="${by + sy}" r="25" fill="none" stroke="${v.m}" stroke-opacity=".55" stroke-width="2.5"/>`;
   }
-  return s;
+  return s + '</g>';
 }
 
 // Path arrows in a printed-board style: thin ink lines with open arrowheads.

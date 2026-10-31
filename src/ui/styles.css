@@ -5,6 +5,35 @@
   --b-stone:#ecd3a4;--b-stone-d:#b08a55;--b-rim:#3a2008;--b-frame:linear-gradient(150deg,#b07a44 0%,#7a4a22 40%,#5a3414 75%,#3a2008 100%)}
 :root[data-theme=dark]{--b-side:#1c2644;--b-bg:#0d1424;--b-tile1:#3a4a74;--b-tile2:#2c3a60;--b-shade:#000;--b-panel1:#2e3a5c;--b-panel2:#1c2540;--b-star:#8fa0d0;--b-ink:#c9d6ff;
   --b-stone:#3d4b70;--b-stone-d:#232c48;--b-rim:#0a0f1e;--b-frame:linear-gradient(150deg,#7c8cff 0%,#3b4aa8 40%,#232c6e 75%,#121842 100%)}
+/* Store boards (skins.ts): brushed metal, Tron (below), Halloween. */
+:root[data-theme=metal]{--b-side:#5d6676;--b-bg:#3a414e;--b-tile1:#eef2f7;--b-tile2:#b9c2cf;--b-shade:#0a0d14;--b-panel1:#e9edf3;--b-panel2:#aab3c0;--b-star:#8792a3;--b-ink:#1d2430;
+  --b-stone:#d3d9e2;--b-stone-d:#8f99a8;--b-rim:#1a1f29;--b-frame:linear-gradient(150deg,#f5f8fc 0%,#a8b2c1 30%,#5b6577 62%,#cfd6e0 82%,#3c4454 100%)}
+/* Tron (the film's palette): black glass, thin lines of cyan light, orange as the rival colour.
+   The board's parts are restyled through their classes (art.ts), not just recoloured. */
+:root[data-theme=tron]{--b-side:#02070c;--b-bg:#000;--b-tile1:#03070d;--b-tile2:#03070d;--b-shade:#00e5ff;--b-panel1:#03070d;--b-panel2:#03070d;--b-star:#6ff3ff;--b-ink:#6ff3ff;
+  --b-stone:#071624;--b-stone-d:#020a12;--b-rim:#00e5ff;--b-frame:linear-gradient(180deg,#0b1018,#000)}
+:root[data-theme=tron] .bframe{box-shadow:inset 0 0 0 2px #00e5ff,inset 0 0 14px rgba(0,229,255,.45),0 0 0 2px #000,0 0 18px 3px rgba(0,229,255,.55),0 12px 0 #001a24,0 30px 40px rgba(0,0,0,.7)}
+:root[data-theme=tron] .tsh{fill:#00e5ff!important;opacity:.14}
+:root[data-theme=tron] .tsd{fill:#00121c!important}
+:root[data-theme=tron] .tbv{display:none}
+:root[data-theme=tron] .thl{stroke:#c8fbff;stroke-opacity:.9}
+:root[data-theme=tron] .tf{fill:#03070d;stroke-width:1.4}
+:root[data-theme=tron] .tf.t-w{stroke:#00e5ff;stroke-opacity:.85}
+:root[data-theme=tron] .tf.t-blue{stroke:#2fd6ff;fill:#03131f}
+:root[data-theme=tron] .tf.t-green{stroke:#3dffa0;fill:#03160d}
+:root[data-theme=tron] .tf.t-red{stroke:#ff4a3d;fill:#1a0605}
+:root[data-theme=tron] .tf.t-yellow{stroke:#ff9a1f;fill:#1a0e02}
+:root[data-theme=tron] .base .bt,:root[data-theme=tron] .base .bp,:root[data-theme=tron] .base .bsl{fill:#03070d}
+:root[data-theme=tron] .base .bsd{fill:#000}
+:root[data-theme=tron] .base .bsh{fill:var(--glow);opacity:.18}
+:root[data-theme=tron] .base .bbv,:root[data-theme=tron] .base .bgl,:root[data-theme=tron] .base .bss,:root[data-theme=tron] .base .bsk{display:none}
+:root[data-theme=tron] .base .bt{stroke:var(--glow);stroke-width:3}
+:root[data-theme=tron] .base .bpr{fill:none;stroke:var(--glow);stroke-width:1.5;opacity:.6}
+:root[data-theme=tron] .base .bsr{stroke:var(--glow);stroke-opacity:1;stroke-width:2}
+:root[data-theme=tron] .base .sym{fill:var(--glow)}
+.b-blue{--glow:#2fd6ff}.b-green{--glow:#3dffa0}.b-red{--glow:#ff4a3d}.b-yellow{--glow:#ff9a1f}
+:root[data-theme=halloween]{--b-side:#4b2a6b;--b-bg:#1a0f24;--b-tile1:#f7e2c4;--b-tile2:#e9b980;--b-shade:#000;--b-panel1:#f4d9b0;--b-panel2:#d99a52;--b-star:#ff7a1a;--b-ink:#2a1030;
+  --b-stone:#3a2550;--b-stone-d:#24143a;--b-rim:#140a1c;--b-frame:linear-gradient(150deg,#ffb347 0%,#ff7a1a 30%,#6a2c91 64%,#2a1038 100%)}
 /* Colour-blind symbols show only when turned on. */
 :root:not(.symbols) .sym{display:none}
 
@@ -57,6 +86,30 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .dbox .scene{position:absolute;inset:0;display:grid;place-items:center;transform-origin:50% 55%}
 .dbox .cup{position:absolute;left:50%;top:50%;width:40px;height:46px;margin:-23px 0 0 -20px;transform-origin:50% 80%;z-index:2;pointer-events:none}
 .dbox .cup svg{display:block;width:100%;height:100%;filter:drop-shadow(0 3px 3px rgba(0,0,0,.45))}
+/* Throwers (skins.ts): three cups, the dice gun. */
+.dbox .mcup{position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;z-index:2;pointer-events:none}
+.dbox .mcup svg,.dbox .gun svg{display:block;width:100%;height:100%;filter:drop-shadow(0 3px 3px rgba(0,0,0,.5))}
+/* The dice gun: sized and placed from the die size in gunRoll (dice.ts). */
+.dbox .gun{position:absolute;z-index:3;pointer-events:none;transform-origin:22% 60%}
+.dbox .gun .flash{position:absolute;left:88%;top:8%;width:32%;height:53%;opacity:0;
+  background:radial-gradient(circle,#fff 0 18%,#ffe36a 32%,#ff9a1f 50%,rgba(255,90,0,0) 70%);clip-path:polygon(50% 0,60% 38%,100% 50%,60% 62%,50% 100%,40% 62%,0 50%,40% 38%)}
+.dbox .gun .smoke{position:absolute;left:92%;top:16%;width:22%;height:37%;border-radius:50%;background:radial-gradient(circle,rgba(220,225,235,.9),rgba(160,170,185,0) 70%);opacity:0}
+.dbox .streak{position:absolute;left:50%;top:50%;width:28px;height:3px;margin-top:-1.5px;transform-origin:0 50%;border-radius:2px;background:linear-gradient(90deg,rgba(255,240,180,0),#fff6c8);opacity:0;z-index:2;pointer-events:none}
+/* Dice skins (skins.ts). */
+.dk-bone .f{background:radial-gradient(130% 130% at 28% 18%,#fbf3dc 0%,#e7d9b4 50%,#c8b080 100%)}
+.dk-bone .c{background:#cdb889}
+.dk-bone .f i.p,.dk-bone .f i.p.r{background:radial-gradient(circle at 46% 40%,#6a4a2a,#2a1608 72%)}
+.dk-tron .f{background:radial-gradient(130% 130% at 28% 18%,#0d1622 0%,#02050a 70%);box-shadow:inset 0 0 0 1.5px #00e5ff,inset 0 0 8px rgba(0,229,255,.55)}
+.dk-tron .c{background:#02050a}
+.dk-tron .f i.p{background:#bff9ff;box-shadow:0 0 5px #00e5ff}
+.dk-tron .f i.p.r{background:#ffb04a;box-shadow:0 0 5px #ff8a1f}
+.dk-gold .f{background:radial-gradient(130% 130% at 28% 18%,#fff6c2 0%,#ffcf3a 45%,#c98a0c 100%)}
+.dk-gold .c{background:#d39a1c}
+.dk-gold .f i.p,.dk-gold .f i.p.r{background:radial-gradient(circle at 46% 40%,#5a3a06,#2a1a00 72%)}
+.dk-glass .f{background:radial-gradient(130% 130% at 28% 18%,rgba(255,255,255,.85) 0%,rgba(170,215,255,.55) 50%,rgba(90,150,230,.6) 100%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.8)}
+.dk-glass .c{background:rgba(120,170,240,.45)}
+.dk-glass .f i.p{background:#fff;box-shadow:0 0 2px rgba(0,40,120,.6)}
+.dk-glass .f i.p.r{background:#ff4f6a}
 
 /* board */
 .bframe{position:relative;padding:14px;border-radius:26px;
@@ -403,6 +456,43 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .home .modes{top:468px}
 .home.has-save .modes{top:544px}
 .home.has-save .mcard{height:88px}
+/* Home: the Store row. */
+.storerow{position:absolute;top:592px;left:24px;right:24px;height:52px;border-radius:17px;display:flex;align-items:center;gap:12px;padding:0 14px 0 10px;text-align:left;
+  background:linear-gradient(180deg,#ffe58a,#ffbf2e 55%,#e28a0c);box-shadow:inset 0 2px 0 rgba(255,255,255,.6),0 4px 0 #8a4a00,0 10px 18px rgba(0,0,0,.35);color:#5a2d00}
+.home.has-save .storerow{top:648px}
+.storerow .sp3{display:flex;margin-right:2px}.storerow .sp3 svg{width:22px;height:26px;margin-right:-6px}
+.storerow span:nth-child(2){flex:1;display:flex;flex-direction:column}
+.storerow b{font-size:20px;font-weight:400;line-height:1}.storerow small{font-size:11.5px;font-weight:900;opacity:.8}
+.storerow em{font-style:normal;font-size:11px;font-weight:900;padding:3px 8px;border-radius:8px;background:#d21f57;color:#fff}
+/* The Store screen. */
+.store .devnote{position:absolute;top:70px;left:0;right:0;text-align:center;font-size:11.5px;font-weight:900;color:#7af06a}
+.store .shelves{position:absolute;top:92px;left:20px;right:20px}
+.store .shelves button{flex:1}
+.store .stage{position:absolute;top:156px;left:20px;right:20px;height:250px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  background:radial-gradient(90% 80% at 50% 35%,rgba(255,255,255,.16),rgba(0,0,0,.25));box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.45)}
+.store .show{height:186px;display:grid;place-items:center}
+.store .show .pawns{display:flex;gap:6px}.store .show .pawns svg{width:62px;height:72px}
+.store .show.thrower{display:flex;flex-direction:column;gap:6px}
+.store .show .dbox{width:120px;height:120px;border-radius:24px}
+.store .show .try{font-size:12px;font-weight:800;opacity:.75}
+.store .info{text-align:center}
+.store .info b{display:block;font-size:24px;font-weight:400;color:#ffd65a}
+.store .info small{font-size:13px;font-weight:800;opacity:.85}
+.store .grid{position:absolute;top:420px;left:20px;right:20px;bottom:108px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-content:start;overflow-y:auto}
+.store .card{position:relative;height:104px;border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px;background:rgba(0,0,0,.25);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.12)}
+.store .card.on{box-shadow:inset 0 0 0 2.5px #ffd65a;background:rgba(255,214,90,.14)}
+.store .card b{font-size:12.5px;font-weight:900}
+.store .card em{position:absolute;top:5px;right:5px;font-style:normal;font-size:9.5px;font-weight:900;padding:2px 6px;border-radius:7px;display:flex;align-items:center;gap:3px}
+.store .card em.using{background:#24ad3c;color:#fff}
+.store .card em.lock{background:rgba(0,0,0,.55);color:#ffd65a}
+.store .card em.lock svg{width:9px;height:9px}
+.store .card.locked .thp,.store .card.locked .diew,.store .card.locked .tht,.store .card.locked .thb{opacity:.5;filter:saturate(.5)}
+.store .thp{display:flex}.store .thp svg{width:30px;height:36px;margin:0 -3px}
+.store .tht svg{width:44px;height:40px;display:block}
+.store .thb{width:48px;height:36px;border-radius:9px;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.4)}
+.store .use{position:absolute;left:24px;right:24px;bottom:30px}
+.store .use:disabled{filter:saturate(.3);opacity:.8}
+.store .use.locked{background:linear-gradient(180deg,#5a6278,#2c3346);box-shadow:0 4px 0 #161a26}
 .soonrow{position:absolute;top:592px;left:24px;right:24px;height:44px;border-radius:15px;display:flex;align-items:center;gap:10px;padding:0 14px;background:rgba(0,0,0,.18);font-weight:800;font-size:13px;color:rgba(255,255,255,.6)}
 .home.has-save .soonrow{top:648px}
 .soonrow .lk svg{width:16px;height:16px;opacity:.7;display:block}

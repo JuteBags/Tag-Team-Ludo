@@ -4,7 +4,7 @@ import { PALETTE, symbolPath } from './art';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
 import { EMPTY_STATS, loadStats, resetStats, type Stats } from './store';
-import { THEMES, setSymbols, setTheme } from './themes';
+import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
 
 function sheet(host: HTMLElement, title: string, body: string): HTMLElement {
   const ov = document.createElement('div');
@@ -64,7 +64,7 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
   const ov = sheet(
     host,
     'Settings',
-    `<div class="set"><span>Board</span><div class="themes">${THEMES.map((t) => `<button class="th${t.id === settings.theme ? ' on' : ''}" data-t="${t.id}"><i style="background:${t.swatch}"></i>${t.name}</button>`).join('')}</div></div>
+    `<div class="set"><span>Board</span><div class="themes">${usableThemes().map((t) => `<button class="th${t.id === settings.theme ? ' on' : ''}" data-t="${t.id}"><i style="background:${t.swatch}"></i>${t.name}</button>`).join('')}</div></div>
     <div class="set">${sw('doubles', 'Doubles', settings.doubles)}<small class="qh">${DOUBLES_HINT[String(settings.doubles) as 'true' | 'false']}</small></div>
     <div class="set">${sw('sym', `Colour-blind symbols ${symbolRow()}`, settings.symbols)}</div>
     <div class="set"><span>Which face of the die counts?</span>${tg('face', [['top', `${faceIcon(true)}The top`, settings.diceFace === 'top'], ['front', `${faceIcon(false)}The front`, settings.diceFace === 'front']])}</div>

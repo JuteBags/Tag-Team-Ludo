@@ -1,5 +1,5 @@
 import { COLORS, type PlayerState } from '../engine';
-import { PALETTE, icons } from './art';
+import { PALETTE, icons, pawnSVG } from './art';
 import { BoardView } from './boardView';
 import { dieMarkup } from './dice';
 import { settings } from './settings';
@@ -25,7 +25,7 @@ const HERO: PlayerState[] = [
   { color: 'yellow', owner: 3, bot: true, tokens: [29, -1, -1, -1] },
 ];
 
-export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, onPlay: (mode: Mode) => void, saved: SavedGame | null, onContinue: () => void): HTMLElement {
+export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, onPlay: (mode: Mode) => void, saved: SavedGame | null, onContinue: () => void, onStore: () => void): HTMLElement {
   const el = document.createElement('div');
   el.className = `screen home${saved ? ' has-save' : ''}`;
   const dots = (n: number) => COLORS.slice(0, n).map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
@@ -42,9 +42,9 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
       <button class="mcard pvc" data-mode="pvc"><span class="ci">${icons.robot}</span><b class="disp">VS COMPUTER</b><small>You against bots</small></button>
       <button class="mcard pvp" data-mode="pvp"><span class="ci">${icons.friends}</span><b class="disp">WITH FRIENDS</b><small>Pass the phone</small></button>
     </div>
-    <div class="soonrow"><span class="lk">${icons.lock}</span><span>Online play and private rooms</span><em>Coming soon</em></div>
+    <button class="storerow" data-act="store"><span class="sp3">${pawnSVG('blue')}${pawnSVG('red')}${pawnSVG('yellow')}</span><span><b class="disp">STORE</b><small>Pawns, dice, throwers and boards</small></span><em>New</em></button>
     <button class="cbrow" data-act="symbols" role="switch" aria-checked="${settings.symbols}"><span>Colour-blind symbols</span>${symbolRow()}<em class="swl">${settings.symbols ? 'On' : 'Off'}</em><i class="sw"></i></button>
-    <div class="foot">Both modes play offline · v${__APP_VERSION__}<small>Avatars: Fun Emoji by Davis Uche, CC BY 4.0</small></div>`;
+    <div class="foot">Both modes play offline · Online play and private rooms coming soon · v${__APP_VERSION__}<small>Avatars: Fun Emoji by Davis Uche, CC BY 4.0</small></div>`;
   el.querySelector('.tilt')!.appendChild(new BoardView(HERO, 286).el);
   el.querySelectorAll<HTMLElement>('.mcard').forEach((b) => b.addEventListener('click', () => onPlay(b.dataset.mode as Mode)));
   el.querySelectorAll<HTMLButtonElement>('.seg .o').forEach((b) =>
@@ -64,6 +64,7 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
     sync();
   });
   el.querySelector('[data-act=continue]')?.addEventListener('click', onContinue);
+  el.querySelector('[data-act=store]')!.addEventListener('click', onStore);
   el.querySelector('[data-act=stats]')!.addEventListener('click', () => void statsSheet(el));
   el.querySelector('[data-act=settings]')!.addEventListener('click', () => settingsSheet(el, sync));
   return el;
