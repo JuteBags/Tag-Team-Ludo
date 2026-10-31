@@ -4,7 +4,7 @@ import type { Color } from './board';
 export type Rng = () => number;
 
 /** How well a bot plays. Only changes how it picks moves, never the dice. */
-export type BotLevel = 'easy' | 'normal' | 'hard';
+export type BotLevel = 'easy' | 'normal' | 'hard' | 'extreme';
 
 export interface PlayerState {
   color: Color;

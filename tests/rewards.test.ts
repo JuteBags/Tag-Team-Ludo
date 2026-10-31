@@ -16,6 +16,12 @@ describe('gold for a game', () => {
     expect(total(goldFor({ mode: 'pvc', place: 4, kills: 0, home: 0 }))).toBe(20);
     expect(total(goldFor({ mode: 'pvc', place: 2, kills: 1, home: 1 }))).toBe(60);
   });
+  it('pays more against harder bots', () => {
+    expect(total(goldFor({ mode: 'pvc', place: 1, kills: 3, home: 4, level: 'normal' }))).toBe(115);
+    expect(goldFor({ mode: 'pvc', place: 1, kills: 3, home: 4, level: 'hard' }).at(-1)).toEqual({ label: 'Hard bots bonus', gold: 58 });
+    expect(total(goldFor({ mode: 'pvc', place: 1, kills: 3, home: 4, level: 'extreme' }))).toBe(115 + 173);
+    expect(total(goldFor({ mode: 'pvp', place: 1, kills: 3, home: 4, level: 'extreme' }))).toBe(15);
+  });
   it('pays a flat amount with friends', () => {
     expect(total(goldFor({ mode: 'pvp', place: 3, kills: 9, home: 4 }))).toBe(15);
   });

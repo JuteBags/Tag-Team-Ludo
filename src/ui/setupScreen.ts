@@ -90,7 +90,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
         ${count === 2 ? `<div class="row2 q"><span class="lbl">How many colours does each player play?</span><div class="tg" data-k="houses"><button data-v="1" class="on">1 colour</button><button data-v="2">2 colours</button></div><small class="qh">With 2 colours you move both; they're one team</small></div>
         <div class="row2 q pairs" hidden><span class="lbl">Where are your two colours?</span><div class="tg" data-k="pairing"><button data-v="opposite" class="on">${mini([1, 2])}Opposite</button><button data-v="adjacent">${mini([2, 3])}Side by side</button></div></div>` : ''}
         ${mode === 'pvp' ? `<div class="row2 q bots"><span class="lbl">Fill the empty colours with computer players?</span><div class="tg" data-k="bots"></div><small class="qh"></small></div>` : ''}
-        <div class="row2 q lvl"><span class="lbl">How good are the bots?</span><div class="tg" data-k="level">${(['easy', 'normal', 'hard'] as const).map((l) => `<button data-v="${l}"${l === level ? ' class="on"' : ''}>${l[0]!.toUpperCase() + l.slice(1)}</button>`).join('')}</div></div>
+        <div class="row2 q lvl"><span class="lbl">How good are the bots?</span><div class="tg" data-k="level">${(['easy', 'normal', 'hard', 'extreme'] as const).map((l) => `<button data-v="${l}"${l === level ? ' class="on"' : ''}>${l[0]!.toUpperCase() + l.slice(1)}</button>`).join('')}</div></div>
       </div>
       ${mode === 'pvc' ? '<button class="quick" data-act="quick"><b class="disp">QUICK START</b><small>You play Blue and go first: no rolling, no picking</small></button>' : ''}
       <button class="b3 green disp go" data-act="to-roll">ROLL FOR ORDER</button>
