@@ -89,7 +89,8 @@ pub fn batch_values(evals: &[&Evaluator], leaves: &[Vec<Game>]) -> Vec<Vec<[f64;
         let ev = evals[ids[0]];
         let net = match ev {
             Evaluator::Net(n) => n,
-            Evaluator::Linear(..) => {
+            _ => {
+                // linear rules and blends: on the CPU
                 for &i in &ids {
                     for (j, g) in leaves[i].iter().enumerate() {
                         ev.owner_chances(g, &mut out[i][j]);

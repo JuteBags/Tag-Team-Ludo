@@ -205,13 +205,25 @@ pub fn choose_move(g: &Game, level: Level, rng: &mut Rng) -> usize {
     best
 }
 
-/// common.ts policy(): random | easy | normal | hard | net:<weights.json>[:depth[:theirK[:temperature[:race[:chance[:cut]]]]]].
+/// common.ts policy(): random | easy | normal | hard | net:<weights.json>[:depth[:theirK[:temperature[:race[:chance[:cut]]]]]]
+/// | blend:<net.json>:<rules.json>:<alpha>[:depth[:theirK[:temperature[:race[:chance[:cut]]]]]].
 /// The weights file can be a value net or linear rules (eval.rs); both play by search.rs.
 #[derive(Clone)]
 pub enum Policy {
     Random,
     Bot(Level),
     Search { eval: std::sync::Arc<crate::eval::Evaluator>, opts: crate::search::SearchOptions, temperature: f64 },
+}
+
+/// blend:<net>:<rules>:<alpha>, one shared evaluator per distinct spec.
+fn load_blend(net: &str, rules: &str, alpha: f64) -> std::sync::Arc<crate::eval::Evaluator> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<String, Arc<crate::eval::Evaluator>>>> = OnceLock::new();
+    let (n, r) = (load_eval(net), load_eval(rules));
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut c = cache.lock().unwrap();
+    c.entry(format!("{net}|{rules}|{alpha}")).or_insert_with(|| Arc::new(crate::eval::Evaluator::Blend(n, r, alpha))).clone()
 }
 
 fn load_eval(path: &str) -> std::sync::Arc<crate::eval::Evaluator> {
@@ -239,6 +251,14 @@ impl Policy {
                 let race = parts.get(5) == Some(&"1");
                 let opts = crate::search::SearchOptions { depth: num(2, 1.0) as u32, chance: num(6, 2.0) as u32, their_k: num(3, 3.0) as usize, race, cut: num(7, 0.0) };
                 Policy::Search { eval: load_eval(parts[1]), opts, temperature: num(4, 0.0) }
+            }
+            _ if s.starts_with("blend:") => {
+                // blend:<net>:<rules>:<alpha>, then the net: spec's fields shifted by two
+                let parts: Vec<&str> = s.split(':').collect();
+                let num = |i: usize, d: f64| parts.get(i).map(|x| x.parse::<f64>().unwrap()).unwrap_or(d);
+                let race = parts.get(7) == Some(&"1");
+                let opts = crate::search::SearchOptions { depth: num(4, 1.0) as u32, chance: num(8, 2.0) as u32, their_k: num(5, 3.0) as usize, race, cut: num(9, 0.0) };
+                Policy::Search { eval: load_blend(parts[1], parts[2], num(3, 0.0)), opts, temperature: num(6, 0.0) }
             }
             _ => panic!("unknown policy {s}"),
         }

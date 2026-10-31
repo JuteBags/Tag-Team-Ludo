@@ -188,6 +188,8 @@ pub enum Evaluator {
     /// hand-feature weights, turn-rule weights
     Linear([f64; F], [f64; 7]),
     Net(Net),
+    /// blend.ts: a person's score = the net's score + alpha * the readable rules' score
+    Blend(std::sync::Arc<Evaluator>, std::sync::Arc<Evaluator>, f64),
 }
 
 impl Evaluator {
@@ -223,9 +225,16 @@ impl Evaluator {
 
     /// ownerChances(): each person's chance of winning (people = max owner + 1), into out[..people].
     pub fn owner_chances(&self, g: &Game, out: &mut [f64; 4]) -> usize {
-        let ps = g.b.players();
-        let people = ps.iter().map(|p| p.owner).max().unwrap() as usize + 1;
+        let people = g.b.players().iter().map(|p| p.owner).max().unwrap() as usize + 1;
         let mut s = [0.0f64; 4];
+        self.owner_scores(g, people, &mut s);
+        chances_from_scores(g, people, &mut s, out);
+        people
+    }
+
+    /// The softmax inputs by owner: linear.ts / net.ts ownerScores, blend.ts sn + alpha * sl.
+    pub fn owner_scores(&self, g: &Game, people: usize, s: &mut [f64; 4]) {
+        let ps = g.b.players();
         match self {
             Evaluator::Linear(w, turn) => {
                 let mut f = [0.0f64; 4 * F];
@@ -241,10 +250,16 @@ impl Evaluator {
                 }
                 s[me] += (turn[6] * g.sixes as f64) / 2.0;
             }
-            Evaluator::Net(net) => net.owner_scores(g, people, &mut s),
+            Evaluator::Net(net) => net.owner_scores(g, people, s),
+            Evaluator::Blend(net, rules, alpha) => {
+                let (mut sn, mut sl) = ([0.0f64; 4], [0.0f64; 4]);
+                net.owner_scores(g, people, &mut sn);
+                rules.owner_scores(g, people, &mut sl);
+                for o in 0..people {
+                    s[o] = sn[o] + *alpha * sl[o];
+                }
+            }
         }
-        chances_from_scores(g, people, &mut s, out);
-        people
     }
 }
 
