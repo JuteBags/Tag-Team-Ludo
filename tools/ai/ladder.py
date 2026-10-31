@@ -64,7 +64,7 @@ def main():
     ap.add_argument('--explore', type=float, default=0.10, help='target share of sampled moves that are not the best; steers the temperature')
     ap.add_argument('--seeds', type=int, default=5000, help='paired seeds per check')
     ap.add_argument('--target', type=float, default=0.8)
-    ap.add_argument('--workers', type=int, default=18)
+    ap.add_argument('--workers', type=int, default=14, help='self-play processes; keep the box responsive (at most 16 of 20 cores)')
     ap.add_argument('--wandb', default='ladder-r1')
     a = ap.parse_args()
     global DICE
@@ -134,6 +134,16 @@ def main():
         st['gen'] = k
         st['history'].append(line)
         state_file.write_text(json.dumps(st, indent=1))
+        # Off the box at once (a box can die any time): this generation's games, net and state as one
+        # W&B artifact. Shards are gzipped in parallel first; W&B uploads in the background.
+        subprocess.run(f'ls {gd}/shard-*.bin | xargs -P {a.workers} -n 1 nice -n 10 gzip -1 -k -f', shell=True, check=False)
+        import wandb as _wb
+        art = _wb.Artifact(f'{a.wandb}-gen{k}', type='generation', metadata=line | {'pool': pool, 'commit': commit})
+        for f in sorted(gd.glob('shard-*.bin.gz')):
+            art.add_file(str(f))
+        art.add_file(str(new), name='net.json')
+        art.add_file(str(state_file), name='state.json')
+        run.log_artifact(art)
         if promoted and vs_hard >= a.target:
             print(f'TARGET reached: {vs_hard:.3f} vs Hard', flush=True)
             break
