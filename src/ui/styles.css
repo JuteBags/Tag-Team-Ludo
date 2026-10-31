@@ -322,6 +322,14 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .prow.due{background:rgba(255,214,90,.14);box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.6)}
 .prow .chip{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#0c2a74;border:2px solid #ffd65a;font-size:16px;flex:none}
 .prow.ranked .chip{background:#ffd65a;color:#5a2d00}
+.qdie{display:grid;place-items:center;width:100%;height:100%;font-size:30px;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.3)}
+.prow.tie .chip{background:#ff5d5d;border-color:#fff}
+.prow.tie .st{color:#ffd0d0}
+.prow.first{background:rgba(255,214,90,.16);box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.55)}
+.prow .chip .crown{width:20px;height:15px}
+.porder{margin:-8px 0 10px;text-align:center;font-weight:800;font-size:13px;opacity:.9}
+.porder b{color:#ffd65a;font-weight:900}
+.wiz h3 .crown{width:30px;height:23px;margin-right:6px;vertical-align:-2px}
 .prow b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 /* The status ("2nd · rolled 3 · 6") wraps; the name never does. */
 .prow .st{flex:1 1 0;min-width:0}
