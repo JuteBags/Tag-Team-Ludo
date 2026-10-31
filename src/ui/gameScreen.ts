@@ -1,7 +1,7 @@
 // Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
 // a person passing the device; a person with two houses plays both colours' turns.
 import { FINISHED, chooseMove, createGame, cryptoRng, isDone, move, ownerRanking, roll, type Color, type GameState, type Move, type Rng } from '../engine';
-import { PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, trophySVG, twinsSVG } from './art';
+import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
 import { playCutscene } from './palace';
 import { dieMarkup, rollDie } from './dice';
@@ -16,6 +16,8 @@ import { moveTargets, whyStuck, type Target } from './targets';
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
 const DIE = 38;
 const ROLL_MS = 1150;
+/** Bots roll quicker, so a 4-player game isn't mostly watching bot dice. */
+const BOT_ROLL_MS = 700;
 const PLACES = ['', '1ST', '2ND', '3RD', '4TH'];
 const ORD = ['', '1st', '2nd', '3rd', '4th'];
 const faceLabel = () => (settings.diceFace === 'top' ? 'DICE: TOP FACE' : 'DICE: FRONT FACE');
@@ -116,7 +118,8 @@ export class GameScreen {
 
   private panelHTML(c: Color, bot: boolean) {
     return `<div class="pl ${SEAT_CLASS[c]} idle" data-c="${c}" style="${cssVars(c)}">
-      <div class="who"><div class="av">${avatarSVG(c)}</div><span class="nm">${this.name(c)}</span>${bot ? '<span class="bot">BOT</span>' : ''}<span class="ptr"></span></div>
+      <div class="who"><div class="av">${avatarSVG(c)}</div><span class="nm">${this.name(c)}</span>${bot ? '<span class="bot">BOT</span>' : ''}<span class="ptr"></span>
+        <svg class="psym sym" viewBox="-11 -11 22 22" aria-hidden="true"><circle r="10.5" fill="#fff"/><path d="${symbolPath(c, 6.5)}" fill="${PALETTE[c].m}" stroke="${PALETTE[c].d}" stroke-width="1.2" stroke-linejoin="round"/></svg></div>
       <button class="dbox" aria-label="Roll dice">${dieMarkup(6, DIE)}</button><div class="tray" aria-label="Dice this turn"></div></div>`;
   }
 
@@ -203,7 +206,7 @@ export class GameScreen {
     const kept = this.state.rolls;
     this.state = roll(this.state, this.rng, this.forced.shift());
     const box = this.diceBox(c);
-    await rollDie(box, this.state.dice!, DIE, ROLL_MS / this.speed);
+    await rollDie(box, this.state.dice!, DIE, (this.cur.bot || this.state.players.find((p) => p.color === c)!.bot ? BOT_ROLL_MS : ROLL_MS) / this.speed);
     this.lastFace.set(c, this.state.dice!);
     const ev = this.state.event;
     if (this.state.dice === 6 && ev?.type !== 'three-sixes') {

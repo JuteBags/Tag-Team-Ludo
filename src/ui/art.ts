@@ -63,7 +63,7 @@ export function globalDefs(): string {
   <linearGradient id="gSilver" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#9aa8bd"/></linearGradient>
   <linearGradient id="gBronze" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd0a0"/><stop offset="1" stop-color="#b85f22"/></linearGradient>
   <linearGradient id="gPlain" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fb4ff"/><stop offset="1" stop-color="#3a5fb0"/></linearGradient>
-  <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>`;
+  <radialGradient id="pshadow"><stop offset="0" stop-color="#000" stop-opacity=".42"/><stop offset=".6" stop-color="#000" stop-opacity=".22"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>`;
   return `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${g}</defs></svg>`;
 }
 
@@ -93,7 +93,8 @@ export function pawnArt(c: Color): string {
   const v = PALETTE[c];
   const outline = (color: string, w: number) =>
     `<g fill="${color}" stroke="${color}" stroke-width="${w}" stroke-linejoin="round">${PAWN_BASE(10.4)}${PAWN_BODY}${PAWN_HEAD}</g>`;
-  return `<ellipse cx="1" cy="13" rx="12.5" ry="3.8" fill="#000" opacity=".35" filter="url(#soft)"/>
+  // The shadow is a gradient, not a blur filter: filters are redrawn on every frame of every hop.
+  return `<ellipse cx="1.5" cy="13.4" rx="14" ry="4.6" fill="url(#pshadow)"/>
 <circle class="hit" cx="0" cy="0" r="20" fill="transparent"/>
 <g class="pawn-art">${outline('#fff', 5.2)}${outline(v.d, 2.6)}
 <g fill="${v.d}">${PAWN_BASE(10.4)}</g>
@@ -105,7 +106,7 @@ export function pawnArt(c: Color): string {
 <g fill="url(#ph-${c})">${PAWN_HEAD}</g>
 <path d="M-5.8,7 C-5.6,3.2 -3.4,1 -2.6,-1.8" stroke="#fff" stroke-opacity=".45" stroke-width="1.6" fill="none" stroke-linecap="round"/>
 <ellipse cx="-2.4" cy="-11" rx="2.6" ry="1.6" fill="#fff" opacity=".85"/>
-<path class="sym" d="${symbolPath(c, 3.3)}" transform="translate(0 4)" fill="#fff" stroke="${v.d}" stroke-width=".9" stroke-linejoin="round"/></g>`;
+<path class="sym" d="${symbolPath(c, 5.4)}" transform="translate(0 3.6)" fill="#fff" stroke="${v.d}" stroke-width="1.4" stroke-linejoin="round"/></g>`;
 }
 export const pawnSVG = (c: Color) => `<svg viewBox="-15 -17 30 34">${pawnArt(c)}</svg>`;
 export const twinsSVG = (c: Color) =>
