@@ -291,7 +291,10 @@ export class GameScreen {
     const doneBefore = this.doneOwners();
     this.state = move(this.state, m);
     // The KILL banner and red flash land with the blow, while the victim is still flying home.
-    await this.view.animateMove(m, this.state.players, this.speed, () => this.killBanner(m));
+    // Kill finishers: the full scene when a person is involved, a short one between bots, or none.
+    const people = [m.color, ...m.captures.map((c) => c.color)].some((c) => !this.state.players.find((p) => p.color === c)!.bot);
+    const fx = settings.killFx === 'off' ? 0 : settings.killFx === 'short' || !people ? 420 : 1400;
+    await this.view.animateMove(m, this.state.players, this.speed, () => this.killBanner(m), m.captures.length ? fx : 0);
     const ev = this.state.event;
     const extra = ev?.type === 'moved' && ev.extraTurn;
     const player = this.state.players.find((p) => p.color === m.color)!;
