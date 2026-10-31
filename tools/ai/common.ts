@@ -2,6 +2,7 @@
 // Node, so the rules are the game's own TypeScript, never a copy.
 import { readFileSync } from 'node:fs';
 import { SEATS, analyzeDice, chooseMove, createGame, move, roll, sampleFace, seeded, type BotLevel, type GameState, type Move, type Rng, type Seat } from '../../src/engine';
+import { Blend } from '../../src/engine/ai/blend';
 import { LinearRules, type Evaluator, type LinearJSON } from '../../src/engine/ai/linear';
 import { Net, type NetJSON } from '../../src/engine/ai/net';
 import { chooseExtreme } from '../../src/engine/ai/search';
@@ -56,6 +57,15 @@ export function policy(spec: string): Policy {
     const net = loadNet(path!);
     const opts = { depth: Number(depth ?? 1), theirK: Number(theirK ?? 3), race: race === '1', chance: Number(chance ?? 2), cut: Number(cut ?? 0) };
     return (s, rng) => chooseExtreme(net, s, rng, opts, Number(temp ?? 0));
+  }
+  if (spec.startsWith('blend:')) {
+    // blend:<net.json>:<rules.json>:<alpha>[:depth[:theirK[:temperature[:race[:chance[:cut]]]]]]
+    const [, netPath, rulesPath, alpha, depth, theirK, temp, race, chance, cut] = spec.split(':');
+    const net = loadNet(netPath!) as Net;
+    const rules = loadNet(rulesPath!) as LinearRules;
+    const ev = new Blend(net, rules, Number(alpha));
+    const opts = { depth: Number(depth ?? 1), theirK: Number(theirK ?? 3), race: race === '1', chance: Number(chance ?? 2), cut: Number(cut ?? 0) };
+    return (s, rng) => chooseExtreme(ev, s, rng, opts, Number(temp ?? 0));
   }
   throw new Error(`unknown policy ${spec}`);
 }

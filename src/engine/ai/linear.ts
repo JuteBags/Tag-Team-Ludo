@@ -32,7 +32,8 @@ export class LinearRules implements Evaluator {
     this.turn = Float64Array.from(TURN_RULES, (f) => json.weights[f] ?? 0);
   }
 
-  ownerChances(state: GameState): Float64Array {
+  /** Each person's score (the softmax input) and who is still playing. */
+  ownerScores(state: GameState): { s: Float64Array; live: boolean[] } {
     const people = Math.max(...state.players.map((p) => p.owner)) + 1;
     const f = stateFeatures(state);
     const s = new Float64Array(people);
@@ -44,6 +45,12 @@ export class LinearRules implements Evaluator {
     const me = state.players[state.current]!.owner;
     for (const r of state.rolls) s[me]! += this.turn[r - 1]! / 3;
     s[me]! += (this.turn[6]! * state.sixes) / 2;
+    return { s, live };
+  }
+
+  ownerChances(state: GameState): Float64Array {
+    const { s, live } = this.ownerScores(state);
+    const people = s.length;
     let top = -Infinity;
     for (let o = 0; o < people; o++) if (live[o]) top = Math.max(top, s[o]!);
     let sum = 0;
