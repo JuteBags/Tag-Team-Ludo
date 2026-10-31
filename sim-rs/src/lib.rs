@@ -6,6 +6,7 @@
 //! game.ts, bot.ts.
 pub mod bot;
 pub mod dice;
+pub mod encode;
 pub mod game;
 pub mod rng;
 pub mod rules;
