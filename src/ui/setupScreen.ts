@@ -82,7 +82,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
   el.innerHTML = `
     <div class="gtop"><button class="rbtn" data-act="back" aria-label="Back">${icons.back}</button>
       <div class="mode"><small>${mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}</small><b>${count} PLAYERS</b></div><span class="rbtn-space"></span></div>
-    <ol class="steps">${steps.map((s) => `<li data-s="${s}"><i></i><span>${{ opts: 'Options', roll: 'Order', pick: 'Houses' }[s]}</span></li>`).join('')}</ol>
+    <ol class="steps">${steps.map((s, i) => `<li data-s="${s}"><i>${i + 1}</i><span>${{ opts: 'Options', roll: 'Order', pick: 'Houses' }[s]}</span></li>`).join('')}</ol>
     ${hasOptions ? `<section class="wiz" data-step="opts">
       <h3 class="disp">Game options</h3><p class="sub">Set these before rolling</p>
       <div class="pv" aria-hidden="true">${GRID.map((c) => `<div class="pvh" data-c="${c}" style="${cssVars(c)}"><span class="pw">${pawnSVG(c)}</span><b></b></div>`).join('')}</div>
