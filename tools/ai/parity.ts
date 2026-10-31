@@ -4,6 +4,8 @@
 // nobody). Prints PARITY {positions, max, ok}; ok needs every score within 1e-5 of torch's.
 import { readFileSync } from 'node:fs';
 import { D } from '../../src/engine/ai/encode';
+import { F, FEATURES } from '../../src/engine/ai/features';
+import type { LinearJSON } from '../../src/engine/ai/linear';
 import { Net, type NetJSON } from '../../src/engine/ai/net';
 import { flags } from './common';
 
@@ -19,7 +21,19 @@ function npy(path: string): { shape: number[]; data: Float64Array } {
 }
 
 const a = flags(process.argv.slice(2));
-const net = new Net(JSON.parse(readFileSync(a.net!, 'utf8')) as NetJSON);
+const json = JSON.parse(readFileSync(a.net!, 'utf8')) as NetJSON | LinearJSON;
+// Linear rules: a person's score is the weights times the sum of their colours' hand features.
+const linear = 'kind' in json && json.kind === 'linear' ? FEATURES.map((f) => json.weights[f] ?? 0) : null;
+const net = linear ? null : new Net(json as NetJSON);
+function linearScores(x: Float64Array, base: number, owners: number[]): Float64Array {
+  const s = new Float64Array(4).fill(NaN);
+  owners.forEach((o, i) => {
+    let v = 0;
+    for (let k = 0; k < F; k++) v += linear![k]! * x[base + i * D + k]!;
+    s[o] = (Number.isNaN(s[o]!) ? 0 : s[o]!) + v;
+  });
+  return s;
+}
 const x = npy(`${a.net}.parity-x.npy`);
 const o = npy(`${a.net}.parity-o.npy`);
 const s = npy(`${a.net}.parity-s.npy`);
@@ -27,7 +41,7 @@ const n = x.shape[0]!;
 let max = 0;
 for (let i = 0; i < n; i++) {
   const owners = Array.from(o.data.subarray(i * 4, i * 4 + 4)).filter((v) => v >= 0);
-  const got = net.ownerScores(x.data, i * 4 * D, owners, 4);
+  const got = net ? net.ownerScores(x.data, i * 4 * D, owners, 4) : linearScores(x.data, i * 4 * D, owners);
   for (let p = 0; p < 4; p++) {
     const want = s.data[i * 4 + p]!;
     if (!Number.isNaN(want)) max = Math.max(max, Math.abs(got[p]! - want));

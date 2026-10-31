@@ -76,9 +76,11 @@ class Scorer(nn.Module):
     """The value net, mirroring net.ts. `margin` is a training-only head per colour predicting the steps
     left at the end, summed per person: a denser signal than who won."""
 
-    def __init__(self, inputs, hidden, layers, pool=32):
+    def __init__(self, inputs, hidden, layers, pool=32, linear=False):
         super().__init__()
         self.inputs = inputs
+        # linear: readable rules (linear.ts), a person's score = weights . (sum of their colours' features).
+        self.linear = nn.Linear(len(inputs), 1, bias=False) if linear else None
         dims = [len(inputs)] + [hidden] * layers
         self.trunk = nn.ModuleList(nn.Linear(a, b) for a, b in zip(dims, dims[1:]))
         self.pool = nn.Linear(3 * hidden, pool)
@@ -87,6 +89,10 @@ class Scorer(nn.Module):
 
     def forward(self, x, owner):
         """x [B,4,D], owner [B,4] -> people's scores [B,4] (0 for nobody) and predicted steps left [B,4]."""
+        if self.linear is not None:
+            c = self.linear(x[..., self.inputs]).squeeze(-1)
+            sc = torch.stack([(c * (owner == o)).sum(1) for o in range(4)], 1)
+            return sc, torch.zeros_like(sc)
         h = x[..., self.inputs]
         for l in self.trunk:
             h = torch.tanh(l(h))
@@ -117,6 +123,7 @@ def main():
     ap.add_argument('--out', required=True)
     ap.add_argument('--inputs', default='all', choices=['hand', 'raw', 'all'])
     ap.add_argument('--margin', type=float, default=0.0, help='weight of the steps-left head (0 = off)')
+    ap.add_argument('--linear', action='store_true', help='fit readable linear rules on the hand features (linear.ts)')
     ap.add_argument('--hidden', type=int, default=128)
     ap.add_argument('--layers', type=int, default=2)
     ap.add_argument('--epochs', type=int, default=6)
@@ -170,7 +177,9 @@ def main():
 
     # hand: the 19 hand features; raw: the token blocks, the turn order and the turn in progress; all: everything.
     inputs = {'hand': list(range(F)), 'raw': list(range(14, 18)) + list(range(F, D)), 'all': list(range(D))}[a.inputs]
-    net = Scorer(torch.tensor(inputs, device=dev), a.hidden, a.layers).to(dev)
+    if a.linear:
+        inputs = list(range(F))
+    net = Scorer(torch.tensor(inputs, device=dev), a.hidden, a.layers, linear=a.linear).to(dev)
     if a.init:
         js = json.load(open(a.init))
         for l, j in [*zip(net.trunk, js['trunk']), (net.pool, js['pool']), (net.out, js['out'])]:
@@ -213,6 +222,8 @@ def main():
         return loss.mean().item(), first.mean().item(), table, ece, by
 
     def health():
+        if a.linear:
+            return {f'rules/{n}': w for n, w in zip(HAND, net.linear.weight.detach().cpu().flatten().tolist())}
         """Per trunk layer: weight norm, share of saturated tanh units (|a| > 0.99) and of dead ones (no spread)."""
         out = {}
         with torch.no_grad():
@@ -275,7 +286,12 @@ def main():
                      **by, **health()}, step=step)
 
     dump = lambda l: {'W': l.weight.detach().cpu().double().tolist(), 'b': l.bias.detach().cpu().double().tolist()}
-    json.dump({'inputs': inputs, 'trunk': [dump(l) for l in net.trunk], 'pool': dump(net.pool), 'out': dump(net.out)}, open(a.out, 'w'))
+    if a.linear:
+        weights = dict(zip(HAND, net.linear.weight.detach().cpu().double().flatten().tolist()))
+        json.dump({'kind': 'linear', 'weights': weights}, open(a.out, 'w'), indent=1)
+        print('RULES ' + ' '.join(f'{k}:{v:+.3f}' for k, v in sorted(weights.items(), key=lambda kv: -abs(kv[1]))), flush=True)
+    else:
+        json.dump({'inputs': inputs, 'trunk': [dump(l) for l in net.trunk], 'pool': dump(net.pool), 'out': dump(net.out)}, open(a.out, 'w'))
     # Parity data for parity.ts: people's scores on 2000 validation positions (NaN for nobody).
     with torch.no_grad():
         x, ow = Xv[:2000], OWv[:2000]

@@ -2,16 +2,25 @@
 // Node, so the rules are the game's own TypeScript, never a copy.
 import { readFileSync } from 'node:fs';
 import { SEATS, analyzeDice, chooseMove, createGame, move, roll, sampleFace, type BotLevel, type GameState, type Move, type Rng, type Seat } from '../../src/engine';
+import { LinearRules, type Evaluator, type LinearJSON } from '../../src/engine/ai/linear';
 import { Net, type NetJSON } from '../../src/engine/ai/net';
 import { chooseExtreme } from '../../src/engine/ai/search';
 
 export type Policy = (s: GameState, rng: Rng) => Move;
 
-const nets = new Map<string, Net>();
-const loadNet = (path: string) => nets.get(path) ?? nets.set(path, new Net(JSON.parse(readFileSync(path, 'utf8')) as NetJSON)).get(path)!;
+// A weights file is a value net (net.ts) or readable linear rules (linear.ts, "kind": "linear").
+const nets = new Map<string, Evaluator>();
+function loadNet(path: string): Evaluator {
+  if (!nets.has(path)) {
+    const json = JSON.parse(readFileSync(path, 'utf8')) as NetJSON | LinearJSON;
+    nets.set(path, 'kind' in json && json.kind === 'linear' ? new LinearRules(json) : new Net(json as NetJSON));
+  }
+  return nets.get(path)!;
+}
 
 /**
  * A policy from its name: easy | normal | hard | random | net:<weights.json>[:depth[:theirK[:temperature]]].
+ * The weights file can be a value net or linear rules (then it is a rule bot that plans whole turns).
  * Rule bots play at their level whatever the seat says.
  */
 export function policy(spec: string): Policy {
