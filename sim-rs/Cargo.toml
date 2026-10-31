@@ -8,11 +8,15 @@ publish = false
 [dependencies]
 rayon = "1.10"
 serde_json = { version = "1", features = ["float_roundtrip"] }
-cudarc = { version = "0.19", optional = true, default-features = false, features = ["std", "driver", "nvrtc", "dynamic-loading", "cuda-12060"] }
+cudarc = { version = "0.19", optional = true, default-features = false, features = ["std", "driver", "nvrtc", "dynamic-loading"] }
 
 [features]
-# the GPU leaf evaluator (gpu.rs): cargo build --release --features cuda
+# the GPU leaf evaluator (gpu.rs), by the CUDA version of the NVRTC library present:
+#   cargo build --release --features cuda12   (libnvrtc 12.x, e.g. the nvidia-cuda-nvrtc-cu12 wheel)
+#   cargo build --release --features cuda13   (libnvrtc 13.x, e.g. torch cu130)
 cuda = ["dep:cudarc"]
+cuda12 = ["cuda", "cudarc/cuda-12060"]
+cuda13 = ["cuda", "cudarc/cuda-13000"]
 
 [profile.release]
 opt-level = 3
