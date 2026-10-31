@@ -9,7 +9,7 @@ import { writeFileSync } from 'node:fs';
 import { BASE, FINISHED, ownerRanking, seeded } from '../../src/engine';
 import { D, encodeState } from '../../src/engine/ai/encode';
 import { searchStats } from '../../src/engine/ai/search';
-import { FORMAT, MODES, diceRngFor, flags, peopleIn, playGame, policy } from './common';
+import { FORMAT, MODES, diceRngFor, flags, peopleIn, playGame, policy, type DiceMode } from './common';
 
 const a = flags(process.argv.slice(2));
 const games = Number(a.games ?? 1000);
@@ -28,7 +28,9 @@ function pick(r: number): string {
 
 const xs: Float32Array[] = [];
 const meta: number[] = [];
-const header = { v: FORMAT, D, commit: a.commit ?? '', seed, keep, games: [] as unknown[] };
+// --dice fair: every face 1 in 6 (the engine's training dice); default: the app's dice.
+const diceMode = (a.dice ?? 'game') as DiceMode;
+const header = { v: FORMAT, D, commit: a.commit ?? '', seed, keep, ...(diceMode === 'fair' ? { dice: 'fair' } : {}), games: [] as unknown[] };
 const t0 = Date.now();
 for (let g = 0; g < games; g++) {
   const gameSeed = seed * 1_000_003 + g;
@@ -44,7 +46,7 @@ for (let g = 0; g < games; g++) {
     x.set(encodeState(s));
     xs.push(x);
     meta.push(g, turn++, s.players.length, s.current);
-  });
+  }, diceMode);
   // People in finishing order (a person ranks by their last colour home), and by how much: the steps
   // each person's tokens still needed when the game ended (a token in base needs 57).
   const order = ownerRanking(end);

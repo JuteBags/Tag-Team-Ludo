@@ -17,6 +17,16 @@ export const FORMAT = 2;
 export const DICE_SALT = 0x2545f491;
 export const diceRngFor = (gameSeed: number) => seeded(gameSeed ^ DICE_SALT);
 
+/**
+ * Which dice a run uses: 'game' = the app's dice (dice.ts), 'fair' = every face 1 in 6. The engine
+ * trains and is measured on fair dice (the user's rule: for the engine every face is 1/6); the app's dice
+ * are tuned separately. A fair roll is sampleFace(FAIR, dice): one draw, no shuffle.
+ */
+export type DiceMode = 'game' | 'fair';
+const FAIR = [1, 1, 1, 1, 1, 1].map((x) => x / 6);
+export const rollFace = (s: GameState, dice: Rng, mode: DiceMode) =>
+  mode === 'fair' ? sampleFace(FAIR, dice) : sampleFace(analyzeDice(s.players, s.players[s.current]!.color, dice, s.singles).weights, dice);
+
 // A weights file is a value net (net.ts) or readable linear rules (linear.ts, "kind": "linear").
 const nets = new Map<string, Evaluator>();
 function loadNet(path: string): Evaluator {
@@ -63,18 +73,19 @@ for (const singles of [false, true]) {
 export const peopleIn = (mode: string) => Math.max(...MODES[mode]!.seats().map((s) => s.owner)) + 1;
 
 /**
- * Plays one game with the game's real dice, drawn from `dice`; the policies draw from `rng`. `byOwner[o]`
+ * Plays one game, the dice drawn from `dice` (the app's dice, or fair ones with diceMode 'fair'); the
+ * policies draw from `rng`. `byOwner[o]`
  * plays every colour of person o, `first` is the index of the colour that starts. `onRoll` sees every position before a roll: turn starts, and mid-turn
  * ones (after a 6, a kill or a token home), which the search also scores.
  */
-export function playGame(mode: string, byOwner: Policy[], rng: Rng, dice: Rng, first: number, onRoll?: (s: GameState) => void): GameState {
+export function playGame(mode: string, byOwner: Policy[], rng: Rng, dice: Rng, first: number, onRoll?: (s: GameState) => void, diceMode: DiceMode = 'game'): GameState {
   const m = MODES[mode]!;
   let s = createGame(m.seats(), undefined, m.singles);
   s = { ...s, current: first % s.players.length };
   for (let steps = 0; s.phase !== 'over' && steps < 50000; steps++) {
     if (s.phase === 'roll') {
       onRoll?.(s);
-      s = roll(s, dice, sampleFace(analyzeDice(s.players, s.players[s.current]!.color, dice, s.singles).weights, dice));
+      s = roll(s, dice, rollFace(s, dice, diceMode));
     } else s = move(s, byOwner[s.players[s.current]!.owner]!(s, rng));
   }
   return s;

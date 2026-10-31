@@ -4,12 +4,14 @@
 // the same dice stream. Prints ARENA {...} with A's games, wins and summed places, plus per seed the
 // sum of squared wins (seedSq), so the error bar can be taken over seeds: the paired outcomes.
 import { ownerRanking, seeded } from '../../src/engine';
-import { diceRngFor, flags, peopleIn, playGame, policy } from './common';
+import { diceRngFor, flags, peopleIn, playGame, policy, type DiceMode } from './common';
 
 const a = flags(process.argv.slice(2));
 const A = policy(a.a!);
 const B = policy(a.b!);
 const mode = a.mode ?? '2p';
+// --dice fair: every face 1 in 6; default: the app's dice.
+const diceMode = (a.dice ?? 'game') as DiceMode;
 const people = peopleIn(mode);
 let games = 0;
 let wins = 0;
@@ -25,7 +27,7 @@ for (let seed = Number(a.from ?? 0); seed < Number(a.to ?? 1000); seed++) {
   for (let seat = 0; seat < people; seat++) {
     // Both seats of a seed get the same dice stream (and the same policy stream).
     const rng = seeded(seed * 7919 + 13);
-    const end = playGame(mode, Array.from({ length: people }, (_, o) => (o === seat ? A : B)), rng, diceRngFor(seed * 7919 + 13), seed % 4);
+    const end = playGame(mode, Array.from({ length: people }, (_, o) => (o === seat ? A : B)), rng, diceRngFor(seed * 7919 + 13), seed % 4, undefined, diceMode);
     const place = ownerRanking(end).indexOf(seat) + 1;
     const first = end.players[(seed % 4) % end.players.length]!.owner === seat;
     games++;
@@ -40,4 +42,4 @@ for (let seed = Number(a.from ?? 0); seed < Number(a.to ?? 1000); seed++) {
   seeds++;
   seedSq += seedWins * seedWins;
 }
-console.log(`ARENA ${JSON.stringify({ a: a.a, b: a.b, mode, people, games, wins, placeSum, seeds, seedSq, firstGames, firstWins, ms: Date.now() - t0 })}`);
+console.log(`ARENA ${JSON.stringify({ a: a.a, b: a.b, mode, ...(diceMode === 'fair' ? { dice: 'fair' } : {}), people, games, wins, placeSum, seeds, seedSq, firstGames, firstWins, ms: Date.now() - t0 })}`);
