@@ -131,6 +131,15 @@ impl<'a> Ctx<'a> {
     }
 }
 
+/// Every person's value of a position, by the search from there: the current player plans the rest of
+/// their turn (depth turns, fair 1/6 chance nodes). For measurement (AIVAT) and labels.
+pub fn state_values(eval: &Evaluator, state: &Game, opts: SearchOptions) -> [f64; 4] {
+    let owners = state.b.players().iter().map(|p| p.owner).max().unwrap() as usize + 1;
+    let root_owner = state.b.p[state.current].owner;
+    let mut ctx = Ctx { eval, opts, owners, root_owner, memo: HashMap::new() };
+    ctx.node(state, state.current, opts.depth, 0)
+}
+
 /// searchValues(): the search's value of each of the current player's moves, as their chance of winning.
 pub fn search_values(eval: &Evaluator, state: &Game, opts: SearchOptions) -> Vec<f64> {
     let owners = state.b.players().iter().map(|p| p.owner).max().unwrap() as usize + 1;
