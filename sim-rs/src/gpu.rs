@@ -96,7 +96,10 @@ pub fn batch_values(evals: &[&Evaluator], leaves: &[Vec<Game>]) -> Vec<Vec<[f64;
             gl.nets.insert(addr, Loaded { w, layers, ntrunk: e.ntrunk as i32, inputs: e.inputs });
         }
         let inputs = gl.nets[&addr].inputs.clone();
+        let prof = std::env::var_os("LUDO_GPU_PROF").is_some();
+        let t0 = std::time::Instant::now();
         let parts: Vec<(Vec<i32>, Vec<f64>, [usize; 4])> = pos.par_iter().with_min_len(64).map(|&(i, j)| sparse(&leaves[i][j], &inputs)).collect();
+        let t_sparse = t0.elapsed().as_secs_f64();
         let mut meta = Vec::with_capacity(pos.len() * 6);
         let mut start = Vec::with_capacity(pos.len() * 4 + 1);
         let total: usize = parts.iter().map(|p| p.0.len()).sum();
@@ -123,18 +126,28 @@ pub fn batch_values(evals: &[&Evaluator], leaves: &[Vec<Game>]) -> Vec<Vec<[f64;
         // start[p*4+i] .. start[p*4+i+1]: colour i of position p (the next colour's start, or the next
         // position's first colour, is that colour's end)
         let npos = pos.len() as i32;
+        let t_pack = t0.elapsed().as_secs_f64();
         let st = gl.stream.clone();
         let d_meta = st.clone_htod(&meta).unwrap();
         let d_start = st.clone_htod(&start).unwrap();
         let d_idx = st.clone_htod(if idx.is_empty() { &[0i32][..] } else { &idx[..] }).unwrap();
         let d_val = st.clone_htod(if val.is_empty() { &[0.0f64][..] } else { &val[..] }).unwrap();
         let mut d_scores = st.alloc_zeros::<f64>(pos.len() * 4).unwrap();
+        if prof {
+            st.synchronize().unwrap();
+        }
+        let t_h2d = t0.elapsed().as_secs_f64();
         let net_d = &gl.nets[&addr];
         let cfg = LaunchConfig { grid_dim: (pos.len() as u32, 1, 1), block_dim: (128, 1, 1), shared_mem_bytes: 0 };
         let mut lb = st.launch_builder(&gl.f);
         lb.arg(&net_d.w).arg(&net_d.layers).arg(&net_d.ntrunk).arg(&d_meta).arg(&d_start).arg(&d_idx).arg(&d_val).arg(&mut d_scores).arg(&npos);
         unsafe { lb.launch(cfg) }.unwrap();
+        if prof {
+            st.synchronize().unwrap();
+        }
+        let t_kernel = t0.elapsed().as_secs_f64();
         let scores = st.clone_dtoh(&d_scores).unwrap();
+        let t_d2h = t0.elapsed().as_secs_f64();
         drop(gl);
         let vals: Vec<[f64; 4]> = pos
             .par_iter()
@@ -151,6 +164,20 @@ pub fn batch_values(evals: &[&Evaluator], leaves: &[Vec<Game>]) -> Vec<Vec<[f64;
             .collect();
         for (&(i, j), v) in pos.iter().zip(vals) {
             out[i][j] = v;
+        }
+        if prof {
+            let t = t0.elapsed().as_secs_f64();
+            eprintln!(
+                "GPUPROF positions {} nnz/pos {:.1} sparse {:.1}ms pack {:.1}ms h2d {:.1}ms kernel {:.1}ms d2h {:.1}ms finish {:.1}ms",
+                pos.len(),
+                total as f64 / pos.len() as f64,
+                t_sparse * 1e3,
+                (t_pack - t_sparse) * 1e3,
+                (t_h2d - t_pack) * 1e3,
+                (t_kernel - t_h2d) * 1e3,
+                (t_d2h - t_kernel) * 1e3,
+                (t - t_d2h) * 1e3
+            );
         }
     }
     out
