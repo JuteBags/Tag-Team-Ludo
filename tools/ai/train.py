@@ -164,9 +164,12 @@ def main():
     ap.add_argument('--max-games', type=int, default=0, help='train on only the first shards, up to about this many games')
     ap.add_argument('--rules', default='', help='residual mode: frozen linear rules json added to the net score')
     ap.add_argument('--alpha', type=float, default=0.0, help='residual mode: weight of --rules in the score (blend.ts alpha)')
+    ap.add_argument('--learn-temp', action='store_true', help='also learn one temperature tau on the whole score; at export it is folded into '
+                    "the net's out layer and alpha becomes tau * alpha (printed on the BLEND line)")
     a = ap.parse_args()
     assert not (a.rules and a.linear), '--rules is for training a net as a residual over readable rules'
     assert bool(a.rules) == (a.alpha != 0), '--rules and --alpha go together'
+    assert not (a.learn_temp and a.linear), '--learn-temp scales a net (its out layer)'
     dev = 'cuda' if torch.cuda.is_available() else 'cpu'
     commit = subprocess.run(['git', 'log', '-1', '--format=%h'], capture_output=True, text=True).stdout.strip()
     run = None
@@ -245,17 +248,22 @@ def main():
         c = x.to(dtype) @ rules_w.to(x.device, dtype)
         return torch.stack([(c * (ow == o)).sum(1) for o in range(4)], 1)
 
+    # --learn-temp: score * exp(log_tau), one scalar (the rules are tuned to pick moves, not to be calibrated)
+    log_tau = torch.zeros((), device=dev, requires_grad=a.learn_temp)
+
     def score(x, ow):
-        """The training score: the net's, plus alpha times the frozen rules' in residual mode."""
+        """The training score: the net's, plus alpha times the frozen rules' in residual mode, times tau."""
         sc, mg = net(x, ow)
         if rules_w is not None:
             sc = sc + a.alpha * rules_scores(x, ow)
+        if a.learn_temp:
+            sc = sc * log_tau.exp()
         return sc, mg
     if a.init:
         for l, j in [*zip(net.trunk, js['trunk']), (net.pool, js['pool']), (net.out, js['out'])]:
             l.weight.data = torch.tensor(j['W'], device=dev, dtype=torch.float32)
             l.bias.data = torch.tensor(j['b'], device=dev, dtype=torch.float32)
-    opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=1e-4)
+    opt = torch.optim.AdamW([*net.parameters(), *([log_tau] if a.learn_temp else [])], lr=a.lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=a.epochs * math.ceil(len(Xt) / a.batch))
 
     def evaluate():
@@ -363,6 +371,18 @@ def main():
                      'val/baseline_first': base_first, 'val/gain_vs_uniform': base_pl - vl, 'val/calib_ece': ece,
                      **by, **health()}, step=step)
 
+    if a.learn_temp:
+        # Fold tau into the net's out layer (its score is linear in it) and into alpha, so blend.ts plays the
+        # trained sum unchanged: tau * (net + alpha rules) = (tau net) + (tau alpha) rules.
+        tau = log_tau.exp().item()
+        with torch.no_grad():
+            net.out.weight.mul_(tau)
+            net.out.bias.mul_(tau)
+        a.alpha = a.alpha * tau
+        a.learn_temp = False  # score() now means the folded net
+        print(f'TEMP tau {tau:.4f} alpha -> {a.alpha:.4f}', flush=True)
+        if run:
+            run.summary.update({'residual/tau': tau, 'residual/alpha_folded': a.alpha})
     dump = lambda l: {'W': l.weight.detach().cpu().double().tolist(), 'b': l.bias.detach().cpu().double().tolist()}
     if a.linear:
         weights = {rule_name(i): w for i, w in zip(inputs, net.linear.weight.detach().cpu().double().flatten().tolist())}
