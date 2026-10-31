@@ -1,14 +1,16 @@
 # Plays all-bot games on every pull request, on main and on the PR, and comments with the difference.
 #
-# Each simulation is its own file in tests/sim/ (single-house.sim.ts, double-house.sim.ts, ...), and each
-# file runs as its own job, in parallel. Every job runs main and the PR side by side with this PR's
+# Each simulation is its own file in tests/sim/, and each file runs as its own job, in parallel: games with
+# doubles on and off (RULES.md section I), each with one house and with two houses per person
+# (single-house, double-house, single-house-no-doubles, double-house-no-doubles), plus bot-levels. Every job runs main and the PR side by side with this PR's
 # simulation files and the same seeds, so a PR that doesn't change the game shows "No change", and every
 # difference is a real effect of the PR. A job fails if a game never ends or the dice stop behaving as
 # src/engine/dice.ts says. The report job joins every file's section into one PR comment, updated on each
 # push; the same report goes in the run summary and the logs are run artifacts.
 #
-# Actions -> Simulation -> Run workflow runs every simulation file on a branch (also in parallel), with
-# any number of games.
+# SIM_GAMES is the number of games per file, shared by its setups and both dice (8000 here, so each job
+# takes a couple of minutes). Actions -> Simulation -> Run workflow runs every simulation file on a branch
+# (also in parallel), with any number of games.
 
 name: Simulation
 
@@ -17,9 +19,9 @@ on:
   workflow_dispatch:
     inputs:
       games:
-        description: 'Games per setup (each setup is played with the game dice and with fair dice)'
+        description: 'Games per simulation file (shared by its setups, each played with the game dice and with fair dice)'
         required: true
-        default: '3000'
+        default: '8000'
 
 permissions:
   contents: read
@@ -51,8 +53,8 @@ jobs:
       matrix:
         file: ${{ fromJson(needs.files.outputs.list) }}
     env:
-      # 3000 per setup; each file is one job, so files run side by side.
-      SIM_GAMES: 3000
+      # 8000 per file, shared by its setups and both dice; each file is one job, so files run side by side.
+      SIM_GAMES: 8000
     steps:
       - uses: actions/checkout@v7
         with:

@@ -3,12 +3,14 @@
 // tools/sim-compare.mjs turns the "SIM_JSON {...}" line each file prints into one section of the PR comment.
 // Every setup is played with the game's weighted dice and with fair dice, so the effect of the weighting
 // is visible, and checked: every game ends and the dice behave as src/engine/dice.ts says.
+// SIM_GAMES is the number of games for a whole file (default 8000), shared by its setups and both dice.
 import { describe, expect, it } from 'vitest';
 import { BASE, analyzeDice, chooseMove, move, ownerRanking, roll, sampleFace, seeded, type Color, type GameState } from '../../src/engine';
 
 // No @types/node in this project, so reach the env through globalThis.
 const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
-export const GAMES = Number(env.SIM_GAMES ?? 3000);
+/** Games per simulation file: every setup, with both dice, shares these. */
+export const TOTAL = Number(env.SIM_GAMES ?? 8000);
 const MAX_ROLLS = 5000;
 const FAIR = [1, 1, 1, 1, 1, 1].map((x) => x / 6);
 /**
@@ -35,13 +37,13 @@ export interface Stats {
   seatWins: number; seatPlaceSum: number; seatIdleStreak: number;
 }
 
-function simulate(setup: Setup, weighted: boolean): Stats {
+function simulate(setup: Setup, weighted: boolean, games: number): Stats {
   const s: Stats = {
-    games: GAMES, unfinished: 0, rolls: 0, sixes: 0, tripleSix: 0, noMove: 0, kills: 0, pairKills: 0, lostProgress: 0,
+    games, unfinished: 0, rolls: 0, sixes: 0, tripleSix: 0, noMove: 0, kills: 0, pairKills: 0, lostProgress: 0,
     pairMoves: 0, moves: 0, killChance: 0, killHit: 0, escChance: 0, escHit: 0, finChance: 0, finHit: 0, maxRolls: 0,
     seatRolls: 0, seatNoMove: 0, seatAllHome: 0, seatKills: 0, seatLost: 0, seatWins: 0, seatPlaceSum: 0, seatIdleStreak: 0,
   };
-  for (let g = 0; g < GAMES; g++) {
+  for (let g = 0; g < games; g++) {
     const rng = seeded(g * 7919 + setup.seed + (weighted ? 1 : 0));
     let st: GameState = setup.make();
     const me = st.players.find((p) => p.color === SEAT)!.owner;
@@ -51,7 +53,7 @@ function simulate(setup: Setup, weighted: boolean): Stats {
     while (st.phase !== 'over' && rolls < MAX_ROLLS) {
       const color = st.players[st.current]!.color;
       if (st.phase === 'roll') {
-        const { weights, why } = analyzeDice(st.players, color, rng);
+        const { weights, why } = analyzeDice(st.players, color, rng, st.singles);
         const face = sampleFace(weighted ? weights : FAIR, rng);
         rolls++;
         s.rolls++;
@@ -132,13 +134,14 @@ export const winRate = (s: Stats) => s.seatWins / s.games;
  * line. `check` runs last, on all the results, for a file's own expectations.
  */
 export function runSimulation(title: string, setups: Setup[], check?: (results: Results) => void) {
-  describe(`${title}: ${GAMES} all-bot games per setup`, () => {
+  const games = Math.max(1, Math.round(TOTAL / (2 * setups.length)));
+  describe(`${title}: ${games} all-bot games per setup and dice, ${games * 2 * setups.length} in all`, () => {
     const results: Record<string, Stats> = {};
 
     for (const setup of setups) {
       it(setup.name, { timeout: 1_800_000 }, () => {
-        const w = (results[`${setup.name} weighted`] = simulate(setup, true));
-        const f = (results[`${setup.name} fair`] = simulate(setup, false));
+        const w = (results[`${setup.name} weighted`] = simulate(setup, true, games));
+        const f = (results[`${setup.name} fair`] = simulate(setup, false, games));
         for (const s of [w, f]) {
           expect(s.unfinished).toBe(0); // every game ends
           expect(s.sixes / s.rolls).toBeGreaterThan(0.15);
@@ -158,7 +161,7 @@ export function runSimulation(title: string, setups: Setup[], check?: (results: 
       console.log(['', title, line(['metric', ...cols]), ...METRICS.map((m) => line([m.label, ...cols.map((c) => show(m, m.f(results[c]!)))]))].join('\n'));
       const json = {
         title,
-        games: GAMES,
+        games,
         metrics: METRICS.map(({ key, label, pct }) => ({ key, label, pct: !!pct })),
         setups: Object.fromEntries(cols.map((c) => [c, Object.fromEntries(METRICS.map((m) => [m.key, m.f(results[c]!)]))])),
       };

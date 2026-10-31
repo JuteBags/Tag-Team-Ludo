@@ -1,5 +1,6 @@
-// 2-player games where each person has two houses: opposite each other, and side by side. Person 0 plays
-// Blue and its partner, person 1 the other two. See harness.ts.
+// 2-player games where each person has two houses, doubles on: opposite each other, and side by side.
+// Person 0 plays Blue and its partner, person 1 the other two. double-house-no-doubles.sim.ts is the same
+// with doubles off. See harness.ts.
 import { createGame, type Color } from '../../src/engine';
 import { runSimulation } from './harness';
 
