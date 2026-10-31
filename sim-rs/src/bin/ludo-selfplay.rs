@@ -2,9 +2,9 @@
 //!   ludo-selfplay --games 2000 --seed 7 --out shard.bin --pool hard:65,normal:22,easy:10,random:3
 //!                 [--modes 2p,3p,...] [--keep 0.1] [--commit <sha>] [--threads N] [--format 2]
 //!                 [--lockstep W [--gpu]] [--dice fair]
-//! --lockstep W: W games in flight, stepped together. At every round each game plays on to its next
-//! search decision, the search's leaves for all of them are valued in one batch (search::collect_leaves,
-//! then eval::batch_values), and each game chooses from its own values. Same bytes as without it.
+//! --lockstep W: W games in flight, stepped together in two halves. Each round one half's search leaves
+//! are valued in one batch (search::collect_leaves, then eval::batch_values) while the other half
+//! chooses from its values and plays on to its next decision. Same bytes as without it.
 //! --gpu (build with --features cuda): that batch is valued on the GPU (gpu.rs), still the same bytes.
 //! One invocation writes one shard (like one selfplay.mjs worker); its games run in parallel and are
 //! concatenated in game order, so the file is byte-identical to selfplay.mjs with the same flags.
@@ -186,25 +186,41 @@ fn main() {
 
     let t0 = Instant::now();
     let outs: Vec<GameOut> = if lockstep > 0 {
+        use ludo_sim::eval::{batch_values, Evaluator};
+        use std::sync::Arc;
+        type Ready = (Vec<Vec<Game>>, Vec<Vec<[f64; 4]>>);
         let mut outs: Vec<Option<GameOut>> = (0..games).map(|_| None).collect();
-        let mut active: Vec<Live> = Vec::new();
-        let mut next = 0;
+        let mut next = 0usize;
         let (mut rounds, mut nleaves) = (0usize, 0usize);
-        let mut tt = [0.0f64; 4]; // seconds in: advance, collect, batch values, choose
-        loop {
-            while active.len() < lockstep && next < games {
-                active.push(start(next));
-                next += 1;
+        let mut tt = [0.0f64; 4]; // seconds in: advance, collect, waiting for values, choose
+        // One half of the games: choose with the values of its last leaves, refill, play on to the next
+        // search decision (finished games leave), collect the next leaves.
+        let half = lockstep.div_ceil(2).max(1);
+        let prepare = |grp: &mut Vec<Live>, rd: Option<Ready>, next: &mut usize, outs: &mut Vec<Option<GameOut>>, tt: &mut [f64; 4]| -> (Vec<Vec<Game>>, Vec<Arc<Evaluator>>) {
+            if let Some((ls_all, vs_all)) = rd {
+                let t = Instant::now();
+                grp.par_iter_mut().zip(ls_all.into_par_iter().zip(vs_all.into_par_iter())).for_each(|(l, (ls, vs))| {
+                    let mut map = ludo_sim::search::Map::default();
+                    for (s, v) in ls.iter().zip(vs) {
+                        map.insert(ludo_sim::search::leaf_key(s), v);
+                    }
+                    let (eval, opts, temperature) = l.search();
+                    let k = ludo_sim::search::choose_extreme_with(&eval, &l.gm, &mut l.st.rng, opts, temperature, map);
+                    let m = l.gm.moves.m[k];
+                    l.gm.play(&m);
+                    l.steps += 1;
+                });
+                tt[3] += t.elapsed().as_secs_f64();
             }
-            if active.is_empty() {
-                break;
+            while grp.len() < half && *next < games {
+                grp.push(start(*next));
+                *next += 1;
             }
-            // every game to its next search decision; the finished ones leave
             let t = Instant::now();
-            let need: Vec<bool> = active.par_iter_mut().map(|l| l.advance(keep)).collect();
+            let need: Vec<bool> = grp.par_iter_mut().map(|l| l.advance(keep)).collect();
             tt[0] += t.elapsed().as_secs_f64();
-            let mut still = Vec::with_capacity(active.len());
-            for (l, n) in active.drain(..).zip(need) {
+            let mut still = Vec::with_capacity(grp.len());
+            for (l, n) in grp.drain(..).zip(need) {
                 if n {
                     still.push(l);
                 } else {
@@ -212,43 +228,52 @@ fn main() {
                     outs[l.g] = Some(GameOut { x: l.x, meta: l.meta, header: h });
                 }
             }
-            active = still;
-            if active.is_empty() {
-                continue;
-            }
-            // pass 1: the leaves of every decision; one batch; pass 2: each game chooses
+            *grp = still;
             let t = Instant::now();
-            let leaves: Vec<Vec<Game>> = active
+            let leaves: Vec<Vec<Game>> = grp
                 .par_iter()
                 .map(|l| {
                     let (eval, opts, _) = l.search();
                     ludo_sim::search::collect_leaves(&eval, &l.gm, opts)
                 })
                 .collect();
-            let arcs: Vec<_> = active.iter().map(|l| l.search().0).collect();
-            let evals: Vec<&ludo_sim::eval::Evaluator> = arcs.iter().map(|a| &**a).collect();
+            let arcs: Vec<Arc<Evaluator>> = grp.iter().map(|l| l.search().0).collect();
             tt[1] += t.elapsed().as_secs_f64();
-            let t = Instant::now();
-            let vals = ludo_sim::eval::batch_values(&evals, &leaves);
-            tt[2] += t.elapsed().as_secs_f64();
-            let t = Instant::now();
+            (leaves, arcs)
+        };
+        // Two halves in flight: while one half's leaves are valued (on the GPU, or on the CPU pool), the
+        // other half chooses and collects. Each game's own sequence is unchanged, so are the bytes.
+        let mut groups: [Vec<Live>; 2] = [Vec::new(), Vec::new()];
+        let mut ready: [Option<Ready>; 2] = [None, None];
+        let (mut la, mut ea) = prepare(&mut groups[0], None, &mut next, &mut outs, &mut tt);
+        let mut cur = 0usize;
+        loop {
+            let other = 1 - cur;
+            if groups[0].is_empty() && groups[1].is_empty() && next >= games {
+                break;
+            }
+            let rd = ready[other].take();
+            let (vals, (lb, eb)) = std::thread::scope(|s| {
+                let (la, ea) = (&la, &ea);
+                let h = s.spawn(move || {
+                    let ev: Vec<&Evaluator> = ea.iter().map(|a| &**a).collect();
+                    batch_values(&ev, la)
+                });
+                let r = prepare(&mut groups[other], rd, &mut next, &mut outs, &mut tt);
+                let tw = Instant::now();
+                let v = h.join().unwrap();
+                tt[2] += tw.elapsed().as_secs_f64();
+                (v, r)
+            });
             rounds += 1;
             nleaves += vals.iter().map(|v| v.len()).sum::<usize>();
-            active.par_iter_mut().zip(leaves.into_par_iter().zip(vals.into_par_iter())).for_each(|(l, (ls, vs))| {
-                let mut map = ludo_sim::search::Map::default();
-                for (s, v) in ls.iter().zip(vs) {
-                    map.insert(ludo_sim::search::leaf_key(s), v);
-                }
-                let (eval, opts, temperature) = l.search();
-                let k = ludo_sim::search::choose_extreme_with(&eval, &l.gm, &mut l.st.rng, opts, temperature, map);
-                let m = l.gm.moves.m[k];
-                l.gm.play(&m);
-                l.steps += 1;
-            });
-            tt[3] += t.elapsed().as_secs_f64();
+            ready[cur] = Some((la, vals));
+            la = lb;
+            ea = eb;
+            cur = other;
         }
         eprintln!(
-            "LOCKSTEP rounds {rounds} leaves {nleaves} ({:.1} per round) secs advance {:.2} collect {:.2} values {:.2} choose {:.2}",
+            "LOCKSTEP rounds {rounds} leaves {nleaves} ({:.1} per round) secs advance {:.2} collect {:.2} wait-values {:.2} choose {:.2}",
             nleaves as f64 / rounds.max(1) as f64,
             tt[0],
             tt[1],
