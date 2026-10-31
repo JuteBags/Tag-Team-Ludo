@@ -46,7 +46,13 @@ export interface SavedGame {
 }
 
 const GAME = 'ludo-save';
-export const loadGame = () => read<SavedGame>(GAME).then((g) => (g?.v === 1 && g.state?.phase !== 'over' ? g : null));
+export const loadGame = () =>
+  read<SavedGame>(GAME).then((g) => {
+    if (g?.v !== 1 || g.state?.phase === 'over') return null;
+    // Saves from before the tray (1.5) are always at the start of a turn: an empty tray.
+    g.state.rolls ??= [];
+    return g;
+  });
 export const saveGame = (g: SavedGame) => write(GAME, g);
 export const clearGame = () => drop(GAME);
 

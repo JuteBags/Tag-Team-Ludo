@@ -1,6 +1,6 @@
 # Tag Team Ludo — game rules (v1)
 
-Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1). The engine in `src/engine/` and the game screen implement exactly these rules; tests in `tests/` check them. This file stays off the public website.
+Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole turn first added 2026-10-31 (issue #25). The engine in `src/engine/` and the game screen implement exactly these rules; tests in `tests/` check them. This file stays off the public website.
 
 ## A. Setup
 
@@ -13,17 +13,17 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1). The engine in `sr
 ## B. Moving
 
 6. Tokens move clockwise round the track, then up their own home column into the centre. From the start square to the centre is 56 steps.
-7. You need a **6** to bring a token out of base onto your start square. Bringing it out uses the whole roll.
+7. You need a **6** to bring a token out of base onto your start square. Bringing it out uses that whole 6.
 8. You need the exact roll to reach the centre; a move that would go past it isn't allowed.
-9. If none of your tokens can move, your turn passes.
+9. If none of your tokens can move with any die in your tray, your turn passes.
 10. Tokens in the home column always move one at a time.
 
-## C. Extra rolls
+## C. Rolling the whole turn, then playing it
 
-11. Rolling a **6** gives another roll, even when nothing could move.
-12. A **third 6 in a row** is cancelled and the turn passes (moves from the first two 6s stay).
-13. Capturing an enemy token gives another roll.
-14. Getting a token into the centre gives another roll.
+11. **Roll first.** A **6** rolls again, until you roll something else. Nothing moves while you roll: every die goes into your **tray**, shown beside your dice. Example: 6, 6, 4 is a tray of three dice.
+12. **Then play the tray, in any order.** Pick a die, then the token to move with it; that die leaves the tray. Each die is used once and on its own: two dice never add up (a pair uses one even die, rule 19). The turn ends when the tray is empty, or when no token can use any die left in it; those dice are lost.
+13. A **third 6 in a row** ends the turn and every die left in the tray is lost. On the first run of rolls nothing has moved yet, so 6, 6, 6 simply passes the turn.
+14. **Capturing** an enemy token or getting a token into the **centre** rolls again right away, before the rest of the tray is played. The new dice join the tray; a 6 rolls again here too, and the count of 6s in a row starts again from zero.
 
 ## D. Capturing and safe stars
 
@@ -34,7 +34,7 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1). The engine in `sr
 ## E. Pairs (jodi)
 
 18. Two of your tokens on the same track square are a **pair**. Your single landing on your own single makes one, on any square, and so do two tokens brought out onto your start square.
-19. A pair moves only on an even roll, each token moving half the roll: 2 → 1 + 1, 4 → 2 + 2, 6 → 3 + 3 (plus the extra roll for the 6).
+19. A pair moves only with an even die, each token moving half of it: 2 → 1 + 1, 4 → 2 + 2, 6 → 3 + 3.
 20. On a normal (non-star) square a pair is **locked**: neither token can move alone, so on an odd roll it can't move at all.
 21. A pair splits only on a star or in the home column. On a star it is just two single tokens: on an even roll you choose to move both as a pair or one token alone (the full roll); on an odd roll only one token can move.
 22. A pair that lands on a star or moves into the home column splits there. There are no pairs in the home column.

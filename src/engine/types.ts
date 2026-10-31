@@ -33,6 +33,8 @@ export interface Move {
   to: number;
   /** Steps each token moves (half the roll for a pair). */
   steps: number;
+  /** The die from the tray this move uses. */
+  roll: number;
   captures: Capture[];
   /** Tokens that reach the centre with this move. */
   finishes: number;
@@ -42,7 +44,8 @@ export type GameEvent =
   | { type: 'rolled'; color: Color; dice: number }
   | { type: 'no-move'; color: Color; dice: number }
   | { type: 'three-sixes'; color: Color }
-  | { type: 'moved'; move: Move; extraTurn: boolean }
+  /** `extraTurn`: a capture or a token home rolls again. `lost`: dice left in the tray that nothing could use. */
+  | { type: 'moved'; move: Move; extraTurn: boolean; lost: number[] }
   | { type: 'game-over'; ranking: Color[] };
 
 export interface GameState {
@@ -50,10 +53,13 @@ export interface GameState {
   /** Index into players of whoever acts next. */
   current: number;
   phase: 'roll' | 'move' | 'over';
+  /** The face just rolled. */
   dice: number | null;
-  /** Consecutive sixes rolled by the current player this turn. */
+  /** The tray: this turn's rolls not played yet. A turn is rolled first (a 6 rolls again), then played. */
+  rolls: number[];
+  /** Sixes in a row in the current run of rolls. */
   sixes: number;
-  /** Legal moves for the current dice; non-empty only in the 'move' phase. */
+  /** Legal moves for every die in the tray; non-empty only in the 'move' phase. */
   moves: Move[];
   /** Colours in the order they finished all four tokens. */
   ranking: Color[];

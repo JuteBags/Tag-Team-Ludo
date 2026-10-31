@@ -11,29 +11,60 @@ describe('turn flow', () => {
     expect(g.event).toMatchObject({ type: 'no-move', dice: 3 });
   });
 
-  it('gives another roll on a 6 even with no move', () => {
+  it('rolls again on a 6 before anything moves, even with no move', () => {
     const g = roll(game({ blue: [52, 56, 56, 56], red: B }), rng, 6);
     expect(g.current).toBe(0);
     expect(g.phase).toBe('roll');
+    expect(g.rolls).toEqual([6]);
+    expect(g.moves).toEqual([]);
   });
 
-  it('cancels the third 6 in a row', () => {
+  it('rolls the whole turn into the tray, then plays it in any order', () => {
     let g = newGame(4);
-    g = roll(g, rng, 6);
-    g = move(g, g.moves[0]!);
-    g = roll(g, rng, 6);
-    g = move(g, g.moves[0]!);
-    expect(g.current).toBe(0);
-    g = roll(g, rng, 6);
+    for (const f of [6, 6, 4]) g = roll(g, rng, f);
+    expect(g.phase).toBe('move');
+    expect(g.rolls).toEqual([6, 6, 4]);
+    // Every token is at home: only a 6 can be used, to bring one out.
+    expect(new Set(g.moves.map((m) => m.roll))).toEqual(new Set([6]));
+    g = move(g, g.moves.find((m) => m.kind === 'release')!);
+    expect(g.rolls).toEqual([6, 4]);
+    // Now the 4 can move the token that came out, before the other 6 is used.
+    g = move(g, g.moves.find((m) => m.roll === 4)!);
+    expect(g.players[0]!.tokens).toContain(4);
+    expect(g.rolls).toEqual([6]);
+    g = move(g, g.moves.find((m) => m.kind === 'release')!);
+    expect(g.current).toBe(1);
+    expect(g.rolls).toEqual([]);
+  });
+
+  it('cancels the whole turn on a third 6 in a row: nothing has moved', () => {
+    let g = newGame(4);
+    for (const f of [6, 6, 6]) g = roll(g, rng, f);
     expect(g.event).toMatchObject({ type: 'three-sixes' });
     expect(g.current).toBe(1);
+    expect(g.rolls).toEqual([]);
+    expect(g.players[0]!.tokens).toEqual(B);
   });
 
-  it('gives another roll after a capture', () => {
-    let g = roll(game({ blue: [5, -1, -1, -1], red: [prog('red', 46), -1, -1, -1] }), rng, 2);
+  it('rolls again right after a capture, keeping the rest of the tray', () => {
+    let g = game({ blue: [5, -1, -1, -1], red: [prog('red', 46), -1, -1, -1] });
+    g = roll(roll(g, rng, 6), rng, 2);
+    expect(g.rolls).toEqual([6, 2]);
     g = move(g, g.moves.find((m) => m.captures.length > 0)!);
     expect(g.current).toBe(0);
     expect(g.phase).toBe('roll');
+    expect(g.rolls).toEqual([6]);
+    g = roll(g, rng, 3);
+    expect(g.phase).toBe('move');
+    expect(g.rolls).toEqual([6, 3]);
+  });
+
+  it('loses the dice nothing can use, and passes the turn', () => {
+    let g = game({ blue: [52, 56, 56, 56], red: B });
+    g = roll(roll(g, rng, 6), rng, 2);
+    g = move(g, g.moves[0]!);
+    expect(g.current).toBe(1);
+    expect(g.event).toMatchObject({ type: 'moved', lost: [6] });
   });
 
   it('gives another roll after finishing a token', () => {

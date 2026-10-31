@@ -18,7 +18,7 @@
   - `board.ts` constants and progress → square mapping
   - `rules.ts` legal moves, pairs/blocks, captures, threats; the `singles` flag (doubles off, `GameState.singles`, RULES.md section I) turns pairs, locks and blocks off
   - `dice.ts` the dice: the full spec lives in its header comment
-  - `game.ts` turn flow (`createGame` from seats, `newGame` for the classic game, `roll`, `move`, `finalRanking`, `ownerRanking` for people)
+  - `game.ts` turn flow (`createGame` from seats, `newGame` for the classic game, `roll`, `move`, `finalRanking`, `ownerRanking` for people). A turn is rolled into `GameState.rolls` (the tray; a 6 rolls again) and then played die by die (`Move.roll`, `trayMoves`); a capture or a token home rolls again first (RULES.md section C)
   - `bot.ts` heuristic bots at three levels (`PlayerState.level`, normal when missing): **Easy** often plays a random move and ignores danger; **Normal** is `scoreMove`; **Hard** adds danger to all its tokens, locks a double on a normal square only when it blocks someone, and lines up next-turn kills. Levels change only how moves are chosen, never the dice (`chooseMove`, `botStep`)
   - `rng.ts` seeded RNG for tests, `cryptoRng` for real play
 - `src/ui/` — the game UI (DOM + SVG), driven by the engine:
@@ -30,7 +30,7 @@
   - `boardView.ts` pawn placement, stacking, double badges (padlock = locked, ×2 = on a star, ! = single on an enemy double), landing markers, board-wide tap picking, hop/kill/finish effects
   - `sfx.ts` sounds synthesised with Web Audio (no audio files) and vibration; mute is in the pause menu
   - `dice.ts` CSS 3D die and roll animation
-  - `gameScreen.ts` turn loop, bot pacing, human move choice (via landing markers), banners, pause menu, the keep-playing vote when someone finishes (RULES.md rule 41), saving for Continue, stats, the result screen with Share. Going to the background pauses and saves
+  - `gameScreen.ts` turn loop (one roll or one move per step), bot pacing, the tray of dice beside the current player's dice (tap a die, then a token or its landing marker), banners, pause menu, the keep-playing vote when someone finishes (RULES.md rule 41), saving for Continue, stats, the result screen with Share. Going to the background pauses and saves
   - `homeScreen.ts` home screen: VS COMPUTER and WITH FRIENDS (both offline), player count, CONTINUE GAME when a game is saved, the colour-blind symbols switch, Stats and Settings buttons in the top corners; Online/Private tiles are locked placeholders
   - `sheets.ts` the Settings sheet (board theme, doubles on/off, symbols, dice face, sound) and the Stats sheet (with a two-tap reset)
   - `themes.ts` board themes (Classic, Wooden, Dark) and the colour-blind symbols: both are CSS on `<html>` (`data-theme`, `.symbols`), and the board art reads CSS variables (`--b-*` at the top of `styles.css`), so switching is instant. A new theme is one more block of variables

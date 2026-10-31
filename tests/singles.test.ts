@@ -18,6 +18,7 @@ import {
   sameSide,
   seeded,
   squareOf,
+  trayMoves,
   type GameState,
   type Move,
   type PlayerState,
@@ -109,13 +110,13 @@ function play(seed: number, start: GameState, pick: (st: GameState, rng: () => n
       st = roll(st, rng);
       continue;
     }
-    if (JSON.stringify(st.moves) !== JSON.stringify(legalMoves(st.players, st.players[st.current]!.color, st.dice!, true))) return `step ${step}: offered moves differ from the rules`;
+    if (JSON.stringify(st.moves) !== JSON.stringify(trayMoves(st.players, st.players[st.current]!.color, st.rolls, true))) return `step ${step}: offered moves differ from the rules`;
     const m = pick(st, rng);
-    const bad = problems(st.players, m, st.dice!);
+    const bad = problems(st.players, m, m.roll);
     st = move(st, m);
     for (const c of m.captures) if (tokensOf(st.players, c.color)[c.token] !== BASE) bad.push('captured token not sent home');
     if (st.players.some((p) => p.tokens.some((t) => t < BASE || t > FINISHED))) bad.push('token off the board');
-    if (bad.length) return `step ${step} (${m.color} ${m.from}->${m.to}, dice ${st.dice}): ${bad.join('; ')}`;
+    if (bad.length) return `step ${step} (${m.color} ${m.from}->${m.to}, roll ${m.roll}): ${bad.join('; ')}`;
   }
   return 'never finished';
 }
