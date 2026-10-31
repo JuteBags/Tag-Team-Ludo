@@ -364,14 +364,16 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .mcard small{font-size:12px;font-weight:900;opacity:.92}
 
 /* Setup: one step per screen (options, roll for order, pick houses), nothing scrolls. */
-.setup .steps{position:absolute;top:78px;left:24px;right:24px;display:flex;justify-content:center;gap:8px;list-style:none}
-.setup .steps li{display:flex;align-items:center;gap:6px;padding:5px 12px 5px 6px;border-radius:14px;background:rgba(0,0,0,.22);font-weight:900;font-size:12px;letter-spacing:.6px;opacity:.6}
-.setup .steps i{width:18px;height:18px;border-radius:50%;border:2px solid #ffd65a}
-.setup .steps li.on{opacity:1;background:rgba(255,214,90,.16);box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.6)}
-.setup .steps li.on i{background:#ffd65a;box-shadow:0 0 10px rgba(255,214,90,.8)}
-.setup .steps li.done{opacity:.9}
-.setup .steps li.done i{background:#57ff98;border-color:#57ff98}
-.wiz{position:absolute;top:126px;left:20px;right:20px;bottom:0;display:flex;flex-direction:column}
+/* Setup progress: numbered steps joined by a bar; done steps go green, the current one gold. */
+.setup .steps{position:absolute;top:76px;left:34px;right:34px;display:flex;justify-content:space-between;list-style:none}
+.setup .steps::before{content:'';position:absolute;left:14px;right:14px;top:13px;height:4px;border-radius:2px;background:rgba(255,255,255,.18)}
+.setup .steps li{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;font-weight:900;font-size:11.5px;letter-spacing:.4px;opacity:.6}
+.setup .steps i{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-family:'Lilita One';font-size:15px;background:#0c2a74;border:2.5px solid rgba(255,255,255,.45)}
+.setup .steps li.on{opacity:1;color:#ffd65a}
+.setup .steps li.on i{background:#ffd65a;border-color:#fff;color:#5a2d00;box-shadow:0 0 12px rgba(255,214,90,.8)}
+.setup .steps li.done{opacity:.95}
+.setup .steps li.done i{background:#24ad3c;border-color:#57ff98;color:#fff}
+.wiz{position:absolute;top:136px;left:20px;right:20px;bottom:0;display:flex;flex-direction:column}
 .wiz h3{font-size:28px;font-weight:400;color:#ffd65a;text-align:center;line-height:1.1}
 .wiz .sub{font-size:14px;font-weight:800;opacity:.85;text-align:center;margin:6px 0 18px}
 .wiz .go{position:absolute;left:4px;right:4px;bottom:34px}
@@ -429,7 +431,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .prow .st{margin-left:auto;font-size:12.5px;font-weight:800;opacity:.85;text-align:right}
 .prow .dbox{width:52px;height:52px;border-radius:15px;flex:none}
 .houses{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.house{position:relative;height:150px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+.house{position:relative;height:188px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
   background:linear-gradient(160deg,var(--l),var(--m) 55%,var(--d));box-shadow:inset 0 3px 0 rgba(255,255,255,.4),0 6px 0 var(--d);opacity:.45;transition:opacity .2s,transform .1s}
 .house .pw svg{width:58px;height:64px;filter:drop-shadow(0 3px 2px rgba(0,0,0,.3))}
 .house b{font-family:'Lilita One';font-weight:400;font-size:19px;text-shadow:0 2px 0 rgba(0,0,0,.3);min-height:22px}
