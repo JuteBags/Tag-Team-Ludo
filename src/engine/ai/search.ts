@@ -1,4 +1,5 @@
-// Extreme: expectimax over whole turns, max^n for several players, with the value net at the leaves.
+// Extreme: expectimax over whole turns, max^n for several players, with the value net at the leaves
+// (or, for the rule bots, readable weighted rules: linear.ts).
 // A turn is planned whole: every order of playing the tray's dice, with any extra roll (after a 6, a
 // kill or a token home) as a chance node. At depth 2 the next player's turn follows, and they play the
 // way the net thinks is best for THEM (max^n: each player maximises their own chance), not worst-case
@@ -6,7 +7,7 @@
 import { scoreMove } from '../bot';
 import { move, ownerRanking, roll } from '../game';
 import type { GameState, Move, Rng } from '../types';
-import type { Net } from './net';
+import type { Evaluator } from './linear';
 
 export interface SearchOptions {
   /** Turns looked at: 1 = my turn only, 2 = also the next player's, and so on. */
@@ -22,7 +23,7 @@ const noRng: Rng = () => 0.5;
 const key = (s: GameState) => `${s.current}|${s.phase}|${s.sixes}|${s.rolls.join('')}|${s.players.map((p) => p.tokens.join(',')).join(';')}`;
 
 /** Each person's chance of winning, by owner. */
-export function ownerValues(net: Net, s: GameState, owners: number): Float64Array {
+export function ownerValues(net: Evaluator, s: GameState, owners: number): Float64Array {
   if (s.phase === 'over') {
     const v = new Float64Array(owners);
     v[ownerRanking(s)[0]!] = 1;
@@ -32,7 +33,7 @@ export function ownerValues(net: Net, s: GameState, owners: number): Float64Arra
 }
 
 /** The search's value of each of the current player's moves, as that player's chance of winning. */
-export function searchValues(net: Net, state: GameState, opts: SearchOptions = {}): { move: Move; value: number }[] {
+export function searchValues(net: Evaluator, state: GameState, opts: SearchOptions = {}): { move: Move; value: number }[] {
   const depth = opts.depth ?? 1;
   const maxChance = opts.chance ?? 2;
   const theirK = opts.theirK ?? 3;
@@ -76,7 +77,7 @@ export function searchValues(net: Net, state: GameState, opts: SearchOptions = {
 }
 
 /** The best move by the search; `temperature` > 0 samples moves by softmax of their values instead. */
-export function chooseExtreme(net: Net, state: GameState, rng: Rng, opts?: SearchOptions, temperature = 0): Move {
+export function chooseExtreme(net: Evaluator, state: GameState, rng: Rng, opts?: SearchOptions, temperature = 0): Move {
   if (state.moves.length === 1) return state.moves[0]!;
   const vals = searchValues(net, state, opts);
   if (temperature > 0) {

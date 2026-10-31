@@ -7,6 +7,7 @@ import { ownerRanking } from '../game';
 import { isDone } from '../rules';
 import type { GameState } from '../types';
 import { D, encodeState } from './encode';
+import type { Evaluator } from './linear';
 
 interface Dense {
   W: number[][];
@@ -41,7 +42,7 @@ function dense(l: Layer, a: Float64Array, z: Float64Array, tanh: boolean) {
   }
 }
 
-export class Net {
+export class Net implements Evaluator {
   private readonly inputs: Int32Array;
   private readonly trunk: Layer[];
   private readonly pool: Layer;
