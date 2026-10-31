@@ -22,7 +22,7 @@
   - `bot.ts` single-level heuristic bot (`chooseMove`, `botStep`)
   - `rng.ts` seeded RNG for tests, `cryptoRng` for real play
 - `src/ui/` — the game UI (DOM + SVG), driven by the engine:
-  - `app.ts` fixed 390 x 844 stage scaled to fit any screen, routing home → setup → game
+  - `app.ts` fixed 390 x 844 stage scaled to fit any screen, routing home → setup → game (or straight to a saved game), and the back button: it closes a sheet, pauses or resumes a game, steps back in setup, and on the home screen closes the app
   - `art.ts` all vector art (board and the palace in its centre, pawns, avatars, trophy) and the shared SVG `<defs>`
   - `palace.ts` the palace cutscene: when a person's token gets home, a short scene in that colour's kingdom (Red: the Ember Keep, Green: the Emerald Grove, Yellow: the Sun Citadel, Blue: the Tide Palace) welcomes it through the gate, cheered on by stick figures; tap to skip, still under reduced motion. Bots' tokens get the HOME! banner only
   - `geometry.ts` board cell coordinates and the four track turns; track order must match `src/engine/board.ts`
@@ -30,8 +30,13 @@
   - `boardView.ts` pawn placement, stacking, double badges (padlock = locked, ×2 = on a star, ! = single on an enemy double), landing markers, board-wide tap picking, hop/kill/finish effects
   - `sfx.ts` sounds synthesised with Web Audio (no audio files) and vibration; mute is in the pause menu
   - `dice.ts` CSS 3D die and roll animation
-  - `gameScreen.ts` turn loop, bot pacing, human move choice (via landing markers), banners, pause menu, result screen
-  - `homeScreen.ts` home screen: VS COMPUTER and WITH FRIENDS (both offline), player count; Online/Private tiles are locked placeholders
+  - `gameScreen.ts` turn loop, bot pacing, human move choice (via landing markers), banners, pause menu, the keep-playing vote when someone finishes (RULES.md rule 41), saving for Continue, stats, the result screen with Share. Going to the background pauses and saves
+  - `homeScreen.ts` home screen: VS COMPUTER and WITH FRIENDS (both offline), player count, CONTINUE GAME when a game is saved, the colour-blind symbols switch, Stats and Settings buttons in the top corners; Online/Private tiles are locked placeholders
+  - `sheets.ts` the Settings sheet (board theme, symbols, dice face, sound) and the Stats sheet (with a two-tap reset)
+  - `themes.ts` board themes (Classic, Wooden, Dark) and the colour-blind symbols: both are CSS on `<html>` (`data-theme`, `.symbols`), and the board art reads CSS variables (`--b-*` at the top of `styles.css`), so switching is instant. A new theme is one more block of variables
+  - `store.ts` device storage via Capacitor Preferences: the saved game (written at the start of every turn, removed when the game ends or you quit) and the stats
+  - `native.ts` the Android back button (`@capacitor/app`; Escape on the web) and the screen wake lock during a game
+  - `shareCard.ts` the result card: drawn on a canvas on the device, shared through Android's share menu (`@capacitor/share` and `@capacitor/filesystem`), the Web Share API, or downloaded
   - `setup.ts` pure and tested: `GameConfig`, ranking rolls, the house-picking rules (opposite / side by side)
   - `setupScreen.ts` one step per screen (no scrolling): options (houses each, bots for empty houses), roll for order (ties roll again), pick houses one by one; steps with nothing to choose are skipped
   - `avatars.ts` generated Fun Emoji avatars (CC BY 4.0, credited on the home screen); regenerate with `node tools/make-avatars.mjs`

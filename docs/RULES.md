@@ -65,6 +65,7 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1). The engine in `sr
 38. In a 2-player game each person has either 1 house or 2 houses, chosen before rolling. With 2 houses, a person's two houses are either opposite each other or side by side, also chosen before rolling. A second pick has to match the first, and no pick may leave someone without a matching house.
 39. A person's two houses are one side. They never capture each other and never block each other. Each colour still takes its own turn in clockwise order, and a pair is always two tokens of one colour.
 40. A person is done when all their tokens (4, or 8 with two houses) are home. With friends, play continues for the other places until only one person still has tokens out, and that person comes last. vs Computer, the game ends for you once all your tokens are home.
+41. Each time someone is done and the game isn't over yet, the people still playing vote on whether to keep playing for the next place. Everyone still playing has to agree: one "stop" ends the game there, and everyone not yet done is ranked by how far their tokens have got. Bots always vote to play on. vs Computer, the one voter is you, and you're asked when a bot finishes before you. With friends, once every person is done, the game ends without waiting for the bots.
 
 ## Known risks (accepted for v1, revisit after playtests)
 

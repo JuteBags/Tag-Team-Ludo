@@ -35,6 +35,9 @@ export const icons = {
   globe: `<svg viewBox="0 0 64 64"><circle cx="32" cy="34" r="26" fill="#0b4fa8"/><circle cx="32" cy="32" r="26" fill="url(#gGlobe)"/><g fill="none" stroke="#fff" stroke-opacity=".8" stroke-width="2.5"><ellipse cx="32" cy="32" rx="11" ry="26"/><path d="M6 32h52M10 19h44M10 45h44"/></g><ellipse cx="21" cy="17" rx="9" ry="4.5" fill="#fff" opacity=".4" transform="rotate(-32 21 17)"/></svg>`,
   friends: `<svg viewBox="0 0 64 64"><circle cx="44" cy="22" r="9" fill="#f0b6ff"/><path d="M30 56c1-12 7-19 14-19s14 7 15 19z" fill="#f0b6ff"/><circle cx="24" cy="21" r="11" fill="#fff"/><path d="M4 56c0-13 9-21 20-21s20 8 20 21z" fill="#fff"/></svg>`,
   robot: `<svg viewBox="0 0 48 48"><path d="M24 4v6" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="4.5" r="3.2" fill="#ffd23f"/><rect x="8" y="10" width="32" height="26" rx="9" fill="#fff"/><rect x="12" y="15" width="24" height="14" rx="6" fill="#0f2f78"/><circle cx="19" cy="22" r="3.2" fill="#5ff2ff"/><circle cx="29" cy="22" r="3.2" fill="#5ff2ff"/><rect x="4" y="18" width="4" height="10" rx="2" fill="#fff"/><rect x="40" y="18" width="4" height="10" rx="2" fill="#fff"/><rect x="15" y="38" width="18" height="6" rx="3" fill="#fff" opacity=".85"/></svg>`,
+  gear: `<svg viewBox="0 0 24 24"><path d="M12 2.5l1.6 2.3 2.8-.5.6 2.8 2.5 1.3-1.1 2.6 1.1 2.6-2.5 1.3-.6 2.8-2.8-.5L12 21.5l-1.6-2.3-2.8.5-.6-2.8-2.5-1.3 1.1-2.6-1.1-2.6 2.5-1.3.6-2.8 2.8.5z" fill="#fff"/><circle cx="12" cy="12" r="3.6" fill="#2459d6"/></svg>`,
+  stats: `<svg viewBox="0 0 24 24"><rect x="4" y="12" width="4" height="8" rx="1.2" fill="#fff"/><rect x="10" y="7" width="4" height="13" rx="1.2" fill="#ffd23f"/><rect x="16" y="3.5" width="4" height="16.5" rx="1.2" fill="#fff"/></svg>`,
+  share: `<svg viewBox="0 0 24 24"><circle cx="18" cy="5.5" r="3" fill="#fff"/><circle cx="6" cy="12" r="3" fill="#fff"/><circle cx="18" cy="18.5" r="3" fill="#fff"/><path d="M8.6 10.6l6.8-3.6M8.6 13.4l6.8 3.6" stroke="#fff" stroke-width="2.2"/></svg>`,
   play: `<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z" fill="#1ea53a" stroke="#1ea53a" stroke-width="2" stroke-linejoin="round"/></svg>`,
 };
 
@@ -48,8 +51,8 @@ export function globalDefs(): string {
     <linearGradient id="base-${c}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${v.l}"/><stop offset=".5" stop-color="${v.m}"/><stop offset="1" stop-color="${v.d}"/></linearGradient>
     <linearGradient id="tile-${c}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${v.l}"/><stop offset="1" stop-color="${v.m}"/></linearGradient>`;
   }
-  g += `<linearGradient id="tileW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#eee6d8"/></linearGradient>
-  <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ece3d2"/></linearGradient>
+  g += `<linearGradient id="tileW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--b-tile1)"/><stop offset="1" style="stop-color:var(--b-tile2)"/></linearGradient>
+  <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--b-panel1)"/><stop offset="1" style="stop-color:var(--b-panel2)"/></linearGradient>
   <radialGradient id="slotShade" cx=".5" cy=".42" r=".6"><stop offset=".5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></radialGradient>
   <radialGradient id="gCoin" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#fff5b8"/><stop offset=".5" stop-color="#ffd23f"/><stop offset="1" stop-color="#f09a0a"/></radialGradient>
   <radialGradient id="gGlobe" cx=".38" cy=".32" r=".8"><stop offset="0" stop-color="#a8ecff"/><stop offset=".5" stop-color="#2bb0ff"/><stop offset="1" stop-color="#0a5fc4"/></radialGradient>
@@ -62,6 +65,16 @@ export function globalDefs(): string {
   <linearGradient id="gPlain" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fb4ff"/><stop offset="1" stop-color="#3a5fb0"/></linearGradient>
   <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>`;
   return `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${g}</defs></svg>`;
+}
+
+// ---------- colour-blind symbols ----------
+/** A shape of radius about r around (0, 0): circle for green, triangle for red, square for yellow, diamond for blue. */
+export function symbolPath(c: Color, r: number): string {
+  const f = (n: number) => n.toFixed(2);
+  if (c === 'green') return `M${f(-r)},0 a${f(r)},${f(r)} 0 1 0 ${f(2 * r)},0 a${f(r)},${f(r)} 0 1 0 ${f(-2 * r)},0Z`;
+  if (c === 'red') return `M0,${f(-r * 1.1)} L${f(r)},${f(r * 0.75)} L${f(-r)},${f(r * 0.75)}Z`;
+  if (c === 'yellow') return `M${f(-r * 0.85)},${f(-r * 0.85)} h${f(r * 1.7)} v${f(r * 1.7)} h${f(-r * 1.7)}Z`;
+  return `M0,${f(-r * 1.15)} L${f(r * 1.05)},0 L0,${f(r * 1.15)} L${f(-r * 1.05)},0Z`;
 }
 
 // ---------- pawns ----------
@@ -91,7 +104,8 @@ export function pawnArt(c: Color): string {
 <ellipse cx="0" cy="-4.1" rx="5.8" ry="2.2" fill="${v.m}"/>
 <g fill="url(#ph-${c})">${PAWN_HEAD}</g>
 <path d="M-5.8,7 C-5.6,3.2 -3.4,1 -2.6,-1.8" stroke="#fff" stroke-opacity=".45" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-<ellipse cx="-2.4" cy="-11" rx="2.6" ry="1.6" fill="#fff" opacity=".85"/></g>`;
+<ellipse cx="-2.4" cy="-11" rx="2.6" ry="1.6" fill="#fff" opacity=".85"/>
+<path class="sym" d="${symbolPath(c, 3.3)}" transform="translate(0 4)" fill="#fff" stroke="${v.d}" stroke-width=".9" stroke-linejoin="round"/></g>`;
 }
 export const pawnSVG = (c: Color) => `<svg viewBox="-15 -17 30 34">${pawnArt(c)}</svg>`;
 export const twinsSVG = (c: Color) =>
@@ -101,7 +115,7 @@ export const twinsSVG = (c: Color) =>
 function tile(x: number, y: number, f: string): string {
   const px = x * S + 1.5, py = y * S + 1.5, w = S - 3;
   const fill = f === 'w' ? 'url(#tileW)' : `url(#tile-${f})`;
-  return `<rect x="${px}" y="${py + 1.8}" width="${w}" height="${w}" rx="6" fill="#5a4320" opacity=".2"/><rect x="${px}" y="${py}" width="${w}" height="${w}" rx="6" fill="${fill}"/>`;
+  return `<rect x="${px}" y="${py + 1.8}" width="${w}" height="${w}" rx="6" style="fill:var(--b-shade)" opacity=".2"/><rect x="${px}" y="${py}" width="${w}" height="${w}" rx="6" fill="${fill}"/>`;
 }
 
 function base(c: Color): string {
@@ -109,7 +123,8 @@ function base(c: Color): string {
   let s = `<rect x="${bx + 3}" y="${by + 3}" width="234" height="234" rx="20" fill="url(#base-${c})"/>
   <path d="M${bx + 23},${by + 3} h194 a20,20 0 0 1 20,20 v40 C${bx + 170},${by + 50} ${bx + 70},${by + 40} ${bx + 3},${by + 90} v-67 a20,20 0 0 1 20,-20z" fill="#fff" opacity=".13"/>
   <rect x="${bx + 38}" y="${by + 41}" width="164" height="164" rx="30" fill="#000" opacity=".2"/>
-  <rect x="${bx + 38}" y="${by + 36}" width="164" height="164" rx="30" fill="url(#panel)"/>`;
+  <rect x="${bx + 38}" y="${by + 36}" width="164" height="164" rx="30" fill="url(#panel)"/>
+  <path class="sym" d="${symbolPath(c, 12)}" transform="translate(${bx + 120} ${by + 118})" fill="${v.m}" opacity=".7"/>`;
   for (const [sx, sy] of SLOT) {
     s += `<circle cx="${bx + sx}" cy="${by + sy}" r="25" fill="${v.t}"/><circle cx="${bx + sx}" cy="${by + sy}" r="25" fill="url(#slotShade)"/><circle cx="${bx + sx}" cy="${by + sy}" r="25" fill="none" stroke="${v.m}" stroke-opacity=".55" stroke-width="2.5"/>`;
   }
@@ -117,11 +132,12 @@ function base(c: Color): string {
 }
 
 // Path arrows in a printed-board style: thin ink lines with open arrowheads.
-const INK = '#3b2a17';
+/** Arrow ink, from the theme. */
+const INK = 'var(--b-ink)';
 const head = (x: number, y: number, ang: number, size = 7) =>
-  `<path d="M${-size},${-size * 0.75} L0,0 L${-size},${size * 0.75}" fill="none" stroke="${INK}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${ang.toFixed(1)})"/>`;
+  `<path d="M${-size},${-size * 0.75} L0,0 L${-size},${size * 0.75}" fill="none" style="stroke:${INK}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${ang.toFixed(1)})"/>`;
 const deg = (dx: number, dy: number) => (Math.atan2(dy, dx) * 180) / Math.PI;
-const line = (d: string) => `<path d="${d}" fill="none" stroke="${INK}" stroke-width="3" stroke-linecap="round"/>`;
+const line = (d: string) => `<path d="${d}" fill="none" style="stroke:${INK}" stroke-width="3" stroke-linecap="round"/>`;
 
 /** A short diagonal arrow across each inner corner, where the track jumps into the next arm. */
 function turnArrows(): string {
@@ -156,7 +172,7 @@ function startChevrons(): string {
     const ang = deg(b[0] - a[0], b[1] - a[1]);
     for (const k of [-8, 0, 8]) {
       const dx = Math.cos((ang * Math.PI) / 180) * k, dy = Math.sin((ang * Math.PI) / 180) * k;
-      s += `<path d="M-3.5,-5 L1.5,0 L-3.5,5" fill="none" stroke="${INK}" stroke-opacity=".55" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" transform="translate(${(x + dx).toFixed(1)} ${(y + dy).toFixed(1)}) rotate(${ang})"/>`;
+      s += `<path d="M-3.5,-5 L1.5,0 L-3.5,5" fill="none" style="stroke:${INK}" stroke-opacity=".55" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" transform="translate(${(x + dx).toFixed(1)} ${(y + dy).toFixed(1)}) rotate(${ang})"/>`;
     }
   }
   return s;
@@ -179,8 +195,8 @@ function homeArrows(c: Color): string {
 
 // ---------- the palace (board centre) ----------
 
-const STONE = '#f6ecd6';
-const STONE_D = '#cdb994';
+const STONE = 'var(--b-stone)';
+const STONE_D = 'var(--b-stone-d)';
 /** Which way each colour's gate faces, as a rotation of the top gate around the board centre. */
 const GATE_TURN: Record<Color, number> = { red: 0, yellow: 90, blue: 180, green: 270 };
 
@@ -189,30 +205,30 @@ export function palaceSVG(): string {
   let s = `<polygon points="240,240 240,360 300,300" fill="url(#base-green)"/><polygon points="240,240 360,240 300,300" fill="url(#base-red)"/>
   <polygon points="360,240 360,360 300,300" fill="url(#base-yellow)"/><polygon points="240,360 360,360 300,300" fill="url(#base-blue)"/>
   <path d="M252,252 L348,348 M348,252 L252,348" stroke="#fff" stroke-opacity=".45" stroke-width="2"/>
-  <rect x="244" y="245.5" width="112" height="112" rx="5" fill="none" stroke="${STONE_D}" stroke-width="5"/>
-  <rect x="244" y="244" width="112" height="112" rx="5" fill="none" stroke="${STONE}" stroke-width="5"/>`;
+  <rect x="244" y="245.5" width="112" height="112" rx="5" fill="none" style="stroke:${STONE_D}" stroke-width="5"/>
+  <rect x="244" y="244" width="112" height="112" rx="5" fill="none" style="stroke:${STONE}" stroke-width="5"/>`;
   // Battlements on each wall, leaving the middle for the gatehouse.
   for (const turn of [0, 90, 180, 270]) {
     let m = '';
-    for (const x of [259, 271, 329, 341]) m += `<rect x="${x - 3}" y="239.5" width="6" height="6" rx="1" fill="${STONE}" stroke="${STONE_D}" stroke-width=".8"/>`;
+    for (const x of [259, 271, 329, 341]) m += `<rect x="${x - 3}" y="239.5" width="6" height="6" rx="1" style="fill:${STONE};stroke:${STONE_D}" stroke-width=".8"/>`;
     s += `<g transform="rotate(${turn} 300 300)">${m}</g>`;
   }
   // A gatehouse facing each colour's home lane, with a door in that colour.
   for (const [c, turn] of Object.entries(GATE_TURN) as [Color, number][]) {
-    s += `<g transform="rotate(${turn} 300 300)"><rect x="288" y="237" width="24" height="14" rx="3" fill="${STONE_D}" transform="translate(0 1.2)"/>
-    <rect x="288" y="237" width="24" height="14" rx="3" fill="${STONE}"/>
+    s += `<g transform="rotate(${turn} 300 300)"><rect x="288" y="237" width="24" height="14" rx="3" style="fill:${STONE_D}" transform="translate(0 1.2)"/>
+    <rect x="288" y="237" width="24" height="14" rx="3" style="fill:${STONE}"/>
     <path d="M294.5,251 V245 a5.5,5.5 0 0 1 11,0 V251Z" fill="${PALETTE[c].d}"/><path d="M300,240 V251" stroke="${PALETTE[c].m}" stroke-width="1.2"/></g>`;
   }
   // Corner towers seen from above: stone ring, crenels, a gold roof.
   // Set in from the corners, clear of the arrows where the track turns.
   for (const [x, y] of [[252, 252], [348, 252], [348, 348], [252, 348]] as const) {
-    s += `<circle cx="${x}" cy="${y + 1.5}" r="9" fill="${STONE_D}"/><circle cx="${x}" cy="${y}" r="9" fill="${STONE}"/>
-    <circle cx="${x}" cy="${y}" r="7.8" fill="none" stroke="${STONE_D}" stroke-width="2.4" stroke-dasharray="2.4 2.2"/>
+    s += `<circle cx="${x}" cy="${y + 1.5}" r="9" style="fill:${STONE_D}"/><circle cx="${x}" cy="${y}" r="9" style="fill:${STONE}"/>
+    <circle cx="${x}" cy="${y}" r="7.8" fill="none" style="stroke:${STONE_D}" stroke-width="2.4" stroke-dasharray="2.4 2.2"/>
     <circle cx="${x}" cy="${y}" r="5.2" fill="url(#gCoin)" stroke="#d58a06" stroke-width=".8"/><circle cx="${x - 1.6}" cy="${y - 1.8}" r="1.5" fill="#fff" opacity=".7"/>`;
   }
   // The keep: the home star sits on its golden roof.
-  s += `<circle cx="300" cy="302.5" r="23" fill="#000" opacity=".18"/><circle cx="300" cy="300" r="23" fill="${STONE}"/>
-  <circle cx="300" cy="300" r="21" fill="none" stroke="${STONE_D}" stroke-width="3.4" stroke-dasharray="3.4 2.6"/>
+  s += `<circle cx="300" cy="302.5" r="23" fill="#000" opacity=".18"/><circle cx="300" cy="300" r="23" style="fill:${STONE}"/>
+  <circle cx="300" cy="300" r="21" fill="none" style="stroke:${STONE_D}" stroke-width="3.4" stroke-dasharray="3.4 2.6"/>
   <circle cx="300" cy="300" r="15.5" fill="url(#gCoin)" stroke="#d58a06" stroke-width="1"/>
   <path d="${starPath(300, 301, 9.5, 4.2)}" fill="#fff6c8" stroke="#d58a06" stroke-width="1.1"/>
   <circle cx="294.5" cy="294" r="2.4" fill="#fff" opacity=".6"/>`;
@@ -221,7 +237,7 @@ export function palaceSVG(): string {
 
 /** The static board plus empty layers for the board view to fill. */
 export function boardSVG(): string {
-  let s = `<svg viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg"><rect width="600" height="600" fill="#d6cbb6"/>`;
+  let s = `<svg viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg"><rect width="600" height="600" style="fill:var(--b-bg)"/>`;
   const fill = new Map<string, string>();
   TRACK.forEach(([x, y]) => fill.set(`${x},${y}`, 'w'));
   for (const c of COLORS) {
@@ -237,7 +253,7 @@ export function boardSVG(): string {
   for (const i of SAFE_SQUARES) {
     const [x, y] = TRACK[i]!;
     const st = starts.has(i);
-    s += `<path d="${starPath(x * S + 20, y * S + 21, 12, 5.2)}" fill="${st ? '#fff' : '#cbbfa9'}" ${st ? 'fill-opacity=".92"' : ''}/>`;
+    s += `<path d="${starPath(x * S + 20, y * S + 21, 12, 5.2)}" ${st ? 'fill="#fff" fill-opacity=".92"' : 'style="fill:var(--b-star)"'}/>`;
   }
   s += tipArrows() + startChevrons();
   for (const c of COLORS) s += homeArrows(c);
