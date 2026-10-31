@@ -22,9 +22,10 @@ describe('board themes', () => {
     for (const v of used) expect(base, v).toContain(v);
   });
 
-  for (const t of THEMES.filter((t) => t.id !== 'classic')) {
+  // Thumbnails draw a board inside an element with data-theme, so Classic has its own block too.
+  for (const t of THEMES) {
     it(`${t.name} sets every board colour`, () => {
-      expect(vars(blockOf(`:root[data-theme=${t.id}]{`))).toEqual(base);
+      expect(vars(blockOf(`[data-theme=${t.id}]{`))).toEqual(base);
     });
   }
 });

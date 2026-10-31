@@ -1,13 +1,13 @@
 // The Store (#35): four shelves of skins (pawns, dice, throwers, boards). Every skin is on show; locked
 // ones say how they unlock. Tap a skin to preview it, then USE it. Skins only change the look.
 import { COLORS } from '../engine';
-import { icons, pawnSVG } from './art';
+import { icons, miniBoard, pawnSVG } from './art';
 import { BoardView } from './boardView';
 import { THROWER_ART, dieMarkup, rollDie } from './dice';
 import { sfx } from './sfx';
 import { SHELVES, UNLOCK_ALL, buy, equip, equipped, isUnlocked, lockLabel, shelfSkins, type Shelf, type Skin } from './skins';
 import { settings } from './settings';
-import { THEMES, applyLook } from './themes';
+import { applyLook } from './themes';
 import type { ThrowStyle } from './settings';
 
 /** A board for previews: a few pawns out on the track. */
@@ -23,7 +23,7 @@ function thumb(s: Skin): string {
   if (s.shelf === 'pawn') return `<span class="thp">${pawnSVG('blue', s.id)}${pawnSVG('red', s.id)}</span>`;
   if (s.shelf === 'dice') return dieMarkup(6, 34, undefined, undefined, undefined, s.id);
   if (s.shelf === 'thrower') return `<span class="tht">${THROWER_ART[s.id] ?? dieMarkup(5, 30)}</span>`;
-  return `<i class="thb" style="background:${THEMES.find((t) => t.id === s.id)?.swatch}"></i>`;
+  return miniBoard(s.id);
 }
 
 export function storeScreen(onBack: () => void): HTMLElement {

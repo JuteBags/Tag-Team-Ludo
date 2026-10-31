@@ -1,6 +1,6 @@
 // Pop-up sheets on the home screen: Settings and Stats. Back (or the close button) dismisses them.
 import { COLORS } from '../engine';
-import { PALETTE, symbolPath } from './art';
+import { PALETTE, miniBoard, symbolPath } from './art';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
 import { EMPTY_STATS, loadStats, resetStats, type Stats } from './store';
@@ -64,7 +64,7 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
   const ov = sheet(
     host,
     'Settings',
-    `<div class="set"><span>Board</span><div class="themes">${usableThemes().map((t) => `<button class="th${t.id === settings.theme ? ' on' : ''}" data-t="${t.id}"><i style="background:${t.swatch}"></i>${t.name}</button>`).join('')}</div></div>
+    `<div class="set"><span>Board</span><div class="themes">${usableThemes().map((t) => `<button class="th${t.id === settings.theme ? ' on' : ''}" data-t="${t.id}">${miniBoard(t.id)}${t.name}</button>`).join('')}</div></div>
     <div class="set">${sw('doubles', 'Doubles', settings.doubles)}<small class="qh">${DOUBLES_HINT[String(settings.doubles) as 'true' | 'false']}</small></div>
     <div class="set">${sw('sym', `Colour-blind symbols ${symbolRow()}`, settings.symbols)}</div>
     <div class="set"><span>Which face of the die counts?</span>${tg('face', [['top', `${faceIcon(true)}The top`, settings.diceFace === 'top'], ['front', `${faceIcon(false)}The front`, settings.diceFace === 'front']])}</div>
@@ -102,7 +102,7 @@ export async function statsSheet(host: HTMLElement) {
     empty
       ? `<div class="empty"><b class="disp">No games yet</b><p class="sub">Play a game vs Computer and your wins, kills and best place show up here.</p></div>`
       : `<p class="sub">vs Computer, on this device</p>
-    <div class="stats">${cell(s.played, 'Games')}${cell(s.wins, 'Wins')}${cell(rate, 'Win rate')}${cell(best, 'Best place')}${cell(s.kills, 'Kills')}${cell(s.pairs, 'Pairs formed')}</div>
+    <div class="stats">${cell(s.played, 'Games')}${cell(s.wins, 'Wins')}${cell(rate, 'Win rate')}${cell(best, 'Best place')}${cell(s.streak, 'Win streak')}${cell(s.bestStreak, 'Best streak')}${cell(s.kills, 'Kills')}${cell(s.sixes, 'Sixes')}${cell(s.pairs, 'Pairs formed')}</div>
     <p class="sub">With friends: ${s.friends} game${s.friends === 1 ? '' : 's'}</p>
     <button class="reset" data-act="reset">Reset stats</button>`,
   );

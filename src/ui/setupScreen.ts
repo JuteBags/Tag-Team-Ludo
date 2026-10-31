@@ -2,7 +2,7 @@
 // in With friends, how well bots play), a roll for order, then picking houses one by one in that order. The highest roller
 // picks first and plays first. Steps with nothing to choose are skipped. Rules live in setup.ts.
 import { COLORS, SEATS, type BotLevel, type Color, type Seat } from '../engine';
-import { PROFILES, cssVars, icons, pawnSVG } from './art';
+import { PROFILES, avatarSVG, cssVars, icons, pawnSVG } from './art';
 import { rollDie } from './dice';
 import { saveSetting, settings } from './settings';
 import { NAME_MAX, cleanName, defaultName, pickSequence, pickable, previewLayout, rankRolls, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
@@ -161,6 +161,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       const botIndex = mode === 'pvc' ? Number(slot.slice(1)) - 2 : botSeen++;
       const label = slot === 'empty' ? 'Empty' : slot === 'bot' || (mode === 'pvc' && slot !== 'p1') ? BOT_NAMES[botIndex] ?? 'Bot' : mode === 'pvc' ? 'You' : `Player ${slot.slice(1)}`;
       h.classList.toggle('empty', slot === 'empty');
+      h.classList.toggle('pair1', rules.houses === 2 && slot === 'p1');
       h.querySelector('b')!.textContent = label;
     });
   };
@@ -360,6 +361,9 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       b.classList.toggle('can', options.includes(c));
       b.disabled = !options.includes(c);
       b.querySelector('b')!.textContent = owner !== undefined ? people[owner]!.name : options.includes(c) ? 'Pick' : '';
+      b.querySelector('.owner')?.remove();
+      // The owner's face, in the colour of the house they picked first.
+      if (owner !== undefined) b.insertAdjacentHTML('beforeend', `<span class="owner">${avatarSVG(COLORS.find((x) => picks[x] === owner)!)}</span>`);
     });
     if (picker === undefined) return ready();
     const second = rules.houses === 2 && COLORS.some((c) => picks[c] === picker);

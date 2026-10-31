@@ -68,15 +68,19 @@ export interface Stats {
   pairs: number;
   /** Games played in "With friends". */
   friends: number;
+  /** Sixes you rolled, and wins in a row (now and best). */
+  sixes: number;
+  streak: number;
+  bestStreak: number;
 }
 
 const STATS = 'ludo-stats';
-export const EMPTY_STATS: Stats = { played: 0, wins: 0, best: 0, kills: 0, pairs: 0, friends: 0 };
+export const EMPTY_STATS: Stats = { played: 0, wins: 0, best: 0, kills: 0, pairs: 0, friends: 0, sixes: 0, streak: 0, bestStreak: 0 };
 export const loadStats = () => read<Partial<Stats>>(STATS).then((s) => ({ ...EMPTY_STATS, ...s }));
 export const resetStats = () => drop(STATS);
 
 /** Adds one finished game to the totals. */
-export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; pairs: number }) {
+export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; pairs: number; sixes?: number }) {
   const s = await loadStats();
   if (g.mode === 'pvp') s.friends++;
   else {
@@ -85,6 +89,9 @@ export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills:
     s.best = s.best ? Math.min(s.best, g.place) : g.place;
     s.kills += g.kills;
     s.pairs += g.pairs;
+    s.sixes += g.sixes ?? 0;
+    s.streak = g.place === 1 ? s.streak + 1 : 0;
+    s.bestStreak = Math.max(s.bestStreak, s.streak);
   }
   await write(STATS, s);
 }
