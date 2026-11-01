@@ -96,3 +96,16 @@ export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills:
   await write(STATS, s);
   return s;
 }
+
+// ---------- daily check-in (checkin.ts) ----------
+
+/** The last day collected (local YYYY-MM-DD), the days in a row up to it, and the longest run so far. */
+export interface CheckIn {
+  last: string;
+  streak: number;
+  best: number;
+}
+
+const CHECKIN = 'ludo-checkin';
+export const loadCheckIn = () => read<CheckIn>(CHECKIN);
+export const saveCheckIn = (c: CheckIn) => write(CHECKIN, c);
