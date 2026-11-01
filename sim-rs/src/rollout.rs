@@ -128,3 +128,107 @@ pub fn evaluate(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evalu
     let means: Vec<f64> = res.iter().map(|r| r.iter().sum::<f64>() / n as f64).collect();
     Evaluation { cands: cands.into_iter().zip(means).map(|((k, t), m)| (k, t, m)).collect(), base: b, pick: best }
 }
+
+/// Playouts per round of the race; a candidate can drop out after each round.
+const BATCH: usize = 16;
+/// A candidate stops once its paired deficit to the leader is this many standard errors.
+const Z_DROP: f64 = 3.0;
+/// The race stops when every remaining candidate is within this of the leader (with 2 se): a near tie
+/// is worth less than the playouts it would take to break it.
+const EPS: f64 = 0.002;
+
+/// The position key with each colour's tokens sorted: two moves of different but interchangeable tokens
+/// (two tokens leaving base, two tokens on one square) lead to the same position.
+fn canon_key(t: &Game) -> crate::search::Key {
+    let mut k = leaf_key(t);
+    for j in 0..t.b.n {
+        k[36 + 4 * j..40 + 4 * j].sort_unstable();
+    }
+    k
+}
+
+/// Paired mean and standard error of res[c] - res[d] over their common playouts.
+fn paired(a: &[f64], b: &[f64]) -> (f64, f64) {
+    let n = a.len().min(b.len());
+    let mean = (0..n).map(|i| a[i] - b[i]).sum::<f64>() / n as f64;
+    let var = (0..n).map(|i| (a[i] - b[i] - mean).powi(2)).sum::<f64>() / (n.max(2) - 1) as f64;
+    (mean, (var / n as f64).sqrt())
+}
+
+/// The rollout player with adaptive playouts (successive elimination, a racing bandit): the distinct
+/// candidates (by canon_key) are played out in rounds of BATCH paired playouts (playout i of every
+/// candidate on the same dice streams, as in evaluate); after each round a candidate whose paired deficit
+/// to the leader exceeds Z_DROP standard errors stops, and the race ends with one candidate left, a near
+/// tie (EPS), or `nmax` playouts each. Base's move is left only on a significant (Z) paired advantage,
+/// as in choose. Clear decisions cost a few rounds, so the playouts go to the close ones.
+pub fn choose_race(g: &Game, rng: &mut Rng, nmax: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy) -> usize {
+    if g.moves.len() == 1 {
+        return 0;
+    }
+    let me = g.b.p[g.current].owner;
+    let seed = (rng.next() * 2_147_483_647.0) as i64;
+    let kb = base.choose(g, &mut Rng::seeded(seed ^ 0x0bad_5eed));
+    let mut cands: Vec<(usize, Game)> = Vec::new();
+    let mut keys = Vec::new();
+    let mut b = 0;
+    for k in 0..g.moves.len() {
+        let mut t = *g;
+        t.play(&g.moves.m[k]);
+        let key = canon_key(&t);
+        let pos = match keys.iter().position(|x| *x == key) {
+            Some(p) => p,
+            None => {
+                keys.push(key);
+                cands.push((k, t));
+                keys.len() - 1
+            }
+        };
+        if k == kb {
+            b = pos;
+        }
+    }
+    if cands.len() == 1 {
+        return kb;
+    }
+    let nc = cands.len();
+    let mut res: Vec<Vec<f64>> = vec![Vec::with_capacity(nmax); nc];
+    let mut active: Vec<usize> = (0..nc).collect();
+    let mut n = 0;
+    let mean = |r: &Vec<f64>| r.iter().sum::<f64>() / r.len() as f64;
+    while n < nmax && active.len() > 1 {
+        let m = BATCH.min(nmax - n);
+        for i in n..n + m {
+            let s = seed.wrapping_mul(7919).wrapping_add(i as i64);
+            for &c in &active {
+                let mut d = [Rng::seeded(s), Rng::seeded(s ^ 0x1111), Rng::seeded(s ^ 0x2222), Rng::seeded(s ^ 0x3333)];
+                let mut r = Rng::seeded(s ^ 0x1234_5678);
+                res[c].push(playout(cands[c].1, base, me, &mut d, &mut r, cut, eval));
+            }
+        }
+        n += m;
+        let lead = *active.iter().max_by(|&&x, &&y| mean(&res[x]).partial_cmp(&mean(&res[y])).unwrap()).unwrap();
+        let stats: Vec<(usize, f64, f64)> = active.iter().filter(|&&c| c != lead).map(|&c| {
+            let (mu, se) = paired(&res[c], &res[lead]);
+            (c, mu, se)
+        }).collect();
+        if stats.iter().all(|&(_, mu, se)| mu.abs() + 2.0 * se < EPS) {
+            break;
+        }
+        if n >= 2 * BATCH {
+            active.retain(|&c| c == lead || stats.iter().any(|&(d, mu, se)| d == c && mu + Z_DROP * se >= 0.0));
+        }
+    }
+    let lead = *active.iter().max_by(|&&x, &&y| mean(&res[x]).partial_cmp(&mean(&res[y])).unwrap()).unwrap();
+    let pick = if lead == b {
+        b
+    } else if !active.contains(&b) {
+        lead // base's move dropped out: some candidate beat it by Z_DROP > Z standard errors
+    } else {
+        let (mu, se) = paired(&res[lead], &res[b]);
+        if mu > Z * se { lead } else { b }
+    };
+    if std::env::var_os("LUDO_ROLLOUT_DEBUG").is_some() {
+        eprintln!("RACE me {me} moves {} cands {nc} base {b} pick {pick} n {n} left {} playouts {}", g.moves.len(), active.len(), res.iter().map(|r| r.len()).sum::<usize>());
+    }
+    if pick == b { kb } else { cands[pick].0 }
+}
