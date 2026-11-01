@@ -243,6 +243,15 @@ impl Evaluator {
             }
             Evaluator::Net(net) => net.owner_scores(g, people, &mut s),
         }
+        chances_from_scores(g, people, &mut s, out);
+        people
+    }
+}
+
+/// The end of ownerChances: softmax of the scores over the people still playing (scores by owner).
+pub fn chances_from_scores(g: &Game, people: usize, s: &mut [f64; 4], out: &mut [f64; 4]) {
+    let ps = g.b.players();
+    {
         let mut live = [false; 4];
         for p in ps {
             if !is_done(p) {
@@ -263,8 +272,39 @@ impl Evaluator {
         for o in 0..people {
             out[o] = s[o] / sum;
         }
-        people
     }
+}
+
+/// Leaf values for a batch of searches: leaves[i] are valued by evals[i] (ownerChances, by owner).
+/// CPU backend: every position on the thread pool; a GPU backend must give the same bits.
+pub fn batch_values(evals: &[&Evaluator], leaves: &[Vec<Game>]) -> Vec<Vec<[f64; 4]>> {
+    use rayon::prelude::*;
+    #[cfg(feature = "cuda")]
+    if GPU_ON.load(std::sync::atomic::Ordering::Relaxed) {
+        return crate::gpu::batch_values(evals, leaves);
+    }
+    let flat: Vec<(usize, &Game)> = leaves.iter().enumerate().flat_map(|(i, ls)| ls.iter().map(move |g| (i, g))).collect();
+    let vals: Vec<[f64; 4]> = flat
+        .par_iter()
+        .with_min_len(64)
+        .map(|&(i, g)| {
+            let mut v = [0.0; 4];
+            evals[i].owner_chances(g, &mut v);
+            v
+        })
+        .collect();
+    let mut it = vals.into_iter();
+    leaves.iter().map(|ls| it.by_ref().take(ls.len()).collect()).collect()
+}
+
+/// The GPU evaluator for batch_values (gpu.rs), when it is switched on.
+#[cfg(feature = "cuda")]
+static GPU_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Value the nets' leaves on the GPU from now on (linear rules stay on the CPU).
+#[cfg(feature = "cuda")]
+pub fn use_gpu(on: bool) {
+    GPU_ON.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// Per-thread scratch for the net (no large zero-filled stack arrays per evaluation).
@@ -288,7 +328,27 @@ thread_local! {
     }));
 }
 
+/// The net's weights for the GPU kernel: every layer as [inn, out, w offset, b offset] (trunk layers,
+/// then pool, then out) into one array of column-major weights and biases.
+pub struct Export {
+    pub weights: Vec<f64>,
+    pub layers: Vec<i32>,
+    pub ntrunk: usize,
+    pub inputs: Vec<usize>,
+}
+
 impl Net {
+    pub fn export(&self) -> Export {
+        let mut weights = Vec::new();
+        let mut layers = Vec::new();
+        for l in self.trunk.iter().chain([&self.pool, &self.out]) {
+            layers.extend_from_slice(&[l.inn as i32, l.out as i32, weights.len() as i32, (weights.len() + l.wt.len()) as i32]);
+            weights.extend_from_slice(&l.wt);
+            weights.extend_from_slice(&l.b);
+        }
+        Export { weights, layers, ntrunk: self.trunk.len(), inputs: self.inputs.clone() }
+    }
+
     fn owner_scores(&self, g: &Game, people: usize, s: &mut [f64; 4]) {
         SCRATCH.with(|sc| self.owner_scores_in(g, people, s, &mut sc.borrow_mut()))
     }

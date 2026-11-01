@@ -10,6 +10,13 @@ that position, so P(win) = softmax over people. Labels are only the games' real 
 split into train and validation by game, never by position. Prints validation loss next to a uniform
 baseline, first-place log-loss, the double-house slice and calibration; writes the weights as JSON for
 net.ts plus parity data for parity.ts; with --wandb also logs to W&B and checks parity.
+
+Residual mode (--rules <linear rules json> --alpha a): a person's score is net(x) + a * rules(x), where
+rules(x) is the frozen readable rules (linear.ts ownerScores: the hand features of the person's colours
+plus the turn rules, from the same inputs as --linear) and the loss runs on that sum; the net learns
+what the rules miss. The saved JSON is the net alone; play it as blend:<net>:<rules>:<a> (blend.ts).
+Parity: the net against net.ts as always, and the rules part against linear.ts on the same positions,
+so the blend (their sum, as blend.ts adds them) is checked through both.
 """
 import argparse, glob, json, math, os, struct, subprocess
 import numpy as np
@@ -73,6 +80,25 @@ def load(path):
     # Turns left in the game from this position, / 500 (an auxiliary target: how far from the end).
     tleft = ((turns_g[gi] - M[:, 1]) / 500).astype(np.float32)
     return X[ok], owner[ok], order[ok], left_g[gi][ok], gid[ok], D, mode_g[gi][ok], phase[ok], ok, tleft[ok]
+
+
+def load_expert(path):
+    """A ludo-expert file: per decision group, every candidate's resulting position and its paired playout
+    mean for the mover. Returns X [R,4,D], owner [R,4], group [R] (file-local), mover [R], mean [R]."""
+    buf = open(path, 'rb').read()
+    (hl,) = struct.unpack_from('<I', buf, 0)
+    head = json.loads(buf[4:4 + hl])
+    assert head.get('kind') == 'expert', f'{path} is not a ludo-expert file'
+    D, R = head['D'], head['rows']
+    off = 4 + hl
+    X = np.frombuffer(buf, np.float32, R * 4 * D, off).reshape(R, 4, D)
+    off += R * 4 * D * 4
+    OW = np.frombuffer(buf, np.int32, R * 4, off).reshape(R, 4).astype(np.int64)
+    off += R * 4 * 4
+    GR = np.frombuffer(buf, np.int32, R, off).astype(np.int64)
+    MV = np.frombuffer(buf, np.int32, R, off + 4 * R).astype(np.int64)
+    MN = np.frombuffer(buf, np.float32, R, off + 8 * R)
+    return X, OW, GR, MV, MN
 
 
 def load_targets(path, ok):
@@ -155,7 +181,18 @@ def main():
     ap.add_argument('--wandb', default='', help='W&B run name')
     ap.add_argument('--group', default='phase1-bootstrap')
     ap.add_argument('--max-games', type=int, default=0, help='train on only the first shards, up to about this many games')
+    ap.add_argument('--expert', default='', help='ludo-expert files (comma-separated globs): paired move comparisons, '
+                    'trained with the centred pair loss (each group: net values minus their mean vs playout means minus theirs)')
+    ap.add_argument('--expert-weight', type=float, default=1.0, help='weight of the (normalised) pair loss next to the PL on --shards')
+    ap.add_argument('--expert-groups', type=int, default=2048, help='decision groups per step for the pair loss')
+    ap.add_argument('--rules', default='', help='residual mode: frozen linear rules json added to the net score')
+    ap.add_argument('--alpha', type=float, default=0.0, help='residual mode: weight of --rules in the score (blend.ts alpha)')
+    ap.add_argument('--learn-temp', action='store_true', help='also learn one temperature tau on the whole score; at export it is folded into '
+                    "the net's out layer and alpha becomes tau * alpha (printed on the BLEND line)")
     a = ap.parse_args()
+    assert not (a.rules and a.linear), '--rules is for training a net as a residual over readable rules'
+    assert bool(a.rules) == (a.alpha != 0), '--rules and --alpha go together'
+    assert not (a.learn_temp and a.linear), '--learn-temp scales a net (its out layer)'
     dev = 'cuda' if torch.cuda.is_available() else 'cpu'
     commit = subprocess.run(['git', 'log', '-1', '--format=%h'], capture_output=True, text=True).stdout.strip()
     run = None
@@ -194,6 +231,76 @@ def main():
     TGt = TG[~val].to(dev) if TG is not None else None
     TLt = TL[~val].to(dev)
     Xv, OWv, Ov = X[val].to(dev), OW[val].to(dev), O[val].to(dev)
+    # Expert data (--expert): rows grouped by decision; 5% of the groups held out.
+    EX = None
+    if a.expert:
+        eparts, gofs = [], 0
+        for path in sorted({q for pat in a.expert.split(',') for q in glob.glob(pat)}):
+            ex, eo, eg, em, en = load_expert(path)
+            eparts.append((ex, eo, eg + gofs, em, en))
+            gofs += int(eg.max()) + 1 if len(eg) else 0
+        EXx = torch.from_numpy(np.concatenate([q[0] for q in eparts])).to(dev)
+        EXo = torch.from_numpy(np.concatenate([q[1] for q in eparts])).to(dev)
+        EXg = torch.from_numpy(np.concatenate([q[2] for q in eparts])).to(dev)
+        EXm = torch.from_numpy(np.concatenate([q[3] for q in eparts])).to(dev)
+        EXr = torch.from_numpy(np.concatenate([q[4] for q in eparts])).to(dev)
+        del eparts
+        G = int(EXg.max()) + 1
+        counts = torch.bincount(EXg, minlength=G)
+        starts = torch.cumsum(counts, 0) - counts
+        # centred playout means, and their mean square (the loss is divided by it: dimensionless, about 1 = no skill)
+        gmean_r = torch.zeros(G, device=dev).scatter_add_(0, EXg, EXr) / counts.clamp(min=1)
+        rc = EXr - gmean_r[EXg]
+        r_scale = (rc ** 2).mean().clamp(min=1e-8)
+        gval = (torch.arange(G, device=dev) % 20) == 0
+        EX = dict(x=EXx, o=EXo, g=EXg, m=EXm, rc=rc, counts=counts, starts=starts, G=G, gval=gval, scale=r_scale)
+        print(f'EXPERT rows {len(EXg)} groups {G} rc_rms {r_scale.sqrt().item():.4f}', flush=True)
+        if run:
+            run.config.update({'expert_n_rows': len(EXg), 'expert_n_groups': G})
+
+    def expert_rows(gids):
+        """Row indexes of the given decision groups (contiguous in the files)."""
+        c = EX['counts'][gids]
+        first = EX['starts'][gids]
+        rep_first = torch.repeat_interleave(first, c)
+        within = torch.arange(int(c.sum()), device=dev) - torch.repeat_interleave(torch.cumsum(c, 0) - c, c)
+        return rep_first + within
+
+    def pair_loss(gids, train=True):
+        """Centred pair loss on these groups (normalised), and the share of groups where the net's top candidate
+        is the playouts' top candidate."""
+        rows = expert_rows(gids)
+        x, ow, g, mv, rc = EX['x'][rows], EX['o'][rows], EX['g'][rows], EX['m'][rows], EX['rc'][rows]
+        sc, _ = score(x, ow)
+        # people still playing: any colour not home (encode.ts feature 2 = share of tokens home)
+        done_c = (x[:, :, 2] > 0.999) | (ow < 0)
+        live = torch.stack([((ow == o) & ~done_c).any(1) for o in range(4)], 1)
+        p = torch.softmax(sc.masked_fill(~live, -1e9), 1).gather(1, mv[:, None]).squeeze(1)
+        # group ids local to this batch
+        _, lg = torch.unique(g, return_inverse=True)
+        ng = int(lg.max()) + 1
+        cnt = torch.zeros(ng, device=dev).scatter_add_(0, lg, torch.ones_like(p))
+        vc = p - (torch.zeros(ng, device=dev).scatter_add_(0, lg, p) / cnt)[lg]
+        loss = ((vc - rc) ** 2).mean() / EX['scale']
+        with torch.no_grad():
+            neg = torch.full((ng,), -1e9, device=dev)
+            top_v = neg.scatter_reduce(0, lg, vc, 'amax')
+            top_r = neg.scatter_reduce(0, lg, rc, 'amax')
+            hit_v = (vc >= top_v[lg] - 1e-12) & (rc >= top_r[lg] - 1e-12)
+            agree = torch.zeros(ng, device=dev).scatter_add_(0, lg, hit_v.float()).clamp(max=1).mean()
+        return loss, agree
+
+    def expert_val():
+        net.eval()
+        vg = torch.nonzero(EX['gval']).squeeze(1)
+        ls, ag = [], []
+        with torch.no_grad():
+            for i in range(0, len(vg), 8192):
+                l, g_ = pair_loss(vg[i:i + 8192])
+                ls.append(l.item())
+                ag.append(g_.item())
+        net.train()
+        return sum(ls) / len(ls), sum(ag) / len(ag)
     Mv, PHv = MODE[val], PHASE[val]
     del X
 
@@ -217,19 +324,66 @@ def main():
         # A warm start keeps the starting net's shape and inputs.
         a.hidden, a.layers, inputs = len(js['trunk'][0]['b']), len(js['trunk']), js['inputs']
     net = Scorer(torch.tensor(inputs, device=dev), a.hidden, a.layers, linear=a.linear).to(dev)
+    # Residual mode: the frozen rules as one weight per input (hand features, then the 7 turn rules at the
+    # end of the encoding; a rule the json does not name gets 0), summed over a person's colours.
+    rules_w = None
+    if a.rules:
+        rj = json.load(open(a.rules))
+        assert rj.get('kind') == 'linear', f'{a.rules} is not readable rules'
+        wv = torch.zeros(D, dtype=torch.float64)
+        for i in range(F):
+            wv[i] = rj['weights'].get(HAND[i], 0.0)  # as linear.ts / parity.ts: a missing rule is 0
+        for j, name in enumerate(TURN_RULES):
+            wv[D - 7 + j] = rj['weights'].get(name, 0.0)
+        rules_w = wv
+
+    def rules_scores(x, ow, dtype=torch.float32):
+        c = x.to(dtype) @ rules_w.to(x.device, dtype)
+        return torch.stack([(c * (ow == o)).sum(1) for o in range(4)], 1)
+
+    # --learn-temp: score * exp(log_tau), one scalar (the rules are tuned to pick moves, not to be calibrated)
+    log_tau = torch.zeros((), device=dev, requires_grad=a.learn_temp)
+
+    def score(x, ow):
+        """The training score: the net's, plus alpha times the frozen rules' in residual mode, times tau."""
+        sc, mg = net(x, ow)
+        if rules_w is not None:
+            sc = sc + a.alpha * rules_scores(x, ow)
+        if a.learn_temp:
+            sc = sc * log_tau.exp()
+        return sc, mg
     if a.init:
         for l, j in [*zip(net.trunk, js['trunk']), (net.pool, js['pool']), (net.out, js['out'])]:
             l.weight.data = torch.tensor(j['W'], device=dev, dtype=torch.float32)
             l.bias.data = torch.tensor(j['b'], device=dev, dtype=torch.float32)
-    opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=1e-4)
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=a.epochs * math.ceil(len(Xt) / a.batch))
+    if a.learn_temp:
+        # Fit tau alone first (net frozen; a scalar needs far more than a few steps at the net's rate), then
+        # train it with the net in its own group at a higher rate.
+        opt_t = torch.optim.Adam([log_tau], lr=0.05)
+        n_fit = min(len(Xt), 65536)
+        for _ in range(300):
+            b = torch.randint(0, len(Xt), (n_fit,), device=dev)
+            with torch.no_grad():
+                base_sc, _ = net(Xt[b], OWt[b])
+                if rules_w is not None:
+                    base_sc = base_sc + a.alpha * rules_scores(Xt[b], OWt[b])
+            l_t = pl_rows(base_sc * log_tau.exp(), Ot[b])[0].mean()
+            opt_t.zero_grad()
+            l_t.backward()
+            opt_t.step()
+        print(f'TEMP fit tau {log_tau.exp().item():.4f} (net frozen)', flush=True)
+    groups = [{'params': list(net.parameters()), 'lr': a.lr, 'weight_decay': 1e-4}]
+    if a.learn_temp:
+        groups.append({'params': [log_tau], 'lr': 10 * a.lr, 'weight_decay': 0.0})
+    opt = torch.optim.AdamW(groups)
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=[g['lr'] for g in groups], total_steps=a.epochs * math.ceil(len(Xt) / a.batch))
 
     def evaluate():
         net.eval()
         losses, firsts, probs, wins = [], [], [], []
         with torch.no_grad():
             for i in range(0, len(Xv), 65536):
-                sc, _ = net(Xv[i:i + 65536], OWv[i:i + 65536])
+                sc, _ = score(Xv[i:i + 65536], OWv[i:i + 65536])
                 o = Ov[i:i + 65536]
                 l, lp = pl_rows(sc, o)
                 losses.append(l.cpu())
@@ -279,7 +433,7 @@ def main():
         net.eval()
         x, ow, o = Xv[:n], OWv[:n], Ov[:n]
         with torch.no_grad():
-            base = pl_rows(net(x, ow)[0], o)[0].mean().item()
+            base = pl_rows(score(x, ow)[0], o)[0].mean().item()
             rows = []
             for name, cols in GROUPS:
                 if not any(c in set(inputs) for c in cols):
@@ -287,7 +441,7 @@ def main():
                 xs = x.clone()
                 perm = torch.randperm(len(x), device=x.device)
                 xs[:, :, cols] = x[perm][:, :, cols]
-                rows.append([name, pl_rows(net(xs, ow)[0], o)[0].mean().item() - base])
+                rows.append([name, pl_rows(score(xs, ow)[0], o)[0].mean().item() - base])
         net.train()
         return sorted(rows, key=lambda r: -r[1])
 
@@ -296,7 +450,7 @@ def main():
         perm = torch.randperm(len(Xt), device=dev)
         for i in range(0, len(Xt), a.batch):
             b = perm[i:i + a.batch]
-            sc, mg = net(Xt[b], OWt[b])
+            sc, mg = score(Xt[b], OWt[b])
             l_pl = pl_rows(sc, Ot[b])[0].mean()
             if TGt is not None:
                 # Cross-entropy between the lambda-return targets and the net's chances over the people still playing.
@@ -307,6 +461,11 @@ def main():
                 loss = l_pl
             if a.aux_turns and net.last_turns is not None:
                 loss = loss + a.aux_turns * ((net.last_turns - TLt[b]) ** 2).mean()
+            if EX is not None:
+                tg = torch.nonzero(~EX['gval']).squeeze(1)
+                gids = tg[torch.randint(0, len(tg), (a.expert_groups,), device=dev)].unique()
+                l_x, _ = pair_loss(gids)
+                loss = loss + a.expert_weight * l_x
             if a.margin:
                 here = torch.stack([(OWt[b] == o).any(1) for o in range(4)], 1)
                 l_m = (((mg - Lt[b]) ** 2) * here).sum() / here.sum()
@@ -321,6 +480,11 @@ def main():
                 run.log({'train/loss_pl': l_pl.item(), 'train/loss_margin': l_m.item() if a.margin else 0.0,
                          'train/grad_norm': gn.item(), 'lr': sched.get_last_lr()[0]}, step=step)
         vl, vf, table, ece, by = evaluate()
+        if EX is not None:
+            xl, xa = expert_val()
+            by['val/expert_pair_loss'] = xl
+            by['val/expert_top_agree'] = xa
+            print(f'EXPERT val pair-loss {xl:.4f} (1 = no skill) top-agree {xa:.4f}', flush=True)
         vdh = by['val/loss_double_house']
         cal = ' '.join(f'{p:.2f}->{w:.2f}' for _, p, w, _ in table)
         print(f'EPOCH {ep + 1} train {l_pl.item():.4f} val {vl:.4f} first-logloss {vf:.4f} double-house {vdh:.4f} ece {ece:.4f} calib {cal}', flush=True)
@@ -329,6 +493,18 @@ def main():
                      'val/baseline_first': base_first, 'val/gain_vs_uniform': base_pl - vl, 'val/calib_ece': ece,
                      **by, **health()}, step=step)
 
+    if a.learn_temp:
+        # Fold tau into the net's out layer (its score is linear in it) and into alpha, so blend.ts plays the
+        # trained sum unchanged: tau * (net + alpha rules) = (tau net) + (tau alpha) rules.
+        tau = log_tau.exp().item()
+        with torch.no_grad():
+            net.out.weight.mul_(tau)
+            net.out.bias.mul_(tau)
+        a.alpha = a.alpha * tau
+        a.learn_temp = False  # score() now means the folded net
+        print(f'TEMP tau {tau:.4f} alpha -> {a.alpha:.4f}', flush=True)
+        if run:
+            run.summary.update({'residual/tau': tau, 'residual/alpha_folded': a.alpha})
     dump = lambda l: {'W': l.weight.detach().cpu().double().tolist(), 'b': l.bias.detach().cpu().double().tolist()}
     if a.linear:
         weights = {rule_name(i): w for i, w in zip(inputs, net.linear.weight.detach().cpu().double().flatten().tolist())}
@@ -349,6 +525,20 @@ def main():
     res = subprocess.run(['node', 'tools/ai/dist/parity.mjs', '--net', a.out], capture_output=True, text=True).stdout
     print(res.strip(), flush=True)
     par = json.loads(res.split('PARITY ', 1)[1]) if 'PARITY ' in res else {'max': float('nan'), 'ok': False}
+    if rules_w is not None:
+        # The rules part on the same positions, against linear.ts (the blend adds the two as blend.ts does).
+        rp = a.out + '.rules.json'
+        json.dump(json.load(open(a.rules)), open(rp, 'w'))
+        with torch.no_grad():
+            rs = rules_scores(x, ow, torch.float64).masked_fill(~present, float('nan'))
+        np.save(rp + '.parity-x.npy', x.cpu().numpy())
+        np.save(rp + '.parity-o.npy', ow.double().cpu().numpy())
+        np.save(rp + '.parity-s.npy', rs.cpu().numpy())
+        res_r = subprocess.run(['node', 'tools/ai/dist/parity.mjs', '--net', rp], capture_output=True, text=True).stdout
+        print('RULES ' + res_r.strip(), flush=True)
+        par_r = json.loads(res_r.split('PARITY ', 1)[1]) if 'PARITY ' in res_r else {'max': float('nan'), 'ok': False}
+        par = {'max': max(par['max'], par_r['max']), 'ok': par['ok'] and par_r['ok'], 'net': par, 'rules': par_r}
+        print(f"BLEND blend:{a.out}:{a.rules}:{a.alpha}", flush=True)
     if run:
         run.summary.update({'parity/max_abs_diff': par['max'], 'parity/ok': par['ok'], 'val/final_loss_pl': vl, 'val/final_ece': ece})
         cal_t = wandb.Table(columns=['bin', 'mean_pred', 'actual_rate', 'n'], data=table)

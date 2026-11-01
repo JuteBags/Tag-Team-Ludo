@@ -29,6 +29,8 @@ fn main() {
     let from: u64 = flags.get("from").map(|s| s.parse().unwrap()).unwrap_or(0);
     let format: u32 = flags.get("format").map(|s| s.parse().unwrap()).unwrap_or(ludo_sim::rng::FORMAT);
     let full = flags.contains_key("full");
+    // --dice fair: every face 1 in 6; default: the app's dice
+    let fair = flags.get("dice").map(|d| d == "fair").unwrap_or(false);
     let bench = flags.contains_key("bench");
     let all = modes();
     let mode_names: Vec<String> = match flags.get("modes") {
@@ -51,11 +53,11 @@ fn main() {
             let specs: Vec<&str> = (0..people).map(|o| policy_names[(g as usize + o) % policy_names.len()].as_str()).collect();
             let pols: Vec<Policy> = specs.iter().map(|s| Policy::parse(s)).collect();
             let first = (g as usize) % seats.len();
-            let r = play_traced(seats, *singles, &pols, first, game_seed, format, !bench, full);
+            let r = play_traced(seats, *singles, &pols, first, game_seed, format, !bench, full, fair);
             if bench {
                 String::new()
             } else {
-                json_line(g, game_seed, name, first, &specs, &r, full, format)
+                json_line(g, game_seed, name, first, &specs, &r, full, format, fair)
             }
         })
         .collect();

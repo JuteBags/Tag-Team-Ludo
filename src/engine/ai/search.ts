@@ -19,6 +19,12 @@ export interface SearchOptions {
   theirK?: number;
   /** Value v1 race positions (every token in a home column) exactly with the race database (race.ts). */
   race?: boolean;
+  /** ChanceProbCut-style cut (0 = off, exact search). A child that would be searched further (an extra
+   * roll in this turn, or the next turn) is first valued by the evaluator alone, its probe; children are
+   * searched best probe first, and one whose probe for the player choosing is at least `cut` below the
+   * best value searched so far keeps its probe. Not exact: a move the probe underrates by more than
+   * `cut` is missed. Values stay a function of the position, so the memo is unaffected. */
+  cut?: number;
 }
 
 const FACES = [1, 2, 3, 4, 5, 6];
@@ -46,6 +52,7 @@ export function searchValues(net: Evaluator, state: GameState, opts: SearchOptio
   const maxChance = opts.chance ?? 2;
   const theirK = opts.theirK ?? 3;
   const race = opts.race ?? false;
+  const cut = opts.cut ?? 0;
   const owners = Math.max(...state.players.map((p) => p.owner)) + 1;
   const root = state.current;
   const memo = new Map<string, Float64Array>();
@@ -64,10 +71,7 @@ export function searchValues(net: Evaluator, state: GameState, opts: SearchOptio
       let moves = s.moves;
       if (me !== rootOwner && theirK > 0 && moves.length > theirK) moves = [...moves].sort((a, b) => scoreMove(s, b) - scoreMove(s, a)).slice(0, theirK);
       v = new Float64Array(owners).fill(-1);
-      for (const m of moves) {
-        const c = node(move(s, m), who, turnsLeft, chance);
-        if (c[me]! > v[me]!) v = c;
-      }
+      for (const c of children(s, moves, who, turnsLeft, chance, me)) if (c[me]! > v[me]!) v = c;
     } else if (chance >= maxChance) {
       v = ownerValues(net, s, owners, race);
     } else {
@@ -81,12 +85,43 @@ export function searchValues(net: Evaluator, state: GameState, opts: SearchOptio
     return v;
   }
 
+  // Each move's child value, in `moves` order (see SearchOptions.cut).
+  function children(s: GameState, moves: Move[], who: number, turnsLeft: number, chance: number, me: number): Float64Array[] {
+    const ts = moves.map((m) => move(s, m));
+    if (cut <= 0) return ts.map((t) => node(t, who, turnsLeft, chance));
+    const deep = (t: GameState) => t.phase === 'roll' && (t.current === who ? chance < maxChance : turnsLeft > 1);
+    const vals = new Array<Float64Array>(ts.length);
+    const probes: [number, Float64Array][] = [];
+    let a = -1;
+    ts.forEach((t, i) => {
+      if (deep(t)) {
+        probes.push([i, ownerValues(net, t, owners, race)]);
+        searchStats.probes++;
+      } else {
+        vals[i] = node(t, who, turnsLeft, chance);
+        if (vals[i]![me]! > a) a = vals[i]![me]!;
+      }
+    });
+    probes.sort((x, y) => y[1][me]! - x[1][me]!);
+    for (const [i, p] of probes) {
+      if (p[me]! + cut <= a) {
+        vals[i] = p;
+        searchStats.cuts++;
+      } else {
+        vals[i] = node(ts[i]!, who, turnsLeft, chance);
+        if (vals[i]![me]! > a) a = vals[i]![me]!;
+      }
+    }
+    return vals;
+  }
+
   const me = state.players[root]!.owner;
-  return state.moves.map((m) => ({ move: m, value: node(move(state, m), root, depth, 0)[me]! }));
+  return children(state, state.moves, root, depth, 0, me).map((v, i) => ({ move: state.moves[i]!, value: v[me]! }));
 }
 
-/** How often sampling (temperature > 0) picked a move other than the best: exploration, counted for logs. */
-export const searchStats = { sampled: 0, offBest: 0 };
+/** How often sampling (temperature > 0) picked a move other than the best (exploration), and how many
+ * children the cut probed and kept at their probe: counted for logs. */
+export const searchStats = { sampled: 0, offBest: 0, probes: 0, cuts: 0 };
 
 /** The best move by the search; `temperature` > 0 samples moves by softmax of their values instead. */
 export function chooseExtreme(net: Evaluator, state: GameState, rng: Rng, opts?: SearchOptions, temperature = 0): Move {
