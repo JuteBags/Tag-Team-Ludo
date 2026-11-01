@@ -36,8 +36,7 @@ def run(arena, a, b, mode, seeds, dice, threads):
     cmd += ["--threads", str(threads)] if threads else []
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode:
-        sys.exit(f"ludo-arena failed ({proc.returncode}): {' '.join(cmd)}
-{proc.stderr}")
+        sys.exit(f"ludo-arena failed ({proc.returncode}): {' '.join(cmd)}\n{proc.stderr}")
     out = proc.stdout
     r = json.loads(next(l for l in out.splitlines() if l.startswith("ARENA "))[6:])
     p, n, even = r["wins"] / r["games"], r["games"], 1 / r["people"]
