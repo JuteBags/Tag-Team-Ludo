@@ -69,7 +69,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void): HTMLElement 
     if (!f) return;
     q('.rptext').textContent = f.caption;
     q('.rpdice').innerHTML = f.dice.map((d) => `<i>${dieMarkup(d, 22)}</i>`).join('');
-    q('.rpcount').textContent = frames.length > 1 ? `Move ${at} of ${frames.length - 1}` : '';
+    q('.rpcount').textContent = frames.length > 1 ? `Step ${at} of ${frames.length - 1}` : '';
     scrub.value = String(at);
   };
   /** Shows frame `to`: one step forward animates the move, anything else snaps there. */
@@ -129,11 +129,18 @@ export function replayScreen(rec: GameRecord, onClose: () => void): HTMLElement 
     void go(Number(scrub.value));
   });
   draw();
-  if (error) {
-    q('.rptext').textContent = 'This game could not be replayed to the end.';
-    q('.rpcount').textContent = error;
-  }
+  if (error) q('.rpcount').textContent = error;
   return el;
+}
+
+/** The replay of a record from outside (a link or storage): anything that still breaks lands on the broken-link screen. */
+export function safeReplayScreen(rec: GameRecord | null, onClose: () => void): HTMLElement {
+  if (!rec) return brokenLinkScreen(onClose);
+  try {
+    return replayScreen(rec, onClose);
+  } catch {
+    return brokenLinkScreen(onClose);
+  }
 }
 
 /** Shares the game as a link: the share menu on Android or the web, or copied to the clipboard. */

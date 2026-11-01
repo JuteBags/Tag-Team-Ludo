@@ -84,6 +84,6 @@ export function framesOf(rec: GameRecord): { frames: Frame[]; error?: string; st
   if (r.ok && (last.phase === 'over' || r.stopped)) {
     const order = ownerRanking(last);
     frames.push({ state: last, caption: `${s3(names[order[0]!] ?? 'Someone', 'win')}${r.stopped ? ' (the game ended early)' : ''}`, dice: [] });
-  }
+  } else frames.push({ state: last, caption: r.ok ? 'The record ends here' : 'The record is damaged from here', dice: [] });
   return { frames, error: r.ok ? undefined : r.error, stopped: r.ok && r.stopped };
 }

@@ -12,7 +12,7 @@ import { offerUpdate } from './update';
 import { offerCheckIn } from './checkin';
 import { decodeRecord, type GameRecord } from '../engine';
 import { linkPayload } from './replay';
-import { brokenLinkScreen, replayScreen } from './replayScreen';
+import { safeReplayScreen } from './replayScreen';
 
 const W = 390;
 const H = 844;
@@ -49,7 +49,7 @@ export function mountApp(root: HTMLElement) {
       setup(mode, 2);
     }));
   /** The replay of `rec`; `back` returns to where it was opened from. */
-  const watch = (rec: GameRecord, back: () => void) => stage.replaceChildren(replayScreen(rec, back));
+  const watch = (rec: GameRecord, back: () => void) => stage.replaceChildren(safeReplayScreen(rec, back));
   // Set while a game starts, so a double tap on Start or Play again can't open two games.
   let starting = false;
   const play = async (cfg: GameConfig, saved?: SavedGame) => {
@@ -90,13 +90,21 @@ export function mountApp(root: HTMLElement) {
     }
     return false;
   });
-  // A shared game's link (web): straight into its replay, or a friendly screen if it can't be opened.
-  const payload = linkPayload(location.hash);
-  if (payload !== null) {
+  // A shared game's link (web): straight into its replay, or a friendly screen if it can't be opened. Also
+  // for a link pasted into a tab that already has the game open.
+  const openLink = () => {
+    const payload = linkPayload(location.hash);
+    if (payload === null) return false;
+    // A game in progress stops here; it was saved at the start of its turn, so Continue picks it up.
+    if (game && stage.contains(game.el)) game.dispose();
+    game = null;
     const leave = () => {
       history.replaceState(null, '', location.pathname + location.search);
       void home();
     };
-    void decodeRecord(payload).then((rec) => stage.replaceChildren(rec ? replayScreen(rec, leave) : brokenLinkScreen(leave)));
-  } else void home();
+    void decodeRecord(payload).then((rec) => stage.replaceChildren(safeReplayScreen(rec, leave)));
+    return true;
+  };
+  addEventListener('hashchange', () => void openLink());
+  if (!openLink()) void home();
 }

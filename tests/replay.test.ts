@@ -52,6 +52,13 @@ describe('replay frames', () => {
     const { frames, error } = framesOf({ ...rec, events: rec.events.slice(0, 60) + 'j6' });
     expect(error).toBeTruthy();
     expect(frames.length).toBeGreaterThan(3);
+    expect(frames.at(-1)!.caption).toBe('The record is damaged from here');
+    // A record cut off without an end says where it ends, instead of looking frozen.
+    let n = 60;
+    while (!replay({ ...rec, events: rec.events.slice(0, n) }).ok) n--; // a cut between events, not inside a move
+    expect(framesOf({ ...rec, events: rec.events.slice(0, n) }).frames.at(-1)!.caption).toBe('The record ends here');
+    // A setup that can't be a game gives no frames at all (the screen shows the broken-link page).
+    expect(framesOf({ ...rec, seats: [] }).frames).toEqual([]);
   });
 });
 
