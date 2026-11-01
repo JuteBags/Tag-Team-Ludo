@@ -185,10 +185,12 @@ def main():
                     'trained with the centred pair loss (each group: net values minus their mean vs playout means minus theirs)')
     ap.add_argument('--expert-weight', type=float, default=1.0, help='weight of the (normalised) pair loss next to the PL on --shards')
     ap.add_argument('--expert-groups', type=int, default=2048, help='decision groups per step for the pair loss')
-    ap.add_argument('--expert-loss', default='pair', choices=['pair', 'choice'],
+    ap.add_argument('--expert-loss', default='pair', choices=['pair', 'choice', 'regret'],
                     help="pair: centred regression of the mover's chance on the playout means; choice: per group, "
-                         'cross-entropy of softmax(chance / tau) against softmax(playout mean / tau) (pick the move the playouts pick)')
-    ap.add_argument('--expert-tau', type=float, default=0.01, help='--expert-loss choice: temperature on both sides')
+                         'cross-entropy of softmax(chance / tau) against softmax(playout mean / tau) (pick the move the playouts pick); '
+                         'regret: per group, the playout mean given up by the policy softmax(chance / tau), over the rms of the playout means '
+                         '(big mistakes weigh most, near ties little)')
+    ap.add_argument('--expert-tau', type=float, default=0.01, help='--expert-loss choice/regret: softmax temperature on the chance of the mover')
     ap.add_argument('--level-weight', type=float, default=1.0, help='weight of the PL (outcome) loss on --shards')
     ap.add_argument('--anchor', type=float, default=0.0, help='L2 pull of every parameter toward its --init value')
     ap.add_argument('--freeze', default='', help='--linear: comma-separated rule names kept at their --init value')
@@ -295,7 +297,10 @@ def main():
             e = torch.exp(z - m[lg])
             return z - m[lg] - torch.log(torch.zeros(ng, device=dev).scatter_add(0, lg, e))[lg]
 
-        if a.expert_loss == 'choice':
+        if a.expert_loss == 'regret':
+            pi = torch.exp(group_log_softmax(vc / a.expert_tau))
+            loss = -(pi * rc).sum() / ng / EX['scale'].sqrt()
+        elif a.expert_loss == 'choice':
             t = torch.exp(group_log_softmax(rc / a.expert_tau))
             loss = -(t * group_log_softmax(vc / a.expert_tau)).sum() / ng
         else:
