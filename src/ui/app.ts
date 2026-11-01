@@ -13,6 +13,7 @@ import { offerCheckIn } from './checkin';
 import { decodeRecord, type GameRecord } from '../engine';
 import { linkPayload } from './replay';
 import { safeReplayScreen } from './replayScreen';
+import { benchScreen } from './bench';
 
 const W = 390;
 const H = 844;
@@ -94,7 +95,8 @@ export function mountApp(root: HTMLElement) {
   // for a link pasted into a tab that already has the game open.
   const openLink = () => {
     const payload = linkPayload(location.hash);
-    if (payload === null) return false;
+    const bench = location.hash === '#bench';
+    if (payload === null && !bench) return false;
     // A game in progress stops here; it was saved at the start of its turn, so Continue picks it up.
     if (game && stage.contains(game.el)) game.dispose();
     game = null;
@@ -102,7 +104,9 @@ export function mountApp(root: HTMLElement) {
       history.replaceState(null, '', location.pathname + location.search);
       void home();
     };
-    void decodeRecord(payload).then((rec) => stage.replaceChildren(safeReplayScreen(rec, leave)));
+    // The hidden Extreme speed test (#62), for timing a real phone.
+    if (bench) stage.replaceChildren(benchScreen(leave));
+    else void decodeRecord(payload!).then((rec) => stage.replaceChildren(safeReplayScreen(rec, leave)));
     return true;
   };
   addEventListener('hashchange', () => void openLink());
