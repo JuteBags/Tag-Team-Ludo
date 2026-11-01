@@ -56,6 +56,22 @@ def match(a, b, seeds, workers, base=0, mode='2p'):
     return w / g, 1.96 * se, g
 
 
+def save(run, name, files, metadata, workers):
+    """Off the box at once (a box can die any time): `files` (name in artifact -> local path) as one W&B
+    artifact. Shards and lambda targets are gzipped in parallel first; W&B uploads in the background and
+    stores each file once across artifacts (content-addressed), so a file saved twice costs nothing."""
+    big = [f for f in files.values() if f.endswith(('.bin', '.targets'))]
+    if big:
+        subprocess.run(f"printf '%s\\n' {' '.join(big)} | xargs -P {workers} -n 1 nice -n 10 gzip -1 -k -f", shell=True, check=False)
+    import wandb as _wb
+    art = _wb.Artifact(name, type='generation', metadata=metadata)
+    for key, f in files.items():
+        gz = f.endswith(('.bin', '.targets'))
+        if pathlib.Path(f + '.gz' if gz else f).exists():
+            art.add_file(f + '.gz' if gz else f, name=key + '.gz' if gz else key)
+    run.log_artifact(art)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--start', required=True, help='Extreme net to start from')
@@ -144,6 +160,8 @@ def main():
         st['evolved0'] = True
         st.pop('vs_hard_current', None)
         state_file.write_text(json.dumps(st, indent=1))
+        save(run, f'{a.wandb}-gen0-data', {'rules.json': st['rules'], 'rules.json.blend.json': st['rules'] + '.blend.json', 'state.json': str(state_file)},
+             {'gen': 0, 'alpha': st['alpha'], 'commit': commit}, a.workers)
     if 'vs_hard_current' not in st or st.get('check_mode', '2p') != a.check_mode:
         st['vs_hard_current'] = match(spec(st['current'], st.get('rules'), st.get('alpha')), f'net:{a.hard}:1', a.seeds, a.workers, base=10_000_000, mode=a.check_mode)[0]
         st['check_mode'] = a.check_mode
@@ -176,6 +194,9 @@ def main():
             # Off-best share grows with the temperature; move it toward the target, at most 2x per generation.
             st['temp'] = temp * min(2.0, max(0.5, (a.explore / max(explored, 1e-3)) ** 0.7))
         t_play = time.time() - t0
+        if todo:  # this run played them: save the games before the learn/evolve/check phases
+            save(run, f'{a.wandb}-gen{k}-games', {f.name: str(f) for f in sorted(gd.glob('shard-*.bin'))},
+                 {'gen': k, 'pool': pool, 'commit': commit, 'temp': temp}, a.workers)
         # 2. learn: the last --replay generations' games that this ladder played (this one included)
         new = gd / 'net.json'
         shards = ','.join(f'{d}/gen-{j}/shard-*.bin' for j in range(max(1, k - a.replay + 1), k + 1)
@@ -234,18 +255,14 @@ def main():
         st['gen'] = k
         st['history'].append(line)
         state_file.write_text(json.dumps(st, indent=1))
-        # Off the box at once (a box can die any time): this generation's games, net and state as one
-        # W&B artifact. Shards are gzipped in parallel first; W&B uploads in the background.
-        subprocess.run(f'ls {gd}/shard-*.bin | xargs -P {a.workers} -n 1 nice -n 10 gzip -1 -k -f', shell=True, check=False)
-        import wandb as _wb
-        art = _wb.Artifact(f'{a.wandb}-gen{k}-data', type='generation', metadata=line | {'pool': pool, 'commit': commit})
-        for f in sorted(gd.glob('shard-*.bin.gz')):
-            art.add_file(str(f))
-        art.add_file(str(new), name='net.json')
-        art.add_file(str(state_file), name='state.json')
+        # This generation as one artifact: games (+ lambda targets), net, state, evolved rules, residual blend.
+        files = {f.name: str(f) for f in sorted(gd.glob('shard-*.bin')) + sorted(gd.glob('shard-*.bin.targets'))}
+        files |= {'net.json': str(new), 'state.json': str(state_file)}
         if new_rules:
-            art.add_file(new_rules, name='rules.json')
-        run.log_artifact(art)
+            files |= {'rules.json': new_rules, 'rules.json.blend.json': new_rules + '.blend.json'}
+        if new_blend.exists():
+            files['blend.json'] = str(new_blend)
+        save(run, f'{a.wandb}-gen{k}-data', files, line | {'pool': pool, 'commit': commit}, a.workers)
         if promoted and vs_hard >= a.target:
             print(f'TARGET reached: {vs_hard:.3f} vs Hard', flush=True)
             break
