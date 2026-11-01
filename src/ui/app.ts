@@ -8,6 +8,7 @@ import { setupScreen } from './setupScreen';
 import { storeScreen } from './storeScreen';
 import { clearGame, loadGame, type SavedGame } from './store';
 import { applyLook } from './themes';
+import { offerUpdate } from './update';
 
 const W = 390;
 const H = 844;
@@ -31,7 +32,10 @@ export function mountApp(root: HTMLElement) {
     game = null;
     const saved = await loadGame();
     if (game) return; // a game started while the save was loading
-    stage.replaceChildren(homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => stage.replaceChildren(storeScreen(() => void home()))));
+    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => stage.replaceChildren(storeScreen(() => void home())));
+    stage.replaceChildren(screen);
+    // A newer version on the site: offered on the home screen only, never during a game.
+    void offerUpdate(screen);
   };
   // Home -> setup (houses, roll for order, pick houses) -> game. Play again keeps the same houses.
   const setup = (mode: Mode) => stage.replaceChildren(setupScreen(mode, count, (cfg) => play(cfg), () => void home()));
