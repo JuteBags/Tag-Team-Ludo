@@ -9,6 +9,7 @@ import { storeScreen } from './storeScreen';
 import { giveUpSaved, loadGame, type SavedGame } from './store';
 import { applyLook } from './themes';
 import { offerUpdate } from './update';
+import { offerCheckIn } from './checkin';
 
 const W = 390;
 const H = 844;
@@ -34,8 +35,8 @@ export function mountApp(root: HTMLElement) {
     if (game) return; // a game started while the save was loading
     const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => stage.replaceChildren(storeScreen(() => void home())));
     stage.replaceChildren(screen);
-    // A newer version on the site: offered on the home screen only, never during a game.
-    void offerUpdate(screen);
+    // On the home screen only, never during a game: a newer version on the site, then today's check-in.
+    void offerUpdate(screen).then(() => offerCheckIn(screen));
   };
   // Home -> setup (houses, roll for order, pick houses) -> game. Play again keeps the same houses.
   const setup = (mode: Mode, houses: 1 | 2 = 1) =>
@@ -54,7 +55,7 @@ export function mountApp(root: HTMLElement) {
   };
 
   // Back: an open sheet closes; in a game it pauses and resumes; in setup it goes a step back; on the
-  // home screen there is nowhere left, so the app closes.
+  // home screen the update prompt or the check-in card closes, and after that the app closes.
   handleBack(() => {
     const sheet = stage.querySelector('.sheet');
     if (sheet) {
@@ -62,6 +63,12 @@ export function mountApp(root: HTMLElement) {
       return true;
     }
     if (game && stage.contains(game.el)) return game.back();
+    // The update prompt and the check-in card: Back is "Not now" / "Later".
+    const later = stage.querySelector<HTMLElement>('.menu-ov [data-act=later]');
+    if (later) {
+      later.click();
+      return true;
+    }
     const back = stage.querySelector<HTMLElement>('[data-act=back]');
     if (back) {
       back.click();
