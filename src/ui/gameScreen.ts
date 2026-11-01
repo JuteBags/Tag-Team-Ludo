@@ -60,8 +60,8 @@ export class GameScreen {
   private disposed = false;
   /** Last face each player rolled, to redraw the resting dice when the setting changes. */
   private lastFace = new Map<Color, number>();
-  /** The person whose turn it was last, to announce a hand-over in "With friends". */
-  private lastOwner = -1;
+  /** People already handed the phone in "With friends" (each once, in the game's first round). */
+  private handedOver = new Set<number>();
   /** This game's kills and pairs formed by the person playing vs Computer, for the stats. */
   private kills = 0;
   private pairs = 0;
@@ -202,14 +202,15 @@ export class GameScreen {
     const who = pvp ? this.name(c) : 'You';
     if (this.state.phase === 'roll') {
       const again = this.state.rolls.length > 0;
-      // Passing the device: when it changes hands, the next person takes it first.
-      if (!again && pvp && this.ownerOf(c) !== this.lastOwner) {
-        this.lastOwner = this.ownerOf(c);
+      // Passing the device: each person is handed it once, before their first turn of the game. After that
+      // the turn hint is enough: whoever taps the die, the dice are the same, and the right person moves.
+      const firstRound = this.state.turnCount < this.state.players.length;
+      if (!again && pvp && firstRound && !this.handedOver.has(this.ownerOf(c))) {
+        this.handedOver.add(this.ownerOf(c));
         this.setHint(c, `${this.name(c)}'s turn`, 'Pass the phone');
         await this.passTo(c);
         if (this.disposed) return;
       }
-      this.lastOwner = this.ownerOf(c);
       if (again) this.setHint(c, 'Roll again', `Your ${this.state.rolls.join(' · ')} wait below. Tap ROLL AGAIN`);
       else this.setHint(c, pvp ? `${this.name(c)}'s turn` : 'Your turn', 'Tap ROLL');
       await this.waitRollTap(c);
