@@ -1,5 +1,6 @@
 //! TD(lambda) targets for a self-play shard, along each game's REAL trajectory (TDLeaf-style):
 //!   ludo-label --shard gen.bin --net net.json --lambda 0.7 --out gen.bin.targets [--depth 0] [--threads N]
+//!   ludo-label --shard gen.bin --eval blend:<net.json>:<rules.json>:<alpha> ...   (value with a blend, blend.ts)
 //!
 //! Every game of the shard is replayed from its seed (the engine is deterministic: the same picks, first
 //! colour, dice and policies as ludo-selfplay / selfplay.ts), and every replayed kept position is checked
@@ -54,11 +55,19 @@ fn main() {
         rayon::ThreadPoolBuilder::new().num_threads(t.parse().unwrap()).build_global().unwrap();
     }
     let shard_path = flags.get("shard").expect("--shard").clone();
-    let net_path = flags.get("net").expect("--net").clone();
+    // --net <weights.json>, or --eval blend:<net>:<rules>:<alpha> (the evaluator a residual net plays as)
+    let net_path = flags.get("eval").or_else(|| flags.get("net")).expect("--net or --eval").clone();
     let lambda: f64 = flags.get("lambda").map(|s| s.parse().unwrap()).unwrap_or(0.7);
     let depth: u32 = flags.get("depth").map(|s| s.parse().unwrap()).unwrap_or(0);
     let out_path = flags.get("out").cloned().unwrap_or_else(|| format!("{shard_path}.targets"));
-    let eval = Evaluator::from_json_text(&std::fs::read_to_string(&net_path).unwrap());
+    let read = |p: &str| Evaluator::from_json_text(&std::fs::read_to_string(p).unwrap_or_else(|e| panic!("{p}: {e}")));
+    let eval = if let Some(spec) = net_path.strip_prefix("blend:") {
+        let parts: Vec<&str> = spec.split(':').collect();
+        assert_eq!(parts.len(), 3, "--eval blend:<net>:<rules>:<alpha>");
+        Evaluator::Blend(std::sync::Arc::new(read(parts[0])), std::sync::Arc::new(read(parts[1])), parts[2].parse().unwrap())
+    } else {
+        read(&net_path)
+    };
 
     let buf = std::fs::read(&shard_path).unwrap();
     let hl = u32::from_le_bytes(buf[0..4].try_into().unwrap()) as usize;

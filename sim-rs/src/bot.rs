@@ -205,13 +205,34 @@ pub fn choose_move(g: &Game, level: Level, rng: &mut Rng) -> usize {
     best
 }
 
-/// common.ts policy(): random | easy | normal | hard | net:<weights.json>[:depth[:theirK[:temperature[:race[:chance[:cut]]]]]].
+/// common.ts policy(): random | easy | normal | hard | net:<weights.json>[:depth[:theirK[:temperature[:race[:chance[:cut]]]]]]
+/// | blend:<net.json>:<rules.json>:<alpha>[:depth[:theirK[:temperature[:race[:chance[:cut]]]]]].
 /// The weights file can be a value net or linear rules (eval.rs); both play by search.rs.
 #[derive(Clone)]
 pub enum Policy {
     Random,
     Bot(Level),
     Search { eval: std::sync::Arc<crate::eval::Evaluator>, opts: crate::search::SearchOptions, temperature: f64 },
+    /// rollout:<n>:<cut turns>:<eval.json or ->:<base spec> (rollout.rs)
+    Rollout { n: usize, cut: u32, eval: Option<std::sync::Arc<crate::eval::Evaluator>>, base: Box<Policy> },
+    /// race:<nmax>:<cut turns>:<eval.json or ->:<base spec>[|<mine spec>], the rollout player with adaptive
+    /// playouts (rollout::choose_race): clearly worse candidates stop early, close ones get up to nmax
+    /// playouts; `mine` (default base) plays the mover's own colours in the playouts
+    Race { n: usize, cut: u32, eval: Option<std::sync::Arc<crate::eval::Evaluator>>, base: Box<Policy>, mine: Box<Policy> },
+    /// greedy:<weights.json>: each move by the value of the position it leads to alone (no planning of the
+    /// rest of the tray, no bonus-roll lookahead), ties broken as search's pick; the cheapest playout base
+    Greedy(std::sync::Arc<crate::eval::Evaluator>),
+}
+
+/// blend:<net>:<rules>:<alpha>, one shared evaluator per distinct spec.
+fn load_blend(net: &str, rules: &str, alpha: f64) -> std::sync::Arc<crate::eval::Evaluator> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<String, Arc<crate::eval::Evaluator>>>> = OnceLock::new();
+    let (n, r) = (load_eval(net), load_eval(rules));
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut c = cache.lock().unwrap();
+    c.entry(format!("{net}|{rules}|{alpha}")).or_insert_with(|| Arc::new(crate::eval::Evaluator::Blend(n, r, alpha))).clone()
 }
 
 fn load_eval(path: &str) -> std::sync::Arc<crate::eval::Evaluator> {
@@ -240,6 +261,29 @@ impl Policy {
                 let opts = crate::search::SearchOptions { depth: num(2, 1.0) as u32, chance: num(6, 2.0) as u32, their_k: num(3, 3.0) as usize, race, cut: num(7, 0.0) };
                 Policy::Search { eval: load_eval(parts[1]), opts, temperature: num(4, 0.0) }
             }
+            _ if s.starts_with("rollout:") => {
+                // rollout:<n>:<cut>:<eval.json|->:<base spec, itself with colons>
+                let parts: Vec<&str> = s.splitn(5, ':').collect();
+                assert_eq!(parts.len(), 5, "rollout:<n>:<cut>:<eval.json|->:<base spec>");
+                let eval = if parts[3] == "-" { None } else { Some(load_eval(parts[3])) };
+                Policy::Rollout { n: parts[1].parse().unwrap(), cut: parts[2].parse().unwrap(), eval, base: Box::new(Policy::parse(parts[4])) }
+            }
+            _ if s.starts_with("race:") => {
+                let parts: Vec<&str> = s.splitn(5, ':').collect();
+                assert_eq!(parts.len(), 5, "race:<nmax>:<cut>:<eval.json|->:<base spec>");
+                let eval = if parts[3] == "-" { None } else { Some(load_eval(parts[3])) };
+                let (b, m) = parts[4].split_once('|').unwrap_or((parts[4], parts[4]));
+                Policy::Race { n: parts[1].parse().unwrap(), cut: parts[2].parse().unwrap(), eval, base: Box::new(Policy::parse(b)), mine: Box::new(Policy::parse(m)) }
+            }
+            _ if s.starts_with("greedy:") => Policy::Greedy(load_eval(&s["greedy:".len()..])),
+            _ if s.starts_with("blend:") => {
+                // blend:<net>:<rules>:<alpha>, then the net: spec's fields shifted by two
+                let parts: Vec<&str> = s.split(':').collect();
+                let num = |i: usize, d: f64| parts.get(i).map(|x| x.parse::<f64>().unwrap()).unwrap_or(d);
+                let race = parts.get(7) == Some(&"1");
+                let opts = crate::search::SearchOptions { depth: num(4, 1.0) as u32, chance: num(8, 2.0) as u32, their_k: num(5, 3.0) as usize, race, cut: num(9, 0.0) };
+                Policy::Search { eval: load_blend(parts[1], parts[2], num(3, 0.0)), opts, temperature: num(6, 0.0) }
+            }
             _ => panic!("unknown policy {s}"),
         }
     }
@@ -249,6 +293,34 @@ impl Policy {
             Policy::Random => (rng.next() * g.moves.len() as f64).floor() as usize,
             Policy::Bot(l) => choose_move(g, *l, rng),
             Policy::Search { eval, opts, temperature } => crate::search::choose_extreme(eval, g, rng, *opts, *temperature),
+            Policy::Rollout { n, cut, eval, base } => crate::rollout::choose(g, rng, *n, *cut, eval.as_deref(), base),
+            Policy::Greedy(eval) => greedy(eval, g, rng),
+            Policy::Race { n, cut, eval, base, mine } => crate::rollout::choose_race(g, rng, *n, *cut, eval.as_deref(), base, mine),
         }
     }
+}
+
+/// Policy::Greedy's choice: the move whose resulting position the evaluator values most for the mover.
+fn greedy(eval: &crate::eval::Evaluator, g: &Game, rng: &mut Rng) -> usize {
+    if g.moves.len() == 1 {
+        return 0;
+    }
+    let me = g.b.p[g.current].owner as usize;
+    let mut v = [0.0f64; 4];
+    let vals: Vec<f64> = g.moves.as_slice().iter().map(|m| {
+        let mut t = *g;
+        t.play(m);
+        if t.phase == crate::game::PHASE_OVER {
+            return if t.owner_ranking()[0] as usize == me { 1.0 } else { 0.0 };
+        }
+        eval.owner_chances(&t, &mut v);
+        v[me]
+    }).collect();
+    let mut best = 0usize;
+    for (i, &x) in vals.iter().enumerate() {
+        if x + rng.next() * 1e-9 > vals[best] {
+            best = i;
+        }
+    }
+    best
 }

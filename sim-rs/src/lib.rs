@@ -14,6 +14,7 @@ pub mod rng;
 pub mod rules;
 pub mod race;
 pub mod search;
+pub mod rollout;
 pub mod simd;
 pub mod trace;
 #[cfg(feature = "cuda")]
