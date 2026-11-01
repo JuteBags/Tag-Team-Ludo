@@ -4,7 +4,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { HARD_RULES } from '../../src/engine/ai/hard-rules';
 import { PLAYOUT_RULES } from '../../src/engine/ai/playout-rules';
 
-const dir = new URL('./dist/levels/', import.meta.url);
+// Run as the bundle tools/ai/dist/levels-json.mjs (build.sh), so this is tools/ai/dist/levels/.
+const dir = new URL('./levels/', import.meta.url);
 mkdirSync(dir, { recursive: true });
 writeFileSync(new URL('hard.json', dir), JSON.stringify(HARD_RULES));
 writeFileSync(new URL('playout.json', dir), JSON.stringify(PLAYOUT_RULES));
