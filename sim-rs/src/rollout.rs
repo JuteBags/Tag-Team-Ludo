@@ -51,8 +51,25 @@ fn playout(mut g: Game, base: &Policy, me: u8, dice: &mut [Rng; 4], rng: &mut Rn
     }
 }
 
+/// One decision's candidates: (move index, resulting position, mean playout result for the mover), the
+/// candidate holding base's own move, and the rollout player's pick (both indexes into the list).
+pub struct Evaluation {
+    pub cands: Vec<(usize, Game, f64)>,
+    pub base: usize,
+    pub pick: usize,
+}
+
 /// The rollout player's choice (an index into g.moves). Draws one number from `rng` per decision.
 pub fn choose(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy) -> usize {
+    if g.moves.len() == 1 {
+        return 0;
+    }
+    let e = evaluate(g, rng, n, cut, eval, base);
+    e.cands[e.pick].0
+}
+
+/// Every distinct candidate's paired playout mean (see the module doc); `g` must have several moves.
+pub fn evaluate(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy) -> Evaluation {
     let nm = g.moves.len();
     if nm == 1 {
         return 0;
@@ -77,7 +94,7 @@ pub fn choose(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evaluat
     let bkey = leaf_key(&tb);
     let b = keys.iter().position(|k| *k == bkey).unwrap();
     if cands.len() == 1 {
-        return cands[0].0;
+        return Evaluation { cands: vec![(cands[0].0, cands[0].1, f64::NAN)], base: 0, pick: 0 };
     }
     // paired outcomes: res[c][i]
     let mut res = vec![vec![0.0f64; n]; cands.len()];
@@ -110,5 +127,6 @@ pub fn choose(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evaluat
     if std::env::var_os("LUDO_ROLLOUT_DEBUG").is_some() {
         eprintln!("ROLLOUT me {me} moves {nm} cands {} base {b} pick {best} paired (cand, mean, se) {:?}", cands.len(), stats);
     }
-    cands[best].0
+    let means: Vec<f64> = res.iter().map(|r| r.iter().sum::<f64>() / n as f64).collect();
+    Evaluation { cands: cands.into_iter().zip(means).map(|((k, t), m)| (k, t, m)).collect(), base: b, pick: best }
 }
