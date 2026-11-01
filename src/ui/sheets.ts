@@ -5,7 +5,7 @@ import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
 import { emptyStats, loadCheckIn, loadStats, resetStats, type Stats } from './store';
 import { daysBetween, dayKey } from './checkin';
-import { ACHIEVEMENTS, type AchievementGroup } from './rewards';
+import { ACHIEVEMENTS, takeNew, type AchievementGroup } from './rewards';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
 
 const GROUPS: AchievementGroup[] = ['Ladder', 'Extreme', 'Milestones', 'Everyday'];
@@ -107,24 +107,38 @@ export async function statsSheet(host: HTMLElement) {
   const best = s.best ? ['', '1st', '2nd', '3rd', '4th'][s.best]! : '–';
   const cell = (v: string | number, label: string) => `<div class="st"><b class="disp">${v}</b><small>${label}</small></div>`;
   const empty = !s.played && !s.friends;
-  const ov = sheet(
-    host,
-    'Your stats',
-    empty
-      ? `<div class="empty"><b class="disp">No games yet</b><p class="sub">Play a game vs Computer and your wins, kills and best place show up here.</p></div>`
-      : `<p class="sub">vs Computer, on this device</p>
-    <div class="stats">${cell(s.played, 'Games')}${cell(s.wins, 'Wins')}${cell(rate, 'Win rate')}${cell(best, 'Best place')}${cell(s.streak, 'Win streak')}${cell(s.bestStreak, 'Best streak')}${cell(s.kills, 'Kills')}${cell(s.sixes, 'Sixes')}${cell(s.pairs, 'Pairs formed')}</div>
+  // Achievements earned since the sheet last showed them: it opens on them, highlighted.
+  const fresh = takeNew().filter((id) => settings.achieved.includes(id));
+  const doneCount = ACHIEVEMENTS.filter((a) => settings.achieved.includes(a.id)).length;
+  const achTab = fresh.length > 0;
+  const statsPane = empty
+    ? `<div class="empty"><b class="disp">No games yet</b><p class="sub">Play a game vs Computer and your wins, kills and best place show up here.</p></div>`
+    : `<p class="sub">vs Computer, on this device</p>
+    <div class="stats">${cell(s.played, 'Games')}${cell(s.wins, 'Wins')}${cell(rate, 'Win rate')}${cell(best, 'Best place')}${cell(s.streak, 'Win streak')}${cell(s.bestStreak, 'Best streak')}${cell(s.kills, 'Kills')}${cell(s.sixes, 'Sixes')}${cell(s.xStreak, s.xBestStreak ? `Extreme (best ${s.xBestStreak})` : 'Extreme streak')}</div>
     <p class="sub">With friends: ${s.friends} game${s.friends === 1 ? '' : 's'}</p>
-    <h3 class="achh disp">Achievements · ${ACHIEVEMENTS.filter((a) => settings.achieved.includes(a.id)).length}/${ACHIEVEMENTS.length}</h3>
-    <div class="achscroll">${GROUPS.map((g) => `<h4 class="achg">${g}</h4><div class="achlist">${ACHIEVEMENTS.filter((a) => a.group === g).map((a) => {
+    <button class="reset" data-act="reset">Reset stats</button>`;
+  const achPane = `<div class="achscroll">${GROUPS.map((g) => `<h4 class="achg">${g}</h4><div class="achlist">${ACHIEVEMENTS.filter((a) => a.group === g).map((a) => {
       const done = settings.achieved.includes(a.id);
       const [have, need] = a.progress?.(view) ?? [done ? 1 : 0, 1];
       // A streak nobody has started shows no "0/3".
       const bar = !done && need > 1 && !(a.quiet && have === 0);
-      return `<div class="ar${done ? ' done' : ''}"><span class="ai">${done ? '🏆' : '🔒'}</span><span class="at"><b>${a.name}</b><small>${a.blurb}</small>${bar ? `<i class="bar"><i style="width:${(100 * have) / need}%"></i></i>` : ''}</span><em>${done ? 'Done' : bar ? `${have}/${need}` : ''}<i class="coin"></i>${a.gold}</em></div>`;
-    }).join('')}</div>`).join('')}</div>
-    <button class="reset" data-act="reset">Reset stats</button>`,
+      return `<div class="ar${done ? ' done' : ''}${fresh.includes(a.id) ? ' new' : ''}"><span class="ai">${done ? '🏆' : '🔒'}</span><span class="at"><b>${a.name}</b><small>${a.blurb}</small>${bar ? `<i class="bar"><i style="width:${(100 * have) / need}%"></i></i>` : ''}</span><em>${done ? 'Done' : bar ? `${have}/${need}` : ''}<i class="coin"></i>${a.gold}</em></div>`;
+    }).join('')}</div>`).join('')}</div>`;
+  const ov = sheet(
+    host,
+    'Your stats',
+    `<div class="tg tabs" role="tablist"><button role="tab" data-tab="stats"${achTab ? '' : ' class="on" aria-selected="true"'}>Stats</button><button role="tab" data-tab="ach"${achTab ? ' class="on" aria-selected="true"' : ''}>Achievements ${doneCount}/${ACHIEVEMENTS.length}${fresh.length ? ` <i class="newdot">${fresh.length} new</i>` : ''}</button></div>
+    <div class="pane" data-pane="stats"${achTab ? ' hidden' : ''}>${statsPane}</div><div class="pane" data-pane="ach"${achTab ? '' : ' hidden'}>${achPane}</div>`,
   );
+  ov.querySelector('.tabs')!.addEventListener('click', (e) => {
+    const b = (e.target as Element).closest<HTMLButtonElement>('[data-tab]');
+    if (!b) return;
+    ov.querySelectorAll<HTMLElement>('[data-tab]').forEach((t) => {
+      t.classList.toggle('on', t === b);
+      t.setAttribute('aria-selected', String(t === b));
+    });
+    ov.querySelectorAll<HTMLElement>('.pane').forEach((p) => (p.hidden = p.dataset.pane !== b.dataset.tab));
+  });
   const reset = ov.querySelector<HTMLButtonElement>('[data-act=reset]');
   reset?.addEventListener('click', async () => {
     // Two taps, so stats aren't wiped by accident.

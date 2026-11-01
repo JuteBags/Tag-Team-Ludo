@@ -2,6 +2,7 @@
 // vs Computer pays for playing, your place, your kills and your tokens home; With friends pays a flat
 // amount (the device belongs to one of the players, so nobody farms gold off friends).
 import type { BotLevel } from '../engine';
+import { saveSetting, settings } from './settings';
 import type { Stats } from './store';
 
 /** Gold for each finishing place (index = place). */
@@ -78,8 +79,8 @@ const beaten = (level: BotLevel) => (s: Stats) => LEVELS.slice(LEVELS.indexOf(le
 
 export const ACHIEVEMENTS: Achievement[] = [
   // The ladder: a win at one level counts for every level below it too.
-  { id: 'win-easy', group: 'Ladder', name: 'First steps', blurb: 'Beat Easy bots (or harder)', gold: 50, done: beaten('easy') },
-  { id: 'win-normal', group: 'Ladder', name: 'Getting good', blurb: 'Beat Normal bots (or harder)', gold: 100, done: beaten('normal') },
+  { id: 'win-easy', group: 'Ladder', name: 'First steps', blurb: 'Beat Easy bots', gold: 50, done: beaten('easy') },
+  { id: 'win-normal', group: 'Ladder', name: 'Getting good', blurb: 'Beat Normal bots', gold: 100, done: beaten('normal') },
   { id: 'hard-win', group: 'Ladder', name: 'Giant slayer', blurb: 'Beat Hard or Extreme bots', gold: 300, done: beaten('hard') },
   { id: 'win-extreme', group: 'Ladder', name: 'Machine breaker', blurb: 'Beat Extreme bots', gold: 500, done: beaten('extreme') },
   // Extreme: one win can be luck, three in a row is not.
@@ -101,6 +102,28 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'checkin-7', group: 'Everyday', name: 'Regular', blurb: 'Check in 7 days in a row', gold: 200, done: atLeast('checkinBest', 7), progress: count('checkinBest', 7) },
   { id: 'checkin-30', group: 'Everyday', name: 'Devoted', blurb: 'Check in 30 days in a row', gold: 1000, done: atLeast('checkinBest', 30), progress: count('checkinBest', 30) },
 ];
+
+const NEW = 'ludo-ach-new';
+/** Marks achievements done, and remembers them as new until the Stats sheet shows them. */
+export function award(ids: string[]) {
+  if (!ids.length) return;
+  saveSetting('achieved', [...settings.achieved, ...ids.filter((id) => !settings.achieved.includes(id))]);
+  try {
+    localStorage.setItem(NEW, JSON.stringify([...new Set([...takeNew(), ...ids])]));
+  } catch {
+    // Not remembered as new: they still count, just without the highlight.
+  }
+}
+/** The achievements earned since the Stats sheet last showed them, cleared on reading. */
+export function takeNew(): string[] {
+  try {
+    const ids = JSON.parse(localStorage.getItem(NEW) ?? '[]') as string[];
+    localStorage.removeItem(NEW);
+    return ids;
+  } catch {
+    return [];
+  }
+}
 
 /** The achievements these totals (and this game, if any) complete that weren't already done. */
 export const newAchievements = (s: Stats, g: GameFacts | null, achieved: string[]) => ACHIEVEMENTS.filter((a) => !achieved.includes(a.id) && a.done(s, g));

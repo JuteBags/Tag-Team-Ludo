@@ -4,8 +4,8 @@
 // that day.
 import { sfx } from './sfx';
 import { earn } from './skins';
-import { newAchievements } from './rewards';
-import { saveSetting, settings } from './settings';
+import { award, newAchievements } from './rewards';
+import { settings } from './settings';
 import { loadCheckIn, recordCheckIn, saveCheckIn, type CheckIn } from './store';
 
 /** Gold for each day of the 7-day track. A week is 380, about one cheap skin. */
@@ -107,7 +107,7 @@ export async function offerCheckIn(screen: HTMLElement): Promise<void> {
   }).join('');
   const ov = document.createElement('div');
   ov.className = 'menu-ov checkin-ov';
-  ov.innerHTML = `<div class="box"><h2>Daily reward</h2><p class="sub">${d.streak === 1 ? 'Come back tomorrow for more' : `${d.streak} days in a row!`}</p>
+  ov.innerHTML = `<div class="box"><h2>Daily reward</h2><p class="sub">${d.streak === 1 ? 'Day 1 of 7: more each day in a row' : `${d.streak} days in a row!`}</p>
     <div class="track">${track}</div>
     <button class="b3 green disp" data-act="collect"><i class="coin"></i> COLLECT ${d.gold}</button><button class="later" data-act="later">Later</button></div>`;
   screen.appendChild(ov);
@@ -126,7 +126,7 @@ export async function offerCheckIn(screen: HTMLElement): Promise<void> {
         if (now && (await saveCheckIn(next))) {
           // A long enough run completes the check-in achievements; their gold flies in with the day's.
           const fresh = newAchievements(await recordCheckIn(next.best), null, settings.achieved);
-          if (fresh.length) saveSetting('achieved', [...settings.achieved, ...fresh.map((a) => a.id)]);
+          award(fresh.map((a) => a.id));
           const gold = now.gold + fresh.reduce((a, x) => a + x.gold, 0);
           earn(gold);
           flyCoins(screen, from, gold);

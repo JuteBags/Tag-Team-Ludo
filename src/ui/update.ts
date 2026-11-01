@@ -61,7 +61,7 @@ export async function offerUpdate(screen: HTMLElement): Promise<void> {
   ov.className = 'menu-ov update-ov';
   const news = headline(info.notes);
   ov.innerHTML = `<div class="box"><h2>Update ready</h2><p class="sub">Version ${info.version} is out (you have ${__APP_VERSION__}).</p>${news ? `<p class="news">${news.replace(/</g, '&lt;')}</p>` : ''}
-    <button class="b3 green disp" data-act="update">UPDATE</button><button class="b3 blue disp" data-act="later">NOT NOW</button></div>`;
+    <button class="b3 green disp" data-act="update">UPDATE</button><button class="later" data-act="later">Not now</button></div>`;
   let done = () => {};
   const closed = new Promise<void>((r) => (done = r));
   ov.addEventListener('click', (e) => {
