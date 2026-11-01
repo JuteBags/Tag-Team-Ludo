@@ -3,6 +3,7 @@
 // web. Every call is guarded: if storage fails, the game simply isn't saved.
 import { Preferences } from '@capacitor/preferences';
 import { COLORS, type BotLevel, type Color, type GameRecord, type GameState } from '../engine';
+import type { MoveReview, RollLuck } from '../engine/ai/review';
 import type { GameConfig } from './setup';
 
 async function read<T>(key: string): Promise<T | null> {
@@ -228,6 +229,14 @@ export interface PastGame {
   at: number;
   mode: 'pvc' | 'pvp';
   place: number;
+  /** The game review so far (#65), at the labels' version: a review from another version is redone. */
+  review?: StoredReview;
+}
+
+export interface StoredReview {
+  v: number;
+  moves: MoveReview[];
+  luck: RollLuck[] | null;
 }
 
 const GAMES = 'ludo-games';
@@ -237,4 +246,13 @@ export const loadPastGames = () => read<PastGame[]>(GAMES).then((g) => (Array.is
 /** Adds a finished game, dropping the oldest past KEEP_GAMES. */
 export async function savePastGame(g: PastGame): Promise<void> {
   await write(GAMES, [g, ...(await loadPastGames())].slice(0, KEEP_GAMES));
+}
+
+/** Stores the review of the past game with this record (matched by its events), if it is still kept. */
+export async function saveReview(rec: GameRecord, review: StoredReview): Promise<void> {
+  const games = await loadPastGames();
+  const g = games.find((x) => x.rec.events === rec.events && x.rec.first === rec.first);
+  if (!g) return;
+  g.review = review;
+  await write(GAMES, games);
 }

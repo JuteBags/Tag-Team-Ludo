@@ -729,3 +729,49 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .pg .pgt{flex:1;display:flex;flex-direction:column;gap:2px}
 .pg .pgt b{font-size:14px}.pg .pgt small{font-size:12px;font-weight:700;opacity:.8}
 .pg em{font-style:normal;font-size:13px;font-weight:900;color:#ffd65a}
+
+/* ---------- game review (reviewScreen.ts) ---------- */
+.review .rvbody{position:absolute;top:74px;left:0;right:0;bottom:0;overflow-y:auto;padding:0 20px 24px}
+.review .rvcard{padding:12px 14px;border-radius:18px;background:rgba(5,20,70,.62);box-shadow:inset 0 0 0 1.5px var(--m);margin-bottom:10px}
+.review .rvwho{display:flex;align-items:center;gap:10px}
+.review .rvwho i{width:36px;height:36px;border-radius:50%;padding:2px;background:var(--m);flex:none}
+.review .rvwho i svg{width:100%;height:100%;border-radius:50%;display:block}
+.review .rvwho b{flex:1;font-size:17px;font-weight:900;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.review .rvwho em{font-style:normal;font-family:'Lilita One';font-size:30px;color:#ffd65a;line-height:1;text-align:right}
+.review .rvwho em small{display:block;font-family:Nunito,sans-serif;font-size:12px;font-weight:800;color:#fff;opacity:.8}
+.review .rvchips{display:flex;gap:6px;margin-top:10px}
+.review .rvchips span{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:5px 0;border-radius:10px;background:rgba(0,0,0,.25);font-size:15px;font-weight:900}
+.review .rvchips span i{font-style:normal;font-size:13px;color:var(--c)}
+.review .rvluck{margin-top:10px;font-size:15px}
+.review .rvluck b{font-family:'Lilita One';font-weight:400;font-size:18px}
+.review .rvluck.lucky b{color:#4ade80}.review .rvluck.unlucky b{color:#f87171}.review .rvluck.average b{color:#cbd5e1}
+.review .rvluck small{font-size:13px;font-weight:800;opacity:.85}
+.review .rvluck p{font-size:13px;font-weight:700;opacity:.85;margin-top:2px;line-height:1.35}
+.review .rvbotluck{display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:13px;font-weight:800}
+.review .rvbotluck i{width:22px;height:22px;border-radius:50%;padding:1.5px;background:var(--m);flex:none}
+.review .rvbotluck i svg{width:100%;height:100%;border-radius:50%;display:block}
+.review .rvbotluck span{flex:1;opacity:.85}
+.review .rvbotluck b.lucky{color:#4ade80}.review .rvbotluck b.unlucky{color:#f87171}.review .rvbotluck b.average{color:#cbd5e1}
+.review .rvgraph{margin-top:8px}
+.review .rvgraph:empty{display:none}
+.review .rvgraph small{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
+.review .rvgraph svg{display:block;width:100%;height:auto;margin-top:4px;border-radius:12px;background:rgba(0,0,0,.25)}
+.review .rvgraph polyline{fill:none;stroke:#ffd65a;stroke-width:2.2;stroke-linejoin:round}
+.review .rvgraph .even{stroke:rgba(255,255,255,.45);stroke-width:1.2;stroke-dasharray:5 4}
+.review .rvgraph text{fill:rgba(255,255,255,.6);font-size:10px;font-weight:800}
+.review .rvgraph circle{stroke:#0b1d5c;stroke-width:1.5;cursor:pointer}
+.review .rvprog{display:flex;align-items:center;gap:10px;margin:12px 0 8px;font-size:13px;font-weight:800}
+.review .rvprog .bar{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden}
+.review .rvprog .bar i{display:block;height:100%;background:#ffd65a;transition:width .3s}
+.review .rvprog.done .bar{display:none}
+.review .rvlist{display:flex;flex-direction:column;gap:6px}
+.review .rvrow{display:flex;align-items:center;gap:10px;min-height:48px;padding:8px 12px;border-radius:14px;background:rgba(0,0,0,.25);color:#fff;text-align:left}
+.review .rvrow i{font-style:normal;width:30px;font-size:16px;font-weight:900;color:var(--c);text-align:center;flex:none}
+.review .rvrow span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.review .rvrow b{font-size:14px}.review .rvrow small{font-size:12px;font-weight:700;opacity:.85}
+.review .rvrow.blunder{box-shadow:inset 0 0 0 1.5px rgba(248,113,113,.55)}
+.review .rvrow.mistake{box-shadow:inset 0 0 0 1.5px rgba(251,146,60,.45)}
+/* The replay's REVIEW button, and the result screen's two links. */
+.replay .rvbtn{font-size:20px;color:#ffd65a}
+.replaylinks{display:flex;justify-content:center;gap:4px}
+.replaylinks .replaylink{margin:6px 0 0}

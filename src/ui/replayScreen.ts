@@ -19,8 +19,15 @@ const flip = (back: boolean) => (back ? ' style="transform:scaleX(-1)"' : '');
 const STEP = (back: boolean) => `<svg viewBox="0 0 24 24"${flip(back)}><path d="M6 5l9 7-9 7z" fill="#fff"/><rect x="16" y="5" width="3" height="14" rx="1.2" fill="#fff"/></svg>`;
 const ENDS = (back: boolean) => `<svg viewBox="0 0 24 24"${flip(back)}><path d="M3 5l8 7-8 7zM11 5l8 7-8 7z" fill="#fff"/><rect x="19" y="5" width="2.6" height="14" rx="1.1" fill="#fff"/></svg>`;
 
+export interface ReplayOptions {
+  /** Open at the move made in this position (an index into the replay's states), and play it. */
+  startAt?: number;
+  /** Shows a REVIEW button (games with a person in them) that opens the game review. */
+  onReview?: () => void;
+}
+
 /** A screen for `rec`; `onClose` goes back to where it was opened from. */
-export function replayScreen(rec: GameRecord, onClose: () => void): HTMLElement {
+export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayOptions = {}): HTMLElement {
   const { frames, error } = framesOf(rec);
   const names = namesOf(rec);
   const el = document.createElement('div');
@@ -29,7 +36,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void): HTMLElement 
   const owners = [...new Set(rec.seats.map((s) => s.owner))].sort((a, b) => a - b);
   el.innerHTML = `
     <div class="gtop"><button class="rbtn" data-act="back" aria-label="Back">${icons.back}</button>
-      <div class="mode"><small>REPLAY · ${mode}</small><b>${owners.length} PLAYERS</b></div><span class="rbtn-space"></span></div>
+      <div class="mode"><small>REPLAY · ${mode}</small><b>${owners.length} PLAYERS</b></div>${opts.onReview && rec.seats.some((s) => !s.bot) ? '<button class="rbtn rvbtn" data-act="review" aria-label="Game review">★</button>' : '<span class="rbtn-space"></span>'}</div>
     <div class="rpchips"></div>
     <div class="gboard"></div>
     <div class="rpcap" aria-live="polite"><span class="rpdice"></span><span class="rptext"></span></div>
@@ -107,7 +114,10 @@ export function replayScreen(rec: GameRecord, onClose: () => void): HTMLElement 
   el.addEventListener('click', async (e) => {
     const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
     if (!act) return;
-    if (act === 'back') {
+    if (act === 'review') {
+      stop();
+      opts.onReview?.();
+    } else if (act === 'back') {
       stop();
       onClose();
     } else if (act === 'play') {
@@ -130,14 +140,22 @@ export function replayScreen(rec: GameRecord, onClose: () => void): HTMLElement 
   });
   draw();
   if (error) q('.rpcount').textContent = error;
+  // Opened at a reviewed move: show the position before it, then play the move.
+  const f = opts.startAt === undefined ? -1 : frames.findIndex((x) => x.at === opts.startAt! + 1);
+  if (f > 0) {
+    at = f - 1;
+    view.layout(frames[at]!.state.players);
+    draw();
+    setTimeout(() => el.isConnected && void go(f), 450);
+  }
   return el;
 }
 
 /** The replay of a record from outside (a link or storage): anything that still breaks lands on the broken-link screen. */
-export function safeReplayScreen(rec: GameRecord | null, onClose: () => void): HTMLElement {
+export function safeReplayScreen(rec: GameRecord | null, onClose: () => void, opts: ReplayOptions = {}): HTMLElement {
   if (!rec) return brokenLinkScreen(onClose);
   try {
-    return replayScreen(rec, onClose);
+    return replayScreen(rec, onClose, opts);
   } catch {
     return brokenLinkScreen(onClose);
   }

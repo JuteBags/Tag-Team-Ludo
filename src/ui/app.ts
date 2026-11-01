@@ -6,13 +6,14 @@ import { handleBack } from './native';
 import type { GameConfig, Mode } from './setup';
 import { setupScreen } from './setupScreen';
 import { storeScreen } from './storeScreen';
-import { giveUpSaved, loadGame, type SavedGame } from './store';
+import { giveUpSaved, loadGame, loadPastGames, type SavedGame } from './store';
 import { applyLook } from './themes';
 import { offerUpdate } from './update';
 import { offerCheckIn } from './checkin';
 import { decodeRecord, type GameRecord } from '../engine';
 import { linkPayload } from './replay';
 import { safeReplayScreen } from './replayScreen';
+import { reviewScreen } from './reviewScreen';
 
 const W = 390;
 const H = 844;
@@ -49,7 +50,15 @@ export function mountApp(root: HTMLElement) {
       setup(mode, 2);
     }));
   /** The replay of `rec`; `back` returns to where it was opened from. */
-  const watch = (rec: GameRecord, back: () => void) => stage.replaceChildren(safeReplayScreen(rec, back));
+  // `keep`: the game is one of the past games, so its review is stored (not for a game from a link).
+  const watch = (rec: GameRecord, back: () => void, keep = true, startAt?: number) =>
+    stage.replaceChildren(safeReplayScreen(rec, back, { startAt, onReview: () => void review(rec, back, keep) }));
+  /** The game review of `rec`, picking up a stored one; a tapped move opens the replay there. */
+  const review = async (rec: GameRecord, back: () => void, keep = true) => {
+    const stored = keep ? (await loadPastGames()).find((g) => g.rec.events === rec.events && g.rec.first === rec.first)?.review : undefined;
+    const screen = reviewScreen(rec, stored, back, (at) => watch(rec, () => void review(rec, back, keep), keep, at), keep);
+    stage.replaceChildren(screen);
+  };
   // Set while a game starts, so a double tap on Start or Play again can't open two games.
   let starting = false;
   const play = async (cfg: GameConfig, saved?: SavedGame) => {
@@ -59,7 +68,8 @@ export function mountApp(root: HTMLElement) {
       // A new game replaces any saved one (counted as a loss when it's given up past the first round); a
       // continued game picks up from it.
       if (!saved) await giveUpSaved();
-      const g = new GameScreen(cfg, (to) => (to === 'home' ? void home() : to === 'replay' ? g.finalRecord && watch(g.finalRecord, () => stage.replaceChildren(g.el)) : play(cfg)), undefined, saved);
+      const toResult = () => stage.replaceChildren(g.el);
+      const g = new GameScreen(cfg, (to) => (to === 'home' ? void home() : to === 'replay' ? g.finalRecord && watch(g.finalRecord, toResult) : to === 'review' ? g.finalRecord && void review(g.finalRecord, toResult) : play(cfg)), undefined, saved);
       game = g;
       stage.replaceChildren(game.el);
       if (import.meta.env.DEV) (window as unknown as { __ludo: GameScreen }).__ludo = game;
@@ -102,7 +112,7 @@ export function mountApp(root: HTMLElement) {
       history.replaceState(null, '', location.pathname + location.search);
       void home();
     };
-    void decodeRecord(payload).then((rec) => stage.replaceChildren(safeReplayScreen(rec, leave)));
+    void decodeRecord(payload).then((rec) => (rec ? watch(rec, leave, false) : stage.replaceChildren(safeReplayScreen(null, leave))));
     return true;
   };
   addEventListener('hashchange', () => void openLink());

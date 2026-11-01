@@ -37,7 +37,7 @@ const PIPS: Record<number, [number, number][]> = {
 const flatDie = (n: number) =>
   `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#fff" stroke="rgba(0,0,0,.25)"/>${PIPS[n]!.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.4" fill="${n === 6 ? '#d2203c' : '#1b2a4a'}"/>`).join('')}</svg>`;
 
-export type Exit = 'home' | 'again' | 'replay';
+export type Exit = 'home' | 'again' | 'replay' | 'review';
 
 /** The rules in a nutshell, for the pause menu. */
 const HOW_TO_PLAY = (singles: boolean) => `<h2>How to play</h2><ul class="howto">
@@ -774,11 +774,11 @@ export class GameScreen {
       <div class="rescol"><div class="ribbon">${ribbonSVG()}<span class="disp">${title}</span></div>
         <div class="rank">${rows}</div>${reward}
         <div class="wbtns"><button class="b3 blue disp" data-act="home">HOME</button><button class="b3 green disp" data-act="again">PLAY AGAIN</button></div>
-        <button class="sharebtn disp" data-act="share">${icons.share}SHARE RESULT</button>${rec ? '<button class="replaylink" data-act="replay">Watch the replay</button>' : ''}</div>`;
+        <button class="sharebtn disp" data-act="share">${icons.share}SHARE RESULT</button>${rec ? `<div class="replaylinks"><button class="replaylink" data-act="replay">Watch the replay</button>${rec.seats.some((s) => !s.bot) ? '<button class="replaylink" data-act="review">Review the game</button>' : ''}</div>` : ''}</div>`;
     ov.addEventListener('click', (e) => {
       const btn = (e.target as Element).closest<HTMLButtonElement>('button');
       const act = btn?.dataset.act;
-      if (act === 'home' || act === 'again' || act === 'replay') this.exit(act);
+      if (act === 'home' || act === 'again' || act === 'replay' || act === 'review') this.exit(act);
       if (act === 'share' && !btn!.disabled) {
         btn!.disabled = true;
         const text = pvp ? `${winner} won our game of Tag Team Ludo!` : won ? 'I won at Tag Team Ludo!' : `I came ${PLACES[place]!.toLowerCase()} at Tag Team Ludo!`;
