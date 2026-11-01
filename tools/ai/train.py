@@ -256,7 +256,7 @@ def main():
         EX = dict(x=EXx, o=EXo, g=EXg, m=EXm, rc=rc, counts=counts, starts=starts, G=G, gval=gval, scale=r_scale)
         print(f'EXPERT rows {len(EXg)} groups {G} rc_rms {r_scale.sqrt().item():.4f}', flush=True)
         if run:
-            run.config.update({'expert_rows': len(EXg), 'expert_groups': G})
+            run.config.update({'expert_n_rows': len(EXg), 'expert_n_groups': G})
 
     def expert_rows(gids):
         """Row indexes of the given decision groups (contiguous in the files)."""
