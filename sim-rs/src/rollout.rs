@@ -78,8 +78,14 @@ pub fn choose(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evaluat
             score[c] += playout(*t, base, me, &mut d, &mut r, cut, eval);
         }
     }
-    let mut best = 0;
-    for c in 1..cands.len() {
+    // Start from the base policy's own move and leave it only for a strictly better mean: with common
+    // random numbers many candidates tie exactly, and a tie must not fall to whichever move is listed first.
+    let kb = base.choose(g, &mut Rng::seeded(seed ^ 0x0bad_5eed));
+    let mut t = *g;
+    t.play(&g.moves.m[kb]);
+    let kkey = leaf_key(&t);
+    let mut best = keys.iter().position(|k| *k == kkey).unwrap_or(0);
+    for c in 0..cands.len() {
         if score[c] > score[best] {
             best = c;
         }
