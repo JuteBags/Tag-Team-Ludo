@@ -185,6 +185,10 @@ def main():
                     'trained with the centred pair loss (each group: net values minus their mean vs playout means minus theirs)')
     ap.add_argument('--expert-weight', type=float, default=1.0, help='weight of the (normalised) pair loss next to the PL on --shards')
     ap.add_argument('--expert-groups', type=int, default=2048, help='decision groups per step for the pair loss')
+    ap.add_argument('--expert-loss', default='pair', choices=['pair', 'choice'],
+                    help="pair: centred regression of the mover's chance on the playout means; choice: per group, "
+                         'cross-entropy of softmax(chance / tau) against softmax(playout mean / tau) (pick the move the playouts pick)')
+    ap.add_argument('--expert-tau', type=float, default=0.01, help='--expert-loss choice: temperature on both sides')
     ap.add_argument('--level-weight', type=float, default=1.0, help='weight of the PL (outcome) loss on --shards')
     ap.add_argument('--anchor', type=float, default=0.0, help='L2 pull of every parameter toward its --init value')
     ap.add_argument('--freeze', default='', help='--linear: comma-separated rule names kept at their --init value')
@@ -284,26 +288,42 @@ def main():
         ng = int(lg.max()) + 1
         cnt = torch.zeros(ng, device=dev).scatter_add_(0, lg, torch.ones_like(p))
         vc = p - (torch.zeros(ng, device=dev).scatter_add_(0, lg, p) / cnt)[lg]
-        loss = ((vc - rc) ** 2).mean() / EX['scale']
+        neg = torch.full((ng,), -1e9, device=dev)
+
+        def group_log_softmax(z):
+            m = neg.scatter_reduce(0, lg, z.detach(), 'amax')
+            e = torch.exp(z - m[lg])
+            return z - m[lg] - torch.log(torch.zeros(ng, device=dev).scatter_add(0, lg, e))[lg]
+
+        if a.expert_loss == 'choice':
+            t = torch.exp(group_log_softmax(rc / a.expert_tau))
+            loss = -(t * group_log_softmax(vc / a.expert_tau)).sum() / ng
+        else:
+            loss = ((vc - rc) ** 2).mean() / EX['scale']
         with torch.no_grad():
-            neg = torch.full((ng,), -1e9, device=dev)
             top_v = neg.scatter_reduce(0, lg, vc, 'amax')
             top_r = neg.scatter_reduce(0, lg, rc, 'amax')
-            hit_v = (vc >= top_v[lg] - 1e-12) & (rc >= top_r[lg] - 1e-12)
+            pick = vc >= top_v[lg] - 1e-12
+            hit_v = pick & (rc >= top_r[lg] - 1e-12)
             agree = torch.zeros(ng, device=dev).scatter_add_(0, lg, hit_v.float()).clamp(max=1).mean()
-        return loss, agree
+            # regret: the playout mean given up by playing the net's top candidate (ties averaged), per group
+            npick = torch.zeros(ng, device=dev).scatter_add_(0, lg, pick.float())
+            got = torch.zeros(ng, device=dev).scatter_add_(0, lg, rc * pick) / npick
+            regret = (top_r - got).mean()
+        return loss, agree, regret
 
     def expert_val():
         net.eval()
         vg = torch.nonzero(EX['gval']).squeeze(1)
-        ls, ag = [], []
+        ls, ag, rg = [], [], []
         with torch.no_grad():
             for i in range(0, len(vg), 8192):
-                l, g_ = pair_loss(vg[i:i + 8192])
+                l, g_, r_ = pair_loss(vg[i:i + 8192])
                 ls.append(l.item())
                 ag.append(g_.item())
+                rg.append(r_.item())
         net.train()
-        return sum(ls) / len(ls), sum(ag) / len(ag)
+        return sum(ls) / len(ls), sum(ag) / len(ag), sum(rg) / len(rg)
     Mv, PHv = MODE[val], PHASE[val]
     del X
 
@@ -463,8 +483,8 @@ def main():
         assert not bad, f'--freeze: unknown rules {bad}'
         frozen = torch.tensor([n in a.freeze.split(',') for n in names], device=dev)
     if EX is not None:
-        xl0, xa0 = expert_val()
-        print(f'EXPERT val pair-loss {xl0:.4f} (1 = no skill) top-agree {xa0:.4f} (before training)', flush=True)
+        xl0, xa0, xr0 = expert_val()
+        print(f'EXPERT val {a.expert_loss}-loss {xl0:.4f} top-agree {xa0:.4f} regret {xr0:.5f} (before training)', flush=True)
     step = 0
     for ep in range(a.epochs):
         perm = torch.randperm(len(Xt), device=dev)
@@ -486,7 +506,7 @@ def main():
             if EX is not None:
                 tg = torch.nonzero(~EX['gval']).squeeze(1)
                 gids = tg[torch.randint(0, len(tg), (a.expert_groups,), device=dev)].unique()
-                l_x, _ = pair_loss(gids)
+                l_x, _, _ = pair_loss(gids)
                 loss = loss + a.expert_weight * l_x
             if a.margin:
                 here = torch.stack([(OWt[b] == o).any(1) for o in range(4)], 1)
@@ -505,10 +525,11 @@ def main():
                          'train/grad_norm': gn.item(), 'lr': sched.get_last_lr()[0]}, step=step)
         vl, vf, table, ece, by = evaluate()
         if EX is not None:
-            xl, xa = expert_val()
-            by['val/expert_pair_loss'] = xl
+            xl, xa, xr = expert_val()
+            by['val/expert_loss'] = xl
             by['val/expert_top_agree'] = xa
-            print(f'EXPERT val pair-loss {xl:.4f} (1 = no skill) top-agree {xa:.4f}', flush=True)
+            by['val/expert_regret'] = xr
+            print(f'EXPERT val {a.expert_loss}-loss {xl:.4f} top-agree {xa:.4f} regret {xr:.5f}', flush=True)
         vdh = by['val/loss_double_house']
         cal = ' '.join(f'{p:.2f}->{w:.2f}' for _, p, w, _ in table)
         print(f'EPOCH {ep + 1} train {l_pl.item():.4f} val {vl:.4f} first-logloss {vf:.4f} double-house {vdh:.4f} ece {ece:.4f} calib {cal}', flush=True)
