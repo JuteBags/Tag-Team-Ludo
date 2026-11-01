@@ -4,8 +4,9 @@
 // that day.
 import { sfx } from './sfx';
 import { earn } from './skins';
-import { settings } from './settings';
-import { loadCheckIn, saveCheckIn, type CheckIn } from './store';
+import { newAchievements } from './rewards';
+import { saveSetting, settings } from './settings';
+import { loadCheckIn, recordCheckIn, saveCheckIn, type CheckIn } from './store';
 
 /** Gold for each day of the 7-day track. A week is 380, about one cheap skin. */
 export const CHECKIN_GOLD = [20, 30, 40, 50, 60, 80, 100];
@@ -14,7 +15,7 @@ export const CHECKIN_GOLD = [20, 30, 40, 50, 60, 80, 100];
 export const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** Whole days from day `a` to day `b` (both YYYY-MM-DD). */
-const daysBetween = (a: string, b: string) => {
+export const daysBetween = (a: string, b: string) => {
   const t = (k: string) => {
     const [y, m, d] = k.split('-').map(Number);
     return Date.UTC(y!, m! - 1, d!);
@@ -82,6 +83,16 @@ function flyCoins(screen: HTMLElement, from: DOMRect, gold: number) {
   }
 }
 
+/** A short achievement note over the home screen. */
+function toast(screen: HTMLElement, html: string, delay: number, row: number) {
+  const t = document.createElement('div');
+  t.className = 'achtoast';
+  t.style.top = `${120 + row * 50}px`;
+  t.innerHTML = html;
+  screen.appendChild(t);
+  t.animate([{ opacity: 0, transform: 'translate(-50%,10px)' }, { opacity: 1, transform: 'translate(-50%,0)', offset: 0.12 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }], { duration: 3200, delay, fill: 'both' }).onfinish = () => t.remove();
+}
+
 /** Shows today's check-in card over the home `screen` if it hasn't been collected. Resolves when it closes. */
 export async function offerCheckIn(screen: HTMLElement): Promise<void> {
   const c = await loadCheckIn();
@@ -111,9 +122,15 @@ export async function offerCheckIn(screen: HTMLElement): Promise<void> {
         // is paid: a failed write loses one day's gold rather than paying it twice.
         const today = dayKey();
         const now = due(c, today);
-        if (now && (await saveCheckIn(collect(c, today)))) {
-          earn(now.gold);
-          flyCoins(screen, from, now.gold);
+        const next = collect(c, today);
+        if (now && (await saveCheckIn(next))) {
+          // A long enough run completes the check-in achievements; their gold flies in with the day's.
+          const fresh = newAchievements(await recordCheckIn(next.best), null, settings.achieved);
+          if (fresh.length) saveSetting('achieved', [...settings.achieved, ...fresh.map((a) => a.id)]);
+          const gold = now.gold + fresh.reduce((a, x) => a + x.gold, 0);
+          earn(gold);
+          flyCoins(screen, from, gold);
+          fresh.forEach((a, i) => toast(screen, `🏆 ${a.name} <em>+${a.gold}</em>`, 900 + i * 400, i));
         }
         ov.remove();
         done();

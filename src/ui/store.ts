@@ -2,7 +2,7 @@
 // SharedPreferences (which survive low storage better than localStorage) and in localStorage on the
 // web. Every call is guarded: if storage fails, the game simply isn't saved.
 import { Preferences } from '@capacitor/preferences';
-import type { Color, GameState } from '../engine';
+import { COLORS, type BotLevel, type Color, type GameState } from '../engine';
 import type { GameConfig } from './setup';
 
 async function read<T>(key: string): Promise<T | null> {
@@ -67,8 +67,13 @@ export const clearGame = () => drop(GAME);
 export const givingUpLoses = (g: { config: GameConfig; state: GameState; counted?: boolean }) =>
   g.config.mode === 'pvc' && !g.counted && g.state.turnCount >= g.state.players.length;
 
-/** What giving up a game costs, for the quit and new-game warnings. */
-export const giveUpNote = (s: Stats) => (s.streak > 0 ? `It counts as a loss and ends your win streak of ${s.streak}.` : 'It counts as a loss.');
+/** What giving up a game costs, for the quit and new-game warnings. For an Extreme game the Extreme streak comes first. */
+export const giveUpNote = (s: Stats, level?: BotLevel) =>
+  level === 'extreme' && s.xStreak > 0
+    ? `It counts as a loss and ends your Extreme streak of ${s.xStreak}.`
+    : s.streak > 0
+      ? `It counts as a loss and ends your win streak of ${s.streak}.`
+      : 'It counts as a loss.';
 
 /**
  * Gives up the saved game, if any, for a new one: it counts as a loss when `givingUpLoses`, then the save is
@@ -78,7 +83,7 @@ export async function giveUpSaved(): Promise<void> {
   const g = await loadGame();
   if (g && givingUpLoses(g)) {
     await saveGame({ ...g, counted: true });
-    await recordGame({ mode: 'pvc', place: 0, kills: 0, pairs: 0, quit: true });
+    await recordGame({ mode: 'pvc', place: 0, kills: 0, pairs: 0, quit: true, level: levelOf(g.state) });
   }
   await clearGame();
 }
@@ -99,35 +104,86 @@ export interface Stats {
   sixes: number;
   streak: number;
   bestStreak: number;
+  /** Wins by bot level (a game's level is its lowest bot's, `levelOf`). */
+  levelWins: Record<BotLevel, number>;
+  /** Wins in a row against Extreme bots, now and best. Only Extreme games count: games at other levels in between neither break nor extend it. */
+  xStreak: number;
+  xBestStreak: number;
+  /** The layouts won against Extreme (`layoutOf`). */
+  xModes: string[];
+  /** The longest daily check-in run (checkin.ts). */
+  checkinBest: number;
 }
 
 const STATS = 'ludo-stats';
-export const EMPTY_STATS: Stats = { played: 0, wins: 0, best: 0, kills: 0, pairs: 0, friends: 0, sixes: 0, streak: 0, bestStreak: 0 };
-export const loadStats = () => read<Partial<Stats>>(STATS).then((s) => ({ ...EMPTY_STATS, ...s }));
+export const emptyStats = (): Stats => ({
+  played: 0, wins: 0, best: 0, kills: 0, pairs: 0, friends: 0, sixes: 0, streak: 0, bestStreak: 0,
+  levelWins: { easy: 0, normal: 0, hard: 0, extreme: 0 }, xStreak: 0, xBestStreak: 0, xModes: [], checkinBest: 0,
+});
+export const EMPTY_STATS: Readonly<Stats> = emptyStats();
+/** The stored totals; fields added since a device's last save start at zero. */
+export const loadStats = () =>
+  read<Partial<Stats>>(STATS).then((s) => {
+    const e = emptyStats();
+    return { ...e, ...s, levelWins: { ...e.levelWins, ...s?.levelWins }, xModes: [...(s?.xModes ?? [])] } as Stats;
+  });
 export const resetStats = () => drop(STATS);
 
 /**
  * Adds one finished game to the totals and returns the new totals. A game given up (`quit`) counts as played
- * and lost, and ends the win streak, but adds nothing else.
+ * and lost and ends the win streaks (the Extreme one too, for an Extreme game), but adds nothing else.
+ * `level` is the game's level (`levelOf`), `layout` its layout (`layoutOf`). `xEnded` is the Extreme streak
+ * this game ended, if any.
  */
-export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; pairs: number; sixes?: number; quit?: boolean }): Promise<Stats> {
+export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; pairs: number; sixes?: number; quit?: boolean; level?: BotLevel; layout?: string }): Promise<Stats & { xEnded: number }> {
   const s = await loadStats();
+  const before = s.xStreak;
+  const won = !g.quit && g.place === 1;
   if (g.mode === 'pvp') s.friends++;
-  else if (g.quit) {
+  else {
     s.played++;
-    s.streak = 0;
-  } else {
-    s.played++;
-    if (g.place === 1) s.wins++;
-    s.best = s.best ? Math.min(s.best, g.place) : g.place;
-    s.kills += g.kills;
-    s.pairs += g.pairs;
-    s.sixes += g.sixes ?? 0;
-    s.streak = g.place === 1 ? s.streak + 1 : 0;
+    s.streak = won ? s.streak + 1 : 0;
     s.bestStreak = Math.max(s.bestStreak, s.streak);
+    if (g.level === 'extreme') {
+      s.xStreak = won ? s.xStreak + 1 : 0;
+      s.xBestStreak = Math.max(s.xBestStreak, s.xStreak);
+      if (won && g.layout && !s.xModes.includes(g.layout)) s.xModes.push(g.layout);
+    }
+    if (won && g.level) s.levelWins[g.level]++;
+    if (!g.quit) {
+      if (won) s.wins++;
+      s.best = s.best ? Math.min(s.best, g.place) : g.place;
+      s.kills += g.kills;
+      s.pairs += g.pairs;
+      s.sixes += g.sixes ?? 0;
+    }
   }
   await write(STATS, s);
+  // The Extreme streak this game ended (0 if none), for the result screen.
+  return { ...s, xEnded: before > 0 && s.xStreak === 0 ? before : 0 };
+}
+
+/** Records the longest check-in run, for the check-in achievements, and returns the new totals. */
+export async function recordCheckIn(best: number): Promise<Stats> {
+  const s = await loadStats();
+  s.checkinBest = Math.max(s.checkinBest, best);
+  await write(STATS, s);
   return s;
+}
+
+/** A game's bot level: its lowest bot's (normal for a bot without one), or undefined without bots. */
+export function levelOf(state: GameState): BotLevel | undefined {
+  const order: BotLevel[] = ['easy', 'normal', 'hard', 'extreme'];
+  const bots = state.players.filter((p) => p.bot).map((p) => order.indexOf(p.level ?? 'normal'));
+  return bots.length ? order[Math.min(...bots)] : undefined;
+}
+
+/** A game's layout: '2p', '3p', '4p', or with two houses each '2h-opposite' / '2h-side'. */
+export function layoutOf(state: GameState): string {
+  const owners = new Set(state.players.map((p) => p.owner)).size;
+  if (state.players.length === owners) return `${owners}p`;
+  const mine = state.players.filter((p) => p.owner === state.players[0]!.owner).map((p) => COLORS.indexOf(p.color));
+  return Math.abs(mine[0]! - mine[1]!) === 2 ? '2h-opposite' : '2h-side';
 }
 
 // ---------- daily check-in (checkin.ts) ----------
