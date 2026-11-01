@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { HARD_RULES } from '../src/engine/ai/hard-rules';
 import { LinearRules } from '../src/engine/ai/linear';
-import { faceChances, labelOf, PLAYOUTS, reviewMoves, rollLuck, summary, type DecisionValues } from '../src/engine/ai/review';
+import { faceChances, labelOf, PLAYOUTS, reviewMoves, rollLuck, summary, type DecisionValues, type Label } from '../src/engine/ai/review';
 
 const SEATS: Seat[] = [
   { color: 'blue', owner: 0, bot: false },
@@ -28,6 +28,15 @@ function game(seed: number): GameRecord {
   }
   return { v: 1, seats: SEATS, first: 'blue', seed, events };
 }
+
+describe('accuracy', () => {
+  it('weighs each label: a blunder costs more than an inaccuracy', () => {
+    const m = (label: Label) => ({ at: 0, owner: 0, played: 0, best: 0, playedChance: 0, bestChance: 0, gap: 0, se: 0, label });
+    expect(summary([m('best'), m('good')], [], 1)[0]!.accuracy).toBeCloseTo(0.95, 9);
+    expect(summary([m('best'), m('blunder')], [], 1)[0]!.accuracy).toBeCloseTo(0.5, 9);
+    expect(summary([m('inaccuracy'), m('mistake')], [], 1)[0]!.accuracy).toBeCloseTo(0.45, 9);
+  });
+});
 
 describe('labels', () => {
   it('calls a move best within 1.5 points or one standard error of the top, then by the points given up', () => {

@@ -156,7 +156,10 @@ export function rollLuck(rec: GameRecord, states: GameState[], net: Evaluator): 
   return out;
 }
 
-/** Each person's accuracy (share of reviewed moves that were best or good) and total luck. */
+/** What each label scores toward accuracy: a blunder costs more than an inaccuracy. */
+export const LABEL_SCORE: Record<Label, number> = { best: 1, good: 0.9, inaccuracy: 0.6, mistake: 0.3, blunder: 0 };
+
+/** Each person's accuracy (the mean label score of their reviewed moves, 0-1) and total luck. */
 export function summary(moves: MoveReview[], luck: RollLuck[], owners: number) {
   return Array.from({ length: owners }, (_, o) => {
     const mine = moves.filter((m) => m.owner === o);
@@ -164,7 +167,7 @@ export function summary(moves: MoveReview[], luck: RollLuck[], owners: number) {
     return {
       owner: o,
       moves: mine.length,
-      accuracy: mine.length ? (count('best') + count('good')) / mine.length : NaN,
+      accuracy: mine.length ? mine.reduce((a, m) => a + LABEL_SCORE[m.label], 0) / mine.length : NaN,
       labels: { best: count('best'), good: count('good'), inaccuracy: count('inaccuracy'), mistake: count('mistake'), blunder: count('blunder') },
       luck: luck.filter((l) => l.owner === o).reduce((a, l) => a + l.luck, 0),
     };
