@@ -5,10 +5,12 @@
 //
 // Events are one string of characters. Whether the next one is a die or a move follows from the phase the
 // replay is in:
-//   roll phase: the die, '1'..'6', or 'x' as the last event: the players still in voted to stop, and the
-//   game ended with the places as they stood (ownerRanking of the last position, as the result screen does);
+//   roll phase: the die, '1'..'6';
 //   move phase: two characters, the token(s) then the die. A single token is 'a'..'d' (token 0..3); a pair
 //   is 'e'..'j' (tokens 01, 02, 03, 12, 13, 23).
+// 'x' as the last event, in any phase: the game ended before its last place was played out (a vote to stop,
+// no people left, or the person vs Computer finished), with the places as they stood: ownerRanking of the
+// last position, as the result screen does.
 import { createGame, move, roll, type Seat } from './game';
 import { mixSeed, positionKey, seeded } from './rng';
 import type { Color } from './board';
@@ -42,7 +44,7 @@ export function moveEvent(m: Move): string {
 /** One die, as rolled. */
 export const rollEvent = (face: number) => String(face);
 
-/** The game ended by vote here (only as the last event, between turns). */
+/** The game ended early here (only as the last event). */
 export const STOP_EVENT = 'x';
 
 /** The game's first position. */
@@ -51,7 +53,7 @@ export const startOf = (r: Pick<GameRecord, 'seats' | 'first' | 'singles'>) => c
 /** The dice the app rolls at `s` for a game with this seed (gameScreen.ts rngFor('dice')). */
 export const seededDie = (seed: number, s: GameState) => roll(s, seeded(mixSeed(seed, 'dice' + positionKey(s)))).dice!;
 
-/** `stopped`: the game ended by vote (the last position's ownerRanking is the result). */
+/** `stopped`: the game ended early (the last position's ownerRanking is the result). */
 export type Replayed = { ok: true; states: GameState[]; stopped: boolean } | { ok: false; error: string; states: GameState[] };
 
 /**
@@ -73,7 +75,7 @@ export function replay(r: GameRecord, opts: { checkDice?: boolean } = {}): Repla
   for (let i = 0; i < e.length; i++) {
     if (s.phase === 'over') return fail(`Events after the end of the game (at ${i}).`, states);
     if (e[i] === STOP_EVENT) {
-      if (s.phase !== 'roll' || i !== e.length - 1) return fail(`A vote to stop that can't be there (at ${i}).`, states);
+      if (i !== e.length - 1) return fail(`Events after the end of the game (at ${i}).`, states);
       return { ok: true, states, stopped: true };
     }
     try {

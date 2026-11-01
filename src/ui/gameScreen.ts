@@ -356,11 +356,7 @@ export class GameScreen {
     if (fresh.length && this.state.phase !== 'over' && !this.humanDone()) {
       const voters = [...new Set(this.state.players.filter((p) => !p.bot && !isDone(p)).map((p) => p.owner))].filter((o) => !this.doneOwners().includes(o));
       // Only bots left: nobody is watching for the rest of the places.
-      if (!voters.length || !(await this.vote(fresh[0]!, this.doneOwners().length, voters))) {
-        this.ended = true;
-        // Voted to stop with people still in: the record says so (no voters left is a normal end).
-        if (voters.length && this.log !== null) this.log += STOP_EVENT;
-      }
+      if (!voters.length || !(await this.vote(fresh[0]!, this.doneOwners().length, voters))) this.ended = true;
     }
   }
 
@@ -714,9 +710,14 @@ export class GameScreen {
     const human = this.state.players.find((p) => !p.bot)?.owner ?? 0;
     const place = order.indexOf(human) + 1;
     const won = pvp || place === 1;
-    // The game's record joins the past games (for the replay and the review, #65).
+    // The game's record joins the past games (for the replay and the review, #65). A game that ends before
+    // its last place is played out (a vote to stop, no people left, or you finished vs Computer) ends with
+    // STOP_EVENT, so a replay knows its result is the position's ownerRanking, as here.
     const rec = this.record();
-    if (rec) void savePastGame({ rec, at: Date.now(), mode: this.config.mode, place });
+    if (rec) {
+      if (this.state.phase !== 'over') rec.events += STOP_EVENT;
+      void savePastGame({ rec, at: Date.now(), mode: this.config.mode, place });
+    }
     const rows = order
       .map((o, i) => {
         const mine = colorsOf(o);

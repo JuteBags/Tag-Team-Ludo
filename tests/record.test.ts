@@ -73,7 +73,7 @@ describe('game record', () => {
     expect(cut.states.length).toBeGreaterThan(1);
   });
 
-  it('ends a game stopped by vote with the places as they stood', () => {
+  it('ends a game stopped early with the places as they stood', () => {
     const { rec, states } = play(LAYOUTS['4p']!, 9);
     // Cut the game after event k, at a roll phase, as the vote would.
     let k = 0;
@@ -90,8 +90,9 @@ describe('game record', () => {
     const last = stopped.states.at(-1)!;
     expect(states.map((x) => JSON.stringify(x))).toContain(JSON.stringify(last));
     expect(ownerRanking(last)).toEqual(ownerRanking(states[stopped.states.length - 1]!));
-    // Only as the last event, and only between turns.
+    // Only as the last event, in any phase but after the end.
     expect(replay({ ...rec, events: rec.events.slice(0, k) + STOP_EVENT + '3' }).ok).toBe(false);
+    expect(replay({ ...rec, events: rec.events.slice(0, k + 1) + STOP_EVENT })).toMatchObject({ ok: true, stopped: true });
     expect(replay({ ...rec, events: rec.events + STOP_EVENT }).ok).toBe(false);
   });
 
