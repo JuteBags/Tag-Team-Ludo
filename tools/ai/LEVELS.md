@@ -53,17 +53,17 @@ CI (`.github/workflows/ai-levels.yml`, "Bot levels") replays the Easy, Normal an
 | Mode | Even | Easy vs Random | Normal vs Easy | Hard vs Normal | Extreme vs Hard |
 |---|---|---|---|---|---|
 | 2 players | 50.0 | 79.8 ± 1.2 | 68.2 ± 1.4 | 55.6 ± 1.5 | 56.9 ± 3.4 |
-| 3 players | 33.3 | 71.6 ± 1.1 | 45.2 ± 1.3 | 38.8 ± 1.2 | pending |
-| 4 players | 25.0 | 67.1 ± 1.0 | 32.8 ± 1.0 | 30.5 ± 1.0 | pending |
-| 2 players, 2 houses each (opposite) | 50.0 | 89.6 ± 0.9 | 69.5 ± 1.4 | 52.3 ± 1.5 | pending |
-| 2 players, 2 houses each (side by side) | 50.0 | 89.7 ± 0.9 | 69.5 ± 1.4 | 53.2 ± 1.5 | pending |
-| 2 players, no doubles | 50.0 | 91.4 ± 0.9 | 61.8 ± 1.5 | 54.5 ± 1.5 | pending |
-| 3 players, no doubles | 33.3 | 84.1 ± 0.9 | 44.0 ± 1.3 | 38.7 ± 1.2 | pending |
-| 4 players, no doubles | 25.0 | 77.5 ± 0.9 | 37.1 ± 1.1 | 31.1 ± 1.0 | pending |
-| 2 players, 2 houses each (opposite), no doubles | 50.0 | 96.5 ± 0.6 | 66.1 ± 1.5 | 53.0 ± 1.5 | pending |
-| 2 players, 2 houses each (side by side), no doubles | 50.0 | 96.9 ± 0.5 | 67.4 ± 1.5 | 54.4 ± 1.5 | pending |
+| 3 players | 33.3 | 71.6 ± 1.1 | 45.2 ± 1.3 | 38.8 ± 1.2 | 38.3 ± 3.9 |
+| 4 players | 25.0 | 67.1 ± 1.0 | 32.8 ± 1.0 | 30.5 ± 1.0 | 31.1 ± 3.2 |
+| 2 players, 2 houses each (opposite) | 50.0 | 89.6 ± 0.9 | 69.5 ± 1.4 | 52.3 ± 1.5 | 57.2 ± 3.4 |
+| 2 players, 2 houses each (side by side) | 50.0 | 89.7 ± 0.9 | 69.5 ± 1.4 | 53.2 ± 1.5 | 62.1 ± 3.4 |
+| 2 players, no doubles | 50.0 | 91.4 ± 0.9 | 61.8 ± 1.5 | 54.5 ± 1.5 | 59.9 ± 3.4 |
+| 3 players, no doubles | 33.3 | 84.1 ± 0.9 | 44.0 ± 1.3 | 38.7 ± 1.2 | 37.5 ± 3.9 |
+| 4 players, no doubles | 25.0 | 77.5 ± 0.9 | 37.1 ± 1.1 | 31.1 ± 1.0 | 27.0 ± 3.1 |
+| 2 players, 2 houses each (opposite), no doubles | 50.0 | 96.5 ± 0.6 | 66.1 ± 1.5 | 53.0 ± 1.5 | 60.9 ± 3.4 |
+| 2 players, 2 houses each (side by side), no doubles | 50.0 | 96.9 ± 0.5 | 67.4 ± 1.5 | 54.4 ± 1.5 | 66.6 ± 3.3 |
 
 ### Known gaps
 
-- **4 players, no doubles:** Extreme vs Hard is 25.9 ± 3.0 there, level with Hard. Both Extreme and Hard were tuned on games with doubles, and Hard's gain over the previous Hard's rules is also missing without doubles.
+- **4 players, no doubles:** Extreme vs Hard is 25.9 ± 3.0 on fair dice and 27.0 ± 3.1 on the app's dice, about level with Hard. Both Extreme and Hard were tuned on games with doubles, and Hard's gain over the previous Hard's rules is also missing without doubles.
 - **The Hard over Normal step** is the smallest, about +4 points in the 2-player modes. It's a real step everywhere, but a modest one.
