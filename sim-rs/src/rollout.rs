@@ -71,9 +71,7 @@ pub fn choose(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evaluat
 /// Every distinct candidate's paired playout mean (see the module doc); `g` must have several moves.
 pub fn evaluate(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy) -> Evaluation {
     let nm = g.moves.len();
-    if nm == 1 {
-        return 0;
-    }
+    assert!(nm > 1, "rollout::evaluate needs several moves");
     let me = g.b.p[g.current].owner;
     let seed = (rng.next() * 2_147_483_647.0) as i64;
     // base's own move, and the distinct resulting positions (two moves can lead to the same position)
