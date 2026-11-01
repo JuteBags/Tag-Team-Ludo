@@ -82,6 +82,25 @@ def load(path):
     return X[ok], owner[ok], order[ok], left_g[gi][ok], gid[ok], D, mode_g[gi][ok], phase[ok], ok, tleft[ok]
 
 
+def load_expert(path):
+    """A ludo-expert file: per decision group, every candidate's resulting position and its paired playout
+    mean for the mover. Returns X [R,4,D], owner [R,4], group [R] (file-local), mover [R], mean [R]."""
+    buf = open(path, 'rb').read()
+    (hl,) = struct.unpack_from('<I', buf, 0)
+    head = json.loads(buf[4:4 + hl])
+    assert head.get('kind') == 'expert', f'{path} is not a ludo-expert file'
+    D, R = head['D'], head['rows']
+    off = 4 + hl
+    X = np.frombuffer(buf, np.float32, R * 4 * D, off).reshape(R, 4, D)
+    off += R * 4 * D * 4
+    OW = np.frombuffer(buf, np.int32, R * 4, off).reshape(R, 4).astype(np.int64)
+    off += R * 4 * 4
+    GR = np.frombuffer(buf, np.int32, R, off).astype(np.int64)
+    MV = np.frombuffer(buf, np.int32, R, off + 4 * R).astype(np.int64)
+    MN = np.frombuffer(buf, np.float32, R, off + 8 * R)
+    return X, OW, GR, MV, MN
+
+
 def load_targets(path, ok):
     """ludo-label's sidecar for a shard: per position, each person's target chance of finishing first next
     (a lambda-return along the real game, by owner index), rows in shard order."""
@@ -162,6 +181,10 @@ def main():
     ap.add_argument('--wandb', default='', help='W&B run name')
     ap.add_argument('--group', default='phase1-bootstrap')
     ap.add_argument('--max-games', type=int, default=0, help='train on only the first shards, up to about this many games')
+    ap.add_argument('--expert', default='', help='ludo-expert files (comma-separated globs): paired move comparisons, '
+                    'trained with the centred pair loss (each group: net values minus their mean vs playout means minus theirs)')
+    ap.add_argument('--expert-weight', type=float, default=1.0, help='weight of the (normalised) pair loss next to the PL on --shards')
+    ap.add_argument('--expert-groups', type=int, default=2048, help='decision groups per step for the pair loss')
     ap.add_argument('--rules', default='', help='residual mode: frozen linear rules json added to the net score')
     ap.add_argument('--alpha', type=float, default=0.0, help='residual mode: weight of --rules in the score (blend.ts alpha)')
     ap.add_argument('--learn-temp', action='store_true', help='also learn one temperature tau on the whole score; at export it is folded into '
@@ -208,6 +231,76 @@ def main():
     TGt = TG[~val].to(dev) if TG is not None else None
     TLt = TL[~val].to(dev)
     Xv, OWv, Ov = X[val].to(dev), OW[val].to(dev), O[val].to(dev)
+    # Expert data (--expert): rows grouped by decision; 5% of the groups held out.
+    EX = None
+    if a.expert:
+        eparts, gofs = [], 0
+        for path in sorted({q for pat in a.expert.split(',') for q in glob.glob(pat)}):
+            ex, eo, eg, em, en = load_expert(path)
+            eparts.append((ex, eo, eg + gofs, em, en))
+            gofs += int(eg.max()) + 1 if len(eg) else 0
+        EXx = torch.from_numpy(np.concatenate([q[0] for q in eparts])).to(dev)
+        EXo = torch.from_numpy(np.concatenate([q[1] for q in eparts])).to(dev)
+        EXg = torch.from_numpy(np.concatenate([q[2] for q in eparts])).to(dev)
+        EXm = torch.from_numpy(np.concatenate([q[3] for q in eparts])).to(dev)
+        EXr = torch.from_numpy(np.concatenate([q[4] for q in eparts])).to(dev)
+        del eparts
+        G = int(EXg.max()) + 1
+        counts = torch.bincount(EXg, minlength=G)
+        starts = torch.cumsum(counts, 0) - counts
+        # centred playout means, and their mean square (the loss is divided by it: dimensionless, about 1 = no skill)
+        gmean_r = torch.zeros(G, device=dev).scatter_add_(0, EXg, EXr) / counts.clamp(min=1)
+        rc = EXr - gmean_r[EXg]
+        r_scale = (rc ** 2).mean().clamp(min=1e-8)
+        gval = (torch.arange(G, device=dev) % 20) == 0
+        EX = dict(x=EXx, o=EXo, g=EXg, m=EXm, rc=rc, counts=counts, starts=starts, G=G, gval=gval, scale=r_scale)
+        print(f'EXPERT rows {len(EXg)} groups {G} rc_rms {r_scale.sqrt().item():.4f}', flush=True)
+        if run:
+            run.config.update({'expert_n_rows': len(EXg), 'expert_n_groups': G})
+
+    def expert_rows(gids):
+        """Row indexes of the given decision groups (contiguous in the files)."""
+        c = EX['counts'][gids]
+        first = EX['starts'][gids]
+        rep_first = torch.repeat_interleave(first, c)
+        within = torch.arange(int(c.sum()), device=dev) - torch.repeat_interleave(torch.cumsum(c, 0) - c, c)
+        return rep_first + within
+
+    def pair_loss(gids, train=True):
+        """Centred pair loss on these groups (normalised), and the share of groups where the net's top candidate
+        is the playouts' top candidate."""
+        rows = expert_rows(gids)
+        x, ow, g, mv, rc = EX['x'][rows], EX['o'][rows], EX['g'][rows], EX['m'][rows], EX['rc'][rows]
+        sc, _ = score(x, ow)
+        # people still playing: any colour not home (encode.ts feature 2 = share of tokens home)
+        done_c = (x[:, :, 2] > 0.999) | (ow < 0)
+        live = torch.stack([((ow == o) & ~done_c).any(1) for o in range(4)], 1)
+        p = torch.softmax(sc.masked_fill(~live, -1e9), 1).gather(1, mv[:, None]).squeeze(1)
+        # group ids local to this batch
+        _, lg = torch.unique(g, return_inverse=True)
+        ng = int(lg.max()) + 1
+        cnt = torch.zeros(ng, device=dev).scatter_add_(0, lg, torch.ones_like(p))
+        vc = p - (torch.zeros(ng, device=dev).scatter_add_(0, lg, p) / cnt)[lg]
+        loss = ((vc - rc) ** 2).mean() / EX['scale']
+        with torch.no_grad():
+            neg = torch.full((ng,), -1e9, device=dev)
+            top_v = neg.scatter_reduce(0, lg, vc, 'amax')
+            top_r = neg.scatter_reduce(0, lg, rc, 'amax')
+            hit_v = (vc >= top_v[lg] - 1e-12) & (rc >= top_r[lg] - 1e-12)
+            agree = torch.zeros(ng, device=dev).scatter_add_(0, lg, hit_v.float()).clamp(max=1).mean()
+        return loss, agree
+
+    def expert_val():
+        net.eval()
+        vg = torch.nonzero(EX['gval']).squeeze(1)
+        ls, ag = [], []
+        with torch.no_grad():
+            for i in range(0, len(vg), 8192):
+                l, g_ = pair_loss(vg[i:i + 8192])
+                ls.append(l.item())
+                ag.append(g_.item())
+        net.train()
+        return sum(ls) / len(ls), sum(ag) / len(ag)
     Mv, PHv = MODE[val], PHASE[val]
     del X
 
@@ -368,6 +461,11 @@ def main():
                 loss = l_pl
             if a.aux_turns and net.last_turns is not None:
                 loss = loss + a.aux_turns * ((net.last_turns - TLt[b]) ** 2).mean()
+            if EX is not None:
+                tg = torch.nonzero(~EX['gval']).squeeze(1)
+                gids = tg[torch.randint(0, len(tg), (a.expert_groups,), device=dev)].unique()
+                l_x, _ = pair_loss(gids)
+                loss = loss + a.expert_weight * l_x
             if a.margin:
                 here = torch.stack([(OWt[b] == o).any(1) for o in range(4)], 1)
                 l_m = (((mg - Lt[b]) ** 2) * here).sum() / here.sum()
@@ -382,6 +480,11 @@ def main():
                 run.log({'train/loss_pl': l_pl.item(), 'train/loss_margin': l_m.item() if a.margin else 0.0,
                          'train/grad_norm': gn.item(), 'lr': sched.get_last_lr()[0]}, step=step)
         vl, vf, table, ece, by = evaluate()
+        if EX is not None:
+            xl, xa = expert_val()
+            by['val/expert_pair_loss'] = xl
+            by['val/expert_top_agree'] = xa
+            print(f'EXPERT val pair-loss {xl:.4f} (1 = no skill) top-agree {xa:.4f}', flush=True)
         vdh = by['val/loss_double_house']
         cal = ' '.join(f'{p:.2f}->{w:.2f}' for _, p, w, _ in table)
         print(f'EPOCH {ep + 1} train {l_pl.item():.4f} val {vl:.4f} first-logloss {vf:.4f} double-house {vdh:.4f} ece {ece:.4f} calib {cal}', flush=True)
