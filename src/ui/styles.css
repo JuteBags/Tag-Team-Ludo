@@ -291,7 +291,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .checkin-ov .cd.now{background:rgba(255,210,63,.22);border-color:#ffd23f;box-shadow:0 0 12px rgba(255,210,63,.45)}
 .checkin-ov .b3 .coin{width:20px;height:20px;vertical-align:-3px}
 .checkin-ov .later{margin-top:12px;background:none;border:0;color:inherit;font-size:14px;font-weight:800;opacity:.75;text-decoration:underline}
-.flycoin{position:fixed;z-index:100;pointer-events:none}
+.flycoin{position:absolute;z-index:100;pointer-events:none}
 
 /* ---------- result ---------- */
 .result{position:absolute;inset:0;z-index:50}

@@ -43,23 +43,26 @@ export function collect(c: CheckIn | null, today: string): CheckIn {
 
 const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** Coins fly from `from` into the gold pill, which counts up to the new total. */
+/** Coins fly from `from` into the gold pill, which counts up to the new total. They live in `screen`, so they go with it. */
 function flyCoins(screen: HTMLElement, from: DOMRect, gold: number) {
   const pill = screen.querySelector<HTMLElement>('.gp');
   if (!pill) return;
   const start = settings.gold - gold;
   const show = (n: number) => pill.replaceChildren(Object.assign(document.createElement('i'), { className: 'coin' }), String(n));
   if (calm()) return show(settings.gold);
+  // Screen pixels to the (scaled) stage's own pixels.
+  const box = screen.getBoundingClientRect();
+  const k = screen.offsetWidth / box.width;
   const to = pill.getBoundingClientRect();
-  const size = to.height * 0.85;
+  const size = to.height * 0.85 * k;
+  const x0 = (from.left + from.width / 2 - box.left) * k, y0 = (from.top + from.height / 2 - box.top) * k;
+  const dx = (to.left + to.width * 0.2 - box.left) * k - x0, dy = (to.top + to.height / 2 - box.top) * k - y0;
   const n = 8;
   for (let i = 0; i < n; i++) {
     const c = document.createElement('i');
     c.className = 'coin flycoin';
-    Object.assign(c.style, { width: `${size}px`, height: `${size}px`, left: `${from.left + from.width / 2 - size / 2}px`, top: `${from.top + from.height / 2 - size / 2}px` });
-    document.body.appendChild(c);
-    const dx = to.left + to.width * 0.2 - (from.left + from.width / 2);
-    const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+    Object.assign(c.style, { width: `${size}px`, height: `${size}px`, left: `${x0 - size / 2}px`, top: `${y0 - size / 2}px` });
+    screen.appendChild(c);
     const spread = (i - (n - 1) / 2) * size * 0.9;
     const a = c.animate(
       [
@@ -71,6 +74,7 @@ function flyCoins(screen: HTMLElement, from: DOMRect, gold: number) {
     );
     a.onfinish = () => {
       c.remove();
+      if (!screen.isConnected) return;
       show(Math.round(start + (gold * (i + 1)) / n));
       sfx.tick();
       pill.animate([{ transform: 'scale(1.15)' }, { transform: 'scale(1)' }], { duration: 160 });
@@ -81,8 +85,9 @@ function flyCoins(screen: HTMLElement, from: DOMRect, gold: number) {
 /** Shows today's check-in card over the home `screen` if it hasn't been collected. Resolves when it closes. */
 export async function offerCheckIn(screen: HTMLElement): Promise<void> {
   const c = await loadCheckIn();
-  const today = dayKey();
-  const d = due(c, today);
+  // Storage that can't be read isn't a new player: offering day 1 would reset a real streak.
+  if (c === 'error') return;
+  const d = due(c, dayKey());
   if (!d || !screen.isConnected) return;
   const week = Math.floor((d.streak - 1) / CHECKIN_GOLD.length);
   const track = CHECKIN_GOLD.map((g, i) => {
@@ -96,14 +101,21 @@ export async function offerCheckIn(screen: HTMLElement): Promise<void> {
     <button class="b3 green disp" data-act="collect"><i class="coin"></i> COLLECT ${d.gold}</button><button class="later" data-act="later">Later</button></div>`;
   screen.appendChild(ov);
   return new Promise((done) => {
-    ov.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
+    ov.addEventListener('click', async (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-act]');
       if (b?.dataset.act === 'collect') {
+        if (b.disabled) return;
+        b.disabled = true;
         const from = b.getBoundingClientRect();
-        void saveCheckIn(collect(c, today));
-        earn(d.gold);
+        // The day again, in case the card stayed open past midnight. The check-in is stored before the gold
+        // is paid: a failed write loses one day's gold rather than paying it twice.
+        const today = dayKey();
+        const now = due(c, today);
+        if (now && (await saveCheckIn(collect(c, today)))) {
+          earn(now.gold);
+          flyCoins(screen, from, now.gold);
+        }
         ov.remove();
-        flyCoins(screen, from, d.gold);
         done();
       } else if (b?.dataset.act === 'later' || e.target === ov) {
         ov.remove();

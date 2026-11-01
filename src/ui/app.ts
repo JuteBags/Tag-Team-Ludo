@@ -54,7 +54,7 @@ export function mountApp(root: HTMLElement) {
   };
 
   // Back: an open sheet closes; in a game it pauses and resumes; in setup it goes a step back; on the
-  // home screen there is nowhere left, so the app closes.
+  // home screen the update prompt or the check-in card closes, and after that the app closes.
   handleBack(() => {
     const sheet = stage.querySelector('.sheet');
     if (sheet) {
@@ -62,6 +62,12 @@ export function mountApp(root: HTMLElement) {
       return true;
     }
     if (game && stage.contains(game.el)) return game.back();
+    // The update prompt and the check-in card: Back is "Not now" / "Later".
+    const later = stage.querySelector<HTMLElement>('.menu-ov [data-act=later]');
+    if (later) {
+      later.click();
+      return true;
+    }
     const back = stage.querySelector<HTMLElement>('[data-act=back]');
     if (back) {
       back.click();
