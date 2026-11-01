@@ -70,12 +70,18 @@ pub fn choose(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evaluat
 
 /// Every distinct candidate's paired playout mean (see the module doc); `g` must have several moves.
 pub fn evaluate(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy) -> Evaluation {
+    evaluate_mine(g, rng, n, cut, eval, base, base)
+}
+
+/// evaluate() with the mover's own colours played by `mine` (in the playouts, and as the policy whose own
+/// move is the default), everyone else by `base`. mine = base is evaluate() exactly.
+pub fn evaluate_mine(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy, mine: &Policy) -> Evaluation {
     let nm = g.moves.len();
     assert!(nm > 1, "rollout::evaluate needs several moves");
     let me = g.b.p[g.current].owner;
     let seed = (rng.next() * 2_147_483_647.0) as i64;
     // base's own move, and the distinct resulting positions (two moves can lead to the same position)
-    let kb = base.choose(g, &mut Rng::seeded(seed ^ 0x0bad_5eed));
+    let kb = mine.choose(g, &mut Rng::seeded(seed ^ 0x0bad_5eed));
     let mut cands: Vec<(usize, Game)> = Vec::new();
     let mut keys = Vec::new();
     for k in 0..nm {
@@ -101,7 +107,7 @@ pub fn evaluate(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evalu
         for (c, (_, t)) in cands.iter().enumerate() {
             let mut d = [Rng::seeded(s), Rng::seeded(s ^ 0x1111), Rng::seeded(s ^ 0x2222), Rng::seeded(s ^ 0x3333)];
             let mut r = Rng::seeded(s ^ 0x1234_5678);
-            res[c][i] = playout(*t, base, base, me, &mut d, &mut r, cut, eval);
+            res[c][i] = playout(*t, base, mine, me, &mut d, &mut r, cut, eval);
         }
     }
     // leave base's move only for the best candidate whose paired advantage is significant
