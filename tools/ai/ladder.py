@@ -89,6 +89,7 @@ def main():
     ap.add_argument('--evolve-seeds', type=int, default=400, help='paired seeds per CMA-ES candidate')
     ap.add_argument('--evolve-sigma', type=float, default=0.15)
     ap.add_argument('--residual', action='store_true', help='with --blend: train the net as a residual over the frozen rules (train.py --rules/--alpha)')
+    ap.add_argument('--learn-temp', action='store_true', help="with --residual: train.py --learn-temp; the new net's alpha is the BLEND line's tau * alpha")
     a = ap.parse_args()
     global DICE
     DICE = ' --dice fair' if a.dice == 'fair' else ''
@@ -187,13 +188,26 @@ def main():
             if todo_l:
                 run_parallel(todo_l)
             target = ['--target', 'lambda', '--pl-weight', str(a.pl_weight)]
+        residual = a.blend and a.residual
+        new_blend = gd / 'blend.json'  # residual mode: the rules and alpha the new net was trained against
         if not new.exists():
-            subprocess.run([sys.executable, '-u', 'tools/ai/train.py', '--shards', shards, '--init', cur, '--out', str(new),
-                            '--hidden', '128', '--layers', '2', '--epochs', '3', '--lr', '1e-3', '--wandb', f'{a.wandb}-gen{k}', '--group', 'ladder', *target,
-                            *(['--rules', st['rules'], '--alpha', str(st['alpha'])] if a.blend and a.residual else [])], check=True)
+            train = subprocess.Popen([sys.executable, '-u', 'tools/ai/train.py', '--shards', shards, '--init', cur, '--out', str(new),
+                                      '--hidden', '128', '--layers', '2', '--epochs', '3', '--lr', '1e-3', '--wandb', f'{a.wandb}-gen{k}', '--group', 'ladder', *target,
+                                      *(['--rules', st['rules'], '--alpha', str(st['alpha'])] if residual else []),
+                                      *(['--learn-temp'] if residual and a.learn_temp else [])], stdout=subprocess.PIPE, text=True)
+            blend_line = ''
+            for line in train.stdout:  # echo the trainer's log, keep its BLEND line (alpha' = tau * alpha)
+                print(line, end='', flush=True)
+                if line.startswith('BLEND '):
+                    blend_line = line.split()[1]
+            if train.wait():
+                raise subprocess.CalledProcessError(train.returncode, 'train.py')
+            if residual:
+                new_blend.write_text(json.dumps({'rules': st['rules'], 'alpha': float(blend_line.rsplit(':', 1)[1]) if blend_line else st['alpha']}))
         t_learn = time.time() - t0 - t_play
         # 2b. evolve the readable part around the new net
-        new_rules, new_alpha = evolve(new, st['rules'], st['alpha'], gd, f'gen{k}', 3_000_000 + k * 100_000) if a.blend else (None, None)
+        start_alpha = json.loads(new_blend.read_text())['alpha'] if residual else st.get('alpha')
+        new_rules, new_alpha = evolve(new, st['rules'], start_alpha, gd, f'gen{k}', 3_000_000 + k * 100_000) if a.blend else (None, None)
         t_evolve = time.time() - t0 - t_play - t_learn
         # 3. check
         block = 1_000_000 + k * a.seeds  # fresh dice for every generation's checks
