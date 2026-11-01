@@ -5,3 +5,4 @@ export * from './dice';
 export * from './game';
 export * from './bot';
 export * from './rng';
+export * from './record';

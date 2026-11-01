@@ -75,3 +75,16 @@ describe('giving a game up', () => {
     expect((await loadStats()).played).toBe(0);
   });
 });
+
+describe('past games', () => {
+  beforeEach(() => mem.clear());
+
+  it('keeps the newest games first, up to KEEP_GAMES', async () => {
+    const { KEEP_GAMES, loadPastGames, savePastGame } = await import('../src/ui/store');
+    for (let i = 0; i < KEEP_GAMES + 3; i++) await savePastGame({ rec: { v: 1, seats: [], first: 'blue', events: String(i) }, at: i, mode: 'pvc', place: 1 });
+    const games = await loadPastGames();
+    expect(games.length).toBe(KEEP_GAMES);
+    expect(games[0]!.at).toBe(KEEP_GAMES + 2);
+    expect(games.at(-1)!.at).toBe(3);
+  });
+});

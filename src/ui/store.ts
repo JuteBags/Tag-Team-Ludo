@@ -2,7 +2,7 @@
 // SharedPreferences (which survive low storage better than localStorage) and in localStorage on the
 // web. Every call is guarded: if storage fails, the game simply isn't saved.
 import { Preferences } from '@capacitor/preferences';
-import { COLORS, type BotLevel, type Color, type GameState } from '../engine';
+import { COLORS, type BotLevel, type Color, type GameRecord, type GameState } from '../engine';
 import type { GameConfig } from './setup';
 
 async function read<T>(key: string): Promise<T | null> {
@@ -47,6 +47,8 @@ export interface SavedGame {
   seed?: number;
   /** Already counted as a loss when it was given up (so a crash can't count it twice). */
   counted?: boolean;
+  /** The game so far as record events (engine/record.ts); missing in saves from before records. */
+  log?: string;
 }
 
 const GAME = 'ludo-save';
@@ -213,4 +215,26 @@ export async function saveCheckIn(c: CheckIn): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// ---------- past games (#65) ----------
+
+/**
+ * A finished game: its record (engine/record.ts), when it ended, and your place in it. Only games that reach
+ * the result screen are kept: a quit game, or one given up for a new game, isn't.
+ */
+export interface PastGame {
+  rec: GameRecord;
+  at: number;
+  mode: 'pvc' | 'pvp';
+  place: number;
+}
+
+const GAMES = 'ludo-games';
+/** How many finished games are kept, newest first. */
+export const KEEP_GAMES = 20;
+export const loadPastGames = () => read<PastGame[]>(GAMES).then((g) => (Array.isArray(g) ? g : []));
+/** Adds a finished game, dropping the oldest past KEEP_GAMES. */
+export async function savePastGame(g: PastGame): Promise<void> {
+  await write(GAMES, [g, ...(await loadPastGames())].slice(0, KEEP_GAMES));
 }
