@@ -129,6 +129,49 @@ pub fn evaluate(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evalu
     Evaluation { cands: cands.into_iter().zip(means).map(|((k, t), m)| (k, t, m)).collect(), base: b, pick: best }
 }
 
+/// One playout to run: the candidate's position, the playout's seed (its dice streams and policy rng
+/// derive from it as in evaluate) and the mover's person.
+#[derive(Clone, Copy)]
+pub struct Job {
+    pub start: Game,
+    pub seed: i64,
+    pub me: u8,
+}
+
+/// Runs a round of playouts. The CPU runs them one by one; a GPU backend runs whole batches from many
+/// threads at once and must return bit-identical results (the parity gate).
+pub trait Playouts: Send + Sync {
+    fn run(&self, jobs: &[Job], cut: u32, eval: Option<&Evaluator>, base: &Policy, mine: &Policy) -> Vec<f64>;
+}
+
+/// The reference backend: rollout.rs playout() per job.
+pub struct Cpu;
+
+impl Playouts for Cpu {
+    fn run(&self, jobs: &[Job], cut: u32, eval: Option<&Evaluator>, base: &Policy, mine: &Policy) -> Vec<f64> {
+        jobs.iter().map(|j| cpu_playout(j, cut, eval, base, mine)).collect()
+    }
+}
+
+/// One job on the CPU: the dice per seat and the policy rng from its seed.
+pub fn cpu_playout(j: &Job, cut: u32, eval: Option<&Evaluator>, base: &Policy, mine: &Policy) -> f64 {
+    let s = j.seed;
+    let mut d = [Rng::seeded(s), Rng::seeded(s ^ 0x1111), Rng::seeded(s ^ 0x2222), Rng::seeded(s ^ 0x3333)];
+    let mut r = Rng::seeded(s ^ 0x1234_5678);
+    playout(j.start, base, mine, j.me, &mut d, &mut r, cut, eval)
+}
+
+static BACKEND: std::sync::OnceLock<Box<dyn Playouts>> = std::sync::OnceLock::new();
+
+/// Installs the race's playout backend (once, before the first decision); the CPU when never set.
+pub fn set_backend(b: Box<dyn Playouts>) {
+    assert!(BACKEND.set(b).is_ok(), "playout backend set twice");
+}
+
+fn backend() -> &'static dyn Playouts {
+    BACKEND.get_or_init(|| Box::new(Cpu)).as_ref()
+}
+
 /// Playouts per round of the race; a candidate can drop out after each round.
 const BATCH: usize = 16;
 /// A candidate stops once its paired deficit to the leader is this many standard errors.
@@ -200,13 +243,16 @@ pub fn choose_race(g: &Game, rng: &mut Rng, nmax: usize, cut: u32, eval: Option<
     let mean = |r: &Vec<f64>| r.iter().sum::<f64>() / r.len() as f64;
     while n < nmax && active.len() > 1 {
         let m = BATCH.min(nmax - n);
+        let mut jobs = Vec::with_capacity(m * active.len());
         for i in n..n + m {
             let s = seed.wrapping_mul(7919).wrapping_add(i as i64);
             for &c in &active {
-                let mut d = [Rng::seeded(s), Rng::seeded(s ^ 0x1111), Rng::seeded(s ^ 0x2222), Rng::seeded(s ^ 0x3333)];
-                let mut r = Rng::seeded(s ^ 0x1234_5678);
-                res[c].push(playout(cands[c].1, base, mine, me, &mut d, &mut r, cut, eval));
+                jobs.push(Job { start: cands[c].1, seed: s, me });
             }
+        }
+        let out = backend().run(&jobs, cut, eval, base, mine);
+        for (j, &c) in (0..m).flat_map(|_| active.iter()).enumerate() {
+            res[c].push(out[j]);
         }
         n += m;
         let lead = *active.iter().max_by(|&&x, &&y| mean(&res[x]).partial_cmp(&mean(&res[y])).unwrap()).unwrap();
