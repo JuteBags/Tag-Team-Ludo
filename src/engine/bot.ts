@@ -2,7 +2,7 @@
 import { HOME_FIRST, FINISHED, LAST_TRACK, TRACK_LEN, isSafe, squareOf, type Color } from './board';
 import { move, roll } from './game';
 import { applyMove, countAt, isThreatened, playerOf, sameSide } from './rules';
-import type { GameState, Move, PlayerState, Rng } from './types';
+import type { BotLevel, GameState, Move, PlayerState, Rng } from './types';
 
 export function scoreMove(state: GameState, m: Move): number {
   const { players } = state;
@@ -109,8 +109,8 @@ function scoreHard(state: GameState, m: Move): number {
   return s;
 }
 
-export function chooseMove(state: GameState, rng: Rng): Move {
-  const level = state.players[state.current]!.level ?? 'normal';
+export function chooseMove(state: GameState, rng: Rng, as?: BotLevel): Move {
+  const level = as ?? state.players[state.current]!.level ?? 'normal';
   if (level === 'easy' && state.moves.length > 1 && rng() < 0.45) return state.moves[Math.floor(rng() * state.moves.length)]!;
   const score = level === 'easy' ? scoreEasy : level === 'hard' ? scoreHard : scoreMove;
   let best: Move | undefined;
