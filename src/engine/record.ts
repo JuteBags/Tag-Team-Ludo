@@ -13,7 +13,7 @@
 // last position, as the result screen does.
 import { createGame, move, roll, type Seat } from './game';
 import { mixSeed, positionKey, seeded } from './rng';
-import type { Color } from './board';
+import { COLORS, type Color } from './board';
 import type { GameState, Move } from './types';
 
 export interface GameRecord {
@@ -47,6 +47,36 @@ export const rollEvent = (face: number) => String(face);
 /** The game ended early here (only as the last event). */
 export const STOP_EVENT = 'x';
 
+const LEVELS = ['easy', 'normal', 'hard', 'extreme'];
+
+/**
+ * Why a record's setup can't be a game, or null when it can: 2-4 seats of different colours, owners 0..n-1
+ * with none skipped, the first colour among them, and every field of the right kind. A record from a link
+ * is untrusted, and createGame takes its seats as they are.
+ */
+export function setupError(r: GameRecord): string | null {
+  const seats: unknown = r?.seats;
+  if (!Array.isArray(seats) || seats.length < 2 || seats.length > 4) return 'needs 2 to 4 seats';
+  const colors = new Set<string>();
+  const owners = new Set<number>();
+  for (const s of seats as Partial<Seat>[]) {
+    if (!s || typeof s !== 'object') return 'a seat is not an object';
+    if (!COLORS.includes(s.color as Color) || colors.has(s.color!)) return 'a seat colour is unknown or used twice';
+    colors.add(s.color!);
+    if (!Number.isInteger(s.owner) || s.owner! < 0 || s.owner! > 3) return 'a seat owner is out of range';
+    owners.add(s.owner!);
+    if (typeof s.bot !== 'boolean') return 'a seat does not say if it is a bot';
+    if (s.level !== undefined && !LEVELS.includes(s.level)) return 'a bot level is unknown';
+  }
+  if ([...owners].sort((a, b) => a - b).some((o, i) => o !== i)) return 'the owners skip a number';
+  if (!colors.has(r.first)) return 'the first colour is not in the game';
+  if (r.singles !== undefined && typeof r.singles !== 'boolean') return 'singles is not true or false';
+  if (r.seed !== undefined && !(Number.isInteger(r.seed) && r.seed >= 0 && r.seed <= 0xffffffff)) return 'the seed is not a 32-bit number';
+  if (r.meta !== undefined && (typeof r.meta !== 'object' || r.meta === null || Array.isArray(r.meta))) return 'meta is not an object';
+  if (typeof r.events !== 'string') return 'events are not text';
+  return null;
+}
+
 /** The game's first position. */
 export const startOf = (r: Pick<GameRecord, 'seats' | 'first' | 'singles'>) => createGame(r.seats, r.first, r.singles);
 
@@ -64,6 +94,8 @@ export type Replayed = { ok: true; states: GameState[]; stopped: boolean } | { o
 export function replay(r: GameRecord, opts: { checkDice?: boolean } = {}): Replayed {
   const fail = (error: string, states: GameState[]): Replayed => ({ ok: false, error, states });
   if (r?.v !== 1) return fail(`This game was saved by a different version of the app (record v${String(r?.v)}).`, []);
+  const bad = setupError(r);
+  if (bad) return fail(`The game setup is damaged (${bad}).`, []);
   let s: GameState;
   try {
     s = startOf(r);

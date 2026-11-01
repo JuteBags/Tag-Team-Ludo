@@ -96,6 +96,31 @@ describe('game record', () => {
     expect(replay({ ...rec, events: rec.events + STOP_EVENT }).ok).toBe(false);
   });
 
+  it('turns away setups that cannot be a game, from a link or from storage', async () => {
+    const ok: GameRecord = { v: 1, seats: LAYOUTS['2p']!, first: 'blue', events: '' };
+    expect(replay(ok).ok).toBe(true);
+    const bad: Partial<GameRecord>[] = [
+      { seats: [] },
+      { seats: [{ color: 'blue', owner: 0, bot: false }] },
+      { seats: [{ color: 'zzz' as Color, owner: 0, bot: false }, { color: 'red', owner: 1, bot: true }] },
+      { seats: [{ color: 'blue', owner: 0, bot: false }, { color: 'blue', owner: 1, bot: true }] },
+      { seats: Array.from({ length: 9 }, (_, i) => ({ color: 'blue' as Color, owner: i, bot: true })) },
+      { seats: [{ color: 'blue', owner: 0, bot: false }, { color: 'red', owner: 99, bot: true }] },
+      { seats: [{ color: 'blue', owner: 0, bot: false }, { color: 'red', owner: 2, bot: true }] },
+      { first: 'green' },
+      { seats: [{ color: 'blue', owner: 0, bot: false }, { color: 'red', owner: 1, bot: true, level: 'godlike' as never }] },
+      { seats: [{ color: 'blue', owner: 0, bot: 'yes' as never }, { color: 'red', owner: 1, bot: true }] },
+      { seed: -1 },
+      { singles: 'no' as never },
+      { meta: [] as never },
+    ];
+    for (const b of bad) {
+      const r = { ...ok, ...b } as GameRecord;
+      expect(replay(r)).toMatchObject({ ok: false, states: [] });
+      expect(await decodeRecord(await encodeRecord(r))).toBeNull();
+    }
+  });
+
   it('turns away damaged and hostile share strings', async () => {
     expect(await decodeRecord('not base64!')).toBeNull();
     expect(await decodeRecord('A'.repeat(MAX_LINK + 1))).toBeNull();
