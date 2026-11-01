@@ -185,6 +185,9 @@ def main():
                     'trained with the centred pair loss (each group: net values minus their mean vs playout means minus theirs)')
     ap.add_argument('--expert-weight', type=float, default=1.0, help='weight of the (normalised) pair loss next to the PL on --shards')
     ap.add_argument('--expert-groups', type=int, default=2048, help='decision groups per step for the pair loss')
+    ap.add_argument('--level-weight', type=float, default=1.0, help='weight of the PL (outcome) loss on --shards')
+    ap.add_argument('--anchor', type=float, default=0.0, help='L2 pull of every parameter toward its --init value')
+    ap.add_argument('--freeze', default='', help='--linear: comma-separated rule names kept at their --init value')
     ap.add_argument('--rules', default='', help='residual mode: frozen linear rules json added to the net score')
     ap.add_argument('--alpha', type=float, default=0.0, help='residual mode: weight of --rules in the score (blend.ts alpha)')
     ap.add_argument('--learn-temp', action='store_true', help='also learn one temperature tau on the whole score; at export it is folded into '
@@ -451,6 +454,17 @@ def main():
         net.train()
         return sorted(rows, key=lambda r: -r[1])
 
+    p0 = [q.detach().clone() for q in net.parameters()]
+    frozen = None
+    if a.freeze:
+        assert a.linear, '--freeze names readable rules'
+        names = [rule_name(i) for i in inputs]
+        bad = [f for f in a.freeze.split(',') if f not in names]
+        assert not bad, f'--freeze: unknown rules {bad}'
+        frozen = torch.tensor([n in a.freeze.split(',') for n in names], device=dev)
+    if EX is not None:
+        xl0, xa0 = expert_val()
+        print(f'EXPERT val pair-loss {xl0:.4f} (1 = no skill) top-agree {xa0:.4f} (before training)', flush=True)
     step = 0
     for ep in range(a.epochs):
         perm = torch.randperm(len(Xt), device=dev)
@@ -464,7 +478,9 @@ def main():
                 logp = torch.log_softmax(sc.masked_fill(~live, -1e9), 1).masked_fill(~live, 0)
                 loss = -(TGt[b] * logp).sum(1).mean() + a.pl_weight * l_pl
             else:
-                loss = l_pl
+                loss = a.level_weight * l_pl
+            if a.anchor:
+                loss = loss + a.anchor * sum(((q - q0) ** 2).sum() for q, q0 in zip(net.parameters(), p0))
             if a.aux_turns and net.last_turns is not None:
                 loss = loss + a.aux_turns * ((net.last_turns - TLt[b]) ** 2).mean()
             if EX is not None:
@@ -478,6 +494,8 @@ def main():
                 loss = loss + a.margin * l_m
             opt.zero_grad()
             loss.backward()
+            if frozen is not None:
+                net.linear.weight.grad[:, frozen] = 0
             gn = torch.nn.utils.clip_grad_norm_(net.parameters(), 10.0)
             opt.step()
             sched.step()
