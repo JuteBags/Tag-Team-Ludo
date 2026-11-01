@@ -213,6 +213,8 @@ pub enum Policy {
     Random,
     Bot(Level),
     Search { eval: std::sync::Arc<crate::eval::Evaluator>, opts: crate::search::SearchOptions, temperature: f64 },
+    /// rollout:<n>:<cut turns>:<eval.json or ->:<base spec> (rollout.rs)
+    Rollout { n: usize, cut: u32, eval: Option<std::sync::Arc<crate::eval::Evaluator>>, base: Box<Policy> },
 }
 
 /// blend:<net>:<rules>:<alpha>, one shared evaluator per distinct spec.
@@ -252,6 +254,13 @@ impl Policy {
                 let opts = crate::search::SearchOptions { depth: num(2, 1.0) as u32, chance: num(6, 2.0) as u32, their_k: num(3, 3.0) as usize, race, cut: num(7, 0.0) };
                 Policy::Search { eval: load_eval(parts[1]), opts, temperature: num(4, 0.0) }
             }
+            _ if s.starts_with("rollout:") => {
+                // rollout:<n>:<cut>:<eval.json|->:<base spec, itself with colons>
+                let parts: Vec<&str> = s.splitn(5, ':').collect();
+                assert_eq!(parts.len(), 5, "rollout:<n>:<cut>:<eval.json|->:<base spec>");
+                let eval = if parts[3] == "-" { None } else { Some(load_eval(parts[3])) };
+                Policy::Rollout { n: parts[1].parse().unwrap(), cut: parts[2].parse().unwrap(), eval, base: Box::new(Policy::parse(parts[4])) }
+            }
             _ if s.starts_with("blend:") => {
                 // blend:<net>:<rules>:<alpha>, then the net: spec's fields shifted by two
                 let parts: Vec<&str> = s.split(':').collect();
@@ -269,6 +278,7 @@ impl Policy {
             Policy::Random => (rng.next() * g.moves.len() as f64).floor() as usize,
             Policy::Bot(l) => choose_move(g, *l, rng),
             Policy::Search { eval, opts, temperature } => crate::search::choose_extreme(eval, g, rng, *opts, *temperature),
+            Policy::Rollout { n, cut, eval, base } => crate::rollout::choose(g, rng, *n, *cut, eval.as_deref(), base),
         }
     }
 }
