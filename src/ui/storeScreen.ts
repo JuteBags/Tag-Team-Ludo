@@ -47,7 +47,7 @@ export function storeScreen(onBack: () => void): HTMLElement {
     q('.grid').innerHTML = shelfSkins(shelf)
       .map((s) => {
         const open = isUnlocked(s);
-        const label = s.unlock.kind === 'gold' ? `<i class="coin"></i>${lockLabel(s)}` : `${icons.lock}${lockLabel(s)}`;
+        const label = s.unlock.kind === 'gold' ? `<i class="coin"></i>${lockLabel(s)}` : `${icons.lock}${lockLabel(s, true)}`;
         const state = s.id === inUse.id ? '<em class="using">In use</em>' : open ? '' : `<em class="lock">${label}</em>`;
         return `<button class="card${s.id === picked.id ? ' on' : ''}${open ? '' : ' locked'}" data-id="${s.id}">${thumb(s)}<b>${s.name}</b>${state}</button>`;
       })

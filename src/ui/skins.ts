@@ -6,12 +6,12 @@ import { saveSetting, settings, type Theme, type ThrowStyle } from './settings';
 
 export type Shelf = 'pawn' | 'dice' | 'thrower' | 'board';
 
-/** How a skin is unlocked. Gold and achievements are planned (#35 phase 2); today they read as locked. */
+/** How a skin is unlocked: free, bought with gold, or earned with an achievement (rewards.ts, by its id). */
 export type Unlock =
   | { kind: 'free' }
   | { kind: 'soon' }
   | { kind: 'gold'; price: number }
-  | { kind: 'achievement'; label: string };
+  | { kind: 'achievement'; id: string; label: string; short: string };
 
 export interface Skin {
   id: string;
@@ -38,12 +38,16 @@ export const SKINS: Skin[] = [
   { id: 'cone', shelf: 'pawn', name: 'Ice-cream', blurb: 'One scoop, extra sprinkles', unlock: gold(400) },
   { id: 'robot', shelf: 'pawn', name: 'Robot', blurb: 'Beep. Boop. Kill.', unlock: gold(600) },
   { id: 'knight', shelf: 'pawn', name: 'Knight', blurb: 'Borrowed from chess', unlock: gold(800) },
+  // Earned, never bought (#79): 7 Extreme wins in a row.
+  { id: 'crowned', shelf: 'pawn', name: 'Crowned', blurb: 'Worn only by a Grandmaster', unlock: { kind: 'achievement', id: 'x-streak-7', label: 'Win 7 in a row vs Extreme', short: '7 in a row' } },
 
   { id: 'classic', shelf: 'dice', name: 'Classic', blurb: 'White, with red ones and sixes', unlock: free },
   { id: 'bone', shelf: 'dice', name: 'Bone', blurb: 'Carved for Halloween', unlock: gold(300) },
   { id: 'tron', shelf: 'dice', name: 'Tron', blurb: 'Black glass, cyan light', unlock: gold(700) },
   { id: 'gold', shelf: 'dice', name: 'Gold', blurb: 'Solid, shiny, smug', unlock: gold(1000) },
   { id: 'glass', shelf: 'dice', name: 'Glass', blurb: 'Clear as crystal', unlock: gold(500) },
+  // Earned, never bought (#79): 5 Extreme wins in a row.
+  { id: 'inferno', shelf: 'dice', name: 'Inferno', blurb: 'Obsidian, cracked with fire', unlock: { kind: 'achievement', id: 'x-streak-5', label: 'Win 5 in a row vs Extreme', short: '5 in a row' } },
 
   { id: 'cup', shelf: 'thrower', name: 'Dice cup', blurb: 'Shaken and thrown', unlock: free },
   { id: 'toss', shelf: 'thrower', name: 'Toss', blurb: 'A flick of the wrist', unlock: free },
@@ -74,16 +78,20 @@ const devLocks = () => {
 export const UNLOCK_ALL = (import.meta.env.DEV || import.meta.env.VITE_UNLOCK_ALL === '1') && !devLocks();
 
 const key = (s: Skin) => `${s.shelf}:${s.id}`;
-export const owns = (s: Skin) => settings.owned.includes(key(s));
+/** Owned: bought, or its achievement is done (achievement skins can't be bought). */
+export const owns = (s: Skin) => settings.owned.includes(key(s)) || (s.unlock.kind === 'achievement' && settings.achieved.includes(s.unlock.id));
+
+/** The skin an achievement unlocks, if any (for the result screen's chip). */
+export const skinUnlockedBy = (achievement: string) => SKINS.find((s) => s.unlock.kind === 'achievement' && s.unlock.id === achievement);
 
 export const shelfSkins = (shelf: Shelf) => SKINS.filter((s) => s.shelf === shelf);
 export const findSkin = (shelf: Shelf, id: string) => SKINS.find((s) => s.shelf === shelf && s.id === id);
 export const isUnlocked = (s: Skin, all = UNLOCK_ALL) => all || s.unlock.kind === 'free' || owns(s);
 
-/** What a locked skin's badge says. */
-export function lockLabel(s: Skin): string {
+/** What a locked skin needs; `card` gives the store card's short form. */
+export function lockLabel(s: Skin, card = false): string {
   const u = s.unlock;
-  return u.kind === 'gold' ? `${u.price}` : u.kind === 'achievement' ? u.label : u.kind === 'soon' ? 'Coming soon' : '';
+  return u.kind === 'gold' ? `${u.price}` : u.kind === 'achievement' ? (card ? u.short : u.label) : u.kind === 'soon' ? 'Coming soon' : '';
 }
 
 /** The skin in use on a shelf: the saved choice while it's unlocked, otherwise the shelf's free default. */
