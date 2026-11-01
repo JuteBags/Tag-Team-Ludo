@@ -126,6 +126,11 @@ export const sfx = {
     tone(784, 0.16, { type: 'triangle', vol: 0.12, at: 0.06 });
     buzz(14);
   },
+  /** Who plays first is decided: two quick notes up to a bright chord. */
+  crown() {
+    [659, 880].forEach((f, i) => tone(f, 0.12, { type: 'square', vol: 0.05, at: i * 0.08 }));
+    [880, 1109, 1319].forEach((f) => tone(f, 0.45, { type: 'triangle', vol: 0.09, at: 0.16 }));
+  },
   /** A token reaching the centre. */
   home() {
     [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.32, { type: 'triangle', vol: 0.14, at: i * 0.09 }));
