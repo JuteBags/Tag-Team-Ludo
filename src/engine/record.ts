@@ -68,7 +68,7 @@ export function setupError(r: GameRecord): string | null {
     if (typeof s.bot !== 'boolean') return 'a seat does not say if it is a bot';
     if (s.level !== undefined && !LEVELS.includes(s.level)) return 'a bot level is unknown';
   }
-  if ([...owners].sort().some((o, i) => o !== i)) return 'the owners skip a number';
+  if ([...owners].sort((a, b) => a - b).some((o, i) => o !== i)) return 'the owners skip a number';
   if (!colors.has(r.first)) return 'the first colour is not in the game';
   if (r.singles !== undefined && typeof r.singles !== 'boolean') return 'singles is not true or false';
   if (r.seed !== undefined && !(Number.isInteger(r.seed) && r.seed >= 0 && r.seed <= 0xffffffff)) return 'the seed is not a 32-bit number';
