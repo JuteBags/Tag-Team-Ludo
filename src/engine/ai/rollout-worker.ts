@@ -1,8 +1,11 @@
 // Extreme's thinking off the UI thread: the rollout engine (rollout.ts) in a Web Worker. Messages in:
 // { id, state, nmax, seed }; out: { id, index } with index into state.moves, or { id, error }.
 // The game review (#65): { id, kind: 'review', state, n, seed }; out: { id, values } (DecisionValues).
+// Its luck: { id, kind: 'luck', rec }; out: { id, luck } (RollLuck[], review.ts rollLuck with the Extreme net).
 import { PLAYOUT_RULES } from './playout-rules';
-import type { NetJSON } from './net';
+import { Net, type NetJSON } from './net';
+import { replay, type GameRecord } from '../record';
+import { rollLuck } from './review';
 import { RolloutEngine } from './rollout';
 import wasmUrl from './ludo_wasm.wasm?url';
 import type { GameState } from '../types';
@@ -16,9 +19,17 @@ function load(): Promise<RolloutEngine> {
   return engine;
 }
 
-self.onmessage = async (e: MessageEvent<{ id: number; kind?: 'review'; state: GameState; nmax: number; n: number; seed: number }>) => {
+let luckNet: Net | null = null;
+
+self.onmessage = async (e: MessageEvent<{ id: number; kind?: 'review' | 'luck'; state: GameState; nmax: number; n: number; seed: number; rec: GameRecord }>) => {
   const { id, kind, state, nmax, n, seed } = e.data;
   try {
+    if (kind === 'luck') {
+      luckNet ??= new Net((await import('./extreme-net.json')).default as unknown as NetJSON);
+      const r = replay(e.data.rec);
+      self.postMessage({ id, luck: rollLuck(e.data.rec, r.states, luckNet) });
+      return;
+    }
     if (kind === 'review') {
       self.postMessage({ id, values: (await load()).review(state, n, seed) });
       return;

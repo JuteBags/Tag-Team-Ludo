@@ -52,6 +52,9 @@ export function labelOf(gap: number, se: number): Label {
   return 'blunder';
 }
 
+/** The version of the labels (thresholds and playouts): a cached review from another version is redone. */
+export const REVIEW_VERSION = 1;
+
 /** Playouts per candidate, and the most a decision is topped up to when its gap sits near a label's edge. */
 export const PLAYOUTS = 256;
 export const PLAYOUTS_MAX = 1024;

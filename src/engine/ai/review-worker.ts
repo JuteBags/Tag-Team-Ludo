@@ -1,11 +1,12 @@
 // The review's rollouts in their own Web Worker (rollout-worker.ts, kind 'review'), so reviewing a game
 // never competes with a bot thinking in a game. Null where workers can't run.
 import type { GameState } from '../types';
-import type { DecisionValues, Reviewer } from './review';
+import type { GameRecord } from '../record';
+import type { DecisionValues, Reviewer, RollLuck } from './review';
 
 let worker: Worker | null | undefined;
 let nextId = 0;
-const pending = new Map<number, { done: (v: DecisionValues) => void; fail: (e: Error) => void }>();
+const pending = new Map<number, { done: (v: never) => void; fail: (e: Error) => void }>();
 
 function reviewWorker(): Worker | null {
   if (worker !== undefined) return worker;
@@ -14,10 +15,11 @@ function reviewWorker(): Worker | null {
   } catch {
     return (worker = null);
   }
-  worker.onmessage = (e: MessageEvent<{ id: number; values?: DecisionValues; error?: string }>) => {
+  worker.onmessage = (e: MessageEvent<{ id: number; values?: DecisionValues; luck?: RollLuck[]; error?: string }>) => {
     const p = pending.get(e.data.id);
     pending.delete(e.data.id);
-    if (e.data.values) p?.done(e.data.values);
+    const v = e.data.values ?? e.data.luck;
+    if (v) p?.done(v as never);
     else p?.fail(new Error(e.data.error ?? 'review failed'));
   };
   worker.onerror = () => {
@@ -35,7 +37,18 @@ export function workerReviewer(): Reviewer | null {
   return (state: GameState, n: number, seed: number) =>
     new Promise<DecisionValues>((done, fail) => {
       const id = nextId++;
-      pending.set(id, { done, fail });
+      pending.set(id, { done: done as (v: never) => void, fail });
       w.postMessage({ id, kind: 'review', state, n, seed });
     });
+}
+
+/** The luck of every roll in `rec` (review.ts rollLuck), worked out in the worker. Null where workers can't run. */
+export function workerLuck(rec: GameRecord): Promise<RollLuck[]> | null {
+  const w = reviewWorker();
+  if (!w) return null;
+  return new Promise<RollLuck[]>((done, fail) => {
+    const id = nextId++;
+    pending.set(id, { done: done as (v: never) => void, fail });
+    w.postMessage({ id, kind: 'luck', rec });
+  });
 }
