@@ -774,7 +774,7 @@ export class GameScreen {
       <div class="rescol"><div class="ribbon">${ribbonSVG()}<span class="disp">${title}</span></div>
         <div class="rank">${rows}</div>${reward}
         <div class="wbtns"><button class="b3 blue disp" data-act="home">HOME</button><button class="b3 green disp" data-act="again">PLAY AGAIN</button></div>
-        <button class="sharebtn disp" data-act="share">${icons.share}SHARE RESULT</button>${rec ? `<div class="replaylinks"><button class="replaylink" data-act="replay">Watch the replay</button>${rec.seats.some((s) => !s.bot) ? '<button class="replaylink" data-act="review">Review the game</button>' : ''}</div>` : ''}</div>`;
+        ${rec && rec.seats.some((s) => !s.bot) ? `<div class="sharerow"><button class="sharebtn disp" data-act="share">${icons.share}SHARE</button><button class="revbtn disp" data-act="review">★ REVIEW GAME</button></div>` : `<button class="sharebtn disp" data-act="share">${icons.share}SHARE RESULT</button>`}${rec ? '<button class="replaylink" data-act="replay">Watch the replay</button>' : ''}</div>`;
     ov.addEventListener('click', (e) => {
       const btn = (e.target as Element).closest<HTMLButtonElement>('button');
       const act = btn?.dataset.act;

@@ -20,8 +20,10 @@ const STEP = (back: boolean) => `<svg viewBox="0 0 24 24"${flip(back)}><path d="
 const ENDS = (back: boolean) => `<svg viewBox="0 0 24 24"${flip(back)}><path d="M3 5l8 7-8 7zM11 5l8 7-8 7z" fill="#fff"/><rect x="19" y="5" width="2.6" height="14" rx="1.1" fill="#fff"/></svg>`;
 
 export interface ReplayOptions {
-  /** Open at the move made in this position (an index into the replay's states), and play it. */
+  /** Open at the first move after this position (an index into the replay's states), and play it. */
   startAt?: number;
+  /** The caption for that move instead of the usual one: the review's verdict on it. */
+  startCaption?: string;
   /** Shows a REVIEW button (games with a person in them) that opens the game review. */
   onReview?: () => void;
 }
@@ -36,7 +38,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
   const owners = [...new Set(rec.seats.map((s) => s.owner))].sort((a, b) => a - b);
   el.innerHTML = `
     <div class="gtop"><button class="rbtn" data-act="back" aria-label="Back">${icons.back}</button>
-      <div class="mode"><small>REPLAY · ${mode}</small><b>${owners.length} PLAYERS</b></div>${opts.onReview && rec.seats.some((s) => !s.bot) ? '<button class="rbtn rvbtn" data-act="review" aria-label="Game review">★</button>' : '<span class="rbtn-space"></span>'}</div>
+      <div class="mode"><small>REPLAY · ${mode}</small><b>${owners.length} PLAYERS</b></div>${opts.onReview && rec.seats.some((s) => !s.bot) ? '<button class="rvbtn disp" data-act="review">Review</button>' : '<span class="rbtn-space"></span>'}</div>
     <div class="rpchips"></div>
     <div class="gboard"></div>
     <div class="rpcap" aria-live="polite"><span class="rpdice"></span><span class="rptext"></span></div>
@@ -70,11 +72,15 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
   let at = 0;
   let timer = 0;
   let busy = false;
+  // Captions that replace a frame's usual one (the review's verdict on the move it was opened at).
+  const notes = new Map<number, string>();
+  const ring = (f: (typeof frames)[number]) => view.markMoved(f.move ? f.move.tokens.map((t) => f.move!.color + t) : []);
 
   const draw = () => {
     const f = frames[at];
     if (!f) return;
-    q('.rptext').textContent = f.caption;
+    q('.rptext').textContent = notes.get(at) ?? f.caption;
+    q('.rpcap').classList.toggle('verdict', notes.has(at));
     q('.rpdice').innerHTML = f.dice.map((d) => `<i>${dieMarkup(d, 22)}</i>`).join('');
     q('.rpcount').textContent = frames.length > 1 ? `Step ${at} of ${frames.length - 1}` : '';
     scrub.value = String(at);
@@ -88,12 +94,15 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
       busy = true;
       at = to;
       draw();
+      view.markMoved([]);
       await view.animateMove(f.move, f.state.players, 1.4);
       view.layout(f.state.players);
+      ring(f);
       busy = false;
     } else {
       at = to;
       view.layout(f.state.players);
+      ring(f);
       draw();
     }
   };
@@ -140,11 +149,13 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
   });
   draw();
   if (error) q('.rpcount').textContent = error;
-  // Opened at a reviewed move: show the position before it, then play the move.
-  const f = opts.startAt === undefined ? -1 : frames.findIndex((x) => x.at === opts.startAt! + 1);
+  // Opened at a reviewed move or roll: show the position before the move, then play it.
+  const f = opts.startAt === undefined ? -1 : frames.findIndex((x) => x.at > opts.startAt!);
   if (f > 0) {
+    if (opts.startCaption) notes.set(f, opts.startCaption);
     at = f - 1;
     view.layout(frames[at]!.state.players);
+    ring(frames[at]!);
     draw();
     setTimeout(() => el.isConnected && void go(f), 450);
   }

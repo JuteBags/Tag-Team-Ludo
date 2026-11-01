@@ -51,12 +51,12 @@ export function mountApp(root: HTMLElement) {
     }));
   /** The replay of `rec`; `back` returns to where it was opened from. */
   // `keep`: the game is one of the past games, so its review is stored (not for a game from a link).
-  const watch = (rec: GameRecord, back: () => void, keep = true, startAt?: number) =>
-    stage.replaceChildren(safeReplayScreen(rec, back, { startAt, onReview: () => void review(rec, back, keep) }));
+  const watch = (rec: GameRecord, back: () => void, keep = true, startAt?: number, startCaption?: string) =>
+    stage.replaceChildren(safeReplayScreen(rec, back, { startAt, startCaption, onReview: () => void review(rec, back, keep) }));
   /** The game review of `rec`, picking up a stored one; a tapped move opens the replay there. */
   const review = async (rec: GameRecord, back: () => void, keep = true) => {
     const stored = keep ? (await loadPastGames()).find((g) => g.rec.events === rec.events && g.rec.first === rec.first)?.review : undefined;
-    const screen = reviewScreen(rec, stored, back, (at) => watch(rec, () => void review(rec, back, keep), keep, at), keep);
+    const screen = reviewScreen(rec, stored, back, (at, caption) => watch(rec, () => void review(rec, back, keep), keep, at, caption), keep);
     stage.replaceChildren(screen);
   };
   // Set while a game starts, so a double tap on Start or Play again can't open two games.

@@ -237,6 +237,8 @@ export interface StoredReview {
   v: number;
   moves: MoveReview[];
   luck: RollLuck[] | null;
+  /** When it was last worked on (ms since 1970), shown as "Reviewed today". */
+  when?: number;
 }
 
 const GAMES = 'ludo-games';

@@ -146,6 +146,11 @@ export class BoardView {
     this.layout(players);
   }
 
+  /** Rings the pawns that just moved (the replay's "this one moved"); none clears it. Keys are colour + index. */
+  markMoved(keys: string[]) {
+    for (const [k, g] of this.pawns) g.classList.toggle('moved', keys.includes(k));
+  }
+
   /** Snaps every pawn to its resting place and redraws pair markers. */
   layout(players: PlayerState[]) {
     const groups = new Map<string, { key: string; color: Color; pt: Pt }[]>();

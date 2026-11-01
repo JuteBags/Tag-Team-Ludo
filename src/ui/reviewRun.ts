@@ -11,7 +11,14 @@ export interface ReviewProgress {
   done: number;
   total: number;
   finished: boolean;
+  /** Seconds still to go, from this run's pace (null until a few verdicts are in). */
+  eta: number | null;
+  /** When the review was made, once it's finished. */
+  when?: number;
 }
+
+/** Verdicts this run must make before its pace is trusted for an estimate. */
+export const ETA_AFTER = 3;
 
 /** The owners whose moves are reviewed: the people (bots aren't). */
 export const peopleOf = (rec: GameRecord) => [...new Set(rec.seats.filter((s) => !s.bot).map((s) => s.owner))];
@@ -35,14 +42,26 @@ export function runReview(rec: GameRecord, stored: StoredReview | undefined, onU
   const moves = [...(prior?.moves ?? [])];
   let luck: RollLuck[] | null = prior?.luck ?? null;
   const total = decisionsToReview(rec, states);
-  const report = (finished: boolean) => onUpdate({ moves: [...moves].sort((a, b) => a.at - b.at), luck, done: moves.length, total, finished });
-  const keep = () => (store ? saveReview(rec, { v: REVIEW_VERSION, moves, luck }) : Promise.resolve());
+  let when = prior?.when;
+  // The pace of this run: when its first decision started and how many it has done.
+  let t0 = 0;
+  let fresh = 0;
+  const eta = () => (fresh >= ETA_AFTER ? ((Date.now() - t0) / 1000 / fresh) * Math.max(0, total - moves.length) : null);
+  const report = (finished: boolean) => onUpdate({ moves: [...moves].sort((a, b) => a.at - b.at), luck, done: moves.length, total, finished, eta: finished ? 0 : eta(), when: finished ? when : undefined });
+  // Kept only when this run added something, so reopening a finished review keeps its date.
+  let changed = false;
+  const keep = () => {
+    if (!changed) return Promise.resolve();
+    when = Date.now();
+    return store ? saveReview(rec, { v: REVIEW_VERSION, moves, luck, when }) : Promise.resolve();
+  };
   report(moves.length >= total && luck !== null);
   if (!reviewer) return () => {};
   void (async () => {
     if (!luck) {
       luck = (await workerLuck(rec)?.catch(() => null)) ?? null;
       if (stopped) return;
+      changed = true;
       report(false);
       void keep();
     }
@@ -52,10 +71,13 @@ export function runReview(rec: GameRecord, stored: StoredReview | undefined, onU
       if (stopped) throw new Error('stopped');
       return reviewer(s, n, seed);
     };
+    t0 = Date.now();
     const rest = states.map((s, i) => (done.has(i) ? { ...s, moves: s.moves.slice(0, 1) } : s));
     try {
       await reviewMoves(rec, rest, peopleOf(rec), skip, (m) => {
         moves.push(m);
+        fresh++;
+        changed = true;
         report(false);
         if (moves.length % 5 === 0) void keep();
       });
