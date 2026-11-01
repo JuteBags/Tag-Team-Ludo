@@ -1,6 +1,7 @@
-# Calibrates the game review's labels per layout (#65): reviews a Hard and a Normal mover's moves in bot
-# games (every other seat Hard) with the app's WebAssembly engine, and writes the gap quantiles and label
-# rates to the run summary. By hand, or by pushing a calib/* branch (a workflow that isn't on main yet can't
+# Calibrates the game review's labels per layout (#65): reviews a Hard, a Normal and an "always the first
+# move" mover's moves in bot games (every other seat Hard) with the app's WebAssembly engine, one job per
+# layout and mover, and writes the gap quantiles, label rates and accuracy (all decisions, and only those
+# with a spread of 3+ or 5+ points) to the run summary. By hand, or by pushing a calib/* branch (a workflow that isn't on main yet can't
 # be started by hand). The result goes into tools/ai/REVIEW_CALIB.md and review.ts.
 name: Review calibration
 
@@ -19,13 +20,14 @@ permissions:
 
 jobs:
   calibrate:
-    name: Calibrate ${{ matrix.layout }}
+    name: Calibrate ${{ matrix.layout }} ${{ matrix.mover }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
         layout: [2p, 3p, 4p, 2h-opposite]
+        mover: [hard, normal, first]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -35,9 +37,9 @@ jobs:
       - run: bash tools/ai/build.sh
       - name: Review bot games
         run: |
-          node tools/ai/dist/review_calib.mjs --layout ${{ matrix.layout }} --min ${{ inputs.min_moves || '600' }} | tee calib.txt
-          { echo "## ${{ matrix.layout }}"; echo '```'; grep '^CALIB' calib.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          node tools/ai/dist/review_calib.mjs --layout ${{ matrix.layout }} --mover ${{ matrix.mover }} --min ${{ inputs.min_moves || '600' }} | tee calib.txt
+          { echo "## ${{ matrix.layout }} ${{ matrix.mover }}"; echo '```'; grep '^CALIB' calib.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:
-          name: calib-${{ matrix.layout }}
+          name: calib-${{ matrix.layout }}-${{ matrix.mover }}
           path: calib.txt

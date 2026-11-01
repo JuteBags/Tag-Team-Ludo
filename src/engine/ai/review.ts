@@ -96,7 +96,7 @@ const decisionSeed = (rec: GameRecord, s: GameState) => mixSeed(rec.seed ?? 0x5e
  * Reviews the person's decisions (owners in `who`) in a replayed game. Forced moves (one position to reach)
  * are skipped. Calls `onMove` as each decision is done, so the screen can show verdicts as they arrive.
  */
-export async function reviewMoves(rec: GameRecord, states: GameState[], who: number[], reviewer: Reviewer, onMove?: (m: MoveReview, done: number, total: number) => void): Promise<MoveReview[]> {
+export async function reviewMoves(rec: GameRecord, states: GameState[], who: number[], reviewer: Reviewer, onMove?: (m: MoveReview, done: number, total: number) => void, base = PLAYOUTS): Promise<MoveReview[]> {
   const todo: number[] = [];
   for (let i = 0; i + 1 < states.length; i++) {
     const s = states[i]!;
@@ -109,7 +109,7 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     const ev = next.event;
     if (ev?.type !== 'moved') continue;
     const played = s.moves.findIndex((m) => JSON.stringify(m) === JSON.stringify(ev.move));
-    let n = PLAYOUTS;
+    let n = base;
     let v = await reviewer(s, n, decisionSeed(rec, s));
     const c = v.ofMove[played]!;
     if (v.mean.length < 2) continue; // every move reaches the same position: nothing to choose
