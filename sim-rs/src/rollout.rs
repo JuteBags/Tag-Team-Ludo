@@ -18,7 +18,7 @@ use crate::search::leaf_key;
 /// Significance for leaving base's move (paired mean advantage / its standard error).
 const Z: f64 = 2.0;
 
-fn playout(mut g: Game, base: &Policy, mine: &Policy, me: u8, dice: &mut [Rng; 4], rng: &mut Rng, cut: u32, eval: Option<&Evaluator>) -> f64 {
+pub fn playout(mut g: Game, base: &Policy, mine: &Policy, me: u8, dice: &mut [Rng; 4], rng: &mut Rng, cut: u32, eval: Option<&Evaluator>) -> f64 {
     let mut turns = 0u32;
     let mut cur = g.current;
     let mut steps = 0;

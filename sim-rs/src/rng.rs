@@ -14,6 +14,12 @@ impl Rng {
         Rng { a: seed as u32 }
     }
 
+    /// The stream's state (Rng::seeded(state as i64) continues it exactly): for handing streams to the GPU.
+    #[inline]
+    pub fn state(&self) -> u32 {
+        self.a
+    }
+
     #[inline]
     pub fn next(&mut self) -> f64 {
         self.a = self.a.wrapping_add(0x6d2b_79f5);

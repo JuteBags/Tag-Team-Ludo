@@ -19,3 +19,5 @@ pub mod simd;
 pub mod trace;
 #[cfg(feature = "cuda")]
 pub mod gpu;
+#[cfg(feature = "cuda")]
+pub mod gpu_playout;

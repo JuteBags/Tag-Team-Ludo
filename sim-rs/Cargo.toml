@@ -28,3 +28,7 @@ debug = false
 [[bin]]
 name = "gpu-check"
 required-features = ["cuda"]
+
+[[bin]]
+name = "gpu-playout-check"
+required-features = ["cuda"]
