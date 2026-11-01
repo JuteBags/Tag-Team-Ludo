@@ -3,7 +3,8 @@
 #
 # The module is committed (the app's build doesn't need Rust), so this job also checks that the committed
 # file is exactly what its source builds to. If it isn't, the job fails and says how to update it:
-#   gh run download <run id> -n ludo_wasm -D src/engine/ai/   then commit src/engine/ai/ludo_wasm.wasm
+#   gh run download <run id> -n ludo_wasm -D wasm-new && mv wasm-new/ludo_wasm.wasm src/engine/ai/   then commit it
+# (gh run download won't overwrite a file, so it goes to a new folder first).
 # Rust is pinned in sim-wasm/rust-toolchain.toml, so the same source always builds the same bytes.
 
 name: WebAssembly engine
@@ -79,11 +80,11 @@ jobs:
               echo ""
               echo "**The committed src/engine/ai/ludo_wasm.wasm is not what its source builds to.** Update it:"
               echo ""
-              echo "    gh run download ${{ github.run_id }} -n ludo_wasm -D src/engine/ai/"
+              echo "    gh run download ${{ github.run_id }} -n ludo_wasm -D wasm-new && mv wasm-new/ludo_wasm.wasm src/engine/ai/"
               echo ""
               echo "then commit src/engine/ai/ludo_wasm.wasm."
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::src/engine/ai/ludo_wasm.wasm differs from its build: gh run download ${{ github.run_id }} -n ludo_wasm -D src/engine/ai/ and commit it"
+            echo "::error::src/engine/ai/ludo_wasm.wasm differs from its build: gh run download ${{ github.run_id }} -n ludo_wasm -D wasm-new && mv wasm-new/ludo_wasm.wasm src/engine/ai/, then commit it"
             exit 1
           fi
           echo "The committed module matches its build." >> "$GITHUB_STEP_SUMMARY"
