@@ -53,7 +53,7 @@ async function latest(): Promise<VersionInfo | null> {
   }
 }
 
-/** Checks for a newer version and, if there is one to offer, shows the prompt over `screen`. */
+/** Checks for a newer version and, if there is one to offer, shows the prompt over `screen`. Resolves when it closes. */
 export async function offerUpdate(screen: HTMLElement): Promise<void> {
   const info = await latest();
   if (!info || !screen.isConnected || !shouldPrompt(info, __APP_VERSION__, readLater(), Date.now())) return;
@@ -62,6 +62,8 @@ export async function offerUpdate(screen: HTMLElement): Promise<void> {
   const news = headline(info.notes);
   ov.innerHTML = `<div class="box"><h2>Update ready</h2><p class="sub">Version ${info.version} is out (you have ${__APP_VERSION__}).</p>${news ? `<p class="news">${news.replace(/</g, '&lt;')}</p>` : ''}
     <button class="b3 green disp" data-act="update">UPDATE</button><button class="b3 blue disp" data-act="later">NOT NOW</button></div>`;
+  let done = () => {};
+  const closed = new Promise<void>((r) => (done = r));
   ov.addEventListener('click', (e) => {
     const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
     if (act === 'later' || e.target === ov) {
@@ -71,12 +73,15 @@ export async function offerUpdate(screen: HTMLElement): Promise<void> {
         // Storage blocked: the prompt may come back next time.
       }
       ov.remove();
+      done();
     } else if (act === 'update') {
       // Android: the new APK from the site (the system browser downloads it). Web: the new build loads.
       if (Capacitor.isNativePlatform()) window.open(`${SITE}download/tag-team-ludo.apk`, '_system');
       else location.reload();
       ov.remove();
+      done();
     }
   });
   screen.appendChild(ov);
+  return closed;
 }

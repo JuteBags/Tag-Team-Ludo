@@ -96,3 +96,32 @@ export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills:
   await write(STATS, s);
   return s;
 }
+
+// ---------- daily check-in (checkin.ts) ----------
+
+/** The last day collected (local YYYY-MM-DD), the days in a row up to it, and the longest run so far. */
+export interface CheckIn {
+  last: string;
+  streak: number;
+  best: number;
+}
+
+const CHECKIN = 'ludo-checkin';
+/** The stored check-in, null before the first one, or 'error' when storage can't be read (then no offer). */
+export async function loadCheckIn(): Promise<CheckIn | null | 'error'> {
+  try {
+    const { value } = await Preferences.get({ key: CHECKIN });
+    return value ? (JSON.parse(value) as CheckIn) : null;
+  } catch {
+    return 'error';
+  }
+}
+/** Stores the check-in; false when the write failed (then the gold isn't paid, so it can't be paid twice). */
+export async function saveCheckIn(c: CheckIn): Promise<boolean> {
+  try {
+    await Preferences.set({ key: CHECKIN, value: JSON.stringify(c) });
+    return true;
+  } catch {
+    return false;
+  }
+}
