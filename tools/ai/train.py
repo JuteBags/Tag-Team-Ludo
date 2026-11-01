@@ -321,8 +321,10 @@ def main():
         inputs = [i for i in range(F) if HAND[i] != 'singles'] + list(range(D - 7, D))
     if a.init:
         js = json.load(open(a.init))
-        # A warm start keeps the starting net's shape and inputs.
-        a.hidden, a.layers, inputs = len(js['trunk'][0]['b']), len(js['trunk']), js['inputs']
+        assert (js.get('kind') == 'linear') == a.linear, '--init: readable rules warm-start --linear, a net warm-starts a net'
+        if not a.linear:
+            # A warm start keeps the starting net's shape and inputs.
+            a.hidden, a.layers, inputs = len(js['trunk'][0]['b']), len(js['trunk']), js['inputs']
     net = Scorer(torch.tensor(inputs, device=dev), a.hidden, a.layers, linear=a.linear).to(dev)
     # Residual mode: the frozen rules as one weight per input (hand features, then the 7 turn rules at the
     # end of the encoding; a rule the json does not name gets 0), summed over a person's colours.
@@ -352,7 +354,11 @@ def main():
         if a.learn_temp:
             sc = sc * log_tau.exp()
         return sc, mg
-    if a.init:
+    if a.init and a.linear:
+        # Readable rules: one weight per rule name (a rule the json does not name starts at 0).
+        net.linear.weight.data = torch.tensor([[js['weights'].get(rule_name(i), 0.0) for i in inputs]], device=dev,
+                                              dtype=torch.float32)
+    elif a.init:
         for l, j in [*zip(net.trunk, js['trunk']), (net.pool, js['pool']), (net.out, js['out'])]:
             l.weight.data = torch.tensor(j['W'], device=dev, dtype=torch.float32)
             l.bias.data = torch.tensor(j['b'], device=dev, dtype=torch.float32)
@@ -372,7 +378,7 @@ def main():
             l_t.backward()
             opt_t.step()
         print(f'TEMP fit tau {log_tau.exp().item():.4f} (net frozen)', flush=True)
-    groups = [{'params': list(net.parameters()), 'lr': a.lr, 'weight_decay': 1e-4}]
+    groups = [{'params': list(net.parameters()), 'lr': a.lr, 'weight_decay': 0.0 if a.linear else 1e-4}]
     if a.learn_temp:
         groups.append({'params': [log_tau], 'lr': 10 * a.lr, 'weight_decay': 0.0})
     opt = torch.optim.AdamW(groups)
