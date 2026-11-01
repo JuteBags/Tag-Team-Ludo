@@ -63,6 +63,11 @@ def save(run, name, files, metadata, workers):
     big = [f for f in files.values() if f.endswith(('.bin', '.targets'))]
     if big:
         subprocess.run(f"printf '%s\\n' {' '.join(big)} | xargs -P {workers} -n 1 nice -n 10 gzip -1 -k -f", shell=True, check=False)
+        import gzip
+        for f in big:  # whatever the shell step missed (no bash, a failed gzip): never upload without the games
+            if not pathlib.Path(f + '.gz').exists():
+                with open(f, 'rb') as src, gzip.open(f + '.gz', 'wb', compresslevel=1) as dst:
+                    shutil.copyfileobj(src, dst)
     import wandb as _wb
     art = _wb.Artifact(name, type='generation', metadata=metadata)
     for key, f in files.items():
