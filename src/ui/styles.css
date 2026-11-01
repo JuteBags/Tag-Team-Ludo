@@ -441,6 +441,9 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .row2.q .lbl{font-size:14px;letter-spacing:0;text-transform:none;opacity:1}
 .row2.q .tg button{flex:1;padding:0 8px;display:flex;align-items:center;justify-content:center;gap:6px}
 .row2 .qh{font-size:13px;font-weight:700;opacity:.78}
+.row2 .lvlh{opacity:.9;line-height:1.35;min-height:2.7em}
+.row2 .lvlh .lvlg{white-space:nowrap;color:#ffd65a;font-weight:900}
+.row2 .lvlh .coin{width:12px;height:12px;margin-right:3px;vertical-align:-1px}
 .tg .mini{width:18px;height:18px;flex:none}
 .tg{display:flex;gap:6px;padding:4px;border-radius:14px;background:rgba(0,0,0,.25)}
 .tg button{min-height:44px;min-width:48px;padding:0 14px;border-radius:11px;font-family:'Lilita One';font-size:15px;color:rgba(255,255,255,.7)}

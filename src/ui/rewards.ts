@@ -18,6 +18,9 @@ const LEVEL_BONUS: Partial<Record<BotLevel, { label: string; share: number }>> =
   extreme: { label: 'Extreme bots bonus', share: 1.5 },
 };
 
+/** The extra gold a level pays, as a share of the game's gold (0 for Easy and Normal). */
+export const levelBonus = (level: BotLevel) => LEVEL_BONUS[level]?.share ?? 0;
+
 /** What a finished game earns, line by line. `home` is how many of your tokens got home. */
 export function goldFor(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; home: number; level?: BotLevel }): GoldLine[] {
   if (g.mode === 'pvp') return [{ label: 'Game with friends', gold: 15 }];
