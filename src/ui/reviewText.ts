@@ -1,5 +1,5 @@
 // The game review's words, symbols and graph (#65), pure so they're tested; reviewScreen.ts draws them.
-import type { Move } from '../engine';
+import { FINISHED, type GameState, type Move } from '../engine';
 import type { Label, MoveReview, RollLuck } from '../engine/ai/review';
 
 /** Each label's symbol (so colour isn't the only cue), name and colour. */
@@ -37,6 +37,35 @@ export function moveText(m: Move): string {
   if (m.captures.length) return `${base}, capturing`;
   if (m.finishes) return `${base}, home`;
   return base;
+}
+
+/**
+ * Which of the mover's tokens on the track a move takes, by how far along it is: "front", "back", "2nd" or
+ * "3rd" (from the front), or '' when it's the only one out (or the move brings a token out).
+ */
+export function whichToken(s: GameState, m: Move): string {
+  const p = s.players.find((x) => x.color === m.color);
+  if (!p || m.kind === 'release') return '';
+  const out = p.tokens.map((t, i) => ({ t, i })).filter((x) => x.t >= 0 && x.t < FINISHED).sort((a, b) => b.t - a.t || a.i - b.i);
+  const r = out.findIndex((x) => x.i === m.tokens[0]);
+  if (out.length < 2 || r < 0) return '';
+  return r === 0 ? 'front' : r === out.length - 1 ? 'back' : r === 1 ? '2nd' : '3rd';
+}
+
+/**
+ * The played and best moves in words, for a verdict. When they'd read the same ("moved 4 · Best: moved 4": same
+ * steps, another token), both say which token: "moved the back token 4 · Best: moved the front token 4".
+ */
+export function verdictMoves(s: GameState, played: Move, best: Move): [string, string] {
+  const a = moveText(played);
+  const b = moveText(best);
+  if (a !== b) return [a, b];
+  const named = (m: Move) => {
+    const w = whichToken(s, m);
+    if (!w) return moveText(m);
+    return moveText(m).replace(/^moved (a pair )?/, (_, pair: string | undefined) => `moved the ${w} ${pair ? 'pair ' : 'token '}`);
+  };
+  return [named(played), named(best)];
 }
 
 /** The win chance an average player has in this game: 100 / people (50 in 2p and team games, 25 in 4p). */

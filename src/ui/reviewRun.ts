@@ -18,7 +18,7 @@ export interface ReviewProgress {
 }
 
 /** Verdicts this run must make before its pace is trusted for an estimate. */
-export const ETA_AFTER = 3;
+export const ETA_AFTER = 6;
 
 /** The owners whose moves are reviewed: the people (bots aren't). */
 export const peopleOf = (rec: GameRecord) => [...new Set(rec.seats.filter((s) => !s.bot).map((s) => s.owner))];

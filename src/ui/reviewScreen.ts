@@ -10,7 +10,7 @@ import { avatarSVG, cssVars, icons } from './art';
 import { dieMarkup } from './dice';
 import { framesOf, namesOf } from './replay';
 import { peopleOf, runReview, type ReviewProgress } from './reviewRun';
-import { bigRolls, etaText, evenChance, graphPoints, keyMoves, LABEL_LOOK, LABELS, luckWords, moveText, reviewedText, rollText, SHOW_AFTER } from './reviewText';
+import { bigRolls, etaText, evenChance, graphPoints, keyMoves, LABEL_LOOK, LABELS, luckWords, moveText, reviewedText, rollText, SHOW_AFTER, verdictMoves } from './reviewText';
 import type { StoredReview } from './store';
 
 const GW = 330;
@@ -58,8 +58,9 @@ export function reviewScreen(rec: GameRecord, stored: StoredReview | undefined, 
     const s = states[m.at]!;
     const look = LABEL_LOOK[m.label];
     const head = `${look.name}${m.label !== 'best' && m.gap >= 1 ? ` −${Math.round(m.gap)}` : ''}`;
-    const best = m.played === m.best || m.label === 'best' ? '' : ` · Best: ${moveText(s.moves[m.best]!)}`;
-    return { head, line: `${who(m.owner)}${moveText(s.moves[m.played]!)}${best}`, step: frameAfter(m.at) };
+    const [played, best] = verdictMoves(s, s.moves[m.played]!, s.moves[m.best]!);
+    const alt = m.played === m.best || m.label === 'best' ? '' : ` · Best: ${best}`;
+    return { head, line: `${who(m.owner)}${m.played === m.best || m.label === 'best' ? moveText(s.moves[m.played]!) : played}${alt}`, step: frameAfter(m.at) };
   };
 
   const draw = (p: ReviewProgress) => {

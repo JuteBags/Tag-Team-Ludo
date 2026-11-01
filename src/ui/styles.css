@@ -782,7 +782,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvfilter button{min-width:44px;min-height:36px;background:none;color:#fff;font-size:16px}
 .review .rvhead{margin:12px 0 2px;font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
 .review .rvnote{padding:12px;border-radius:14px;background:rgba(0,0,0,.2);font-size:14px;font-weight:800;text-align:center}
-.review .rvrow i.die{width:30px;display:grid;place-items:center}
+.review .rvrow>i.die{width:30px;display:grid;place-items:center}
 .review .rvrow.roll.lucky{box-shadow:inset 0 0 0 1.5px rgba(74,222,128,.4)}
 .review .rvrow.roll.unlucky{box-shadow:inset 0 0 0 1.5px rgba(248,113,113,.4)}
 .review .rvprog{display:flex;align-items:center;gap:10px;margin:12px 0 8px;font-size:13px;font-weight:800}
@@ -791,7 +791,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvprog.done .bar{display:none}
 .review .rvlist{display:flex;flex-direction:column;gap:6px}
 .review .rvrow{display:flex;align-items:center;gap:10px;min-height:48px;padding:8px 12px;border-radius:14px;background:rgba(0,0,0,.25);color:#fff;text-align:left}
-.review .rvrow i{font-style:normal;width:30px;font-size:16px;font-weight:900;color:var(--c);text-align:center;flex:none}
+.review .rvrow>i{font-style:normal;width:30px;font-size:16px;font-weight:900;color:var(--c);text-align:center;flex:none}
 .review .rvrow span{display:flex;flex-direction:column;gap:2px;min-width:0}
 .review .rvrow b{font-size:14px}.review .rvrow small{font-size:12px;font-weight:700;opacity:.85}
 .review .rvrow.blunder{box-shadow:inset 0 0 0 1.5px rgba(248,113,113,.55)}

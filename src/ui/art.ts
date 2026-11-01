@@ -218,7 +218,7 @@ export function pawnArt(c: Color, skin: string = equipped('pawn').id): string {
   return `<ellipse cx="4.5" cy="14.6" rx="15" ry="5" fill="url(#pshadow)"/>
 <circle class="hit" cx="0" cy="0" r="20" fill="transparent"/>
 <ellipse class="mineglow" cx="0" cy="11" rx="18" ry="7" fill="url(#mglow)"/>
-<ellipse class="movedring" cx="0" cy="11" rx="17" ry="6.5" fill="none" stroke="#ffd65a" stroke-width="2.6"/>
+<ellipse class="movedring" cx="0" cy="11" rx="17" ry="6.5" fill="none" stroke="#ffd65a" stroke-width="3.2"/>
 <g class="pawn-art"><g class="halo">${outline('#fff', 5.2)}</g>${outline(v.d, 2.6)}
 <ellipse cx="1" cy="12.6" rx="12" ry="3.4" fill="#000" opacity=".45"/>
 ${k.art(c)}

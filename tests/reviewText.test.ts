@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { REVIEW_VERSION, type DecisionValues, type MoveReview } from '../src/engine/ai/review';
-import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText } from '../src/ui/reviewText';
+import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken } from '../src/ui/reviewText';
 
 const mem = new Map<string, string>();
 vi.mock('@capacitor/preferences', () => ({
@@ -56,6 +56,17 @@ describe('review words', () => {
     expect(moveText(base)).toBe('moved 5');
     expect(moveText({ ...(base as object), kind: 'release' } as never)).toBe('brought a token out');
     expect(moveText({ ...(base as object), tokens: [0, 1], steps: 3 } as never)).toBe('moved a pair 3');
+  });
+});
+
+describe('which token', () => {
+  const s = { players: [{ color: 'blue', owner: 0, bot: false, tokens: [-1, 30, 12, 56] }, { color: 'red', owner: 1, bot: true, tokens: [5, -1, -1, -1] }] } as never;
+  const mv = (tokens: number[], steps: number) => ({ kind: 'normal', color: 'blue', tokens, from: 0, to: 0, steps, roll: steps, captures: [], finishes: 0 }) as never;
+  it('names the token only when the played and best moves would read the same', () => {
+    expect(whichToken(s, mv([1], 4))).toBe('front');
+    expect(whichToken(s, mv([2], 4))).toBe('back');
+    expect(verdictMoves(s, mv([2], 4), mv([1], 4))).toEqual(['moved the back token 4', 'moved the front token 4']);
+    expect(verdictMoves(s, mv([2], 4), mv([1], 2))).toEqual(['moved 4', 'moved 2']);
   });
 });
 
@@ -132,7 +143,7 @@ describe('review runner', () => {
     const end = await new Promise<{ when?: number; eta: number | null }>((done) =>
       runReview(rec, undefined, (p) => (p.finished ? done(p) : seen.push(p.eta)), false, fake),
     );
-    expect(seen.slice(0, 3).every((e) => e === null)).toBe(true);
+    expect(seen.slice(0, 6).every((e) => e === null)).toBe(true);
     expect(seen.at(-1)).not.toBeNull();
     expect(end.eta).toBe(0);
     expect(end.when).toBeGreaterThan(0);
