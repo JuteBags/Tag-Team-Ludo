@@ -4,6 +4,7 @@
 import { COLORS, type BotLevel, type Color, type Seat } from '../engine';
 import { PROFILES, avatarSVG, cssVars, icons, pawnSVG } from './art';
 import { rollDie } from './dice';
+import { levelBonus } from './rewards';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
 import { NAME_MAX, cleanName, defaultName, pickSequence, pickable, previewLayout, quickSeats, rankRolls, turnLayout, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
@@ -13,6 +14,17 @@ const ROLL_MS = 900;
 const NEUTRAL = '--l:#7cb0ff;--m:#2f66df;--d:#173f9e;--t:#cfe0ff';
 /** A small pencil: this name can be changed. */
 const PENCIL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></svg>';
+/** What each bot level plays like (src/engine/ai/levels.ts), in a line, with the extra gold it pays. */
+const LEVEL_BLURB: Record<BotLevel, string> = {
+  easy: 'Plays simple, sensible moves. Good for learning.',
+  normal: "Picks good moves, but doesn't plan the whole turn.",
+  hard: 'Plans the whole turn: every die and the bonus roll.',
+  extreme: 'Plays out every option many times, then picks the best.',
+};
+const levelBlurb = (l: BotLevel) => {
+  const bonus = levelBonus(l);
+  return `${LEVEL_BLURB[l]}${bonus ? ` <b class="lvlg"><i class="coin"></i>+${Math.round(100 * bonus)}% gold</b>` : ''}`;
+};
 /** Names bots can have (the human seat's character is "You"). */
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 const BOT_NAMES = (['green', 'red', 'yellow'] as const).map((c) => PROFILES[c].name);
@@ -99,7 +111,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
         <div class="row2 q pairs" hidden><span class="lbl">Where are your two colours?</span><div class="tg" data-k="pairing"><button data-v="opposite" class="on">${mini([1, 2])}Opposite</button><button data-v="adjacent">${mini([2, 3])}Side by side</button></div></div>` : ''}
         ${mode === 'pvc' && count === 4 && teams ? `<button class="row2 q teams" data-act="teams"><span class="lbl">Two colours each, you and one bot?</span><small class="qh">A team game: you move both your colours</small></button>` : ''}
         ${mode === 'pvp' ? `<div class="row2 q bots"><span class="lbl">Fill the empty colours with computer players?</span><div class="tg" data-k="bots"></div><small class="qh"></small></div>` : ''}
-        <div class="row2 q lvl"><span class="lbl">How good are the bots?</span><div class="tg" data-k="level">${(['easy', 'normal', 'hard', 'extreme'] as const).map((l) => `<button data-v="${l}"${l === level ? ' class="on"' : ''}>${l[0]!.toUpperCase() + l.slice(1)}</button>`).join('')}</div></div>
+        <div class="row2 q lvl"><span class="lbl">How good are the bots?</span><div class="tg" data-k="level">${(['easy', 'normal', 'hard', 'extreme'] as const).map((l) => `<button data-v="${l}"${l === level ? ' class="on"' : ''}>${l[0]!.toUpperCase() + l.slice(1)}</button>`).join('')}</div><small class="qh lvlh" aria-live="polite">${levelBlurb(level)}</small></div>
       </div>
       ${mode === 'pvc' ? '<button class="quick" data-act="quick"><b class="disp">QUICK START</b><small></small></button>' : ''}
       <button class="b3 green disp go" data-act="to-roll">ROLL FOR ORDER</button>
@@ -189,7 +201,10 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       tg.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
       if (tg.dataset.k === 'houses') rules.houses = Number(b.dataset.v) as 1 | 2;
       else if (tg.dataset.k === 'bots') addedBots = Number(b.dataset.v);
-      else if (tg.dataset.k === 'level') saveSetting('botLevel', (level = b.dataset.v as BotLevel));
+      else if (tg.dataset.k === 'level') {
+        saveSetting('botLevel', (level = b.dataset.v as BotLevel));
+        q('.lvlh').innerHTML = levelBlurb(level);
+      }
       else rules.pairing = b.dataset.v as Pairing;
       drawOptions();
     }),
