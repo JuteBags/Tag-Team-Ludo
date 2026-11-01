@@ -1,0 +1,63 @@
+# Bot levels: every level the app plays must beat the level below it, in every game mode.
+#
+# Plays each level (src/engine/ai/levels.ts: Easy, Normal, Hard) against people all of the level below, in
+# all 10 modes (2, 3 and 4 players, two houses each opposite and side by side, each with doubles on and off),
+# on fair dice, with the Rust engine (sim-rs, the same games as the app's TypeScript engine) and the app's
+# own rule files. Seeds are fixed, so a run is reproducible and any change in a number comes from a change
+# in a bot. A level fails when its 95% interval doesn't clear an even share. The table goes in the run
+# summary. tools/ai/levels_check.py has the details.
+#
+# Actions -> Bot levels -> Run workflow: any number of seeds, the app's dice too, and Extreme vs Hard
+# (the rollout player; slow, so only by hand: about a minute per mode per 25 seeds on a GitHub runner).
+
+name: Bot levels
+
+on:
+  pull_request:
+    paths:
+      - 'src/engine/**'
+      - 'sim-rs/**'
+      - 'tools/ai/**'
+      - '.github/workflows/ai-levels.yml'
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: 'Seeds per row for Easy, Normal and Hard'
+        required: true
+        default: '2000'
+      extreme_seeds:
+        description: 'Seeds per row for Extreme vs Hard (0 = skip)'
+        required: true
+        default: '0'
+      dice:
+        description: 'fair, app or both'
+        required: true
+        default: 'fair'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-levels-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  levels:
+    name: Each level beats the one below
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - name: Write the app's rules for the Rust engine
+        run: bash tools/ai/build.sh && node tools/ai/dist/levels-json.mjs
+      - name: Build the Rust engine
+        run: cargo build --release --bin ludo-arena --manifest-path sim-rs/Cargo.toml
+      - name: Play the levels
+        run: >
+          python3 tools/ai/levels_check.py --arena sim-rs/target/release/ludo-arena
+          --seeds ${{ inputs.seeds || '2000' }} --extreme-seeds ${{ inputs.extreme_seeds || '0' }}
+          --dice ${{ inputs.dice || 'fair' }}
