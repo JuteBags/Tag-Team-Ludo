@@ -182,8 +182,10 @@ def main():
                           if any((d / f'gen-{j}').glob('shard-*.bin')))
         target = []
         if a.labels == 'lambda':
-            # lambda-return targets for this generation's shards, valued by the net that played them (cur)
-            todo_l = [f'{LABEL} --shard {f} --net {cur} --lambda {a.lam} --out {f}.targets --threads 1'
+            # lambda-return targets for this generation's shards, valued by the player that played them (cur)
+            # with --blend, valued as the blend plays (ludo-label --eval blend:..., the current rules and alpha)
+            value = f"--eval blend:{cur}:{st['rules']}:{st['alpha']}" if a.blend else f'--net {cur}'
+            todo_l = [f'{LABEL} --shard {f} {value} --lambda {a.lam} --out {f}.targets --threads 1'
                       for f in sorted(gd.glob('shard-*.bin')) if not pathlib.Path(f'{f}.targets').exists()]
             if todo_l:
                 run_parallel(todo_l)
