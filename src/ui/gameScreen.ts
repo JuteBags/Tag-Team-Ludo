@@ -13,7 +13,7 @@ import { keepAwake } from './native';
 import { drawCard, shareCard } from './shareCard';
 import { clearGame, giveUpNote, givingUpLoses, layoutOf, levelOf, loadStats, recordGame, saveGame, type SavedGame } from './store';
 import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targets';
-import { goldFor, newAchievements, nextStreak, total, type GameFacts } from './rewards';
+import { award, goldFor, newAchievements, nextStreak, total, type GameFacts } from './rewards';
 import { earn, lockLabel, nextGoal } from './skins';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
@@ -693,7 +693,7 @@ export class GameScreen {
         const mine = colorsOf(o);
         const c = mine[0]!.color;
         const bot = mine[0]!.bot;
-        const sub = i === 0 ? 'Winner' : bot ? 'Bot' : pvp ? `${PLACES[i + 1]!.toLowerCase()} place` : 'You';
+        const sub = i === 0 ? 'Winner' : bot ? 'Bot' : `${PLACES[i + 1]!.toLowerCase()} place`;
         const home = mine.reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
         const pct = Math.round((100 * mine.reduce((a, p) => a + p.tokens.reduce((x, t) => x + Math.max(t, 0), 0), 0)) / (FINISHED * 4 * mine.length));
         return `<div class="row${i === 0 ? ' first' : ''}${bot ? '' : ' me'}"><span class="medal m${i + 1}">${i + 1}</span>
@@ -709,7 +709,7 @@ export class GameScreen {
     const achievements = recordGame({ mode: this.config.mode, place, kills: this.kills, pairs: this.pairs, sixes: this.sixes, level, layout }).then((s) => {
       const fresh = newAchievements(s, facts, settings.achieved);
       if (fresh.length) {
-        saveSetting('achieved', [...settings.achieved, ...fresh.map((a) => a.id)]);
+        award(fresh.map((a) => a.id));
         earn(fresh.reduce((a, x) => a + x.gold, 0));
       }
       return { fresh, ended: s.xEnded, streak: level === 'extreme' && won && !pvp ? { now: s.xStreak, next: nextStreak(s, settings.achieved) } : null };
@@ -763,23 +763,34 @@ export class GameScreen {
         const next = streak.next ? ` · ${streak.next.name} at ${streak.now + streak.next.more} <em>+${streak.next.gold}</em>` : '';
         box.insertAdjacentHTML('beforeend', `<span class="ach xs">🔥 Extreme streak ${streak.now}${next}</span>`);
       } else if (ended) box.insertAdjacentHTML('beforeend', `<span class="ach xend">Extreme streak ended at ${ended}</span>`);
-      fresh.forEach((a, i) => {
+      // The biggest reward first, and its gold joins the headline and the breakdown.
+      const sorted = [...fresh].sort((x, y) => y.gold - x.gold);
+      const extra = sorted.reduce((a, x) => a + x.gold, 0);
+      sorted.forEach((a, i) => {
         box.insertAdjacentHTML('beforeend', `<span class="ach" title="${a.blurb}">🏆 ${a.name} <em>+${a.gold}</em></span>`);
         (box.lastElementChild as HTMLElement).animate([{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'scale(1.1)', offset: 0.7 }, { opacity: 1, transform: 'scale(1)' }], { duration: 380, delay: 1300 + i * 300, easing: 'cubic-bezier(.3,.8,.4,1.2)', fill: 'backwards' });
         setTimeout(() => sfx.home(), 1300 + i * 300);
       });
-      if (fresh.length) setTimeout(() => ov.querySelector('.reward .goal')?.replaceWith(document.createRange().createContextualFragment(goalHTML())), 1300 + fresh.length * 300);
+      if (fresh.length)
+        setTimeout(() => {
+          ov.querySelector('.reward .goal')?.replaceWith(document.createRange().createContextualFragment(goalHTML()));
+          ov.querySelector('.reward .rg small')!.insertAdjacentText('beforeend', ` · Achievements ${extra}`);
+          countUp(earned, earned + extra, 700);
+        }, 1300 + fresh.length * 300);
     });
     if (won) sfx.win();
-    // The gold counts up.
+    // The gold counts up: this game's first, then the achievements' when they land.
     const cnt = ov.querySelector<HTMLElement>('.cnt')!;
-    const t0 = performance.now();
-    const tick = () => {
-      const k = Math.min(1, (performance.now() - t0) / 900);
-      cnt.textContent = String(Math.round(earned * (1 - Math.pow(1 - k, 3))));
-      if (k < 1) requestAnimationFrame(tick);
+    const countUp = (from: number, to: number, ms: number) => {
+      const t0 = performance.now();
+      const tick = () => {
+        const k = Math.min(1, (performance.now() - t0) / ms);
+        cnt.textContent = String(Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3))));
+        if (k < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
     };
-    setTimeout(() => requestAnimationFrame(tick), 500);
+    setTimeout(() => countUp(0, earned, 900), 500);
     ov.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 350 });
     ov.querySelector('.trophy')!.animate([{ transform: 'scale(.3) rotate(-12deg)' }, { transform: 'scale(1.08)', offset: 0.7 }, { transform: 'scale(1)' }], { duration: 650, easing: 'cubic-bezier(.3,.8,.4,1.2)' });
   }
