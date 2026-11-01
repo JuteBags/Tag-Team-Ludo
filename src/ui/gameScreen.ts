@@ -1,6 +1,6 @@
 // Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
 // a person passing the device; a person with two houses plays both colours' turns.
-import { FINISHED, createGame, cryptoRng, isDone, move, ownerRanking, roll, type Color, type GameState, type Move, type Rng } from '../engine';
+import { FINISHED, createGame, isDone, mixSeed, move, ownerRanking, positionKey, roll, seeded, type Color, type GameState, type Move, type Rng } from '../engine';
 import { chooseBotMoveAsync } from '../engine/ai/levels';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
@@ -11,7 +11,7 @@ import { sfx } from './sfx';
 import type { GameConfig } from './setup';
 import { keepAwake } from './native';
 import { drawCard, shareCard } from './shareCard';
-import { clearGame, recordGame, saveGame, type SavedGame } from './store';
+import { clearGame, giveUpNote, givingUpLoses, loadStats, recordGame, saveGame, type SavedGame } from './store';
 import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targets';
 import { goldFor, newAchievements, total } from './rewards';
 import { earn, lockLabel, nextGoal } from './skins';
@@ -82,9 +82,17 @@ export class GameScreen {
     if (!this.el.querySelector('.cs, .vote')) this.openMenu();
   };
 
-  /** Starts a game from `config`, or picks up `saved`. */
-  constructor(readonly config: GameConfig, private exit: (to: Exit) => void, private rng: Rng = cryptoRng, saved?: SavedGame) {
+  /**
+   * The game's seed. Every roll and every bot move draws from a generator seeded by it and the position, so a
+   * continued game rolls exactly what it would have (killing the app doesn't re-roll a bad turn), while a
+   * different move leads to new dice.
+   */
+  private seed: number;
+
+  /** Starts a game from `config`, or picks up `saved`. `rng` replaces the position-seeded dice (tests). */
+  constructor(readonly config: GameConfig, private exit: (to: Exit) => void, private fixedRng?: Rng, saved?: SavedGame) {
     this.state = saved?.state ?? createGame(config.seats, config.first, config.singles);
+    this.seed = saved?.seed ?? crypto.getRandomValues(new Uint32Array(1))[0]!;
     this.kills = saved?.kills ?? 0;
     this.pairs = saved?.pairs ?? 0;
     for (const [c, f] of saved?.faces ?? []) this.lastFace.set(c, f);
@@ -113,10 +121,20 @@ export class GameScreen {
     void this.run();
   }
 
+  /** The generator for this position's roll or bot move. */
+  private rngFor(what: 'dice' | 'bot'): Rng {
+    return this.fixedRng ?? seeded(mixSeed(this.seed, what + positionKey(this.state)));
+  }
+
+  /** The game as it would be saved now. */
+  private snapshot(): SavedGame {
+    return { v: 1, config: this.config, state: this.state, kills: this.kills, pairs: this.pairs, faces: [...this.lastFace], savedAt: Date.now(), seed: this.seed };
+  }
+
   /** Saves the game so it can be continued after the app closes. Done at the start of every turn. */
   private save() {
     if (this.disposed || this.ended || this.state.phase !== 'roll') return;
-    void saveGame({ v: 1, config: this.config, state: this.state, kills: this.kills, pairs: this.pairs, faces: [...this.lastFace], savedAt: Date.now() });
+    void saveGame(this.snapshot());
   }
 
   /** The Android back button: skip a cutscene, close the pause menu, leave the result, or pause. */
@@ -192,7 +210,7 @@ export class GameScreen {
       return;
     }
     const t0 = performance.now();
-    const m = await chooseBotMoveAsync(this.state, this.rng);
+    const m = await chooseBotMoveAsync(this.state, this.rngFor('bot'));
     if (this.disposed) return;
     // Light up the die the bot plays, so its turn is easy to follow; thinking time counts toward the pause.
     this.drawTrays(m.roll);
@@ -234,7 +252,7 @@ export class GameScreen {
 
   private async doRoll(c: Color) {
     const kept = this.state.rolls;
-    this.state = roll(this.state, this.rng, this.forced.shift());
+    this.state = roll(this.state, this.rngFor('dice'), this.forced.shift());
     const box = this.diceBox(c);
     await rollDie(box, this.state.dice!, DIE, (this.cur.bot || this.state.players.find((p) => p.color === c)!.bot ? BOT_ROLL_MS / (settings.fastBots ? 2 : 1) : ROLL_MS) / this.speed);
     this.lastFace.set(c, this.state.dice!);
@@ -591,7 +609,7 @@ export class GameScreen {
     const ov = document.createElement('div');
     ov.className = 'menu-ov';
     ov.innerHTML = `<div class="box"><h2>Paused</h2><button class="b3 green disp" data-act="resume">RESUME</button><button class="b3 blue disp" data-act="face">${faceLabel()}</button><button class="b3 blue disp" data-act="sound">${sfx.muted ? 'SOUND: OFF' : 'SOUND: ON'}</button><button class="b3 blue disp" data-act="help">HOW TO PLAY</button><button class="b3 blue disp" data-act="quit">QUIT TO HOME</button></div>`;
-    ov.addEventListener('click', (e) => {
+    ov.addEventListener('click', async (e) => {
       const act = (e.target as Element).closest('button')?.dataset.act;
       if (act === 'resume') {
         ov.remove();
@@ -617,13 +635,24 @@ export class GameScreen {
       } else if (act === 'quit') {
         // Quitting gives the game up, so it takes a second tap.
         const b = (e.target as Element).closest('button')!;
+        if (this.disposed) return;
+        const loses = givingUpLoses({ config: this.config, state: this.state });
         if (!b.classList.contains('sure')) {
           b.classList.add('sure');
           b.textContent = 'TAP AGAIN TO QUIT';
-          b.insertAdjacentHTML('afterend', '<p class="sub warn">This game will be lost</p>');
+          const warn = Object.assign(document.createElement('p'), { className: 'sub warn', textContent: 'This game will be lost' });
+          b.after(warn);
+          // vs Computer after the first round, quitting is a loss: say what it costs.
+          if (loses) void loadStats().then((s) => (warn.textContent = giveUpNote(s)));
           return;
         }
         this.dispose();
+        // As in giveUpSaved: the save is marked counted before the loss is recorded, then cleared, so a crash
+        // at any point can't count the game twice (a counted save is never offered or counted again).
+        if (loses) {
+          await saveGame({ ...this.snapshot(), counted: true });
+          await recordGame({ mode: 'pvc', place: 0, kills: 0, pairs: 0, quit: true });
+        }
         void clearGame();
         this.exit('home');
       }
