@@ -55,4 +55,35 @@ describe('rollout Extreme (wasm)', () => {
     expect(s.phase).toBe('over');
     console.log(`rollout wasm, nmax 64: ${decisions} decisions, ${(t / decisions).toFixed(0)} ms each`);
   });
+
+  it('reviews a decision: every move valued, the best at zero gap, the others at or below it', { timeout: 300_000 }, async () => {
+    const e = await engine();
+    let reviewed = 0;
+    for (let g = 0; g < 6 && reviewed < 12; g++) {
+      const rng = seeded(100 + g);
+      let s: GameState = createGame(SEATS[g % 2 ? 4 : 2].map((color, owner) => ({ color, owner, bot: true, level: 'hard' })));
+      for (let i = 0; i < 20000 && s.phase !== 'over' && reviewed < 12; i++) {
+        if (s.phase === 'roll') s = roll(s, rng);
+        else {
+          if (s.moves.length > 2 && i % 5 === 0) {
+            const v = e.review(s, 32, 7 + i);
+            expect(v.ofMove.length).toBe(s.moves.length);
+            expect(v.gap[v.best]).toBe(0);
+            for (let c = 0; c < v.mean.length; c++) {
+              expect(v.mean[c]).toBeGreaterThanOrEqual(0);
+              expect(v.mean[c]).toBeLessThanOrEqual(1);
+              expect(v.gap[c]).toBeGreaterThanOrEqual(-1e-9);
+              expect(v.mean[v.best]! - v.mean[c]!).toBeCloseTo(v.gap[c]!, 9);
+            }
+            // The same seed gives the same review.
+            expect(e.review(s, 32, 7 + i)).toEqual(v);
+            reviewed++;
+          }
+          s = move(s, chooseBotMove(s, rng));
+        }
+      }
+    }
+    expect(reviewed).toBe(12);
+  });
 });
+
