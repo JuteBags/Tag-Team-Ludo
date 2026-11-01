@@ -86,7 +86,7 @@ def main():
     ap.add_argument('--alpha', type=float, default=2.0, help='with --blend: the starting alpha')
     ap.add_argument('--evolve-gens', type=int, default=8, help='with --blend: CMA-ES generations per ladder generation')
     ap.add_argument('--evolve-pop', type=int, default=10)
-    ap.add_argument('--evolve-seeds', type=int, default=400, help='paired seeds per CMA-ES candidate')
+    ap.add_argument('--evolve-seeds', type=int, default=800, help='paired seeds per CMA-ES candidate')
     ap.add_argument('--evolve-sigma', type=float, default=0.15)
     ap.add_argument('--residual', action='store_true', help='with --blend: train the net as a residual over the frozen rules (train.py --rules/--alpha)')
     ap.add_argument('--learn-temp', action='store_true', help="with --residual: train.py --learn-temp; the new net's alpha is the BLEND line's tau * alpha")
@@ -115,7 +115,7 @@ def main():
             subprocess.run([sys.executable, '-u', 'tools/ai/tune.py', '--start', rules, '--net', str(net), '--alpha', str(alpha), '--out', str(out),
                             '--opponent', f'net:{a.hard}:1', '--mode', a.check_mode, '--dice', a.dice, '--pop', str(a.evolve_pop),
                             '--seeds', str(a.evolve_seeds), '--gens', str(a.evolve_gens), '--sigma', str(a.evolve_sigma), '--workers', str(a.workers),
-                            '--search', f':3:0:{a.race}:{a.chance}:{a.cut}', '--seed-base', str(seed_base), '--holdout', str(a.evolve_seeds), '--tmp', str(out_dir / 'evolve'),
+                            '--search', f':3:0:{a.race}:{a.chance}:{a.cut}', '--seed-base', str(seed_base), '--holdout', str(2 * a.evolve_seeds), '--pick', 'final', '--tmp', str(out_dir / 'evolve'),
                             '--wandb', f'{a.wandb}-{tag}-evolve'], check=True)
             (out_dir / 'evolve.done').write_text('')
         return str(out), json.loads((out_dir / 'rules.json.blend.json').read_text())['alpha']

@@ -17,6 +17,10 @@ With --net, the candidates are Extreme blends instead: blend:<net>:<rules>:<alph
 alpha times these rules), the net fixed and the rules and alpha evolved (alpha in log units). This is the
 evolutionary half of the ladder: self-play trains the net, evolution re-tunes the readable part around it.
 The best blend is also written to <out>.blend.json as {net, rules, alpha}.
+
+--pick final (for noisy fitness, e.g. short 4p runs): the best single generation's score is mostly luck
+(winner's curse), so instead the final CMA-ES mean and the starting point play one shared held-out block
+and the better of the two is written.
 """
 import argparse, json, math, os, pathlib, subprocess, tempfile
 import numpy as np
@@ -59,6 +63,8 @@ def main():
     ap.add_argument('--opponent', required=True, help='policy specs the candidates play against, comma-separated (fitness = mean)')
     ap.add_argument('--dice', default='game', choices=['game', 'fair'])
     ap.add_argument('--holdout', type=int, default=10_000, help='paired seeds for the final, held-out score')
+    ap.add_argument('--pick', default='best', choices=['best', 'final'], help='best: the best generation mean; final: the final mean or the start, '
+                    'whichever wins the held-out block')
     ap.add_argument('--mode', default='2p')
     ap.add_argument('--pop', type=int, default=16)
     ap.add_argument('--seeds', type=int, default=5000, help='paired seeds per candidate (2 games each in 2p)')
@@ -110,6 +116,12 @@ def main():
     split = lambda x: (w0 + scale * x[:len(names)], a.alpha * math.exp(x[-1]) if a.net else None)  # weights, alpha
     score = lambda x, tag, seeds, base: play(split(x)[0], names, opponents, a.mode, seeds, a.workers, tmp, tag, base, split(x)[1])
     best = (-1.0, np.zeros(n))
+
+    def write(x):
+        w, alpha = split(x)
+        json.dump({'kind': 'linear', 'weights': dict(zip(names, map(float, w)))}, open(a.out, 'w'), indent=1)
+        if a.net:
+            json.dump({'net': a.net, 'rules': a.out, 'alpha': alpha}, open(a.out + '.blend.json', 'w'), indent=1)
     for gen in range(a.gens):
         vals, vecs = np.linalg.eigh(C)
         B, Dg = vecs, np.sqrt(np.maximum(vals, 1e-20))
@@ -121,10 +133,7 @@ def main():
         incumbent = score(mean, f'g{gen}mean', a.seeds, block)
         if incumbent > best[0]:
             best = (incumbent, mean.copy())
-            bw, balpha = split(best[1])
-            json.dump({'kind': 'linear', 'weights': dict(zip(names, map(float, bw)))}, open(a.out, 'w'), indent=1)
-            if a.net:
-                json.dump({'net': a.net, 'rules': a.out, 'alpha': balpha}, open(a.out + '.blend.json', 'w'), indent=1)
+            write(best[1])
         order = np.argsort(-fit)
         old = mean
         mean = mean + sigma * (wts @ ys[order[:mu]])
@@ -141,7 +150,18 @@ def main():
         if run:
             run.log({f'tune/{k}': v for k, v in line.items()} | {f'rules/{k}': float(v) for k, v in zip(names, split(mean)[0])})
     # The honest number: the chosen weights on seeds no generation ever played.
-    held = score(best[1], 'holdout', a.holdout, 50_000_000)
+    if a.pick == 'final':
+        # One shared held-out block (common dice) for the final mean and the start; keep the better.
+        held_final = score(mean, 'holdout-final', a.holdout, 50_000_000 + a.seed_base)
+        held_start = score(np.zeros(n), 'holdout-start', a.holdout, 50_000_000 + a.seed_base)
+        print(f'PICK final mean {held_final:.4f} vs start {held_start:.4f} on {a.holdout} held-out seeds', flush=True)
+        best = (held_final, mean.copy()) if held_final > held_start else (held_start, np.zeros(n))
+        write(best[1])
+        held = best[0]
+        if run:
+            run.summary.update({'tune/holdout_final': held_final, 'tune/holdout_start': held_start})
+    else:
+        held = score(best[1], 'holdout', a.holdout, 50_000_000)
     if run:
         run.summary.update({'tune/best_mean_win': best[0], 'tune/holdout_win': held})
         run.finish()
