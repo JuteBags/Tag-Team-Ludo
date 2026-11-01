@@ -5,6 +5,7 @@ import { COLORS, type BotLevel, type Color, type Seat } from '../engine';
 import { PROFILES, avatarSVG, cssVars, icons, pawnSVG } from './art';
 import { rollDie } from './dice';
 import { saveSetting, settings } from './settings';
+import { sfx } from './sfx';
 import { NAME_MAX, cleanName, defaultName, pickSequence, pickable, previewLayout, quickSeats, rankRolls, turnLayout, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
 
 const DIE = 30;
@@ -119,6 +120,8 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
   const q = <T extends Element>(s: string) => el.querySelector<T & HTMLElement>(s)!;
 
   /** Shows one step and marks progress. */
+  const pencilFor = (i: number) => (i === people.findIndex((p) => !p.bot) ? PENCIL : '');
+
   const show = (s: Step) => {
     step = s;
     el.querySelectorAll<HTMLElement>('.wiz').forEach((w) => (w.hidden = w.dataset.step !== s));
@@ -224,8 +227,9 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     order = [];
     q('[data-act=to-pick]').hidden = true;
     q('[data-act=roll-all]').hidden = !people.some((p) => !p.bot) || people.filter((p) => !p.bot).length < 2;
+    // Every person's name can be changed; the pencil hint sits on the first one only.
     peopleEl.innerHTML = people
-      .map((p, i) => `<div class="prow" data-p="${i}"><span class="chip disp">${i + 1}</span>${p.bot ? `<b>${p.name}</b>` : `<button class="pname" data-p="${i}" aria-label="Change name">${p.name}${PENCIL}</button>`}<span class="st"></span><button class="dbox" style="${NEUTRAL}" aria-label="Roll">${QDIE}</button></div>`)
+      .map((p, i) => `<div class="prow" data-p="${i}"><span class="chip disp">${i + 1}</span>${p.bot ? `<b>${p.name}</b>` : `<button class="pname" data-p="${i}" aria-label="Change name">${p.name}${pencilFor(i)}</button>`}<span class="st"></span><button class="dbox" style="${NEUTRAL}" aria-label="Roll">${QDIE}</button></div>`)
       .join('');
     refreshRoll();
   };
@@ -303,7 +307,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       back.className = 'pname';
       back.dataset.p = String(i);
       back.setAttribute('aria-label', 'Change name');
-      back.innerHTML = name + PENCIL;
+      back.innerHTML = name + pencilFor(i);
       input.replaceWith(back);
     };
     input.addEventListener('keydown', (e) => e.key === 'Enter' && input.blur());
@@ -357,6 +361,17 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     po.innerHTML = `Play order: ${order.map((i) => `<b>${people[i]!.name}</b>`).join(' → ')}`;
     po.hidden = false;
     q('[data-act=to-pick]').hidden = false;
+    // A short sting for whoever plays first: the crown drops onto their row with a bright chord.
+    const crown = peopleEl.querySelector<HTMLElement>('.prow.first .chip .crown');
+    if (crown && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const at = 420 + 60 * rows.length;
+      crown.animate(
+        [{ transform: 'translateY(-26px) scale(1.6) rotate(-18deg)', opacity: 0 }, { transform: 'translateY(2px) scale(1.15) rotate(6deg)', opacity: 1, offset: 0.65 }, { transform: 'none', opacity: 1 }],
+        { duration: 520, delay: at, easing: 'cubic-bezier(.3,.8,.4,1.2)', fill: 'backwards' },
+      );
+      peopleEl.querySelector<HTMLElement>('.prow.first')!.animate([{ boxShadow: 'inset 0 0 0 1.5px rgba(255,214,90,.55), 0 0 0 0 rgba(255,214,90,.6)' }, { boxShadow: 'inset 0 0 0 1.5px rgba(255,214,90,.55), 0 0 18px 4px rgba(255,214,90,.55)', offset: 0.4 }, { boxShadow: 'inset 0 0 0 1.5px rgba(255,214,90,.55), 0 0 0 0 rgba(255,214,90,0)' }], { duration: 900, delay: at + 300 });
+      setTimeout(() => sfx.crown(), at + 300);
+    } else if (crown) sfx.crown();
   };
   q('[data-act=to-pick]').addEventListener('click', () => {
     resetPicks();
