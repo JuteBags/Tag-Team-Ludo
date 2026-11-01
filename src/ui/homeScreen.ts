@@ -5,7 +5,7 @@ import { dieMarkup } from './dice';
 import { settings } from './settings';
 import type { Mode } from './setup';
 import { settingsSheet, statsSheet, symbolRow } from './sheets';
-import { giveUpNote, givingUpLoses, loadStats, type SavedGame } from './store';
+import { giveUpNote, givingUpLoses, levelOf, loadStats, type SavedGame } from './store';
 import { setSymbols } from './themes';
 
 /** "just now", "12 min ago", "3 h ago", "2 days ago": when a saved game was last played. */
@@ -55,7 +55,7 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
     b.addEventListener('click', async () => {
       const mode = b.dataset.mode as Mode;
       if (!saved || !givingUpLoses(saved)) return onPlay(mode);
-      const note = giveUpNote(await loadStats());
+      const note = giveUpNote(await loadStats(), levelOf(saved.state));
       const ov = document.createElement('div');
       ov.className = 'menu-ov giveup-ov';
       ov.innerHTML = `<div class="box"><h2>New game?</h2><p class="sub">Starting a new game gives up your saved game vs Computer. ${note}</p>

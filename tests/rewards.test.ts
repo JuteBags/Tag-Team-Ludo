@@ -1,7 +1,7 @@
 // Gold (src/ui/rewards.ts) and spending it in the Store (src/ui/skins.ts).
 import { describe, expect, it } from 'vitest';
-import { ACHIEVEMENTS, goldFor, newAchievements, total } from '../src/ui/rewards';
-import { EMPTY_STATS } from '../src/ui/store';
+import { ACHIEVEMENTS, goldFor, newAchievements, nextStreak, total, type GameFacts } from '../src/ui/rewards';
+import { emptyStats, type Stats } from '../src/ui/store';
 import { settings } from '../src/ui/settings';
 import { SKINS, buy, earn, isUnlocked, nextGoal } from '../src/ui/skins';
 
@@ -46,21 +46,59 @@ describe('spending gold', () => {
 });
 
 describe('achievements', () => {
-  const stats = { ...EMPTY_STATS };
-  const game = { mode: 'pvc' as const, place: 1, lost: 0, hard: false };
+  const stats = emptyStats();
+  const game: GameFacts = { mode: 'pvc', place: 1, lost: 0, level: 'normal', layout: '2p' };
+  const ids = (s: Stats, g: GameFacts | null, done: string[] = []) => newAchievements(s, g, done).map((a) => a.id);
+  const wins = (lv: Partial<Stats['levelWins']>) => ({ ...stats.levelWins, ...lv });
+
   it('gives a first win, and a flawless win when no token was lost', () => {
-    const ids = newAchievements({ ...stats, wins: 1, played: 1 }, game, []).map((a) => a.id);
-    expect(ids).toEqual(['first-win', 'flawless']);
-    expect(newAchievements({ ...stats, wins: 1 }, { ...game, lost: 2 }, []).map((a) => a.id)).toEqual(['first-win']);
+    expect(ids({ ...stats, wins: 1, played: 1, levelWins: wins({ normal: 1 }) }, game)).toEqual(['win-normal', 'first-win', 'flawless']);
+    expect(ids({ ...stats, wins: 1 }, { ...game, lost: 2 })).toEqual(['first-win']);
   });
   it('never gives the same achievement twice', () => {
-    expect(newAchievements({ ...stats, wins: 1 }, game, ['first-win', 'flawless'])).toEqual([]);
+    expect(ids({ ...stats, wins: 1 }, game, ['first-win', 'flawless'])).toEqual([]);
   });
-  it('counts totals and wins against Hard bots', () => {
-    const ids = newAchievements({ ...stats, wins: 10, kills: 60, sixes: 100, bestStreak: 3, friends: 5 }, { ...game, lost: 1, hard: true }, []).map((a) => a.id);
-    expect(ids).toEqual(['first-win', 'wins-10', 'streak-3', 'kills-50', 'sixes-100', 'hard-win', 'friends-5']);
+  it('counts totals', () => {
+    expect(ids({ ...stats, wins: 10, kills: 60, sixes: 100, bestStreak: 3, friends: 5 }, { ...game, lost: 1 })).toEqual(['wins-10', 'streak-3', 'kills-50', 'sixes-100', 'friends-5', 'first-win'].sort((x, y) => order(x) - order(y)));
   });
-  it('shows progress toward the totals', () => {
+  it('climbs the ladder one level at a time; an Extreme win also counts as Giant slayer', () => {
+    expect(ids({ ...stats, levelWins: wins({ easy: 1 }) }, null)).toEqual(['win-easy']);
+    expect(ids({ ...stats, levelWins: wins({ hard: 1 }) }, null)).toEqual(['hard-win']);
+    expect(ids({ ...stats, levelWins: wins({ extreme: 1 }) }, null)).toEqual(['hard-win', 'win-extreme']);
+  });
+  it('pays the Extreme streaks at 3, 5 and 7 wins in a row', () => {
+    expect(ids({ ...stats, xBestStreak: 2 }, null)).toEqual([]);
+    expect(ids({ ...stats, xBestStreak: 3 }, null)).toEqual(['x-streak-3']);
+    expect(ids({ ...stats, xBestStreak: 7 }, null, ['x-streak-3'])).toEqual(['x-streak-5', 'x-streak-7']);
+  });
+  it('tours every layout against Extreme, and knows Purist and Against all odds', () => {
+    const tour = ACHIEVEMENTS.find((a) => a.id === 'x-tour')!;
+    expect(tour.progress!({ ...stats, xModes: ['2p', '4p'] })).toEqual([2, 5]);
+    expect(ids({ ...stats, xModes: ['2p', '3p', '4p', '2h-opposite', '2h-side'] }, null)).toEqual(['x-tour']);
+    const x = { ...game, level: 'extreme' as const, lost: 1 };
+    expect(ids(stats, { ...x, singles: true })).toEqual(['x-purist']);
+    expect(ids(stats, { ...x, layout: '4p' })).toEqual(['x-odds']);
+    expect(ids(stats, { ...x, layout: '4p', place: 2 })).toEqual([]);
+  });
+  it('rewards check-in runs of 7 and 30 days', () => {
+    expect(ids({ ...stats, checkinBest: 7 }, null)).toEqual(['checkin-7']);
+    expect(ids({ ...stats, checkinBest: 30 }, null, ['checkin-7'])).toEqual(['checkin-30']);
+  });
+  it('shows progress toward the totals, and hides a streak nobody started', () => {
     expect(ACHIEVEMENTS.find((a) => a.id === 'kills-50')!.progress!({ ...stats, kills: 12 })).toEqual([12, 50]);
+    const hat = ACHIEVEMENTS.find((a) => a.id === 'x-streak-3')!;
+    expect(hat.quiet && hat.progress!(stats)).toEqual([0, 3]);
+  });
+  it('names the next Extreme streak achievement while a streak is live', () => {
+    expect(nextStreak(stats, [])).toBeNull();
+    expect(nextStreak({ ...stats, xStreak: 2 }, [])).toEqual({ name: 'Hat-trick', gold: 1500, more: 1 });
+    expect(nextStreak({ ...stats, xStreak: 3 }, ['x-streak-3'])).toEqual({ name: 'Unstoppable', gold: 3000, more: 2 });
+    expect(nextStreak({ ...stats, xStreak: 8 }, ['x-streak-3', 'x-streak-5', 'x-streak-7'])).toBeNull();
+  });
+  it('keeps the ids stored by earlier versions', () => {
+    for (const id of ['first-win', 'wins-10', 'streak-3', 'kills-50', 'sixes-100', 'flawless', 'hard-win', 'friends-5']) expect(ACHIEVEMENTS.some((a) => a.id === id)).toBe(true);
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
   });
 });
+
+const order = (id: string) => ACHIEVEMENTS.findIndex((a) => a.id === id);
