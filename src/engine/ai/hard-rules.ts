@@ -1,7 +1,7 @@
 // Hard's readable rules (linear.ts): each weight is one rule, and Hard plans its whole turn with them
-// (search.ts, depth 1). Hard v3: fitted to paired-rollout expert data, then tuned for strength with CMA-ES
-// in 4p (tools/ai/tune.py); one Hard v3 house wins 26.5% against three Hard v2 houses (80k games, 25% is
-// even). Regenerate from W&B model hardv3-cma (hardv3-cma.json).
+// (search.ts, depth 1). Fitted to paired-rollout expert data, then tuned for strength with CMA-ES in 4p
+// (tools/ai/tune.py); one house with these rules wins 26.5% against three houses with the previous Hard's
+// rules (playout-rules.ts; 80k games, 25% is even). Regenerate from W&B model hardv3-cma (hardv3-cma.json).
 import type { LinearJSON } from './linear';
 
 export const HARD_RULES: LinearJSON = {

@@ -6,13 +6,13 @@ What each level plays (`src/engine/ai/levels.ts`), and how much stronger each on
 |---|---|
 | Easy | The original Hard rule bot (`src/engine/bot.ts`, level `hard`). |
 | Normal | Hard's weighted rules (`hard-rules.ts`), judging each move alone. It doesn't plan the rest of the dice in the tray, or the bonus roll a kill or a finish earns. |
-| Hard | The same rules (Hard v3), planning the whole turn: every order of the tray's dice and the chance of a bonus roll (`search.ts`, depth 1). Hard v3 was fitted to paired-rollout data, then tuned by evolution (CMA-ES) in 4-player games. |
+| Hard | The same rules, planning the whole turn: every order of the tray's dice and the chance of a bonus roll (`search.ts`, depth 1). Hard's rules were fitted to paired-rollout data, then tuned by evolution (CMA-ES) in 4-player games. |
 | Extreme | The rollout player, running as WebAssembly in a Web Worker (`rollout.ts`, `rollout-worker.ts`). See below. |
 
 How Extreme picks a move:
 
 - It plays every candidate move out up to 128 times on shared dice.
-- In the playouts, Hard v2's rules (`playout-rules.ts`) play every seat for 12 turns. Then the trained value net (`extreme-net.json`) scores the position.
+- In the playouts, the previous Hard's rules (`playout-rules.ts`) play every seat for 12 turns. Then the trained value net (`extreme-net.json`) scores the position.
 - Clear decisions stop after a few rounds of playouts.
 - It leaves Hard's own move only for a significant gain.
 - It takes about 0.2 s per move in a laptop browser.
@@ -65,5 +65,5 @@ CI (`.github/workflows/ai-levels.yml`, "Bot levels") replays the Easy, Normal an
 
 ### Known gaps
 
-- **4 players, no doubles:** Extreme vs Hard is 25.9 ± 3.0 there, level with Hard. It was tuned on games with doubles. Hard v3's own gain over Hard v2 is also missing without doubles.
+- **4 players, no doubles:** Extreme vs Hard is 25.9 ± 3.0 there, level with Hard. Both Extreme and Hard were tuned on games with doubles, and Hard's gain over the previous Hard's rules is also missing without doubles.
 - **The Hard over Normal step** is the smallest, about +4 points in the 2-player modes. It's a real step everywhere, but a modest one.

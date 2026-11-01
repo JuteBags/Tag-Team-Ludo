@@ -5,7 +5,7 @@
 
 Levels as the app plays them (src/engine/ai/levels.ts): Easy = the original Hard rule bot, Normal = Hard's
 rules judging each move alone, Hard = Hard's rules planning the turn, Extreme = the rollout player
-(race:128, Hard v2's rules in the playouts, extreme-net.json at the cut). The rules come from the app's
+(race:128, the playout rules in the playouts, extreme-net.json at the cut). The rules come from the app's
 own files through tools/ai/dist/levels/ (build.sh runs levels-json.ts). Each row is one tested person
 against people all of the level below, on the same seeds 0..N-1 every run, so a run is reproducible and a
 change in a number is a change in a bot. A row fails when its 95% interval does not clear an even share

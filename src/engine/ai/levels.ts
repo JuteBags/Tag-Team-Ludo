@@ -4,7 +4,7 @@
 //   Normal   Hard's weighted rules (hard-rules.ts), each move judged alone (no planning of the turn)
 //   Hard     the same rules, planning the whole turn (search.ts, depth 1)
 //   Extreme  the rollout player (rollout.ts, WebAssembly in a worker): every move played out on shared
-//            dice, Hard v2's rules (playout-rules.ts) playing every seat, the trained value net (extreme-net.json) scoring
+//            dice, the playout rules (playout-rules.ts) at every seat, the trained value net (extreme-net.json) scoring
 //            where the playouts stop. Without workers it plans its turn with the net alone.
 import { chooseMove } from '../bot';
 import type { GameState, Move, Rng } from '../types';

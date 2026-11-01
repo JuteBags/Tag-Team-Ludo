@@ -1,6 +1,6 @@
-// The rules that play every seat in Extreme's playouts: Hard v2 (linear.ts), the previous Hard, fitted to
+// The rules that play every seat in Extreme's playouts (linear.ts): the previous Hard's rules, fitted to
 // self-play results and tuned with CMA-ES (tools/ai/tune.py). Extreme was measured with these playouts
-// (and the cheaper one-bonus-roll search, sim-wasm); Hard v3 in their place played no better.
+// (and the cheaper one-bonus-roll search, sim-wasm); Hard's own rules in their place played no better.
 // Regenerate from the tuning run's hard2-tuned.json.
 import type { LinearJSON } from './linear';
 
