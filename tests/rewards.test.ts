@@ -52,7 +52,7 @@ describe('achievements', () => {
   const wins = (lv: Partial<Stats['levelWins']>) => ({ ...stats.levelWins, ...lv });
 
   it('gives a first win, and a flawless win when no token was lost', () => {
-    expect(ids({ ...stats, wins: 1, played: 1, levelWins: wins({ normal: 1 }) }, game)).toEqual(['win-normal', 'first-win', 'flawless']);
+    expect(ids({ ...stats, wins: 1, played: 1, levelWins: wins({ normal: 1 }) }, game)).toEqual(['win-easy', 'win-normal', 'first-win', 'flawless']);
     expect(ids({ ...stats, wins: 1 }, { ...game, lost: 2 })).toEqual(['first-win']);
   });
   it('never gives the same achievement twice', () => {
@@ -61,10 +61,10 @@ describe('achievements', () => {
   it('counts totals', () => {
     expect(ids({ ...stats, wins: 10, kills: 60, sixes: 100, bestStreak: 3, friends: 5 }, { ...game, lost: 1 })).toEqual(['wins-10', 'streak-3', 'kills-50', 'sixes-100', 'friends-5', 'first-win'].sort((x, y) => order(x) - order(y)));
   });
-  it('climbs the ladder one level at a time; an Extreme win also counts as Giant slayer', () => {
+  it('climbs the ladder: a win at one level counts for every level below it', () => {
     expect(ids({ ...stats, levelWins: wins({ easy: 1 }) }, null)).toEqual(['win-easy']);
-    expect(ids({ ...stats, levelWins: wins({ hard: 1 }) }, null)).toEqual(['hard-win']);
-    expect(ids({ ...stats, levelWins: wins({ extreme: 1 }) }, null)).toEqual(['hard-win', 'win-extreme']);
+    expect(ids({ ...stats, levelWins: wins({ hard: 1 }) }, null)).toEqual(['win-easy', 'win-normal', 'hard-win']);
+    expect(ids({ ...stats, levelWins: wins({ extreme: 1 }) }, null, ['win-easy'])).toEqual(['win-normal', 'hard-win', 'win-extreme']);
   });
   it('pays the Extreme streaks at 3, 5 and 7 wins in a row', () => {
     expect(ids({ ...stats, xBestStreak: 2 }, null)).toEqual([]);

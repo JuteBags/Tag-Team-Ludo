@@ -712,7 +712,7 @@ export class GameScreen {
         saveSetting('achieved', [...settings.achieved, ...fresh.map((a) => a.id)]);
         earn(fresh.reduce((a, x) => a + x.gold, 0));
       }
-      return { fresh, streak: level === 'extreme' && won && !pvp ? { now: s.xStreak, next: nextStreak(s, settings.achieved) } : null };
+      return { fresh, ended: s.xEnded, streak: level === 'extreme' && won && !pvp ? { now: s.xStreak, next: nextStreak(s, settings.achieved) } : null };
     });
     // Gold for this game, then how close it brings you to the next skin.
     const mineHome = colorsOf(human).reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
@@ -756,13 +756,13 @@ export class GameScreen {
     });
     this.el.appendChild(ov);
     // New achievements pop in as small chips, and the next-skin bar catches up with their gold.
-    void achievements.then(({ fresh, streak }) => {
+    void achievements.then(({ fresh, ended, streak }) => {
       const box = ov.querySelector<HTMLElement>('.achs')!;
-      // A live Extreme streak, and what the next win in a row would bring.
+      // A live Extreme streak and what the next win in a row would bring, or the streak this game ended.
       if (streak) {
-        const next = streak.next ? ` · ${streak.next.more} more for ${streak.next.name} <em>+${streak.next.gold}</em>` : '';
-        box.insertAdjacentHTML('beforeend', `<span class="ach xs">🔥 Extreme streak ${streak.now} (any mode)${next}</span>`);
-      }
+        const next = streak.next ? ` · ${streak.next.name} at ${streak.now + streak.next.more} <em>+${streak.next.gold}</em>` : '';
+        box.insertAdjacentHTML('beforeend', `<span class="ach xs">🔥 Extreme streak ${streak.now}${next}</span>`);
+      } else if (ended) box.insertAdjacentHTML('beforeend', `<span class="ach xend">Extreme streak ended at ${ended}</span>`);
       fresh.forEach((a, i) => {
         box.insertAdjacentHTML('beforeend', `<span class="ach" title="${a.blurb}">🏆 ${a.name} <em>+${a.gold}</em></span>`);
         (box.lastElementChild as HTMLElement).animate([{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'scale(1.1)', offset: 0.7 }, { opacity: 1, transform: 'scale(1)' }], { duration: 380, delay: 1300 + i * 300, easing: 'cubic-bezier(.3,.8,.4,1.2)', fill: 'backwards' });

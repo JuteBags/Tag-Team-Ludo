@@ -295,6 +295,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .flycoin{position:absolute;z-index:100;pointer-events:none}
 .achtoast{position:absolute;left:50%;top:120px;z-index:60;padding:8px 16px;border-radius:14px;font-size:16px;font-weight:900;white-space:nowrap;pointer-events:none;background:linear-gradient(180deg,#ffe58a,#ffbf2e);color:#5a2d00;box-shadow:0 6px 16px rgba(0,0,0,.35)}
 .achtoast em{font-style:normal;color:#8a3a00}
+.reward .ach.xend{background:rgba(255,255,255,.14);color:#ffd0c0}
 .reward .ach.xs{background:linear-gradient(180deg,#ffb38a,#ff6a2e);color:#4a1200}
 
 /* ---------- result ---------- */

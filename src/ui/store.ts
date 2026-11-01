@@ -132,10 +132,12 @@ export const resetStats = () => drop(STATS);
 /**
  * Adds one finished game to the totals and returns the new totals. A game given up (`quit`) counts as played
  * and lost and ends the win streaks (the Extreme one too, for an Extreme game), but adds nothing else.
- * `level` is the game's level (`levelOf`), `layout` its layout (`layoutOf`).
+ * `level` is the game's level (`levelOf`), `layout` its layout (`layoutOf`). `xEnded` is the Extreme streak
+ * this game ended, if any.
  */
-export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; pairs: number; sixes?: number; quit?: boolean; level?: BotLevel; layout?: string }): Promise<Stats> {
+export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; pairs: number; sixes?: number; quit?: boolean; level?: BotLevel; layout?: string }): Promise<Stats & { xEnded: number }> {
   const s = await loadStats();
+  const before = s.xStreak;
   const won = !g.quit && g.place === 1;
   if (g.mode === 'pvp') s.friends++;
   else {
@@ -157,7 +159,8 @@ export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills:
     }
   }
   await write(STATS, s);
-  return s;
+  // The Extreme streak this game ended (0 if none), for the result screen.
+  return { ...s, xEnded: before > 0 && s.xStreak === 0 ? before : 0 };
 }
 
 /** Records the longest check-in run, for the check-in achievements, and returns the new totals. */

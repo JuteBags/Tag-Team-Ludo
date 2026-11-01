@@ -69,13 +69,16 @@ const count = (key: Count, need: number) => (s: Stats) => [Math.min(s[key], need
 const atLeast = (key: Count, need: number) => (s: Stats) => s[key] >= need;
 const won = (g: GameFacts | null, level?: BotLevel) => !!g && g.mode === 'pvc' && g.place === 1 && (!level || g.level === level);
 const LAYOUTS = ['2p', '3p', '4p', '2h-opposite', '2h-side'];
+const LEVELS: BotLevel[] = ['easy', 'normal', 'hard', 'extreme'];
+/** Won at least once at `level` or above. */
+const beaten = (level: BotLevel) => (s: Stats) => LEVELS.slice(LEVELS.indexOf(level)).some((l) => s.levelWins[l] > 0);
 
 export const ACHIEVEMENTS: Achievement[] = [
-  // The ladder: beat each level once.
-  { id: 'win-easy', group: 'Ladder', name: 'First steps', blurb: 'Beat Easy bots', gold: 50, done: (s) => s.levelWins.easy >= 1 },
-  { id: 'win-normal', group: 'Ladder', name: 'Getting good', blurb: 'Beat Normal bots', gold: 100, done: (s) => s.levelWins.normal >= 1 },
-  { id: 'hard-win', group: 'Ladder', name: 'Giant slayer', blurb: 'Beat Hard or Extreme bots', gold: 300, done: (s) => s.levelWins.hard + s.levelWins.extreme >= 1 },
-  { id: 'win-extreme', group: 'Ladder', name: 'Machine breaker', blurb: 'Beat Extreme bots', gold: 500, done: (s) => s.levelWins.extreme >= 1 },
+  // The ladder: a win at one level counts for every level below it too.
+  { id: 'win-easy', group: 'Ladder', name: 'First steps', blurb: 'Beat Easy bots (or harder)', gold: 50, done: beaten('easy') },
+  { id: 'win-normal', group: 'Ladder', name: 'Getting good', blurb: 'Beat Normal bots (or harder)', gold: 100, done: beaten('normal') },
+  { id: 'hard-win', group: 'Ladder', name: 'Giant slayer', blurb: 'Beat Hard or Extreme bots', gold: 300, done: beaten('hard') },
+  { id: 'win-extreme', group: 'Ladder', name: 'Machine breaker', blurb: 'Beat Extreme bots', gold: 500, done: beaten('extreme') },
   // Extreme: one win can be luck, three in a row is not.
   { id: 'x-streak-3', group: 'Extreme', name: 'Hat-trick', blurb: 'Win 3 games in a row against Extreme, any mode', gold: 1500, done: atLeast('xBestStreak', 3), progress: count('xStreak', 3), quiet: true },
   { id: 'x-streak-5', group: 'Extreme', name: 'Unstoppable', blurb: 'Win 5 games in a row against Extreme, any mode', gold: 3000, done: atLeast('xBestStreak', 5), progress: count('xStreak', 5), quiet: true },
@@ -92,8 +95,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'flawless', group: 'Milestones', name: 'Untouchable', blurb: 'Win without losing a single token', gold: 250, done: (_, g) => won(g) && g!.lost === 0 },
   { id: 'friends-5', group: 'Milestones', name: 'Party starter', blurb: 'Play 5 games with friends', gold: 100, done: atLeast('friends', 5), progress: count('friends', 5) },
   // Everyday: the daily check-in.
-  { id: 'checkin-7', group: 'Everyday', name: 'Regular', blurb: 'Check in 7 days in a row (your best run)', gold: 200, done: atLeast('checkinBest', 7), progress: count('checkinBest', 7) },
-  { id: 'checkin-30', group: 'Everyday', name: 'Devoted', blurb: 'Check in 30 days in a row (your best run)', gold: 1000, done: atLeast('checkinBest', 30), progress: count('checkinBest', 30) },
+  { id: 'checkin-7', group: 'Everyday', name: 'Regular', blurb: 'Check in 7 days in a row', gold: 200, done: atLeast('checkinBest', 7), progress: count('checkinBest', 7) },
+  { id: 'checkin-30', group: 'Everyday', name: 'Devoted', blurb: 'Check in 30 days in a row', gold: 1000, done: atLeast('checkinBest', 30), progress: count('checkinBest', 30) },
 ];
 
 /** The achievements these totals (and this game, if any) complete that weren't already done. */

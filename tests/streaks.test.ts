@@ -32,9 +32,10 @@ describe('Extreme streaks', () => {
     expect(s.levelWins).toEqual({ easy: 0, normal: 0, hard: 1, extreme: 2 });
   });
 
-  it('end with an Extreme loss, keeping the best', async () => {
-    for (let i = 0; i < 3; i++) await game('extreme', 1);
-    expect(await game('extreme', 2)).toMatchObject({ xStreak: 0, xBestStreak: 3 });
+  it('end with an Extreme loss, keeping the best, and say which streak ended', async () => {
+    for (let i = 0; i < 3; i++) expect((await game('extreme', 1)).xEnded).toBe(0);
+    expect(await game('extreme', 2)).toMatchObject({ xStreak: 0, xBestStreak: 3, xEnded: 3 });
+    expect((await game('extreme', 2)).xEnded).toBe(0);
   });
 
   it('end with an Extreme quit; a quit at another level only ends the overall streak', async () => {

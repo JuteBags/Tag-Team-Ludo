@@ -15,7 +15,7 @@ export const CHECKIN_GOLD = [20, 30, 40, 50, 60, 80, 100];
 export const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** Whole days from day `a` to day `b` (both YYYY-MM-DD). */
-const daysBetween = (a: string, b: string) => {
+export const daysBetween = (a: string, b: string) => {
   const t = (k: string) => {
     const [y, m, d] = k.split('-').map(Number);
     return Date.UTC(y!, m! - 1, d!);
@@ -84,9 +84,10 @@ function flyCoins(screen: HTMLElement, from: DOMRect, gold: number) {
 }
 
 /** A short achievement note over the home screen. */
-function toast(screen: HTMLElement, html: string, delay: number) {
+function toast(screen: HTMLElement, html: string, delay: number, row: number) {
   const t = document.createElement('div');
   t.className = 'achtoast';
+  t.style.top = `${120 + row * 50}px`;
   t.innerHTML = html;
   screen.appendChild(t);
   t.animate([{ opacity: 0, transform: 'translate(-50%,10px)' }, { opacity: 1, transform: 'translate(-50%,0)', offset: 0.12 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }], { duration: 3200, delay, fill: 'both' }).onfinish = () => t.remove();
@@ -129,7 +130,7 @@ export async function offerCheckIn(screen: HTMLElement): Promise<void> {
           const gold = now.gold + fresh.reduce((a, x) => a + x.gold, 0);
           earn(gold);
           flyCoins(screen, from, gold);
-          fresh.forEach((a, i) => toast(screen, `🏆 ${a.name} <em>+${a.gold}</em>`, 900 + i * 400));
+          fresh.forEach((a, i) => toast(screen, `🏆 ${a.name} <em>+${a.gold}</em>`, 900 + i * 400, i));
         }
         ov.remove();
         done();
