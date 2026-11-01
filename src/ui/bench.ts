@@ -35,18 +35,31 @@ export function benchDecisions(layout: '2p' | '4p', count: number): GameState[] 
   return out;
 }
 
-/** p50 / p99 / max (ms) and the share over 1.5 s. */
+/** p50 / p90 / max (ms) and the share over 1.5 s. (With 50 moves a "p99" would just be the max.) */
 export function stats(ms: number[]) {
   const s = [...ms].sort((a, b) => a - b);
   const q = (p: number) => s[Math.round((s.length - 1) * p)] ?? NaN;
-  return { p50: q(0.5), p99: q(0.99), max: s.at(-1) ?? NaN, over: s.filter((x) => x > 1500).length / (s.length || 1) };
+  return { p50: q(0.5), p90: q(0.9), max: s.at(-1) ?? NaN, over: s.filter((x) => x > 1500).length / (s.length || 1) };
+}
+
+/**
+ * The order the runs go in: for each decision, both playout caps back to back, alternating which goes first,
+ * and alternating 2- and 4-player decisions, so a phone heating up (and throttling) as the test goes on
+ * weighs on every arm alike.
+ */
+export function benchOrder(perArm: number): { layout: '2p' | '4p'; nmax: number; i: number }[] {
+  const out: { layout: '2p' | '4p'; nmax: number; i: number }[] = [];
+  for (let i = 0; i < perArm; i++)
+    for (const layout of i % 2 ? (['4p', '2p'] as const) : (['2p', '4p'] as const))
+      for (const nmax of (i + (layout === '4p' ? 1 : 0)) % 2 ? [256, 128] : [128, 256]) out.push({ layout, nmax, i });
+  return out;
 }
 
 export function benchScreen(onClose: () => void): HTMLElement {
   const el = document.createElement('div');
   el.className = 'screen bench';
   el.innerHTML = `<div class="benchbox"><h2 class="disp">Extreme speed test</h2>
-    <p class="sub">Times the Extreme bot on this device: ${PER_ARM} moves each at 128 and 256 playouts, in 2- and 4-player games. Takes a minute or two. Keep the screen on.</p>
+    <p class="sub">Times the Extreme bot on this device: ${PER_ARM} moves each at 128 and 256 playouts, in 2- and 4-player games. Takes a minute or two: stay on this page until it's done.</p>
     <button class="b3 green disp" data-act="run">START</button>
     <pre class="benchout" aria-live="polite"></pre>
     <button class="b3 blue disp" data-act="copy" hidden>COPY RESULTS</button>
@@ -81,23 +94,43 @@ export function benchScreen(onClose: () => void): HTMLElement {
           worker.onerror = () => fail(new Error('the worker failed to load'));
           worker.postMessage({ id: 0, state, nmax, seed });
         });
+      // A run with the page hidden is throttled, so its numbers would mislead: it's thrown away.
+      let hidden = false;
+      const onHide = () => (hidden ||= document.visibilityState === 'hidden');
+      document.addEventListener('visibilitychange', onHide);
+      let lock: { release(): Promise<void> } | null = null;
+      try {
+        lock = await (navigator as Navigator & { wakeLock?: { request(t: 'screen'): Promise<{ release(): Promise<void> }> } }).wakeLock?.request('screen') ?? null;
+      } catch {
+        // No wake lock here: the screen may dim, which ends the run.
+      }
+      const t0 = Date.now();
       try {
         // One untimed move first: loading the engine and the net isn't a move's cost.
         await ask(benchDecisions('2p', 1)[0]!, 16, 1);
-        for (const arm of ARMS) {
-          const ms: number[] = [];
-          for (const [i, s] of benchDecisions(arm.layout, PER_ARM).entries()) {
-            const t0 = performance.now();
-            await ask(s, arm.nmax, i + 1);
-            ms.push(performance.now() - t0);
-          }
-          const r = stats(ms);
-          say(`${arm.layout} race:${arm.nmax}: p50 ${Math.round(r.p50)} ms, p99 ${Math.round(r.p99)} ms, max ${Math.round(r.max)} ms, over 1.5 s ${Math.round(100 * r.over)}% (${ms.length} moves)`);
+        const decisions = { '2p': benchDecisions('2p', PER_ARM), '4p': benchDecisions('4p', PER_ARM) };
+        const times = new Map(ARMS.map((a) => [`${a.layout}:${a.nmax}`, [] as number[]]));
+        for (const run of benchOrder(PER_ARM)) {
+          if (hidden) break;
+          const t = performance.now();
+          await ask(decisions[run.layout][run.i]!, run.nmax, run.i + 1);
+          times.get(`${run.layout}:${run.nmax}`)!.push(performance.now() - t);
         }
-        say('done');
+        if (hidden) say('interrupted: the page was hidden during the run, so the numbers are left out. Run again.');
+        else {
+          for (const arm of ARMS) {
+            const ms = times.get(`${arm.layout}:${arm.nmax}`)!;
+            const r = stats(ms);
+            say(`${arm.layout} race:${arm.nmax}: p50 ${Math.round(r.p50)} ms, p90 ${Math.round(r.p90)} ms, max ${Math.round(r.max)} ms, over 1.5 s ${Math.round(100 * r.over)}% (${ms.length} moves)`);
+          }
+          say(`took ${Math.round((Date.now() - t0) / 1000)} s, ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`);
+          say('done');
+        }
       } catch (err) {
         say(`failed: ${String(err)}`);
       } finally {
+        document.removeEventListener('visibilitychange', onHide);
+        void lock?.release().catch(() => {});
         worker.terminate();
         b.disabled = false;
         el.querySelector<HTMLElement>('[data-act=copy]')!.hidden = false;
