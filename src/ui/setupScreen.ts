@@ -364,7 +364,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     // A short sting for whoever plays first: the crown drops onto their row with a bright chord.
     const crown = peopleEl.querySelector<HTMLElement>('.prow.first .chip .crown');
     if (crown && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      const at = 420 + 60 * rows.length;
+      const at = 200;
       crown.animate(
         [{ transform: 'translateY(-26px) scale(1.6) rotate(-18deg)', opacity: 0 }, { transform: 'translateY(2px) scale(1.15) rotate(6deg)', opacity: 1, offset: 0.65 }, { transform: 'none', opacity: 1 }],
         { duration: 520, delay: at, easing: 'cubic-bezier(.3,.8,.4,1.2)', fill: 'backwards' },

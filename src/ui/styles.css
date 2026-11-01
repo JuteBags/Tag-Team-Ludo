@@ -516,9 +516,10 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .cont .pi svg{width:22px;height:22px;margin-left:3px}
 .cont b{font-size:21px;line-height:1;align-self:end;text-shadow:0 2px 0 rgba(0,0,0,.25)}
 .cont small{font-weight:800;font-size:12px;opacity:.9;align-self:start;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cont b,.cont small{grid-column:2;min-width:0}
-.cont .cav{grid-column:3;grid-row:1/3;display:flex;padding-left:8px}
-.cont .cav i{width:28px;height:28px;margin-left:-8px;border-radius:50%;padding:2px;background:var(--m);box-shadow:0 0 0 2px #fff,0 2px 4px rgba(0,0,0,.3)}
+.cont b{grid-column:2;min-width:0}
+.cont small{grid-column:2/4;min-width:0}
+.cont .cav{grid-column:3;grid-row:1;align-self:end;display:flex;padding-left:7px}
+.cont .cav i{width:23px;height:23px;margin-left:-7px;border-radius:50%;padding:2px;background:var(--m);box-shadow:0 0 0 2px #fff,0 2px 4px rgba(0,0,0,.3)}
 .cont .cav i svg{width:100%;height:100%;border-radius:50%;display:block}
 .home.has-save .tiles{top:654px}
 /* Home, top to bottom: Continue (when a game is saved) is the one hero, then players, modes, coming soon. */
