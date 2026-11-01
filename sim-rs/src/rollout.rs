@@ -84,5 +84,8 @@ pub fn choose(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evaluat
             best = c;
         }
     }
+    if std::env::var_os("LUDO_ROLLOUT_DEBUG").is_some() {
+        eprintln!("ROLLOUT me {me} moves {nm} cands {} scores {:?} pick {best}", cands.len(), score);
+    }
     cands[best].0
 }
