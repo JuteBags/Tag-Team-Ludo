@@ -1,6 +1,6 @@
 // Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
 // a person passing the device; a person with two houses plays both colours' turns.
-import { FINISHED, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type Rng } from '../engine';
+import { FINISHED, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type Rng, STOP_EVENT } from '../engine';
 import { chooseBotMoveAsync } from '../engine/ai/levels';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
@@ -101,7 +101,9 @@ export class GameScreen {
     this.state = saved?.state ?? createGame(config.seats, config.first, config.singles);
     this.seed = saved?.seed ?? crypto.getRandomValues(new Uint32Array(1))[0]!;
     this.log = saved ? (saved.log ?? null) : '';
-    this.seedFromStart = !saved || (saved.seed !== undefined && saved.log !== undefined);
+    // Test dice (fixedRng) don't come from the seed. A dev forced die from an earlier session is lost on resume
+    // (dev only), so such a record may claim a seed it doesn't match.
+    this.seedFromStart = !fixedRng && (!saved || (saved.seed !== undefined && saved.log !== undefined));
     this.kills = saved?.kills ?? 0;
     this.pairs = saved?.pairs ?? 0;
     for (const [c, f] of saved?.faces ?? []) this.lastFace.set(c, f);
@@ -354,7 +356,11 @@ export class GameScreen {
     if (fresh.length && this.state.phase !== 'over' && !this.humanDone()) {
       const voters = [...new Set(this.state.players.filter((p) => !p.bot && !isDone(p)).map((p) => p.owner))].filter((o) => !this.doneOwners().includes(o));
       // Only bots left: nobody is watching for the rest of the places.
-      if (!voters.length || !(await this.vote(fresh[0]!, this.doneOwners().length, voters))) this.ended = true;
+      if (!voters.length || !(await this.vote(fresh[0]!, this.doneOwners().length, voters))) {
+        this.ended = true;
+        // Voted to stop with people still in: the record says so (no voters left is a normal end).
+        if (voters.length && this.log !== null) this.log += STOP_EVENT;
+      }
     }
   }
 

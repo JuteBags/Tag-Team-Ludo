@@ -219,7 +219,10 @@ export async function saveCheckIn(c: CheckIn): Promise<boolean> {
 
 // ---------- past games (#65) ----------
 
-/** A finished game: its record (engine/record.ts), when it ended, and your place in it. */
+/**
+ * A finished game: its record (engine/record.ts), when it ended, and your place in it. Only games that reach
+ * the result screen are kept: a quit game, or one given up for a new game, isn't.
+ */
 export interface PastGame {
   rec: GameRecord;
   at: number;

@@ -5,7 +5,8 @@
 //
 // Events are one string of characters. Whether the next one is a die or a move follows from the phase the
 // replay is in:
-//   roll phase: the die, '1'..'6';
+//   roll phase: the die, '1'..'6', or 'x' as the last event: the players still in voted to stop, and the
+//   game ended with the places as they stood (ownerRanking of the last position, as the result screen does);
 //   move phase: two characters, the token(s) then the die. A single token is 'a'..'d' (token 0..3); a pair
 //   is 'e'..'j' (tokens 01, 02, 03, 12, 13, 23).
 import { createGame, move, roll, type Seat } from './game';
@@ -41,13 +42,17 @@ export function moveEvent(m: Move): string {
 /** One die, as rolled. */
 export const rollEvent = (face: number) => String(face);
 
+/** The game ended by vote here (only as the last event, between turns). */
+export const STOP_EVENT = 'x';
+
 /** The game's first position. */
 export const startOf = (r: Pick<GameRecord, 'seats' | 'first' | 'singles'>) => createGame(r.seats, r.first, r.singles);
 
 /** The dice the app rolls at `s` for a game with this seed (gameScreen.ts rngFor('dice')). */
 export const seededDie = (seed: number, s: GameState) => roll(s, seeded(mixSeed(seed, 'dice' + positionKey(s)))).dice!;
 
-export type Replayed = { ok: true; states: GameState[] } | { ok: false; error: string; states: GameState[] };
+/** `stopped`: the game ended by vote (the last position's ownerRanking is the result). */
+export type Replayed = { ok: true; states: GameState[]; stopped: boolean } | { ok: false; error: string; states: GameState[] };
 
 /**
  * Replays the record: the first position, then the position after every event. It stops at the first event
@@ -67,21 +72,30 @@ export function replay(r: GameRecord, opts: { checkDice?: boolean } = {}): Repla
   const e = typeof r.events === 'string' ? r.events : '';
   for (let i = 0; i < e.length; i++) {
     if (s.phase === 'over') return fail(`Events after the end of the game (at ${i}).`, states);
-    if (s.phase === 'roll') {
-      const face = Number(e[i]);
-      if (!(face >= 1 && face <= 6)) return fail(`A die that can't be (at ${i}).`, states);
-      if (opts.checkDice && r.seed !== undefined && seededDie(r.seed, s) !== face) return fail(`A die that differs from this game's dice (at ${i}).`, states);
-      s = roll(s, () => 0, face);
-    } else {
-      const code = e.slice(i, i + 2);
-      const m = s.moves.filter((x) => tokensCode(x.tokens) + x.roll === code);
-      if (m.length !== 1) return fail(`A move that isn't legal there (at ${i}).`, states);
-      s = move(s, m[0]!);
-      i++;
+    if (e[i] === STOP_EVENT) {
+      if (s.phase !== 'roll' || i !== e.length - 1) return fail(`A vote to stop that can't be there (at ${i}).`, states);
+      return { ok: true, states, stopped: true };
+    }
+    try {
+      if (s.phase === 'roll') {
+        const face = Number(e[i]);
+        if (!(face >= 1 && face <= 6)) return fail(`A die that can't be (at ${i}).`, states);
+        if (opts.checkDice && r.seed !== undefined && seededDie(r.seed, s) !== face) return fail(`A die that differs from this game's dice (at ${i}).`, states);
+        s = roll(s, () => 0, face);
+      } else {
+        const code = e.slice(i, i + 2);
+        const m = s.moves.filter((x) => tokensCode(x.tokens) + x.roll === code);
+        if (m.length !== 1) return fail(`A move that isn't legal there (at ${i}).`, states);
+        s = move(s, m[0]!);
+        i++;
+      }
+    } catch {
+      // Something the checks above let through still broke the engine: a damaged record.
+      return fail(`The game is damaged (at ${i}).`, states);
     }
     states.push(s);
   }
-  return { ok: true, states };
+  return { ok: true, states, stopped: false };
 }
 
 /** The longest share string decoded, and the most JSON it may inflate to (a damaged or hostile link). */

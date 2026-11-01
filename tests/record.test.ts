@@ -1,7 +1,7 @@
 // The game record (src/engine/record.ts): a recorded game replays exactly, every move's code is unique in its
 // position, the share string round-trips, and damaged or hostile input is turned away cleanly.
 import { describe, expect, it } from 'vitest';
-import { chooseMove, createGame, decodeRecord, encodeRecord, move, MAX_LINK, moveEvent, replay, roll, rollEvent, seededDie, seeded, type Color, type GameRecord, type GameState, type Seat } from '../src/engine';
+import { STOP_EVENT, chooseMove, createGame, ownerRanking, decodeRecord, encodeRecord, move, MAX_LINK, moveEvent, replay, roll, rollEvent, seededDie, seeded, type Color, type GameRecord, type GameState, type Seat } from '../src/engine';
 
 const LAYOUTS: Record<string, Seat[]> = {
   '2p': [{ color: 'blue', owner: 0, bot: true }, { color: 'red', owner: 1, bot: true }],
@@ -71,6 +71,28 @@ describe('game record', () => {
     const cut = replay({ ...rec, events: rec.events.slice(0, 40) + 'zz' + rec.events.slice(40) });
     expect(cut.ok).toBe(false);
     expect(cut.states.length).toBeGreaterThan(1);
+  });
+
+  it('ends a game stopped by vote with the places as they stood', () => {
+    const { rec, states } = play(LAYOUTS['4p']!, 9);
+    // Cut the game after event k, at a roll phase, as the vote would.
+    let k = 0;
+    const seen = replay(rec);
+    for (let n = 0, i = 0; i < rec.events.length; n++) {
+      i += seen.ok && seen.states[n]!.phase === 'move' ? 2 : 1;
+      if (n > 150 && seen.ok && seen.states[n + 1]!.phase === 'roll') {
+        k = i;
+        break;
+      }
+    }
+    const stopped = replay({ ...rec, events: rec.events.slice(0, k) + STOP_EVENT });
+    expect(stopped).toMatchObject({ ok: true, stopped: true });
+    const last = stopped.states.at(-1)!;
+    expect(states.map((x) => JSON.stringify(x))).toContain(JSON.stringify(last));
+    expect(ownerRanking(last)).toEqual(ownerRanking(states[stopped.states.length - 1]!));
+    // Only as the last event, and only between turns.
+    expect(replay({ ...rec, events: rec.events.slice(0, k) + STOP_EVENT + '3' }).ok).toBe(false);
+    expect(replay({ ...rec, events: rec.events + STOP_EVENT }).ok).toBe(false);
   });
 
   it('turns away damaged and hostile share strings', async () => {
