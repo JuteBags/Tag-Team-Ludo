@@ -1,6 +1,6 @@
 // Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
 // a person passing the device; a person with two houses plays both colours' turns.
-import { FINISHED, createGame, isDone, mixSeed, move, ownerRanking, positionKey, roll, seeded, type Color, type GameState, type Move, type Rng } from '../engine';
+import { FINISHED, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type Rng } from '../engine';
 import { chooseBotMoveAsync } from '../engine/ai/levels';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
@@ -11,7 +11,7 @@ import { sfx } from './sfx';
 import type { GameConfig } from './setup';
 import { keepAwake } from './native';
 import { drawCard, shareCard } from './shareCard';
-import { clearGame, giveUpNote, givingUpLoses, layoutOf, levelOf, loadStats, recordGame, saveGame, type SavedGame } from './store';
+import { clearGame, giveUpNote, givingUpLoses, layoutOf, levelOf, loadStats, recordGame, saveGame, savePastGame, type SavedGame } from './store';
 import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targets';
 import { award, goldFor, newAchievements, nextStreak, total, type GameFacts } from './rewards';
 import { earn, lockLabel, nextGoal } from './skins';
@@ -88,11 +88,20 @@ export class GameScreen {
    * different move leads to new dice.
    */
   private seed: number;
+  /**
+   * The game so far as record events (engine/record.ts), saved with the game. Null for a game continued from
+   * a save made before records existed: its start is missing, so it has no record.
+   */
+  private log: string | null;
+  /** Every die came from `seed` (not a game continued from a save made before seeds). */
+  private seedFromStart: boolean;
 
   /** Starts a game from `config`, or picks up `saved`. `rng` replaces the position-seeded dice (tests). */
   constructor(readonly config: GameConfig, private exit: (to: Exit) => void, private fixedRng?: Rng, saved?: SavedGame) {
     this.state = saved?.state ?? createGame(config.seats, config.first, config.singles);
     this.seed = saved?.seed ?? crypto.getRandomValues(new Uint32Array(1))[0]!;
+    this.log = saved ? (saved.log ?? null) : '';
+    this.seedFromStart = !saved || (saved.seed !== undefined && saved.log !== undefined);
     this.kills = saved?.kills ?? 0;
     this.pairs = saved?.pairs ?? 0;
     for (const [c, f] of saved?.faces ?? []) this.lastFace.set(c, f);
@@ -128,7 +137,7 @@ export class GameScreen {
 
   /** The game as it would be saved now. */
   private snapshot(): SavedGame {
-    return { v: 1, config: this.config, state: this.state, kills: this.kills, pairs: this.pairs, faces: [...this.lastFace], savedAt: Date.now(), seed: this.seed };
+    return { v: 1, config: this.config, state: this.state, kills: this.kills, pairs: this.pairs, faces: [...this.lastFace], savedAt: Date.now(), seed: this.seed, ...(this.log !== null ? { log: this.log } : {}) };
   }
 
   /** Saves the game so it can be continued after the app closes. Done at the start of every turn. */
@@ -252,7 +261,10 @@ export class GameScreen {
 
   private async doRoll(c: Color) {
     const kept = this.state.rolls;
-    this.state = roll(this.state, this.rngFor('dice'), this.forced.shift());
+    const forced = this.forced.shift();
+    if (forced !== undefined) this.seedFromStart = false;
+    this.state = roll(this.state, this.rngFor('dice'), forced);
+    if (this.log !== null) this.log += rollEvent(this.state.dice!);
     const box = this.diceBox(c);
     await rollDie(box, this.state.dice!, DIE, (this.cur.bot || this.state.players.find((p) => p.color === c)!.bot ? BOT_ROLL_MS / (settings.fastBots ? 2 : 1) : ROLL_MS) / this.speed);
     this.lastFace.set(c, this.state.dice!);
@@ -312,6 +324,7 @@ export class GameScreen {
 
   private async doMove(m: Move) {
     const doneBefore = this.doneOwners();
+    if (this.log !== null) this.log += moveEvent(m);
     this.state = move(this.state, m);
     // The KILL banner and red flash land with the blow, while the victim is still flying home.
     // Kill finishers: the full scene when a person is involved, a short one between bots, or none.
@@ -679,6 +692,13 @@ export class GameScreen {
   }
 
   // ---------- result ----------
+  /** The game as a record (engine/record.ts), or null when it has none (continued from an old save). */
+  record(): GameRecord | null {
+    if (this.log === null) return null;
+    const c = this.config;
+    return { v: 1, seats: c.seats, first: c.first, ...(c.singles ? { singles: true } : {}), ...(this.seedFromStart ? { seed: this.seed } : {}), meta: { mode: c.mode, names: c.names }, events: this.log };
+  }
+
   private showResult() {
     this.dispose();
     void clearGame();
@@ -688,6 +708,9 @@ export class GameScreen {
     const human = this.state.players.find((p) => !p.bot)?.owner ?? 0;
     const place = order.indexOf(human) + 1;
     const won = pvp || place === 1;
+    // The game's record joins the past games (for the replay and the review, #65).
+    const rec = this.record();
+    if (rec) void savePastGame({ rec, at: Date.now(), mode: this.config.mode, place });
     const rows = order
       .map((o, i) => {
         const mine = colorsOf(o);
