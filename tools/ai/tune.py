@@ -43,16 +43,22 @@ def play(weights, names, opponents, mode, seeds, workers, tmp, tag, base=0, alph
     spec = f'blend:{NET}:{path}:{alpha:.6g}:1{SEARCH}' if NET else f'net:{path}:1'
 
     step = math.ceil(seeds / workers)
+    # mode: one setup, or several weighted ones ('4p:2,4p-singles:1'); the fitness is the mean over the
+    # opponents of the weighted mean over the setups, all on the same paired seeds
+    setups = [(m.split(':')[0], float(m.split(':')[1]) if ':' in m else 1.0) for m in mode.split(',')]
     rates = []
     for opponent in opponents:
-        procs = [subprocess.Popen(f'{ARENA} --a {spec} --b {opponent} --mode {mode} --from {base + k * step} --to {base + min(seeds, (k + 1) * step)}{DICE}',
+      per = []
+      for md, wt in setups:
+        procs = [subprocess.Popen(f'{ARENA} --a {spec} --b {opponent} --mode {md} --from {base + k * step} --to {base + min(seeds, (k + 1) * step)}{DICE}',
                                   shell=True, stdout=subprocess.PIPE, text=True) for k in range(workers) if k * step < seeds]
         games = wins = 0
         for p in procs:
             r = json.loads(p.communicate()[0].split('ARENA ', 1)[1])
             games += r['games']
             wins += r['wins']
-        rates.append(wins / games)
+        per.append((wins / games, wt))
+      rates.append(sum(r * w for r, w in per) / sum(w for _, w in per))
     return sum(rates) / len(rates)
 
 
@@ -65,7 +71,7 @@ def main():
     ap.add_argument('--holdout', type=int, default=10_000, help='paired seeds for the final, held-out score')
     ap.add_argument('--pick', default='best', choices=['best', 'final'], help='best: the best generation mean; final: the final mean or the start, '
                     'whichever wins the held-out block')
-    ap.add_argument('--mode', default='2p')
+    ap.add_argument('--mode', default='2p', help="a setup, or weighted setups '4p:2,4p-singles:1' (fitness = their weighted mean)")
     ap.add_argument('--pop', type=int, default=16)
     ap.add_argument('--seeds', type=int, default=5000, help='paired seeds per candidate (2 games each in 2p)')
     ap.add_argument('--gens', type=int, default=30)
