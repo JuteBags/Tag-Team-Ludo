@@ -6,7 +6,7 @@ import { handleBack } from './native';
 import type { GameConfig, Mode } from './setup';
 import { setupScreen } from './setupScreen';
 import { storeScreen } from './storeScreen';
-import { clearGame, loadGame, type SavedGame } from './store';
+import { giveUpSaved, loadGame, type SavedGame } from './store';
 import { applyLook } from './themes';
 import { offerUpdate } from './update';
 
@@ -44,9 +44,10 @@ export function mountApp(root: HTMLElement) {
       count = 2;
       setup(mode, 2);
     }));
-  const play = (cfg: GameConfig, saved?: SavedGame) => {
-    // A new game replaces any saved one; a continued game picks up from it.
-    if (!saved) void clearGame();
+  const play = async (cfg: GameConfig, saved?: SavedGame) => {
+    // A new game replaces any saved one (counted as a loss when it's given up past the first round); a
+    // continued game picks up from it.
+    if (!saved) await giveUpSaved();
     game = new GameScreen(cfg, (to) => (to === 'home' ? void home() : play(cfg)), undefined, saved);
     stage.replaceChildren(game.el);
     if (import.meta.env.DEV) (window as unknown as { __ludo: GameScreen }).__ludo = game;

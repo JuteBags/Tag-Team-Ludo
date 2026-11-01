@@ -5,7 +5,7 @@ import { dieMarkup } from './dice';
 import { settings } from './settings';
 import type { Mode } from './setup';
 import { settingsSheet, statsSheet, symbolRow } from './sheets';
-import type { SavedGame } from './store';
+import { giveUpNote, givingUpLoses, loadStats, type SavedGame } from './store';
 import { setSymbols } from './themes';
 
 /** "just now", "12 min ago", "3 h ago", "2 days ago": when a saved game was last played. */
@@ -50,7 +50,26 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
     <button class="cbrow" data-act="symbols" role="switch" aria-checked="${settings.symbols}"><span>Colour-blind symbols</span>${symbolRow()}<em class="swl">${settings.symbols ? 'On' : 'Off'}</em><i class="sw"></i></button>
     <div class="foot">Both modes play offline · Online play and private rooms coming soon · v${__APP_VERSION__}<small>Avatars: Fun Emoji by Davis Uche, CC BY 4.0</small></div>`;
   el.querySelector('.tilt')!.appendChild(new BoardView(HERO, 286).el);
-  el.querySelectorAll<HTMLElement>('.mcard').forEach((b) => b.addEventListener('click', () => onPlay(b.dataset.mode as Mode)));
+  // A new game replaces the saved one. When that counts as a loss, ask first.
+  el.querySelectorAll<HTMLElement>('.mcard').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const mode = b.dataset.mode as Mode;
+      if (!saved || !givingUpLoses(saved)) return onPlay(mode);
+      const note = giveUpNote(await loadStats());
+      const ov = document.createElement('div');
+      ov.className = 'menu-ov giveup-ov';
+      ov.innerHTML = `<div class="box"><h2>New game?</h2><p class="sub">Starting a new game gives up your saved game vs Computer. ${note}</p>
+        <button class="b3 green disp" data-act="later">KEEP MY GAME</button><button class="b3 blue disp" data-act="new">NEW GAME</button></div>`;
+      ov.addEventListener('click', (e) => {
+        const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+        if (act === 'new') {
+          ov.remove();
+          onPlay(mode);
+        } else if (act === 'later' || e.target === ov) ov.remove();
+      });
+      el.appendChild(ov);
+    }),
+  );
   el.querySelectorAll<HTMLButtonElement>('.seg .o').forEach((b) =>
     b.addEventListener('click', () => {
       el.querySelectorAll('.seg .o').forEach((x) => x.classList.toggle('on', x === b));

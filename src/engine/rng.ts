@@ -1,4 +1,4 @@
-import type { Rng } from './types';
+import type { GameState, Rng } from './types';
 
 /** Seeded generator for tests and replays. */
 export function seeded(seed: number): Rng {
@@ -17,3 +17,13 @@ export const cryptoRng: Rng = () => {
   crypto.getRandomValues(a);
   return a[0]! / 4294967296;
 };
+
+/** A 32-bit seed from a game's seed and a text key (FNV-1a), for dice that depend on the position. */
+export function mixSeed(seed: number, key: string): number {
+  let h = (0x811c9dc5 ^ seed) >>> 0;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193) >>> 0;
+  return h;
+}
+
+/** The engine state that decides the dice: where every token is, whose roll it is, and the tray. */
+export const positionKey = (s: GameState) => JSON.stringify([s.players.map((p) => p.tokens), s.current, s.phase, s.rolls, s.sixes, s.turnCount, s.ranking]);

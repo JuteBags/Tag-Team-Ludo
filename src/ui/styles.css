@@ -277,6 +277,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .menu-ov .box{width:280px;padding:22px 22px 28px;border-radius:26px;text-align:center;background:linear-gradient(180deg,#2f66df,#1a3c9a);border:3px solid #78a6ff;box-shadow:0 14px 30px rgba(0,0,0,.5)}
 .menu-ov h2{font-family:'Lilita One';font-weight:400;font-size:30px;margin-bottom:6px}
 .menu-ov .b3{display:block;width:100%;margin-top:14px}
+.giveup-ov .sub{font-size:14px;font-weight:800;line-height:1.35;opacity:.9}
 .update-ov .sub{font-size:14px;font-weight:800;opacity:.9}
 .update-ov .news{margin-top:10px;font-size:13px;font-weight:700;line-height:1.35;opacity:.85}
 
