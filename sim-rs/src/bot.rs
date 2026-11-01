@@ -219,6 +219,9 @@ pub enum Policy {
     /// playouts (rollout::choose_race): clearly worse candidates stop early, close ones get up to nmax
     /// playouts; `mine` (default base) plays the mover's own colours in the playouts
     Race { n: usize, cut: u32, eval: Option<std::sync::Arc<crate::eval::Evaluator>>, base: Box<Policy>, mine: Box<Policy> },
+    /// greedy:<weights.json>: each move by the value of the position it leads to alone (no planning of the
+    /// rest of the tray, no bonus-roll lookahead), ties broken as search's pick; the cheapest playout base
+    Greedy(std::sync::Arc<crate::eval::Evaluator>),
 }
 
 /// blend:<net>:<rules>:<alpha>, one shared evaluator per distinct spec.
@@ -272,6 +275,7 @@ impl Policy {
                 let (b, m) = parts[4].split_once('|').unwrap_or((parts[4], parts[4]));
                 Policy::Race { n: parts[1].parse().unwrap(), cut: parts[2].parse().unwrap(), eval, base: Box::new(Policy::parse(b)), mine: Box::new(Policy::parse(m)) }
             }
+            _ if s.starts_with("greedy:") => Policy::Greedy(load_eval(&s["greedy:".len()..])),
             _ if s.starts_with("blend:") => {
                 // blend:<net>:<rules>:<alpha>, then the net: spec's fields shifted by two
                 let parts: Vec<&str> = s.split(':').collect();
@@ -290,7 +294,33 @@ impl Policy {
             Policy::Bot(l) => choose_move(g, *l, rng),
             Policy::Search { eval, opts, temperature } => crate::search::choose_extreme(eval, g, rng, *opts, *temperature),
             Policy::Rollout { n, cut, eval, base } => crate::rollout::choose(g, rng, *n, *cut, eval.as_deref(), base),
+            Policy::Greedy(eval) => greedy(eval, g, rng),
             Policy::Race { n, cut, eval, base, mine } => crate::rollout::choose_race(g, rng, *n, *cut, eval.as_deref(), base, mine),
         }
     }
+}
+
+/// Policy::Greedy's choice: the move whose resulting position the evaluator values most for the mover.
+fn greedy(eval: &crate::eval::Evaluator, g: &Game, rng: &mut Rng) -> usize {
+    if g.moves.len() == 1 {
+        return 0;
+    }
+    let me = g.b.p[g.current].owner as usize;
+    let mut v = [0.0f64; 4];
+    let vals: Vec<f64> = g.moves.as_slice().iter().map(|m| {
+        let mut t = *g;
+        t.play(m);
+        if t.phase == crate::game::PHASE_OVER {
+            return if t.owner_ranking()[0] as usize == me { 1.0 } else { 0.0 };
+        }
+        eval.owner_chances(&t, &mut v);
+        v[me]
+    }).collect();
+    let mut best = 0usize;
+    for (i, &x) in vals.iter().enumerate() {
+        if x + rng.next() * 1e-9 > vals[best] {
+            best = i;
+        }
+    }
+    best
 }
