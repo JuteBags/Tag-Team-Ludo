@@ -805,3 +805,16 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
   background:linear-gradient(180deg,#ffe27a,#f2a20f);box-shadow:inset 0 2px 0 rgba(255,255,255,.55),0 5px 0 #a35a00}
 .result:has(.reward) .revbtn{margin-top:10px;height:46px}
 @media (prefers-reduced-motion:reduce){.review .rvluck.skel i{animation:none}}
+
+/* The review's verdict on the board (replay in review mode): played = solid trail + symbol, best = dashed trail + dashed ghost. */
+.vtrail{fill:none;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.vtrail.played{stroke:var(--c);stroke-width:5;opacity:.9}
+.vtrail.best{stroke:#4ade80;stroke-width:4;stroke-dasharray:7 6}
+.ghost{pointer-events:none}
+.ghost .gring{fill:rgba(74,222,128,.18);stroke:#4ade80;stroke-width:2.6;stroke-dasharray:5 4}
+.ghost .gpawn{opacity:.55}
+.ghost .gtag{fill:#4ade80;stroke:#0b3d1f;stroke-width:1.5}
+.ghost text{fill:#0b3d1f;font-size:12px;font-weight:900}
+.vhead{pointer-events:none}
+.vhead circle{fill:var(--c);stroke:#0b1d5c;stroke-width:2}
+.vhead text{fill:#1a1300;font-size:12px;font-weight:900}

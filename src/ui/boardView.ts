@@ -151,6 +151,38 @@ export class BoardView {
     for (const [k, g] of this.pawns) g.classList.toggle('moved', keys.includes(k));
   }
 
+  /**
+   * The review's picture of a decision (the replay in review mode): the move played as a solid trail with its
+   * label's symbol at the head, and the best move as a dashed trail to a dashed ghost pawn tagged "Best", so
+   * the two differ by shape, not only colour. Null clears it.
+   */
+  showVerdict(v: { played: Move; best?: Move; sym: string; color: string } | null) {
+    if (!v) {
+      this.marks.innerHTML = '';
+      return;
+    }
+    const trail = (m: Move) => {
+      const t = m.tokens[0]!;
+      const pts = [spot(m.color, m.kind === 'release' ? -1 : m.from, t).pt, ...stepPoints(m.color, m.kind === 'release' ? -1 : m.from, m.to)];
+      pts[pts.length - 1] = spot(m.color, m.to, t).pt;
+      return pts;
+    };
+    const line = (pts: Pt[]) => pts.map((p) => p.join(',')).join(' ');
+    let s = '';
+    if (v.best) {
+      const pts = trail(v.best);
+      const [x, y] = pts.at(-1)!;
+      s += `<polyline class="vtrail best" points="${line(pts)}"/>
+        <g class="ghost" transform="translate(${x} ${y})"><circle r="19" class="gring"/><g class="gpawn" transform="scale(.85)">${pawnArt(v.best.color)}</g>
+        <g transform="translate(0 -31)"><rect x="-21" y="-10" width="42" height="20" rx="10" class="gtag"/><text y="5" text-anchor="middle">Best</text></g></g>`;
+    }
+    const pts = trail(v.played);
+    const [hx, hy] = pts.at(-1)!;
+    s += `<polyline class="vtrail played" points="${line(pts)}" style="--c:${v.color}"/>
+      <g class="vhead" transform="translate(${hx + 16} ${hy - 16})" style="--c:${v.color}"><circle r="12"/><text y="5" text-anchor="middle">${v.sym}</text></g>`;
+    this.marks.innerHTML = s;
+  }
+
   /** Snaps every pawn to its resting place and redraws pair markers. */
   layout(players: PlayerState[]) {
     const groups = new Map<string, { key: string; color: Color; pt: Pt }[]>();

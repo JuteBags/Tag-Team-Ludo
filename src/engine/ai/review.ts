@@ -53,7 +53,7 @@ export function labelOf(gap: number, se: number): Label {
 }
 
 /** The version of the labels (thresholds and playouts): a cached review from another version is redone. */
-export const REVIEW_VERSION = 1;
+export const REVIEW_VERSION = 2;
 
 /** Playouts per candidate, and the most a decision is topped up to when its gap sits near a label's edge. */
 export const PLAYOUTS = 256;
@@ -85,6 +85,8 @@ export interface RollLuck {
   face: number;
   /** Win chance gained or lost by this face against the average face, in points (-100..100). */
   luck: number;
+  /** The spread (standard deviation, in points) of this roll's luck over the faces it could have been. */
+  sd?: number;
 }
 
 /** A deterministic seed for one decision of one game, so a review never changes when it's run again. */
@@ -154,7 +156,8 @@ export function rollLuck(rec: GameRecord, states: GameState[], net: Evaluator): 
     const p = faceChances(rec, s);
     const v = [1, 2, 3, 4, 5, 6].map((f) => chanceAfter(net, s, f));
     const expect = v.reduce((a, x, k) => a + x * p[k]!, 0);
-    out.push({ at: i, owner: s.players[s.current]!.owner, face, luck: 100 * (v[face - 1]! - expect) });
+    const sd = Math.sqrt(v.reduce((a, x, k) => a + p[k]! * (x - expect) ** 2, 0));
+    out.push({ at: i, owner: s.players[s.current]!.owner, face, luck: 100 * (v[face - 1]! - expect), sd: 100 * sd });
   }
   return out;
 }
@@ -162,7 +165,27 @@ export function rollLuck(rec: GameRecord, states: GameState[], net: Evaluator): 
 /** What each label scores toward accuracy: a blunder costs more than an inaccuracy. */
 export const LABEL_SCORE: Record<Label, number> = { best: 1, good: 0.9, inaccuracy: 0.6, mistake: 0.3, blunder: 0 };
 
-/** Each person's accuracy (the mean label score of their reviewed moves, 0-1) and total luck. */
+/** The standard normal CDF (Abramowitz and Stegun 26.2.17, error under 1e-7). */
+export function normalCdf(z: number): number {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989422804014327 * Math.exp((-z * z) / 2);
+  const q = d * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  return z >= 0 ? 1 - q : q;
+}
+
+/**
+ * How lucky an owner's dice were, as a percentile (0-100, 50 is average): the chance that dice rolled the
+ * same way would have done worse for them. Each roll's luck has mean 0 and spread `sd`, so the total is
+ * close to normal with the summed variance. NaN without rolls (or without spreads, from an older review).
+ */
+export function luckPercent(luck: RollLuck[], owner: number): number {
+  const mine = luck.filter((l) => l.owner === owner);
+  const v = mine.reduce((a, l) => a + (l.sd ?? NaN) ** 2, 0);
+  if (!mine.length || !(v > 0)) return NaN;
+  return 100 * normalCdf(mine.reduce((a, l) => a + l.luck, 0) / Math.sqrt(v));
+}
+
+/** Each person's accuracy (the mean label score of their reviewed moves, 0-1), total luck and luck percentile. */
 export function summary(moves: MoveReview[], luck: RollLuck[], owners: number) {
   return Array.from({ length: owners }, (_, o) => {
     const mine = moves.filter((m) => m.owner === o);
@@ -173,6 +196,7 @@ export function summary(moves: MoveReview[], luck: RollLuck[], owners: number) {
       accuracy: mine.length ? mine.reduce((a, m) => a + LABEL_SCORE[m.label], 0) / mine.length : NaN,
       labels: { best: count('best'), good: count('good'), inaccuracy: count('inaccuracy'), mistake: count('mistake'), blunder: count('blunder') },
       luck: luck.filter((l) => l.owner === o).reduce((a, l) => a + l.luck, 0),
+      luckPct: luckPercent(luck, o),
     };
   });
 }
