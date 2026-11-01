@@ -56,6 +56,27 @@ def match(a, b, seeds, workers, base=0, mode='2p'):
     return w / g, 1.96 * se, g
 
 
+def save(run, name, files, metadata, workers):
+    """Off the box at once (a box can die any time): `files` (name in artifact -> local path) as one W&B
+    artifact. Shards and lambda targets are gzipped in parallel first; W&B uploads in the background and
+    stores each file once across artifacts (content-addressed), so a file saved twice costs nothing."""
+    big = [f for f in files.values() if f.endswith(('.bin', '.targets'))]
+    if big:
+        subprocess.run(f"printf '%s\\n' {' '.join(big)} | xargs -P {workers} -n 1 nice -n 10 gzip -1 -k -f", shell=True, check=False)
+        import gzip
+        for f in big:  # whatever the shell step missed (no bash, a failed gzip): never upload without the games
+            if not pathlib.Path(f + '.gz').exists():
+                with open(f, 'rb') as src, gzip.open(f + '.gz', 'wb', compresslevel=1) as dst:
+                    shutil.copyfileobj(src, dst)
+    import wandb as _wb
+    art = _wb.Artifact(name, type='generation', metadata=metadata)
+    for key, f in files.items():
+        gz = f.endswith(('.bin', '.targets'))
+        if pathlib.Path(f + '.gz' if gz else f).exists():
+            art.add_file(f + '.gz' if gz else f, name=key + '.gz' if gz else key)
+    run.log_artifact(art)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--start', required=True, help='Extreme net to start from')
@@ -86,9 +107,10 @@ def main():
     ap.add_argument('--alpha', type=float, default=2.0, help='with --blend: the starting alpha')
     ap.add_argument('--evolve-gens', type=int, default=8, help='with --blend: CMA-ES generations per ladder generation')
     ap.add_argument('--evolve-pop', type=int, default=10)
-    ap.add_argument('--evolve-seeds', type=int, default=400, help='paired seeds per CMA-ES candidate')
+    ap.add_argument('--evolve-seeds', type=int, default=800, help='paired seeds per CMA-ES candidate')
     ap.add_argument('--evolve-sigma', type=float, default=0.15)
     ap.add_argument('--residual', action='store_true', help='with --blend: train the net as a residual over the frozen rules (train.py --rules/--alpha)')
+    ap.add_argument('--learn-temp', action='store_true', help="with --residual: train.py --learn-temp; the new net's alpha is the BLEND line's tau * alpha")
     a = ap.parse_args()
     global DICE
     DICE = ' --dice fair' if a.dice == 'fair' else ''
@@ -114,7 +136,7 @@ def main():
             subprocess.run([sys.executable, '-u', 'tools/ai/tune.py', '--start', rules, '--net', str(net), '--alpha', str(alpha), '--out', str(out),
                             '--opponent', f'net:{a.hard}:1', '--mode', a.check_mode, '--dice', a.dice, '--pop', str(a.evolve_pop),
                             '--seeds', str(a.evolve_seeds), '--gens', str(a.evolve_gens), '--sigma', str(a.evolve_sigma), '--workers', str(a.workers),
-                            '--search', f':3:0:{a.race}:{a.chance}:{a.cut}', '--seed-base', str(seed_base), '--holdout', str(a.evolve_seeds), '--tmp', str(out_dir / 'evolve'),
+                            '--search', f':3:0:{a.race}:{a.chance}:{a.cut}', '--seed-base', str(seed_base), '--holdout', str(2 * a.evolve_seeds), '--pick', 'final', '--tmp', str(out_dir / 'evolve'),
                             '--wandb', f'{a.wandb}-{tag}-evolve'], check=True)
             (out_dir / 'evolve.done').write_text('')
         return str(out), json.loads((out_dir / 'rules.json.blend.json').read_text())['alpha']
@@ -143,6 +165,8 @@ def main():
         st['evolved0'] = True
         st.pop('vs_hard_current', None)
         state_file.write_text(json.dumps(st, indent=1))
+        save(run, f'{a.wandb}-gen0-data', {'rules.json': st['rules'], 'rules.json.blend.json': st['rules'] + '.blend.json', 'state.json': str(state_file)},
+             {'gen': 0, 'alpha': st['alpha'], 'commit': commit}, a.workers)
     if 'vs_hard_current' not in st or st.get('check_mode', '2p') != a.check_mode:
         st['vs_hard_current'] = match(spec(st['current'], st.get('rules'), st.get('alpha')), f'net:{a.hard}:1', a.seeds, a.workers, base=10_000_000, mode=a.check_mode)[0]
         st['check_mode'] = a.check_mode
@@ -175,25 +199,43 @@ def main():
             # Off-best share grows with the temperature; move it toward the target, at most 2x per generation.
             st['temp'] = temp * min(2.0, max(0.5, (a.explore / max(explored, 1e-3)) ** 0.7))
         t_play = time.time() - t0
+        if todo:  # this run played them: save the games before the learn/evolve/check phases
+            save(run, f'{a.wandb}-gen{k}-games', {f.name: str(f) for f in sorted(gd.glob('shard-*.bin'))},
+                 {'gen': k, 'pool': pool, 'commit': commit, 'temp': temp}, a.workers)
         # 2. learn: the last --replay generations' games that this ladder played (this one included)
         new = gd / 'net.json'
         shards = ','.join(f'{d}/gen-{j}/shard-*.bin' for j in range(max(1, k - a.replay + 1), k + 1)
                           if any((d / f'gen-{j}').glob('shard-*.bin')))
         target = []
         if a.labels == 'lambda':
-            # lambda-return targets for this generation's shards, valued by the net that played them (cur)
-            todo_l = [f'{LABEL} --shard {f} --net {cur} --lambda {a.lam} --out {f}.targets --threads 1'
+            # lambda-return targets for this generation's shards, valued by the player that played them (cur)
+            # with --blend, valued as the blend plays (ludo-label --eval blend:..., the current rules and alpha)
+            value = f"--eval blend:{cur}:{st['rules']}:{st['alpha']}" if a.blend else f'--net {cur}'
+            todo_l = [f'{LABEL} --shard {f} {value} --lambda {a.lam} --out {f}.targets --threads 1'
                       for f in sorted(gd.glob('shard-*.bin')) if not pathlib.Path(f'{f}.targets').exists()]
             if todo_l:
                 run_parallel(todo_l)
             target = ['--target', 'lambda', '--pl-weight', str(a.pl_weight)]
+        residual = a.blend and a.residual
+        new_blend = gd / 'blend.json'  # residual mode: the rules and alpha the new net was trained against
         if not new.exists():
-            subprocess.run([sys.executable, '-u', 'tools/ai/train.py', '--shards', shards, '--init', cur, '--out', str(new),
-                            '--hidden', '128', '--layers', '2', '--epochs', '3', '--lr', '1e-3', '--wandb', f'{a.wandb}-gen{k}', '--group', 'ladder', *target,
-                            *(['--rules', st['rules'], '--alpha', str(st['alpha'])] if a.blend and a.residual else [])], check=True)
+            train = subprocess.Popen([sys.executable, '-u', 'tools/ai/train.py', '--shards', shards, '--init', cur, '--out', str(new),
+                                      '--hidden', '128', '--layers', '2', '--epochs', '3', '--lr', '1e-3', '--wandb', f'{a.wandb}-gen{k}', '--group', 'ladder', *target,
+                                      *(['--rules', st['rules'], '--alpha', str(st['alpha'])] if residual else []),
+                                      *(['--learn-temp'] if residual and a.learn_temp else [])], stdout=subprocess.PIPE, text=True)
+            blend_line = ''
+            for line in train.stdout:  # echo the trainer's log, keep its BLEND line (alpha' = tau * alpha)
+                print(line, end='', flush=True)
+                if line.startswith('BLEND '):
+                    blend_line = line.split()[1]
+            if train.wait():
+                raise subprocess.CalledProcessError(train.returncode, 'train.py')
+            if residual:
+                new_blend.write_text(json.dumps({'rules': st['rules'], 'alpha': float(blend_line.rsplit(':', 1)[1]) if blend_line else st['alpha']}))
         t_learn = time.time() - t0 - t_play
         # 2b. evolve the readable part around the new net
-        new_rules, new_alpha = evolve(new, st['rules'], st['alpha'], gd, f'gen{k}', 3_000_000 + k * 100_000) if a.blend else (None, None)
+        start_alpha = json.loads(new_blend.read_text())['alpha'] if residual else st.get('alpha')
+        new_rules, new_alpha = evolve(new, st['rules'], start_alpha, gd, f'gen{k}', 3_000_000 + k * 100_000) if a.blend else (None, None)
         t_evolve = time.time() - t0 - t_play - t_learn
         # 3. check
         block = 1_000_000 + k * a.seeds  # fresh dice for every generation's checks
@@ -218,18 +260,14 @@ def main():
         st['gen'] = k
         st['history'].append(line)
         state_file.write_text(json.dumps(st, indent=1))
-        # Off the box at once (a box can die any time): this generation's games, net and state as one
-        # W&B artifact. Shards are gzipped in parallel first; W&B uploads in the background.
-        subprocess.run(f'ls {gd}/shard-*.bin | xargs -P {a.workers} -n 1 nice -n 10 gzip -1 -k -f', shell=True, check=False)
-        import wandb as _wb
-        art = _wb.Artifact(f'{a.wandb}-gen{k}-data', type='generation', metadata=line | {'pool': pool, 'commit': commit})
-        for f in sorted(gd.glob('shard-*.bin.gz')):
-            art.add_file(str(f))
-        art.add_file(str(new), name='net.json')
-        art.add_file(str(state_file), name='state.json')
+        # This generation as one artifact: games (+ lambda targets), net, state, evolved rules, residual blend.
+        files = {f.name: str(f) for f in sorted(gd.glob('shard-*.bin')) + sorted(gd.glob('shard-*.bin.targets'))}
+        files |= {'net.json': str(new), 'state.json': str(state_file)}
         if new_rules:
-            art.add_file(new_rules, name='rules.json')
-        run.log_artifact(art)
+            files |= {'rules.json': new_rules, 'rules.json.blend.json': new_rules + '.blend.json'}
+        if new_blend.exists():
+            files['blend.json'] = str(new_blend)
+        save(run, f'{a.wandb}-gen{k}-data', files, line | {'pool': pool, 'commit': commit}, a.workers)
         if promoted and vs_hard >= a.target:
             print(f'TARGET reached: {vs_hard:.3f} vs Hard', flush=True)
             break
