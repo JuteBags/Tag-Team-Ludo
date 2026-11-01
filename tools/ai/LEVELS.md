@@ -45,14 +45,14 @@ CI (`.github/workflows/ai-levels.yml`, "Bot levels") replays the Easy, Normal an
 | 2 players, no doubles | 50.0 | 90.8 ± 0.9 | 64.2 ± 1.5 | 55.5 ± 1.5 | 53.5 ± 3.5 |
 | 3 players, no doubles | 33.3 | 82.1 ± 1.0 | 44.5 ± 1.3 | 39.6 ± 1.2 | 36.0 ± 3.8 |
 | 4 players, no doubles | 25.0 | 76.1 ± 0.9 | 36.0 ± 1.1 | 32.9 ± 1.0 | 25.9 ± 3.0 |
-| 2 players, 2 houses each (opposite), no doubles | 50.0 | 96.6 ± 0.6 | 66.6 ± 1.5 | 53.2 ± 1.5 | pending |
-| 2 players, 2 houses each (side by side), no doubles | 50.0 | 96.4 ± 0.6 | 68.2 ± 1.4 | 53.6 ± 1.5 | pending |
+| 2 players, 2 houses each (opposite), no doubles | 50.0 | 96.6 ± 0.6 | 66.6 ± 1.5 | 53.2 ± 1.5 | 61.6 ± 3.4 |
+| 2 players, 2 houses each (side by side), no doubles | 50.0 | 96.4 ± 0.6 | 68.2 ± 1.4 | 53.6 ± 1.5 | 58.8 ± 3.4 |
 
 ### The app's dice
 
 | Mode | Even | Easy vs Random | Normal vs Easy | Hard vs Normal | Extreme vs Hard |
 |---|---|---|---|---|---|
-| 2 players | 50.0 | 79.8 ± 1.2 | 68.2 ± 1.4 | 55.6 ± 1.5 | pending |
+| 2 players | 50.0 | 79.8 ± 1.2 | 68.2 ± 1.4 | 55.6 ± 1.5 | 56.9 ± 3.4 |
 | 3 players | 33.3 | 71.6 ± 1.1 | 45.2 ± 1.3 | 38.8 ± 1.2 | pending |
 | 4 players | 25.0 | 67.1 ± 1.0 | 32.8 ± 1.0 | 30.5 ± 1.0 | pending |
 | 2 players, 2 houses each (opposite) | 50.0 | 89.6 ± 0.9 | 69.5 ± 1.4 | 52.3 ± 1.5 | pending |
