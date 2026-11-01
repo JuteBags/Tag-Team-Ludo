@@ -254,6 +254,20 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .hint .tw svg{width:40px;height:40px}
 .hint b{display:block;font-family:'Lilita One';font-weight:400;font-size:18px;color:#ffd65a;line-height:1.1}
 .hint small{display:block;font-size:12.5px;font-weight:800;opacity:.88;margin-top:2px}
+/* Crowded markers: the moves as big numbered buttons, in place of the hint card's text (same size). */
+.hint.pick{padding:9px 10px}
+.hint.pick .tw{display:none}
+.hint.pick>span{flex:1;min-width:0}
+.hint.pick>span>b,.hint.pick>span>small{display:none}
+.hint .choices{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px}
+.choice{display:flex;align-items:center;gap:7px;min-height:46px;padding:6px 8px;border-radius:14px;color:#fff;text-align:left;
+  background:linear-gradient(180deg,var(--l),var(--m));box-shadow:0 3px 0 var(--d),0 6px 12px rgba(0,0,0,.35);font-family:'Lilita One';font-size:15px;line-height:1.05}
+.choice:active{transform:translateY(2px);box-shadow:0 1px 0 var(--d)}
+.choice i{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:15px;background:#0c2a74;border:2px solid #fff}
+.choice span{min-width:0}
+.choice small{display:block;font-family:Nunito,sans-serif;font-size:11px;font-weight:900;opacity:.95;margin-top:1px;text-transform:uppercase;letter-spacing:.3px}
+.choice.tag-kill i{background:#ff3b3b}
+.choice.tag-safe i,.choice.tag-home i,.choice.tag-finish i{background:#c98a00}
 .toasts{position:absolute;left:0;right:0;top:330px;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;z-index:20}
 .toast{padding:8px 20px;border-radius:16px;font-family:'Lilita One';font-size:22px;white-space:nowrap;
   background:linear-gradient(180deg,var(--l),var(--m));box-shadow:0 4px 0 var(--d),0 10px 20px rgba(0,0,0,.45);text-shadow:0 2px 0 rgba(0,0,0,.3)}
@@ -322,6 +336,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .mark .core{fill:var(--c);opacity:.85;stroke:#fff;stroke-width:2}
 .mark .pill{fill:#0c2a74;stroke:var(--c);stroke-width:2.5;filter:drop-shadow(0 2px 2px rgba(0,0,0,.45))}
 .mark text{font-family:'Lilita One',sans-serif;font-size:18px;fill:#fff;letter-spacing:.3px}
+.mark text.num{font-size:19px;paint-order:stroke;stroke:rgba(0,0,0,.45);stroke-width:3px}
 .mark{transform-box:fill-box;transform-origin:center}
 .mark.fresh{animation:markIn .32s cubic-bezier(.16,1,.3,1) both}
 .mark.kill .core{opacity:1}

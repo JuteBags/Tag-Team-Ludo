@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { legalMoves } from '../src/engine';
+import { legalMoves, squareOf } from '../src/engine';
 import { TIPS, TURNS, centerOf, spot } from '../src/ui/geometry';
-import { moveTargets, nearest, whyStuck } from '../src/ui/targets';
+import { choiceText, crowded, moveTargets, nearest, whyStuck } from '../src/ui/targets';
 import { B, mk, prog } from './helpers';
 
 describe('track turns', () => {
@@ -85,5 +85,33 @@ describe('nearest', () => {
   });
   it('picks nothing outside the radius', () => {
     expect(nearest(items, [300, 300], 30)).toBeNull();
+  });
+});
+
+describe('crowded move markers', () => {
+  it('numbers a pair and a one-token move that land a square or two ahead (the reported case)', () => {
+    const ps = mk({ blue: [0, 0, -1, -1], red: B });
+    const t = moveTargets(ps, legalMoves(ps, 'blue', 2));
+    const c = crowded(t, ps);
+    expect(c.map((x) => choiceText(x).what).sort()).toEqual(['One token +2', 'Pair +1 +1']);
+  });
+
+  it('catches an Out marker sitting on a pawn that can also move', () => {
+    const ps = mk({ blue: [0, -1, -1, -1], red: B });
+    const t = moveTargets(ps, legalMoves(ps, 'blue', 6));
+    expect(crowded(t, ps).map((x) => x.label).sort()).toEqual(['+6', 'Out']);
+  });
+
+  it('leaves markers far apart alone', () => {
+    const ps = mk({ blue: [3, 30, -1, -1], red: B });
+    const t = moveTargets(ps, legalMoves(ps, 'blue', 4));
+    expect(t).toHaveLength(2);
+    expect(crowded(t, ps)).toEqual([]);
+  });
+
+  it('says what a move does on its button', () => {
+    const ps = mk({ blue: [5, -1, -1, -1], red: [prog('red', squareOf('blue', 7)!), -1, -1, -1] });
+    const kill = moveTargets(ps, legalMoves(ps, 'blue', 2)).find((x) => x.tag === 'kill');
+    expect(kill && choiceText(kill)).toEqual({ what: '+2', does: 'kill' });
   });
 });
