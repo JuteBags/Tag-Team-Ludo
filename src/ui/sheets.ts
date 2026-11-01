@@ -3,9 +3,12 @@ import { COLORS } from '../engine';
 import { PALETTE, miniBoard, symbolPath } from './art';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
-import { EMPTY_STATS, loadStats, resetStats, type Stats } from './store';
-import { ACHIEVEMENTS } from './rewards';
+import { emptyStats, loadCheckIn, loadStats, resetStats, type Stats } from './store';
+import { daysBetween, dayKey } from './checkin';
+import { ACHIEVEMENTS, type AchievementGroup } from './rewards';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
+
+const GROUPS: AchievementGroup[] = ['Ladder', 'Extreme', 'Milestones', 'Everyday'];
 
 function sheet(host: HTMLElement, title: string, body: string): HTMLElement {
   const ov = document.createElement('div');
@@ -94,7 +97,12 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
 }
 
 export async function statsSheet(host: HTMLElement) {
-  const s: Stats = await loadStats().catch(() => ({ ...EMPTY_STATS }));
+  const s: Stats = await loadStats().catch(() => emptyStats());
+  // The check-in achievements show the current run (still alive if the last check-in was today or yesterday);
+  // whether they're done comes from the achievements already earned.
+  const c = await loadCheckIn();
+  const run = c && c !== 'error' && daysBetween(c.last, dayKey()) <= 1 ? c.streak : 0;
+  const view: Stats = { ...s, checkinBest: run };
   const rate = s.played ? `${Math.round((100 * s.wins) / s.played)}%` : '–';
   const best = s.best ? ['', '1st', '2nd', '3rd', '4th'][s.best]! : '–';
   const cell = (v: string | number, label: string) => `<div class="st"><b class="disp">${v}</b><small>${label}</small></div>`;
@@ -107,12 +115,14 @@ export async function statsSheet(host: HTMLElement) {
       : `<p class="sub">vs Computer, on this device</p>
     <div class="stats">${cell(s.played, 'Games')}${cell(s.wins, 'Wins')}${cell(rate, 'Win rate')}${cell(best, 'Best place')}${cell(s.streak, 'Win streak')}${cell(s.bestStreak, 'Best streak')}${cell(s.kills, 'Kills')}${cell(s.sixes, 'Sixes')}${cell(s.pairs, 'Pairs formed')}</div>
     <p class="sub">With friends: ${s.friends} game${s.friends === 1 ? '' : 's'}</p>
-    <h3 class="achh disp">Achievements · ${settings.achieved.length}/${ACHIEVEMENTS.length}</h3>
-    <div class="achlist">${ACHIEVEMENTS.map((a) => {
+    <h3 class="achh disp">Achievements · ${ACHIEVEMENTS.filter((a) => settings.achieved.includes(a.id)).length}/${ACHIEVEMENTS.length}</h3>
+    <div class="achscroll">${GROUPS.map((g) => `<h4 class="achg">${g}</h4><div class="achlist">${ACHIEVEMENTS.filter((a) => a.group === g).map((a) => {
       const done = settings.achieved.includes(a.id);
-      const [have, need] = a.progress?.(s) ?? [done ? 1 : 0, 1];
-      return `<div class="ar${done ? ' done' : ''}"><span class="ai">${done ? '🏆' : '🔒'}</span><span class="at"><b>${a.name}</b><small>${a.blurb}</small>${!done && need > 1 ? `<i class="bar"><i style="width:${(100 * have) / need}%"></i></i>` : ''}</span><em>${done ? 'Done' : need > 1 ? `${have}/${need}` : ''}<i class="coin"></i>${a.gold}</em></div>`;
-    }).join('')}</div>
+      const [have, need] = a.progress?.(view) ?? [done ? 1 : 0, 1];
+      // A streak nobody has started shows no "0/3".
+      const bar = !done && need > 1 && !(a.quiet && have === 0);
+      return `<div class="ar${done ? ' done' : ''}"><span class="ai">${done ? '🏆' : '🔒'}</span><span class="at"><b>${a.name}</b><small>${a.blurb}</small>${bar ? `<i class="bar"><i style="width:${(100 * have) / need}%"></i></i>` : ''}</span><em>${done ? 'Done' : bar ? `${have}/${need}` : ''}<i class="coin"></i>${a.gold}</em></div>`;
+    }).join('')}</div>`).join('')}</div>
     <button class="reset" data-act="reset">Reset stats</button>`,
   );
   const reset = ov.querySelector<HTMLButtonElement>('[data-act=reset]');

@@ -11,9 +11,9 @@ import { sfx } from './sfx';
 import type { GameConfig } from './setup';
 import { keepAwake } from './native';
 import { drawCard, shareCard } from './shareCard';
-import { clearGame, giveUpNote, givingUpLoses, loadStats, recordGame, saveGame, type SavedGame } from './store';
+import { clearGame, giveUpNote, givingUpLoses, layoutOf, levelOf, loadStats, recordGame, saveGame, type SavedGame } from './store';
 import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targets';
-import { goldFor, newAchievements, total } from './rewards';
+import { goldFor, newAchievements, nextStreak, total, type GameFacts } from './rewards';
 import { earn, lockLabel, nextGoal } from './skins';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
@@ -643,7 +643,7 @@ export class GameScreen {
           const warn = Object.assign(document.createElement('p'), { className: 'sub warn', textContent: 'This game will be lost' });
           b.after(warn);
           // vs Computer after the first round, quitting is a loss: say what it costs.
-          if (loses) void loadStats().then((s) => (warn.textContent = giveUpNote(s)));
+          if (loses) void loadStats().then((s) => (warn.textContent = giveUpNote(s, levelOf(this.state))));
           return;
         }
         this.dispose();
@@ -651,7 +651,7 @@ export class GameScreen {
         // at any point can't count the game twice (a counted save is never offered or counted again).
         if (loses) {
           await saveGame({ ...this.snapshot(), counted: true });
-          await recordGame({ mode: 'pvc', place: 0, kills: 0, pairs: 0, quit: true });
+          await recordGame({ mode: 'pvc', place: 0, kills: 0, pairs: 0, quit: true, level: levelOf(this.state) });
         }
         void clearGame();
         this.exit('home');
@@ -704,18 +704,19 @@ export class GameScreen {
     const winner = this.config.names[order[0]!]!;
     const title = pvp ? `${winner.toUpperCase()} WINS!` : won ? 'YOU WIN!' : `${PLACES[place]} PLACE`;
     // Achievements need the new totals, so they join the reward panel when the stats are saved.
-    const facts = { mode: this.config.mode, place, lost: this.lost, hard: this.state.players.filter((p) => p.bot).every((p) => p.level === 'hard' || p.level === 'extreme') && this.state.players.some((p) => p.bot) };
-    const achievements = recordGame({ mode: this.config.mode, place, kills: this.kills, pairs: this.pairs, sixes: this.sixes }).then((s) => {
+    const level = levelOf(this.state), layout = layoutOf(this.state);
+    const facts: GameFacts = { mode: this.config.mode, place, lost: this.lost, level, layout, singles: !!this.state.singles };
+    const achievements = recordGame({ mode: this.config.mode, place, kills: this.kills, pairs: this.pairs, sixes: this.sixes, level, layout }).then((s) => {
       const fresh = newAchievements(s, facts, settings.achieved);
       if (fresh.length) {
         saveSetting('achieved', [...settings.achieved, ...fresh.map((a) => a.id)]);
         earn(fresh.reduce((a, x) => a + x.gold, 0));
       }
-      return fresh;
+      return { fresh, ended: s.xEnded, streak: level === 'extreme' && won && !pvp ? { now: s.xStreak, next: nextStreak(s, settings.achieved) } : null };
     });
     // Gold for this game, then how close it brings you to the next skin.
     const mineHome = colorsOf(human).reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
-    const lines = goldFor({ mode: this.config.mode, place, kills: this.kills, home: mineHome, level: this.state.players.find((p) => p.bot)?.level });
+    const lines = goldFor({ mode: this.config.mode, place, kills: this.kills, home: mineHome, level });
     const earned = total(lines);
     earn(earned);
     /** The next skin to buy and how close you are (redrawn when achievement gold lands). */
@@ -755,8 +756,13 @@ export class GameScreen {
     });
     this.el.appendChild(ov);
     // New achievements pop in as small chips, and the next-skin bar catches up with their gold.
-    void achievements.then((fresh) => {
+    void achievements.then(({ fresh, ended, streak }) => {
       const box = ov.querySelector<HTMLElement>('.achs')!;
+      // A live Extreme streak and what the next win in a row would bring, or the streak this game ended.
+      if (streak) {
+        const next = streak.next ? ` · ${streak.next.name} at ${streak.now + streak.next.more} <em>+${streak.next.gold}</em>` : '';
+        box.insertAdjacentHTML('beforeend', `<span class="ach xs">🔥 Extreme streak ${streak.now}${next}</span>`);
+      } else if (ended) box.insertAdjacentHTML('beforeend', `<span class="ach xend">Extreme streak ended at ${ended}</span>`);
       fresh.forEach((a, i) => {
         box.insertAdjacentHTML('beforeend', `<span class="ach" title="${a.blurb}">🏆 ${a.name} <em>+${a.gold}</em></span>`);
         (box.lastElementChild as HTMLElement).animate([{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'scale(1.1)', offset: 0.7 }, { opacity: 1, transform: 'scale(1)' }], { duration: 380, delay: 1300 + i * 300, easing: 'cubic-bezier(.3,.8,.4,1.2)', fill: 'backwards' });
