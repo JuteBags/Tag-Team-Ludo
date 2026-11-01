@@ -10,6 +10,9 @@ import { giveUpSaved, loadGame, type SavedGame } from './store';
 import { applyLook } from './themes';
 import { offerUpdate } from './update';
 import { offerCheckIn } from './checkin';
+import { decodeRecord, type GameRecord } from '../engine';
+import { linkPayload } from './replay';
+import { brokenLinkScreen, replayScreen } from './replayScreen';
 
 const W = 390;
 const H = 844;
@@ -33,7 +36,7 @@ export function mountApp(root: HTMLElement) {
     game = null;
     const saved = await loadGame();
     if (game) return; // a game started while the save was loading
-    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => stage.replaceChildren(storeScreen(() => void home())));
+    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => stage.replaceChildren(storeScreen(() => void home())), (rec) => watch(rec, () => void home()));
     stage.replaceChildren(screen);
     // On the home screen only, never during a game: a newer version on the site, then today's check-in.
     void offerUpdate(screen).then(() => offerCheckIn(screen));
@@ -45,6 +48,8 @@ export function mountApp(root: HTMLElement) {
       count = 2;
       setup(mode, 2);
     }));
+  /** The replay of `rec`; `back` returns to where it was opened from. */
+  const watch = (rec: GameRecord, back: () => void) => stage.replaceChildren(replayScreen(rec, back));
   // Set while a game starts, so a double tap on Start or Play again can't open two games.
   let starting = false;
   const play = async (cfg: GameConfig, saved?: SavedGame) => {
@@ -54,7 +59,8 @@ export function mountApp(root: HTMLElement) {
       // A new game replaces any saved one (counted as a loss when it's given up past the first round); a
       // continued game picks up from it.
       if (!saved) await giveUpSaved();
-      game = new GameScreen(cfg, (to) => (to === 'home' ? void home() : play(cfg)), undefined, saved);
+      const g = new GameScreen(cfg, (to) => (to === 'home' ? void home() : to === 'replay' ? g.finalRecord && watch(g.finalRecord, () => stage.replaceChildren(g.el)) : play(cfg)), undefined, saved);
+      game = g;
       stage.replaceChildren(game.el);
       if (import.meta.env.DEV) (window as unknown as { __ludo: GameScreen }).__ludo = game;
     } finally {
@@ -84,5 +90,13 @@ export function mountApp(root: HTMLElement) {
     }
     return false;
   });
-  void home();
+  // A shared game's link (web): straight into its replay, or a friendly screen if it can't be opened.
+  const payload = linkPayload(location.hash);
+  if (payload !== null) {
+    const leave = () => {
+      history.replaceState(null, '', location.pathname + location.search);
+      void home();
+    };
+    void decodeRecord(payload).then((rec) => stage.replaceChildren(rec ? replayScreen(rec, leave) : brokenLinkScreen(leave)));
+  } else void home();
 }

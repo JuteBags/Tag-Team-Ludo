@@ -1,9 +1,9 @@
 // Pop-up sheets on the home screen: Settings and Stats. Back (or the close button) dismisses them.
-import { COLORS } from '../engine';
+import { COLORS, type GameRecord } from '../engine';
 import { PALETTE, miniBoard, symbolPath } from './art';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
-import { emptyStats, loadCheckIn, loadStats, resetStats, type Stats } from './store';
+import { emptyStats, loadCheckIn, loadPastGames, loadStats, resetStats, type PastGame, type Stats } from './store';
 import { daysBetween, dayKey } from './checkin';
 import { ACHIEVEMENTS, takeNew, type AchievementGroup } from './rewards';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
@@ -96,8 +96,9 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
   toggle(ov, 'killfx', (v) => saveSetting('killFx', v as 'full' | 'short' | 'off'));
 }
 
-export async function statsSheet(host: HTMLElement) {
+export async function statsSheet(host: HTMLElement, onReplay?: (rec: GameRecord) => void) {
   const s: Stats = await loadStats().catch(() => emptyStats());
+  const past = await loadPastGames().catch(() => [] as PastGame[]);
   // The check-in achievements show the current run (still alive if the last check-in was today or yesterday);
   // whether they're done comes from the achievements already earned.
   const c = await loadCheckIn();
@@ -116,6 +117,7 @@ export async function statsSheet(host: HTMLElement) {
     : `<p class="sub">vs Computer, on this device</p>
     <div class="stats">${cell(s.played, 'Games')}${cell(s.wins, 'Wins')}${cell(rate, 'Win rate')}${cell(best, 'Best place')}${cell(s.streak, 'Win streak')}${cell(s.bestStreak, 'Best streak')}${cell(s.kills, 'Kills')}${cell(s.sixes, 'Sixes')}${cell(s.xStreak, s.xBestStreak ? `Extreme (best ${s.xBestStreak})` : 'Extreme streak')}</div>
     <p class="sub">With friends: ${s.friends} game${s.friends === 1 ? '' : 's'}</p>
+    ${onReplay ? `<button class="pastrow" data-act="past"><span><b>Past games</b><small>${past.length ? `Your last ${past.length}: watch the replays` : 'Finished games show up here'}</small></span><em>›</em></button>` : ''}
     <button class="reset" data-act="reset">Reset stats</button>`;
   const achPane = `<div class="achscroll">${GROUPS.map((g) => `<h4 class="achg">${g}</h4><div class="achlist">${ACHIEVEMENTS.filter((a) => a.group === g).map((a) => {
       const done = settings.achieved.includes(a.id);
@@ -130,6 +132,10 @@ export async function statsSheet(host: HTMLElement) {
     `<div class="tg tabs" role="tablist"><button role="tab" data-tab="stats"${achTab ? '' : ' class="on" aria-selected="true"'}>Stats</button><button role="tab" data-tab="ach"${achTab ? ' class="on" aria-selected="true"' : ''}>Achievements ${doneCount}/${ACHIEVEMENTS.length}${fresh.length ? ` <i class="newdot">${fresh.length} new</i>` : ''}</button></div>
     <div class="pane" data-pane="stats"${achTab ? ' hidden' : ''}>${statsPane}</div><div class="pane" data-pane="ach"${achTab ? '' : ' hidden'}>${achPane}</div>`,
   );
+  ov.querySelector('[data-act=past]')?.addEventListener('click', () => {
+    ov.remove();
+    pastGamesSheet(host, past, onReplay!);
+  });
   ov.querySelector('.tabs')!.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLButtonElement>('[data-tab]');
     if (!b) return;
@@ -150,5 +156,34 @@ export async function statsSheet(host: HTMLElement) {
     await resetStats();
     ov.remove();
     void statsSheet(host);
+  });
+}
+
+/** "just now", "12 min ago", "3 h ago", "2 days ago". */
+function ago(t: number): string {
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} day${h < 36 ? '' : 's'} ago`;
+}
+
+/** The last finished games, newest first; tapping one opens its replay. */
+export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (rec: GameRecord) => void) {
+  const place = (p: number) => ['', '1st', '2nd', '3rd', '4th'][p] ?? '';
+  const rows = past
+    .map((g, i) => {
+      const people = new Set(g.rec.seats.map((s) => s.owner)).size;
+      const colours = [...new Set(g.rec.seats.map((s) => s.color))].map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
+      const what = g.mode === 'pvp' ? 'With friends' : 'vs Computer';
+      return `<button class="pg${g.mode === 'pvc' && g.place === 1 ? ' won' : ''}" data-i="${i}"><span class="pgc">${colours}</span><span class="pgt"><b>${what} · ${people} players</b><small>${ago(g.at)}</small></span><em>${g.mode === 'pvc' ? (g.place === 1 ? '🏆 Won' : place(g.place)) : ''}</em></button>`;
+    })
+    .join('');
+  const ov = sheet(host, 'Past games', past.length ? `<p class="sub">Tap a game to watch its replay</p><div class="pglist">${rows}</div>` : `<div class="empty"><b class="disp">No games yet</b><p class="sub">Finish a game and its replay shows up here.</p></div>`);
+  ov.querySelector('.pglist')?.addEventListener('click', (e) => {
+    const b = (e.target as Element).closest<HTMLElement>('[data-i]');
+    if (!b) return;
+    ov.remove();
+    onReplay(past[Number(b.dataset.i)]!.rec);
   });
 }
