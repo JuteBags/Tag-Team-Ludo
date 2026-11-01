@@ -729,3 +729,13 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .pg .pgt{flex:1;display:flex;flex-direction:column;gap:2px}
 .pg .pgt b{font-size:14px}.pg .pgt small{font-size:12px;font-weight:700;opacity:.8}
 .pg em{font-style:normal;font-size:13px;font-weight:900;color:#ffd65a}
+
+/* ---------- the hidden Extreme speed test (bench.ts, /play/#bench) ---------- */
+.bench{display:grid;place-items:center}
+.benchbox{width:340px;text-align:center}
+.benchbox h2{font-size:28px;color:#ffd65a;margin-bottom:8px}
+.benchbox .sub{font-size:14px;font-weight:700;line-height:1.4;opacity:.9}
+.benchbox .b3{display:block;width:100%;margin-top:16px}
+.benchout{margin-top:14px;padding:10px;max-height:300px;overflow:auto;border-radius:12px;background:rgba(0,0,0,.35);text-align:left;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+.benchout:empty{display:none}
+.benchbox .later{display:block;margin:8px auto 0;min-height:44px;background:none;border:0;color:#fff;font-size:15px;font-weight:800;text-decoration:underline;opacity:.85}
