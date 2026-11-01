@@ -12,7 +12,7 @@ import type { GameConfig } from './setup';
 import { keepAwake } from './native';
 import { drawCard, shareCard } from './shareCard';
 import { clearGame, recordGame, saveGame, type SavedGame } from './store';
-import { moveTargets, whyStuck, type Target } from './targets';
+import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targets';
 import { goldFor, newAchievements, total } from './rewards';
 import { earn, lockLabel, nextGoal } from './skins';
 
@@ -438,20 +438,27 @@ export class GameScreen {
         this.drawTrays(r);
         const targets: Target[] = moveTargets(this.state.players, this.state.moves.filter((m) => m.roll === r));
         const other = usable.length > 1 ? ', or another die' : '';
-        if (targets.some((t) => t.move.kind === 'pair')) this.setHint(c, `Pair move with the ${r}`, `Pair moves ${r / 2} + ${r / 2}. Tap a token${other}`, true);
+        if (targets.some((t) => t.move.kind === 'pair')) this.setHint(c, `Pair move with the ${r}`, `Both tokens move ${r / 2}. Tap a token${other}`, true);
         else this.setHint(c, `${who} rolled ${this.state.rolls.join(' · ')}`, `Playing the ${r}: tap a token${other}`);
+        // Markers that land close together crowd each other and the pawns: those moves also get big
+        // numbered buttons in the hint card, matching numbers on their markers.
+        const crowd = crowded(targets, this.state.players);
+        if (crowd.length) this.setHint(c, `Pick a move with the ${r}`, '', true);
+        this.setChoices(crowd);
         this.view.showTargets(
           targets,
           (t) => {
             this.trayPick = null;
+            this.setChoices([]);
             resolve(t.move);
           },
           (own) => {
             const pair = own.find((t) => t.move.kind === 'pair');
             const one = own.find((t) => t.move.kind === 'single');
-            if (pair && one) this.setHint(c, 'Pair or one token?', `Tap a spot: pair moves ${pair.move.steps} + ${pair.move.steps}, one token moves ${one.move.steps}`, true);
+            if (pair && one) this.setHint(c, 'Pair or one token?', `Tap a spot: the pair moves ${pair.move.steps} each, one token moves ${one.move.steps}`, true);
           },
           (pawn) => this.setHint(c, "That token can't move", whyStuck(this.state.players, c, Number(pawn.slice(c.length)), r, (o) => this.name(o), this.state.singles)),
+          crowd,
         );
       };
       this.trayPick = (r) => {
@@ -473,6 +480,29 @@ export class GameScreen {
       pl.classList.toggle('active', on);
       pl.classList.toggle('idle', !on);
     });
+  }
+
+  /** The hint card's move buttons (crowded markers, numbered as on the board); none clears them. */
+  private setChoices(targets: Target[]) {
+    const h = this.el.querySelector<HTMLElement>('.hint')!;
+    h.querySelector('.choices')?.remove();
+    h.classList.toggle('pick', targets.length > 0);
+    if (!targets.length) return;
+    const row = document.createElement('div');
+    row.className = 'choices';
+    row.innerHTML = targets
+      .map((t, i) => {
+        const { what, does } = choiceText(t);
+        return `<button class="choice tag-${t.tag}" data-i="${i}" style="${cssVars(t.move.color)}"><i>${i + 1}</i><span>${what}${does ? `<small>${does}</small>` : ''}</span></button>`;
+      })
+      .join('');
+    row.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('.choice');
+      if (!b) return;
+      sfx.tick();
+      this.view.pick(targets[Number(b.dataset.i)]!);
+    });
+    h.querySelector('span:not(.tw)')!.appendChild(row);
   }
 
   private setHint(c: Color, title: string, sub: string, pair = false) {

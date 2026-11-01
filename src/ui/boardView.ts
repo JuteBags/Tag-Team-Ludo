@@ -84,6 +84,8 @@ export class BoardView {
   private pawns = new Map<string, SVGGElement>();
   private placed = new Map<string, Place>();
   private targets: Target[] = [];
+  /** Targets with a numbered button below the board (crowded ones): their marker shows the number. */
+  private numbered: Target[] = [];
   private onChoose: ((t: Target) => void) | null = null;
   private onSelect: ((ts: Target[]) => void) | null = null;
   private onStuck: ((pawn: string) => void) | null = null;
@@ -219,10 +221,15 @@ export class BoardView {
    * Shows every move as a marker where it would land. Tapping a marker plays that move; tapping a
    * pawn plays its move, or, when it has several (a pair on a star), shows just those.
    */
-  showTargets(targets: Target[], onChoose: (t: Target) => void, onSelect?: (ts: Target[]) => void, onStuck?: (pawn: string) => void) {
+  /**
+   * `numbered`: targets that also have a numbered button below the board (crowded ones). Their markers
+   * show the same number and no label, so a crowded spot stays readable.
+   */
+  showTargets(targets: Target[], onChoose: (t: Target) => void, onSelect?: (ts: Target[]) => void, onStuck?: (pawn: string) => void, numbered: Target[] = []) {
     this.clearMovable();
     this.svg.classList.toggle('choosing', targets.length > 0);
     this.targets = targets;
+    this.numbered = numbered;
     this.onChoose = onChoose;
     this.onSelect = onSelect ?? null;
     this.onStuck = onStuck ?? null;
@@ -233,6 +240,7 @@ export class BoardView {
 
   clearMovable() {
     this.targets = [];
+    this.numbered = [];
     this.onChoose = this.onSelect = this.onStuck = null;
     this.selected = null;
     this.focusKey = '';
@@ -271,6 +279,11 @@ export class BoardView {
     sfx.tick();
     this.drawTargets(own);
     this.onSelect?.(own);
+  }
+
+  /** Plays `t` as if its marker was tapped (a choice button below the board). */
+  pick(t: Target) {
+    if (this.onChoose && this.targets.includes(t)) this.choose(t);
   }
 
   private choose(t: Target) {
@@ -312,17 +325,22 @@ export class BoardView {
     for (const t of shown) {
       const c = t.tag === 'plain' ? PALETTE[t.move.color].m : TAG_COLOR[t.tag];
       const [x, y] = t.dest;
+      const n = this.numbered.indexOf(t) + 1;
       const w = t.label.length * 9.6 + (t.tag === 'kill' ? 50 : 20);
-      const { lx, ly } = placeLabel(x, y, w, taken);
       const text = t.tag === 'kill' ? `${t.label} KILL` : t.label;
+      // A numbered marker has its words on its button instead, so no pill piles up on a crowded spot.
+      const pill = n ? '' : (() => {
+        const { lx, ly } = placeLabel(x, y, w, taken);
+        return `<g transform="translate(${lx} ${ly})"><rect x="${-w / 2}" y="-13" width="${w}" height="26" rx="13" class="pill"/><text y="6.5" text-anchor="middle">${text}</text></g>`;
+      })();
       const icon =
-        t.tag === 'kill' ? `<path d="M-6,-6 L6,6 M6,-6 L-6,6" stroke="#fff" stroke-width="3" stroke-linecap="round"/>`
+        n ? `<text class="num" y="6.5" text-anchor="middle">${n}</text>`
+        : t.tag === 'kill' ? `<path d="M-6,-6 L6,6 M6,-6 L-6,6" stroke="#fff" stroke-width="3" stroke-linecap="round"/>`
         : t.tag === 'safe' ? `<path d="M0,-7 L2,-2 7,-2 3,1.5 4.5,6.5 0,3.5 -4.5,6.5 -3,1.5 -7,-2 -2,-2Z" fill="#fff"/>`
         : t.tag === 'home' || t.tag === 'finish' ? `<path d="M-6,1 L0,-6 L6,1 M-4,0 V6 H4 V0" fill="none" stroke="#5a2d00" stroke-width="2.2" stroke-linejoin="round"/>`
         : `<circle r="4" fill="#fff"/>`;
       m += `<g class="mark ${t.tag}${on.includes(t) ? ' on' : ''}${this.fresh ? ' fresh' : ''}" transform="translate(${x} ${y}) scale(1.22)" style="--c:${c}">
-        <circle class="ring" r="18"/><circle class="core" r="13"/>${icon}
-        <g transform="translate(${lx} ${ly})"><rect x="${-w / 2}" y="-13" width="${w}" height="26" rx="13" class="pill"/><text y="6.5" text-anchor="middle">${text}</text></g></g>`;
+        <circle class="ring" r="18"/><circle class="core" r="13"/>${icon}${pill}</g>`;
     }
     this.fx.innerHTML = s;
     this.marks.innerHTML = m;

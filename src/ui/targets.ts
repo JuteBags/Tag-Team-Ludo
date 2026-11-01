@@ -10,7 +10,7 @@ export interface Target {
   pawns: string[];
   /** Where the move lands, in board units. */
   dest: Pt;
-  /** Short label on the landing marker: "+4", "+2 +2", "Out". */
+  /** Short label on the landing marker: "+4", "Pair +2" (both tokens move 2), "Out". */
   label: string;
   tag: TargetTag;
 }
@@ -28,7 +28,7 @@ export function moveTargets(players: PlayerState[], moves: Move[]): Target[] {
     const tag: TargetTag = m.captures.length ? 'kill' : m.to === FINISHED ? 'finish' : m.to >= HOME_FIRST ? 'home' : sq !== null && isSafe(sq) ? 'safe' : 'plain';
     // When a pair could also split, say which marker is which.
     const both = moves.some((x) => x.kind !== m.kind && x.kind !== 'release' && m.kind !== 'release' && x.from === m.from);
-    const label = m.kind === 'release' ? 'Out' : m.kind === 'pair' ? `${both ? 'Pair ' : ''}+${m.steps} +${m.steps}` : `${both ? 'One ' : ''}+${m.steps}`;
+    const label = m.kind === 'release' ? 'Out' : m.kind === 'pair' ? `Pair +${m.steps}` : `${both ? 'One ' : ''}+${m.steps}`;
     return { move: m, pawns, dest: spot(m.color, m.to, m.tokens[0]!).pt, label, tag };
   });
   // Targets landing on the same spot are spread sideways so each stays tappable.
@@ -40,6 +40,37 @@ export function moveTargets(players: PlayerState[], moves: Move[]): Target[] {
     });
   }
   return targets;
+}
+
+/** Landing markers closer than this (board units; a square is 40) crowd each other. */
+export const CROWD = 80;
+/** A marker this close to the pawn of another move sits on it: a tap there is ambiguous. */
+export const ON_PAWN = 36;
+
+/**
+ * The targets whose markers crowd another move's: landing within CROWD of its marker, or within ON_PAWN
+ * of the pawn it moves (an "Out" marker on a pawn that can also move). In move order. These get big
+ * numbered buttons below the board, so a choice is never hidden under a pawn or another marker. Empty
+ * unless 2-4 targets crowd: one is no choice, and more than four don't fit as buttons (rare).
+ */
+export function crowded(targets: Target[], players: PlayerState[]): Target[] {
+  const d = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const from = (t: Target): Pt => {
+    const tokens = players.find((p) => p.color === t.move.color)!.tokens;
+    const i = Number(t.pawns[0]!.slice(t.move.color.length));
+    return spot(t.move.color, tokens[i]!, i).pt;
+  };
+  const clash = (t: Target, u: Target) => d(t.dest, u.dest) < CROWD || d(t.dest, from(u)) < ON_PAWN || d(u.dest, from(t)) < ON_PAWN;
+  const c = targets.filter((t) => targets.some((u) => u !== t && clash(t, u)));
+  return c.length >= 2 && c.length <= 4 ? c : [];
+}
+
+const TAG_WORD: Record<TargetTag, string> = { kill: 'kill', finish: 'home!', home: 'home column', safe: 'safe', plain: '' };
+
+/** A target's button text: what moves, how far, and what it does ("Pair +1", "One token +2 · kill"). */
+export function choiceText(t: Target): { what: string; does: string } {
+  const what = t.move.kind === 'release' ? 'Out' : t.label.replace(/^One /, 'One token ');
+  return { what, does: TAG_WORD[t.tag] };
 }
 
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
