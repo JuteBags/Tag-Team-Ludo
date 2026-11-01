@@ -4,7 +4,10 @@
 // rates and the accuracy, over every decision and over the meaningful ones only (spread: best minus worst
 // candidate, at least 3 or 5 points).
 //   node tools/ai/dist/review_calib.mjs --layout 2p [--mover hard|normal|first] [--min 600] [--games 30] [--from 1]
-// Prints CALIB {layout, mover, games, moves, q, rates, acc, spread: {q, ge3: {moves, acc, q, rates}, ge5: ...}}.
+// Prints CALIB {layout, mover, games, moves, q, rates, acc, spread: {q, ge3: {moves, acc, q, rates}, ge5: ...},
+// base128: {agree, agreeKey, ...}}: base128 reviews the same decisions from 128 playouts (with the same top-ups)
+// and says how often its label matches the 256 one (agreeKey: over decisions either calls a key move), and
+// how long each took.
 // Seeds are fixed (game g uses seed from+g), so a rerun gives the same table.
 import { readFileSync } from 'node:fs';
 import { createGame, move, roll, seededDie, seeded, type BotLevel, type GameRecord, type Seat } from '../../src/engine';
@@ -76,6 +79,14 @@ function stats(xs: { gap: number; se: number }[]) {
 const movers: Mover[] = a.mover ? [a.mover as Mover] : ['hard', 'normal', 'first'];
 for (const mover of movers) {
   const verdicts: { gap: number; se: number; spread: number }[] = [];
+  // The same decisions from a base of 128 playouts: does the label agree with the 256 one?
+  let same = 0;
+  let pairs = 0;
+  let keySame = 0;
+  let keyPairs = 0;
+  let t256 = 0;
+  let t128 = 0;
+  const KEY = new Set<Label>(['inaccuracy', 'mistake', 'blunder']);
   let games = 0;
   const t0 = Date.now();
   while (games < minGames || verdicts.length < minMoves) {
@@ -83,7 +94,23 @@ for (const mover of movers) {
     const r = replay(rec);
     if (!r.ok) throw new Error(`game ${from + games} does not replay: ${r.error}`);
     spreads.clear();
-    for (const m of await reviewMoves(rec, r.states, [0], reviewer)) verdicts.push({ gap: m.gap, se: m.se, spread: spreads.get(r.states[m.at]!) ?? 0 });
+    let t = Date.now();
+    const full = await reviewMoves(rec, r.states, [0], reviewer);
+    t256 += Date.now() - t;
+    for (const m of full) verdicts.push({ gap: m.gap, se: m.se, spread: spreads.get(r.states[m.at]!) ?? 0 });
+    t = Date.now();
+    const half = new Map((await reviewMoves(rec, r.states, [0], reviewer, undefined, 128)).map((m) => [m.at, m.label]));
+    t128 += Date.now() - t;
+    for (const m of full) {
+      const l = half.get(m.at);
+      if (!l) continue;
+      pairs++;
+      if (l === m.label) same++;
+      if (KEY.has(l) || KEY.has(m.label)) {
+        keyPairs++;
+        if (l === m.label) keySame++;
+      }
+    }
     games++;
   }
   const sp = verdicts.map((x) => x.spread);
@@ -99,6 +126,7 @@ for (const mover of movers) {
       ge3: stats(verdicts.filter((x) => x.spread >= 3)),
       ge5: stats(verdicts.filter((x) => x.spread >= 5)),
     },
+    base128: { agree: +(same / Math.max(1, pairs)).toFixed(4), agreeKey: +(keySame / Math.max(1, keyPairs)).toFixed(4), keyPairs, secs256: Math.round(t256 / 1000), secs128: Math.round(t128 / 1000) },
   };
   console.log('CALIB ' + JSON.stringify(out));
 }
