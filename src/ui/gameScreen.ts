@@ -1,7 +1,7 @@
 // Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
 // a person passing the device; a person with two houses plays both colours' turns.
 import { FINISHED, createGame, cryptoRng, isDone, move, ownerRanking, roll, type Color, type GameState, type Move, type Rng } from '../engine';
-import { chooseBotMove, loadExtreme } from '../engine/ai/levels';
+import { chooseBotMoveAsync } from '../engine/ai/levels';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
 import { playCutscene } from './palace';
@@ -191,11 +191,12 @@ export class GameScreen {
       if (!this.disposed) await this.doRoll(c);
       return;
     }
-    if (this.state.players[this.state.current]!.level === 'extreme') await loadExtreme();
-    const m = chooseBotMove(this.state, this.rng);
-    // Light up the die the bot plays, so its turn is easy to follow.
+    const t0 = performance.now();
+    const m = await chooseBotMoveAsync(this.state, this.rng);
+    if (this.disposed) return;
+    // Light up the die the bot plays, so its turn is easy to follow; thinking time counts toward the pause.
     this.drawTrays(m.roll);
-    await this.botPause(420);
+    await this.botPause(Math.max(0, 420 - (performance.now() - t0)));
     if (!this.disposed) await this.doMove(m);
   }
 

@@ -9,4 +9,6 @@ export default defineConfig({
   server: { port: 5173 },
   // The app version shown on the home screen comes from package.json.
   define: { __APP_VERSION__: JSON.stringify(version) },
+  // ES module workers, so Extreme's rollout worker loads the net as its own lazy chunk (not inlined).
+  worker: { format: 'es' },
 });
