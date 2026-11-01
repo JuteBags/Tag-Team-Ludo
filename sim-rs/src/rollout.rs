@@ -18,7 +18,7 @@ use crate::search::leaf_key;
 /// Significance for leaving base's move (paired mean advantage / its standard error).
 const Z: f64 = 2.0;
 
-fn playout(mut g: Game, base: &Policy, me: u8, dice: &mut [Rng; 4], rng: &mut Rng, cut: u32, eval: Option<&Evaluator>) -> f64 {
+fn playout(mut g: Game, base: &Policy, mine: &Policy, me: u8, dice: &mut [Rng; 4], rng: &mut Rng, cut: u32, eval: Option<&Evaluator>) -> f64 {
     let mut turns = 0u32;
     let mut cur = g.current;
     let mut steps = 0;
@@ -34,7 +34,7 @@ fn playout(mut g: Game, base: &Policy, me: u8, dice: &mut [Rng; 4], rng: &mut Rn
             let f = sample_face(&FAIR, &mut dice[g.current]);
             g.roll(f);
         } else {
-            let k = base.choose(&g, rng);
+            let k = if g.b.p[g.current].owner == me { mine.choose(&g, rng) } else { base.choose(&g, rng) };
             let m = g.moves.m[k];
             g.play(&m);
         }
@@ -101,7 +101,7 @@ pub fn evaluate(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&Evalu
         for (c, (_, t)) in cands.iter().enumerate() {
             let mut d = [Rng::seeded(s), Rng::seeded(s ^ 0x1111), Rng::seeded(s ^ 0x2222), Rng::seeded(s ^ 0x3333)];
             let mut r = Rng::seeded(s ^ 0x1234_5678);
-            res[c][i] = playout(*t, base, me, &mut d, &mut r, cut, eval);
+            res[c][i] = playout(*t, base, base, me, &mut d, &mut r, cut, eval);
         }
     }
     // leave base's move only for the best candidate whose paired advantage is significant
@@ -161,7 +161,10 @@ fn paired(a: &[f64], b: &[f64]) -> (f64, f64) {
 /// to the leader exceeds Z_DROP standard errors stops, and the race ends with one candidate left, a near
 /// tie (EPS), or `nmax` playouts each. Base's move is left only on a significant (Z) paired advantage,
 /// as in choose. Clear decisions cost a few rounds, so the playouts go to the close ones.
-pub fn choose_race(g: &Game, rng: &mut Rng, nmax: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy) -> usize {
+///
+/// `mine` plays the mover's own colours in the playouts (base plays everyone else): a stronger policy of
+/// one's own than base values the candidates as "I keep playing well", not "I play like base from here".
+pub fn choose_race(g: &Game, rng: &mut Rng, nmax: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy, mine: &Policy) -> usize {
     if g.moves.len() == 1 {
         return 0;
     }
@@ -202,7 +205,7 @@ pub fn choose_race(g: &Game, rng: &mut Rng, nmax: usize, cut: u32, eval: Option<
             for &c in &active {
                 let mut d = [Rng::seeded(s), Rng::seeded(s ^ 0x1111), Rng::seeded(s ^ 0x2222), Rng::seeded(s ^ 0x3333)];
                 let mut r = Rng::seeded(s ^ 0x1234_5678);
-                res[c].push(playout(cands[c].1, base, me, &mut d, &mut r, cut, eval));
+                res[c].push(playout(cands[c].1, base, mine, me, &mut d, &mut r, cut, eval));
             }
         }
         n += m;

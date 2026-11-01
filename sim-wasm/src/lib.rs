@@ -94,7 +94,7 @@ pub unsafe extern "C" fn choose(state: *mut u8, len: usize, nmax: u32, seed: u32
     ENGINE.with(|e| match e.borrow().as_ref() {
         Some(eng) => {
             let mut rng = Rng::seeded(seed as i64);
-            ludo_sim::rollout::choose_race(&g, &mut rng, nmax as usize, CUT, Some(&eng.net), &eng.base) as i32
+            ludo_sim::rollout::choose_race(&g, &mut rng, nmax as usize, CUT, Some(&eng.net), &eng.base, &eng.base) as i32
         }
         None => -1,
     })

@@ -215,9 +215,10 @@ pub enum Policy {
     Search { eval: std::sync::Arc<crate::eval::Evaluator>, opts: crate::search::SearchOptions, temperature: f64 },
     /// rollout:<n>:<cut turns>:<eval.json or ->:<base spec> (rollout.rs)
     Rollout { n: usize, cut: u32, eval: Option<std::sync::Arc<crate::eval::Evaluator>>, base: Box<Policy> },
-    /// race:<nmax>:<cut turns>:<eval.json or ->:<base spec>, the rollout player with adaptive playouts
-    /// (rollout::choose_race): clearly worse candidates stop early, close ones get up to nmax playouts
-    Race { n: usize, cut: u32, eval: Option<std::sync::Arc<crate::eval::Evaluator>>, base: Box<Policy> },
+    /// race:<nmax>:<cut turns>:<eval.json or ->:<base spec>[|<mine spec>], the rollout player with adaptive
+    /// playouts (rollout::choose_race): clearly worse candidates stop early, close ones get up to nmax
+    /// playouts; `mine` (default base) plays the mover's own colours in the playouts
+    Race { n: usize, cut: u32, eval: Option<std::sync::Arc<crate::eval::Evaluator>>, base: Box<Policy>, mine: Box<Policy> },
 }
 
 /// blend:<net>:<rules>:<alpha>, one shared evaluator per distinct spec.
@@ -268,7 +269,8 @@ impl Policy {
                 let parts: Vec<&str> = s.splitn(5, ':').collect();
                 assert_eq!(parts.len(), 5, "race:<nmax>:<cut>:<eval.json|->:<base spec>");
                 let eval = if parts[3] == "-" { None } else { Some(load_eval(parts[3])) };
-                Policy::Race { n: parts[1].parse().unwrap(), cut: parts[2].parse().unwrap(), eval, base: Box::new(Policy::parse(parts[4])) }
+                let (b, m) = parts[4].split_once('|').unwrap_or((parts[4], parts[4]));
+                Policy::Race { n: parts[1].parse().unwrap(), cut: parts[2].parse().unwrap(), eval, base: Box::new(Policy::parse(b)), mine: Box::new(Policy::parse(m)) }
             }
             _ if s.starts_with("blend:") => {
                 // blend:<net>:<rules>:<alpha>, then the net: spec's fields shifted by two
@@ -288,7 +290,7 @@ impl Policy {
             Policy::Bot(l) => choose_move(g, *l, rng),
             Policy::Search { eval, opts, temperature } => crate::search::choose_extreme(eval, g, rng, *opts, *temperature),
             Policy::Rollout { n, cut, eval, base } => crate::rollout::choose(g, rng, *n, *cut, eval.as_deref(), base),
-            Policy::Race { n, cut, eval, base } => crate::rollout::choose_race(g, rng, *n, *cut, eval.as_deref(), base),
+            Policy::Race { n, cut, eval, base, mine } => crate::rollout::choose_race(g, rng, *n, *cut, eval.as_deref(), base, mine),
         }
     }
 }
