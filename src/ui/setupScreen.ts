@@ -17,9 +17,9 @@ const PENCIL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 
 /** What each bot level plays like (src/engine/ai/levels.ts), in a line, with the extra gold it pays. */
 const LEVEL_BLURB: Record<BotLevel, string> = {
   easy: 'Plays simple, sensible moves. Good for learning.',
-  normal: 'Picks good moves, but one die at a time.',
+  normal: "Picks good moves, but doesn't plan the whole turn.",
   hard: 'Plans the whole turn: every die and the bonus roll.',
-  extreme: 'Plays each move out up to 128 times, then picks the best.',
+  extreme: 'Plays out every option many times, then picks the best.',
 };
 const levelBlurb = (l: BotLevel) => {
   const bonus = levelBonus(l);
