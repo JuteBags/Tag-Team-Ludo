@@ -216,6 +216,10 @@ def main():
             if todo_l:
                 run_parallel(todo_l)
             target = ['--target', 'lambda', '--pl-weight', str(a.pl_weight)]
+            # only generations whose every shard has targets (a ladder that switched to lambda mid-way has
+            # outcome-only generations before; its window grows back to --replay as lambda generations accumulate)
+            shards = ','.join(f'{d}/gen-{j}/shard-*.bin' for j in range(max(1, k - a.replay + 1), k + 1)
+                              if (g := sorted((d / f'gen-{j}').glob('shard-*.bin'))) and all(pathlib.Path(f'{f}.targets').exists() for f in g))
         residual = a.blend and a.residual
         new_blend = gd / 'blend.json'  # residual mode: the rules and alpha the new net was trained against
         if not new.exists():
