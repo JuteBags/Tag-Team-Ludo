@@ -143,3 +143,20 @@ export function chooseExtreme(net: Evaluator, state: GameState, rng: Rng, opts?:
   for (const x of vals) if (x.value + rng() * 1e-9 > best.value) best = x;
   return best.move;
 }
+
+/**
+ * Each move by the value of the position it leads to alone: no planning of the rest of the tray, no look at
+ * a bonus roll. Normal plays this with Hard's rules (sim-rs bot.rs greedy, the same ties).
+ */
+export function chooseGreedy(ev: Evaluator, state: GameState, rng: Rng): Move {
+  if (state.moves.length === 1) return state.moves[0]!;
+  const me = state.players[state.current]!.owner;
+  const vals = state.moves.map((m) => {
+    const t = move(state, m);
+    if (t.phase === 'over') return ownerRanking(t)[0] === me ? 1 : 0;
+    return ev.ownerChances(t)[me]!;
+  });
+  let best = 0;
+  for (let i = 0; i < vals.length; i++) if (vals[i]! + rng() * 1e-9 > vals[best]!) best = i;
+  return state.moves[best]!;
+}

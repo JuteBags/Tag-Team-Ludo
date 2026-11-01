@@ -5,7 +5,7 @@ import { SEATS, analyzeDice, chooseMove, createGame, move, roll, sampleFace, see
 import { Blend } from '../../src/engine/ai/blend';
 import { LinearRules, type Evaluator, type LinearJSON } from '../../src/engine/ai/linear';
 import { Net, type NetJSON } from '../../src/engine/ai/net';
-import { chooseExtreme } from '../../src/engine/ai/search';
+import { chooseExtreme, chooseGreedy } from '../../src/engine/ai/search';
 
 export type Policy = (s: GameState, rng: Rng) => Move;
 
@@ -57,6 +57,10 @@ export function policy(spec: string): Policy {
     const net = loadNet(path!);
     const opts = { depth: Number(depth ?? 1), theirK: Number(theirK ?? 3), race: race === '1', chance: Number(chance ?? 2), cut: Number(cut ?? 0) };
     return (s, rng) => chooseExtreme(net, s, rng, opts, Number(temp ?? 0));
+  }
+  if (spec.startsWith('greedy:')) {
+    const ev = loadNet(spec.slice('greedy:'.length));
+    return (s, rng) => chooseGreedy(ev, s, rng);
   }
   if (spec.startsWith('blend:')) {
     // blend:<net.json>:<rules.json>:<alpha>[:depth[:theirK[:temperature[:race[:chance[:cut]]]]]]

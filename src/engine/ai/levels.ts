@@ -1,12 +1,15 @@
-// The bot levels the app plays: Easy and Normal are the original rule bots (bot.ts); Hard plans its whole
-// turn with readable weighted rules (hard-rules.ts); Extreme plans its whole turn with the trained value
-// net (extreme-net.json, from self-play). The net is loaded on first use, so it costs nothing until then.
+// The bot levels the app plays, each a step above the last (4p, one house against three of the level
+// below: Normal 32.8% vs Easy, Hard 30.5% vs Normal; 25% is even):
+//   Easy     the original Hard rule bot (bot.ts)
+//   Normal   Hard's weighted rules (hard-rules.ts), each move judged alone (no planning of the turn)
+//   Hard     the same rules, planning the whole turn (search.ts, depth 1)
+//   Extreme  plans its whole turn with the trained value net (extreme-net.json), loaded on first use.
 import { chooseMove } from '../bot';
 import type { GameState, Move, Rng } from '../types';
 import { HARD_RULES } from './hard-rules';
 import { LinearRules } from './linear';
 import { Net, type NetJSON } from './net';
-import { chooseExtreme } from './search';
+import { chooseExtreme, chooseGreedy } from './search';
 
 const hard = new LinearRules(HARD_RULES);
 let extreme: Net | null = null;
@@ -21,5 +24,6 @@ export function chooseBotMove(state: GameState, rng: Rng): Move {
   const level = state.players[state.current]!.level ?? 'normal';
   if (level === 'extreme' && extreme) return chooseExtreme(extreme, state, rng, { depth: 1 });
   if (level === 'hard' || level === 'extreme') return chooseExtreme(hard, state, rng, { depth: 1 });
-  return chooseMove(state, rng);
+  if (level === 'normal') return chooseGreedy(hard, state, rng);
+  return chooseMove(state, rng, 'hard');
 }
