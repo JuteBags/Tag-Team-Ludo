@@ -10,7 +10,7 @@ export interface Target {
   pawns: string[];
   /** Where the move lands, in board units. */
   dest: Pt;
-  /** Short label on the landing marker: "+4", "+2 +2", "Out". */
+  /** Short label on the landing marker: "+4", "Pair +2" (both tokens move 2), "Out". */
   label: string;
   tag: TargetTag;
 }
@@ -28,7 +28,7 @@ export function moveTargets(players: PlayerState[], moves: Move[]): Target[] {
     const tag: TargetTag = m.captures.length ? 'kill' : m.to === FINISHED ? 'finish' : m.to >= HOME_FIRST ? 'home' : sq !== null && isSafe(sq) ? 'safe' : 'plain';
     // When a pair could also split, say which marker is which.
     const both = moves.some((x) => x.kind !== m.kind && x.kind !== 'release' && m.kind !== 'release' && x.from === m.from);
-    const label = m.kind === 'release' ? 'Out' : m.kind === 'pair' ? `${both ? 'Pair ' : ''}+${m.steps} +${m.steps}` : `${both ? 'One ' : ''}+${m.steps}`;
+    const label = m.kind === 'release' ? 'Out' : m.kind === 'pair' ? `Pair +${m.steps}` : `${both ? 'One ' : ''}+${m.steps}`;
     return { move: m, pawns, dest: spot(m.color, m.to, m.tokens[0]!).pt, label, tag };
   });
   // Targets landing on the same spot are spread sideways so each stays tappable.
@@ -67,7 +67,7 @@ export function crowded(targets: Target[], players: PlayerState[]): Target[] {
 
 const TAG_WORD: Record<TargetTag, string> = { kill: 'kill', finish: 'home!', home: 'home column', safe: 'safe', plain: '' };
 
-/** A target's button text: what moves, how far, and what it does ("Pair +1 +1", "One token +2 · kill"). */
+/** A target's button text: what moves, how far, and what it does ("Pair +1", "One token +2 · kill"). */
 export function choiceText(t: Target): { what: string; does: string } {
   const what = t.move.kind === 'release' ? 'Out' : t.label.replace(/^One /, 'One token ');
   return { what, does: TAG_WORD[t.tag] };

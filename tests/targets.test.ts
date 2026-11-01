@@ -34,7 +34,7 @@ describe('move targets', () => {
   it('offers a pair and a single move from a star as two landing spots', () => {
     const ps = mk({ blue: [8, 8, -1, -1], red: B });
     const t = moveTargets(ps, legalMoves(ps, 'blue', 4));
-    expect(t.map((x) => [x.label, x.pawns]).sort()).toEqual([['One +4', ['blue0', 'blue1']], ['Pair +2 +2', ['blue0', 'blue1']]]);
+    expect(t.map((x) => [x.label, x.pawns]).sort()).toEqual([['One +4', ['blue0', 'blue1']], ['Pair +2', ['blue0', 'blue1']]]);
     expect(t[0]!.dest).not.toEqual(t[1]!.dest);
   });
 
@@ -93,7 +93,7 @@ describe('crowded move markers', () => {
     const ps = mk({ blue: [0, 0, -1, -1], red: B });
     const t = moveTargets(ps, legalMoves(ps, 'blue', 2));
     const c = crowded(t, ps);
-    expect(c.map((x) => choiceText(x).what).sort()).toEqual(['One token +2', 'Pair +1 +1']);
+    expect(c.map((x) => choiceText(x).what).sort()).toEqual(['One token +2', 'Pair +1']);
   });
 
   it('catches an Out marker sitting on a pawn that can also move', () => {

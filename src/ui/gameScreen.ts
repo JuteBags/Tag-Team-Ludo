@@ -435,7 +435,7 @@ export class GameScreen {
         this.drawTrays(r);
         const targets: Target[] = moveTargets(this.state.players, this.state.moves.filter((m) => m.roll === r));
         const other = usable.length > 1 ? ', or another die' : '';
-        if (targets.some((t) => t.move.kind === 'pair')) this.setHint(c, `Pair move with the ${r}`, `Pair moves ${r / 2} + ${r / 2}. Tap a token${other}`, true);
+        if (targets.some((t) => t.move.kind === 'pair')) this.setHint(c, `Pair move with the ${r}`, `Both tokens move ${r / 2}. Tap a token${other}`, true);
         else this.setHint(c, `${who} rolled ${this.state.rolls.join(' · ')}`, `Playing the ${r}: tap a token${other}`);
         // Markers that land close together crowd each other and the pawns: those moves also get big
         // numbered buttons in the hint card, matching numbers on their markers.
@@ -452,7 +452,7 @@ export class GameScreen {
           (own) => {
             const pair = own.find((t) => t.move.kind === 'pair');
             const one = own.find((t) => t.move.kind === 'single');
-            if (pair && one) this.setHint(c, 'Pair or one token?', `Tap a spot: pair moves ${pair.move.steps} + ${pair.move.steps}, one token moves ${one.move.steps}`, true);
+            if (pair && one) this.setHint(c, 'Pair or one token?', `Tap a spot: the pair moves ${pair.move.steps} each, one token moves ${one.move.steps}`, true);
           },
           (pawn) => this.setHint(c, "That token can't move", whyStuck(this.state.players, c, Number(pawn.slice(c.length)), r, (o) => this.name(o), this.state.singles)),
           crowd,
