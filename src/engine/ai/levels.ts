@@ -1,10 +1,10 @@
 // The bot levels the app plays, each a step above the last (4p, one house against three of the level
-// below: Normal 32.8% vs Easy, Hard 30.5% vs Normal; 25% is even):
+// below; 25% is even; docs/ai-levels.md has every mode):
 //   Easy     the original Hard rule bot (bot.ts)
 //   Normal   Hard's weighted rules (hard-rules.ts), each move judged alone (no planning of the turn)
 //   Hard     the same rules, planning the whole turn (search.ts, depth 1)
 //   Extreme  the rollout player (rollout.ts, WebAssembly in a worker): every move played out on shared
-//            dice, Hard's rules playing every seat, the trained value net (extreme-net.json) scoring
+//            dice, Hard v2's rules (playout-rules.ts) playing every seat, the trained value net (extreme-net.json) scoring
 //            where the playouts stop. Without workers it plans its turn with the net alone.
 import { chooseMove } from '../bot';
 import type { GameState, Move, Rng } from '../types';
@@ -31,7 +31,7 @@ export function chooseBotMove(state: GameState, rng: Rng): Move {
 }
 
 /** Playouts per candidate move, at most (the race stops clear decisions far earlier). */
-export const EXTREME_PLAYOUTS = 256;
+export const EXTREME_PLAYOUTS = 128;
 
 let worker: Worker | null | undefined;
 let nextId = 0;

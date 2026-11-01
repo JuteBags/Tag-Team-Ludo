@@ -1,6 +1,6 @@
 // Extreme's thinking off the UI thread: the rollout engine (rollout.ts) in a Web Worker. Messages in:
 // { id, state, nmax, seed }; out: { id, index } with index into state.moves, or { id, error }.
-import { HARD_RULES } from './hard-rules';
+import { PLAYOUT_RULES } from './playout-rules';
 import type { NetJSON } from './net';
 import { RolloutEngine } from './rollout';
 import wasmUrl from './ludo_wasm.wasm?url';
@@ -10,7 +10,7 @@ let engine: Promise<RolloutEngine> | null = null;
 
 function load(): Promise<RolloutEngine> {
   engine ??= Promise.all([fetch(wasmUrl).then((r) => r.arrayBuffer()), import('./extreme-net.json')]).then(([wasm, net]) =>
-    RolloutEngine.create(wasm, net.default as unknown as NetJSON, HARD_RULES),
+    RolloutEngine.create(wasm, net.default as unknown as NetJSON, PLAYOUT_RULES),
   );
   return engine;
 }

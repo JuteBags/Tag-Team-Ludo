@@ -2,7 +2,7 @@
 // it plays legal moves through whole games.
 import { describe, expect, it } from 'vitest';
 import { SEATS, createGame, move, roll, seeded, type GameState } from '../src/engine';
-import { HARD_RULES } from '../src/engine/ai/hard-rules';
+import { PLAYOUT_RULES } from '../src/engine/ai/playout-rules';
 import { chooseBotMove } from '../src/engine/ai/levels';
 import type { NetJSON } from '../src/engine/ai/net';
 import { RolloutEngine } from '../src/engine/ai/rollout';
@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 async function engine(): Promise<RolloutEngine> {
   const wasm = readFileSync(new URL('../src/engine/ai/ludo_wasm.wasm', import.meta.url));
   const net = JSON.parse(readFileSync(new URL('../src/engine/ai/extreme-net.json', import.meta.url), 'utf8')) as NetJSON;
-  return RolloutEngine.create(wasm, net, HARD_RULES);
+  return RolloutEngine.create(wasm, net, PLAYOUT_RULES);
 }
 
 describe('rollout Extreme (wasm)', () => {
