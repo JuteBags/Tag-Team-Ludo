@@ -119,9 +119,10 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
 
   const q = <T extends Element>(s: string) => el.querySelector<T & HTMLElement>(s)!;
 
-  /** Shows one step and marks progress. */
+  /** The pencil hint, on the first person's name only. */
   const pencilFor = (i: number) => (i === people.findIndex((p) => !p.bot) ? PENCIL : '');
 
+  /** Shows one step and marks progress. */
   const show = (s: Step) => {
     step = s;
     el.querySelectorAll<HTMLElement>('.wiz').forEach((w) => (w.hidden = w.dataset.step !== s));
@@ -370,7 +371,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
         { duration: 520, delay: at, easing: 'cubic-bezier(.3,.8,.4,1.2)', fill: 'backwards' },
       );
       peopleEl.querySelector<HTMLElement>('.prow.first')!.animate([{ boxShadow: 'inset 0 0 0 1.5px rgba(255,214,90,.55), 0 0 0 0 rgba(255,214,90,.6)' }, { boxShadow: 'inset 0 0 0 1.5px rgba(255,214,90,.55), 0 0 18px 4px rgba(255,214,90,.55)', offset: 0.4 }, { boxShadow: 'inset 0 0 0 1.5px rgba(255,214,90,.55), 0 0 0 0 rgba(255,214,90,0)' }], { duration: 900, delay: at + 300 });
-      setTimeout(() => sfx.crown(), at + 300);
+      setTimeout(() => el.isConnected && step === 'roll' && sfx.crown(), at + 300);
     } else if (crown) sfx.crown();
   };
   q('[data-act=to-pick]').addEventListener('click', () => {
