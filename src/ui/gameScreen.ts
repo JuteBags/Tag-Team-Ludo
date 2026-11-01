@@ -126,10 +126,15 @@ export class GameScreen {
     return this.fixedRng ?? seeded(mixSeed(this.seed, what + positionKey(this.state)));
   }
 
+  /** The game as it would be saved now. */
+  private snapshot(): SavedGame {
+    return { v: 1, config: this.config, state: this.state, kills: this.kills, pairs: this.pairs, faces: [...this.lastFace], savedAt: Date.now(), seed: this.seed };
+  }
+
   /** Saves the game so it can be continued after the app closes. Done at the start of every turn. */
   private save() {
     if (this.disposed || this.ended || this.state.phase !== 'roll') return;
-    void saveGame({ v: 1, config: this.config, state: this.state, kills: this.kills, pairs: this.pairs, faces: [...this.lastFace], savedAt: Date.now(), seed: this.seed });
+    void saveGame(this.snapshot());
   }
 
   /** The Android back button: skip a cutscene, close the pause menu, leave the result, or pause. */
@@ -642,8 +647,12 @@ export class GameScreen {
           return;
         }
         this.dispose();
-        // Counted before the save is cleared: a crash in between loses the count rather than doubling it.
-        if (loses) await recordGame({ mode: 'pvc', place: 0, kills: 0, pairs: 0, quit: true });
+        // As in giveUpSaved: the save is marked counted before the loss is recorded, then cleared, so a crash
+        // at any point can't count the game twice (a counted save is never offered or counted again).
+        if (loses) {
+          await saveGame({ ...this.snapshot(), counted: true });
+          await recordGame({ mode: 'pvc', place: 0, kills: 0, pairs: 0, quit: true });
+        }
         void clearGame();
         this.exit('home');
       }

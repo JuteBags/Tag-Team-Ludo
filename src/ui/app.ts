@@ -45,13 +45,21 @@ export function mountApp(root: HTMLElement) {
       count = 2;
       setup(mode, 2);
     }));
+  // Set while a game starts, so a double tap on Start or Play again can't open two games.
+  let starting = false;
   const play = async (cfg: GameConfig, saved?: SavedGame) => {
-    // A new game replaces any saved one (counted as a loss when it's given up past the first round); a
-    // continued game picks up from it.
-    if (!saved) await giveUpSaved();
-    game = new GameScreen(cfg, (to) => (to === 'home' ? void home() : play(cfg)), undefined, saved);
-    stage.replaceChildren(game.el);
-    if (import.meta.env.DEV) (window as unknown as { __ludo: GameScreen }).__ludo = game;
+    if (starting) return;
+    starting = true;
+    try {
+      // A new game replaces any saved one (counted as a loss when it's given up past the first round); a
+      // continued game picks up from it.
+      if (!saved) await giveUpSaved();
+      game = new GameScreen(cfg, (to) => (to === 'home' ? void home() : play(cfg)), undefined, saved);
+      stage.replaceChildren(game.el);
+      if (import.meta.env.DEV) (window as unknown as { __ludo: GameScreen }).__ludo = game;
+    } finally {
+      starting = false;
+    }
   };
 
   // Back: an open sheet closes; in a game it pauses and resumes; in setup it goes a step back; on the
