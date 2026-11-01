@@ -91,6 +91,24 @@ export function previewLayout(count: 2 | 3 | 4, rules: PickRules, bots: number):
   return layout;
 }
 
+/** `layout` turned round the board so that what Blue had, `to` has (a person's houses keep their places relative to each other). */
+export function turnLayout(layout: Record<Color, Slot>, to: Color): Record<Color, Slot> {
+  const k = COLORS.indexOf(to);
+  return Object.fromEntries(COLORS.map((c, i) => [COLORS[(i + k) % 4], layout[c]])) as Record<Color, Slot>;
+}
+
+/**
+ * Quick Start's seats vs Computer: you on `me` (and, with two colours each, its pair), bots in the usual
+ * seats turned the same way. Person 0 is you; the rest are bots by number.
+ */
+export function quickSeats(count: 2 | 3 | 4, rules: PickRules, me: Color): Seat[] {
+  const layout = turnLayout(previewLayout(count, rules, 0), me);
+  return COLORS.filter((c) => layout[c] !== 'empty').map((c) => {
+    const owner = Number(layout[c].slice(1)) - 1;
+    return { color: c, owner, bot: owner > 0 };
+  });
+}
+
 /** Longest name a person can give themselves. */
 export const NAME_MAX = 12;
 

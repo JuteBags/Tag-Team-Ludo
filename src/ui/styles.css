@@ -408,6 +408,10 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .pvh .pw svg{width:22px;height:26px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
 .pvh b{font-family:'Lilita One';font-weight:400;font-size:15px;text-shadow:0 1px 0 rgba(0,0,0,.3);white-space:nowrap}
 .pvh.empty{opacity:.35;filter:saturate(.4)}
+.setup .pvh{cursor:pointer}
+.setup .pvh:active{transform:translateY(2px)}
+.q.teams{width:100%;text-align:left;border-radius:14px;padding:10px 12px;background:rgba(255,214,90,.12);border:1.5px dashed rgba(255,214,90,.6);color:#fff}
+.q.teams .lbl{color:#ffd65a}
 .pvh.empty .pw{visibility:hidden}
 .sp{border-radius:22px;padding:16px;background:linear-gradient(180deg,rgba(14,38,104,.92),rgba(7,21,64,.92));border:1.5px solid rgba(255,214,90,.45)}
 .row2{display:flex;align-items:center;justify-content:space-between;gap:10px}
