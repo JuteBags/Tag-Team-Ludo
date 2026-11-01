@@ -102,6 +102,8 @@ def main():
     ap.add_argument('--labels', default='outcome', choices=['outcome', 'lambda'], help="lambda: ludo-label's lambda-return targets (train.py --target lambda)")
     ap.add_argument('--lam', type=float, default=0.7, help='lambda of the lambda-return targets')
     ap.add_argument('--pl-weight', type=float, default=0.1, help='with --labels lambda, this much PL on the real finishing order')
+    ap.add_argument('--modes', default='', help='self-play modes, e.g. 4p (default: every mode); the target is 4p vs Hard')
+    ap.add_argument('--pool-weights', default='60,15,15,10', help='self-play seat odds: current, previous, Hard (--hard), the old Hard')
     ap.add_argument('--check-mode', default='4p', help='mode of the checks (4p: one house tested, three baseline houses)')
     ap.add_argument('--blend', default='', help='rules json: play and check the blend net + alpha * rules, evolving the rules every generation')
     ap.add_argument('--alpha', type=float, default=2.0, help='with --blend: the starting alpha')
@@ -181,10 +183,12 @@ def main():
         # 1. play
         temp = st.get('temp', a.temp)
         fast = f'{a.race}:{a.chance}:{a.cut}'  # how the nets search in self-play (the checks use the defaults)
-        pool = (f"{spec(cur, st.get('rules'), st.get('alpha'), f':3:{temp}:{fast}')}:60,"
-                f"{spec(prev, st.get('prev_rules'), st.get('prev_alpha'), f':3:{temp}:{fast}')}:15,net:{a.hard}:1:15,hard:10")
+        wc, wp, wh, wo = a.pool_weights.split(',')
+        pool = (f"{spec(cur, st.get('rules'), st.get('alpha'), f':3:{temp}:{fast}')}:{wc},"
+                f"{spec(prev, st.get('prev_rules'), st.get('prev_alpha'), f':3:{temp}:{fast}')}:{wp},net:{a.hard}:1:{wh},hard:{wo}")
+        pool = ','.join(x for x in pool.split(',') if not x.endswith(':0'))  # a 0-weight seat is left out
         per = math.ceil(n / a.workers)
-        todo = [f"{SELFPLAY} --games {per} --seed {a.seed_base + k * 1000 + w} --pool {pool} --keep {a.keep} --commit {commit} --out {gd}/shard-{w}.bin{DICE}"
+        todo = [f"{SELFPLAY} --games {per} --seed {a.seed_base + k * 1000 + w} --pool {pool} --keep {a.keep} --commit {commit} --out {gd}/shard-{w}.bin{DICE}{f' --modes {a.modes}' if a.modes else ''}"
                 for w in range(a.workers) if not (gd / f'shard-{w}.bin').exists()]
         sampled = off = 0
         if todo:
@@ -216,6 +220,10 @@ def main():
             if todo_l:
                 run_parallel(todo_l)
             target = ['--target', 'lambda', '--pl-weight', str(a.pl_weight)]
+            # only generations whose every shard has targets (a ladder that switched to lambda mid-way has
+            # outcome-only generations before; its window grows back to --replay as lambda generations accumulate)
+            shards = ','.join(f'{d}/gen-{j}/shard-*.bin' for j in range(max(1, k - a.replay + 1), k + 1)
+                              if (g := sorted((d / f'gen-{j}').glob('shard-*.bin'))) and all(pathlib.Path(f'{f}.targets').exists() for f in g))
         residual = a.blend and a.residual
         new_blend = gd / 'blend.json'  # residual mode: the rules and alpha the new net was trained against
         if not new.exists():
