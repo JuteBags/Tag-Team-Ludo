@@ -93,8 +93,11 @@ export function roll(state: GameState, rng: Rng, forced?: number): GameState {
 
 export function move(state: GameState, m: Move): GameState {
   if (state.phase !== 'move') throw new Error(`cannot move in phase ${state.phase}`);
-  const key = JSON.stringify(m);
-  if (!state.moves.some((x) => JSON.stringify(x) === key)) throw new Error('illegal move');
+  // The same object from state.moves skips the deep compare (bots and the search pass those).
+  if (!state.moves.includes(m)) {
+    const key = JSON.stringify(m);
+    if (!state.moves.some((x) => JSON.stringify(x) === key)) throw new Error('illegal move');
+  }
 
   const players = applyMove(state.players, m);
   const me = players[state.current]!;

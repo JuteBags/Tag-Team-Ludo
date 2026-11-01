@@ -1,0 +1,19 @@
+[package]
+name = "ludo-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "The rollout Extreme (sim-rs rollout::choose_race) for the app: a wasm32 module with a C ABI"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ludo-sim = { path = "../sim-rs" }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = false

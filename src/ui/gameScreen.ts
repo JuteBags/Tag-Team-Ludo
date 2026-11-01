@@ -1,6 +1,7 @@
 // Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
 // a person passing the device; a person with two houses plays both colours' turns.
-import { FINISHED, chooseMove, createGame, cryptoRng, isDone, move, ownerRanking, roll, type Color, type GameState, type Move, type Rng } from '../engine';
+import { FINISHED, createGame, cryptoRng, isDone, move, ownerRanking, roll, type Color, type GameState, type Move, type Rng } from '../engine';
+import { chooseBotMoveAsync } from '../engine/ai/levels';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
 import { playCutscene } from './palace';
@@ -190,10 +191,12 @@ export class GameScreen {
       if (!this.disposed) await this.doRoll(c);
       return;
     }
-    const m = chooseMove(this.state, this.rng);
-    // Light up the die the bot plays, so its turn is easy to follow.
+    const t0 = performance.now();
+    const m = await chooseBotMoveAsync(this.state, this.rng);
+    if (this.disposed) return;
+    // Light up the die the bot plays, so its turn is easy to follow; thinking time counts toward the pause.
     this.drawTrays(m.roll);
-    await this.botPause(420);
+    await this.botPause(Math.max(0, 420 - (performance.now() - t0)));
     if (!this.disposed) await this.doMove(m);
   }
 
@@ -642,7 +645,7 @@ export class GameScreen {
     const winner = this.config.names[order[0]!]!;
     const title = pvp ? `${winner.toUpperCase()} WINS!` : won ? 'YOU WIN!' : `${PLACES[place]} PLACE`;
     // Achievements need the new totals, so they join the reward panel when the stats are saved.
-    const facts = { mode: this.config.mode, place, lost: this.lost, hard: this.state.players.filter((p) => p.bot).every((p) => p.level === 'hard') && this.state.players.some((p) => p.bot) };
+    const facts = { mode: this.config.mode, place, lost: this.lost, hard: this.state.players.filter((p) => p.bot).every((p) => p.level === 'hard' || p.level === 'extreme') && this.state.players.some((p) => p.bot) };
     const achievements = recordGame({ mode: this.config.mode, place, kills: this.kills, pairs: this.pairs, sixes: this.sixes }).then((s) => {
       const fresh = newAchievements(s, facts, settings.achieved);
       if (fresh.length) {
@@ -653,7 +656,7 @@ export class GameScreen {
     });
     // Gold for this game, then how close it brings you to the next skin.
     const mineHome = colorsOf(human).reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
-    const lines = goldFor({ mode: this.config.mode, place, kills: this.kills, home: mineHome });
+    const lines = goldFor({ mode: this.config.mode, place, kills: this.kills, home: mineHome, level: this.state.players.find((p) => p.bot)?.level });
     const earned = total(lines);
     earn(earned);
     /** The next skin to buy and how close you are (redrawn when achievement gold lands). */

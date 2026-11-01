@@ -7,3 +7,5 @@ desktop/release/
 *.jks
 *.keystore
 keystore.properties
+tools/ai/dist/
+__pycache__/
