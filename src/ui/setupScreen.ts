@@ -1,11 +1,11 @@
 // Setup before a game, one step per screen: options (houses each in 2-player games, bots for empty houses
 // in With friends, how well bots play), a roll for order, then picking houses one by one in that order. The highest roller
 // picks first and plays first. Steps with nothing to choose are skipped. Rules live in setup.ts.
-import { COLORS, SEATS, type BotLevel, type Color, type Seat } from '../engine';
+import { COLORS, type BotLevel, type Color, type Seat } from '../engine';
 import { PROFILES, avatarSVG, cssVars, icons, pawnSVG } from './art';
 import { rollDie } from './dice';
 import { saveSetting, settings } from './settings';
-import { NAME_MAX, cleanName, defaultName, pickSequence, pickable, previewLayout, rankRolls, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
+import { NAME_MAX, cleanName, defaultName, pickSequence, pickable, previewLayout, quickSeats, rankRolls, turnLayout, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
 
 const DIE = 30;
 const ROLL_MS = 900;
@@ -13,6 +13,7 @@ const NEUTRAL = '--l:#7cb0ff;--m:#2f66df;--d:#173f9e;--t:#cfe0ff';
 /** A small pencil: this name can be changed. */
 const PENCIL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></svg>';
 /** Names bots can have (the human seat's character is "You"). */
+const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 const BOT_NAMES = (['green', 'red', 'yellow'] as const).map((c) => PROFILES[c].name);
 /** Where each house sits, as on the board. */
 const GRID: Color[] = ['green', 'red', 'blue', 'yellow'];
@@ -31,13 +32,19 @@ interface Person {
   bot: boolean;
 }
 
-export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameConfig) => void, onBack: () => void): HTMLElement {
-  const rules: PickRules = { houses: 1, pairing: 'opposite' };
+/**
+ * `teams`: vs Computer with 4 players, a way to switch to you and one bot with two colours each (the
+ * 2-player game with two houses each), so it can be found from 4 Players too.
+ */
+export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameConfig) => void, onBack: () => void, houses: 1 | 2 = 1, teams?: () => void): HTMLElement {
+  const rules: PickRules = { houses, pairing: 'opposite' };
   /** With friends: bots added to houses nobody plays. */
   let addedBots = 0;
   const emptyHouses = () => 4 - count * rules.houses;
   /** How well the bots play (the last choice is remembered). */
   let level: BotLevel = settings.botLevel;
+  /** vs Computer: your colour for Quick Start and the preview (the last choice is kept). */
+  let myColor: Color = settings.myColor;
   /**
    * Is there anything to choose before rolling? vs Computer always has the bot level; With friends has
    * houses each (2 players) or bots for empty houses.
@@ -84,15 +91,16 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       <div class="mode"><small>${mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}</small><b>${count} PLAYERS</b></div><span class="rbtn-space"></span></div>
     <ol class="steps">${steps.map((s, i) => `<li data-s="${s}"><i>${i + 1}</i><span>${{ opts: 'Options', roll: 'Order', pick: 'Houses' }[s]}</span></li>`).join('')}</ol>
     ${hasOptions ? `<section class="wiz" data-step="opts">
-      <h3 class="disp">Game options</h3><p class="sub">Set these before rolling</p>
+      <h3 class="disp">Game options</h3><p class="sub">${mode === 'pvc' ? 'Tap a house to play that colour' : 'Set these before rolling'}</p>
       <div class="pv" aria-hidden="true">${GRID.map((c) => `<div class="pvh" data-c="${c}" style="${cssVars(c)}"><span class="pw">${pawnSVG(c)}</span><b></b></div>`).join('')}</div>
       <div class="sp opts">
-        ${count === 2 ? `<div class="row2 q"><span class="lbl">How many colours does each player play?</span><div class="tg" data-k="houses"><button data-v="1" class="on">1 colour</button><button data-v="2">2 colours</button></div><small class="qh">With 2 colours you move both; they're one team</small></div>
+        ${count === 2 ? `<div class="row2 q"><span class="lbl">How many colours does each player play?</span><div class="tg" data-k="houses"><button data-v="1"${houses === 1 ? ' class="on"' : ''}>1 colour</button><button data-v="2"${houses === 2 ? ' class="on"' : ''}>2 colours</button></div><small class="qh">With 2 colours you move both; they're one team</small></div>
         <div class="row2 q pairs" hidden><span class="lbl">Where are your two colours?</span><div class="tg" data-k="pairing"><button data-v="opposite" class="on">${mini([1, 2])}Opposite</button><button data-v="adjacent">${mini([2, 3])}Side by side</button></div></div>` : ''}
+        ${mode === 'pvc' && count === 4 && teams ? `<button class="row2 q teams" data-act="teams"><span class="lbl">Two colours each, you and one bot?</span><small class="qh">A team game: you move both your colours</small></button>` : ''}
         ${mode === 'pvp' ? `<div class="row2 q bots"><span class="lbl">Fill the empty colours with computer players?</span><div class="tg" data-k="bots"></div><small class="qh"></small></div>` : ''}
         <div class="row2 q lvl"><span class="lbl">How good are the bots?</span><div class="tg" data-k="level">${(['easy', 'normal', 'hard', 'extreme'] as const).map((l) => `<button data-v="${l}"${l === level ? ' class="on"' : ''}>${l[0]!.toUpperCase() + l.slice(1)}</button>`).join('')}</div></div>
       </div>
-      ${mode === 'pvc' ? '<button class="quick" data-act="quick"><b class="disp">QUICK START</b><small>You play Blue and go first: no rolling, no picking</small></button>' : ''}
+      ${mode === 'pvc' ? '<button class="quick" data-act="quick"><b class="disp">QUICK START</b><small></small></button>' : ''}
       <button class="b3 green disp go" data-act="to-roll">ROLL FOR ORDER</button>
     </section>` : ''}
     <section class="wiz" data-step="roll">
@@ -152,7 +160,12 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     const lvl = el.querySelector<HTMLElement>('.lvl');
     if (lvl) lvl.hidden = mode === 'pvp' && addedBots === 0;
     // The preview: who plays each house. Houses are picked later, so it shows the layout, not names.
-    const layout = previewLayout(count, rules, mode === 'pvp' ? addedBots : 0);
+    // vs Computer the preview is turned so you sit on your colour (tap a house to change it).
+    const base = previewLayout(count, rules, mode === 'pvp' ? addedBots : 0);
+    const layout = mode === 'pvc' ? turnLayout(base, myColor) : base;
+    const quick = el.querySelector<HTMLElement>('[data-act=quick] small');
+    const mine = COLORS.filter((c) => layout[c] === 'p1').sort((x, y) => (x === myColor ? -1 : y === myColor ? 1 : 0)).map(cap);
+    if (quick) quick.textContent = mine.length > 1 ? `You play ${mine.join(' and ')} and go first` : `You play ${mine[0]} and go first: no rolling, no picking`;
     let botSeen = 0;
     el.querySelectorAll<HTMLElement>('.pvh').forEach((h) => {
       const slot = layout[h.dataset.c as Color];
@@ -177,11 +190,21 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       drawOptions();
     }),
   );
+  el.querySelector('[data-act=teams]')?.addEventListener('click', () => teams?.());
+  // vs Computer: tap a house in the preview to sit there (Quick Start uses it; it is remembered).
+  if (mode === 'pvc')
+    el.querySelectorAll<HTMLElement>('.pvh').forEach((h) =>
+      h.addEventListener('click', () => {
+        saveSetting('myColor', (myColor = h.dataset.c as Color));
+        drawOptions();
+      }),
+    );
   // vs Computer, one tap to play: you take Blue and go first, the bots take the usual seats.
   el.querySelector('[data-act=quick]')?.addEventListener('click', () => {
     const me = cleanName(settings.myName, 'You');
-    const seats: Seat[] = SEATS[count].map((color, owner) => ({ color, owner, bot: owner > 0, ...(owner > 0 ? { level } : {}) }));
-    onStart({ mode, seats, first: 'blue', names: [me, ...BOT_NAMES.slice(0, count - 1)], ...(settings.doubles ? {} : { singles: true }) });
+    const seats: Seat[] = quickSeats(count, rules, myColor).map((s) => (s.bot ? { ...s, level } : s));
+    const people = Math.max(...seats.map((s) => s.owner)) + 1;
+    onStart({ mode, seats, first: myColor, names: [me, ...BOT_NAMES.slice(0, people - 1)], ...(settings.doubles ? {} : { singles: true }) });
   });
   el.querySelector('[data-act=to-roll]')?.addEventListener('click', () => {
     resetRoll();

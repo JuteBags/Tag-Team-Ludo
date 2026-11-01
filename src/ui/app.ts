@@ -34,7 +34,12 @@ export function mountApp(root: HTMLElement) {
     stage.replaceChildren(homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => stage.replaceChildren(storeScreen(() => void home()))));
   };
   // Home -> setup (houses, roll for order, pick houses) -> game. Play again keeps the same houses.
-  const setup = (mode: Mode) => stage.replaceChildren(setupScreen(mode, count, (cfg) => play(cfg), () => void home()));
+  const setup = (mode: Mode, houses: 1 | 2 = 1) =>
+    stage.replaceChildren(setupScreen(mode, count, (cfg) => play(cfg), () => void home(), houses, () => {
+      // From 4 players vs Computer: you and one bot with two colours each.
+      count = 2;
+      setup(mode, 2);
+    }));
   const play = (cfg: GameConfig, saved?: SavedGame) => {
     // A new game replaces any saved one; a continued game picks up from it.
     if (!saved) void clearGame();

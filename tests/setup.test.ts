@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NAME_MAX, cleanName, defaultName, pickSequence, pickable, previewLayout, rankRolls, type PickRules } from '../src/ui/setup';
+import { NAME_MAX, cleanName, defaultName, pickSequence, pickable, previewLayout, quickSeats, rankRolls, turnLayout, type PickRules } from '../src/ui/setup';
 
 const one: PickRules = { houses: 1, pairing: 'opposite' };
 const opp: PickRules = { houses: 2, pairing: 'opposite' };
@@ -79,5 +79,30 @@ describe('player names', () => {
   it('names seats Player 1, 2... with friends and You against the computer', () => {
     expect(defaultName('pvp', 1)).toBe('Player 2');
     expect(defaultName('pvc', 0)).toBe('You');
+  });
+});
+
+describe('quick start seats vs Computer', () => {
+  const one: PickRules = { houses: 1, pairing: 'opposite' };
+  it('puts you on your colour and the bots in the usual seats turned the same way', () => {
+    expect(quickSeats(2, one, 'blue')).toEqual([{ color: 'blue', owner: 0, bot: false }, { color: 'red', owner: 1, bot: true }]);
+    expect(quickSeats(2, one, 'green')).toEqual([{ color: 'green', owner: 0, bot: false }, { color: 'yellow', owner: 1, bot: true }]);
+    const four = quickSeats(4, one, 'red');
+    expect(four.find((s) => !s.bot)!.color).toBe('red');
+    expect(four.filter((s) => s.bot)).toHaveLength(3);
+  });
+
+  it('gives you two colours each with their partner, opposite or side by side', () => {
+    const opp = quickSeats(2, { houses: 2, pairing: 'opposite' }, 'green');
+    expect(opp.filter((s) => s.owner === 0).map((s) => s.color).sort()).toEqual(['green', 'yellow']);
+    const side = quickSeats(2, { houses: 2, pairing: 'adjacent' }, 'yellow');
+    expect(side.filter((s) => s.owner === 0).map((s) => s.color)).toHaveLength(2);
+    expect(side.filter((s) => s.owner === 1).every((s) => s.bot)).toBe(true);
+  });
+
+  it('turns a layout without changing who sits beside whom', () => {
+    const l = previewLayout(3, one, 0);
+    expect(turnLayout(l, 'blue')).toEqual(l);
+    expect(turnLayout(l, 'green').green).toBe(l.blue);
   });
 });

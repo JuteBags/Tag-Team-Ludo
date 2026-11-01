@@ -1,4 +1,4 @@
-import type { BotLevel } from '../engine';
+import type { BotLevel, Color } from '../engine';
 
 // Player preferences, kept in localStorage (per device). Every read and write is guarded: storage
 // can be blocked, and then the defaults simply apply for the session.
@@ -22,6 +22,8 @@ interface Settings {
   /** Names people gave themselves, by seat: With friends seats, and your own name vs Computer. */
   friendNames: string[];
   myName: string;
+  /** Your colour vs Computer (Quick Start, and the setup preview); the last choice is kept. */
+  myColor: Color;
   /** Store skins in use (skins.ts); the board is `theme` and the thrower `throwStyle`. */
   equipped: { pawn: string; dice: string };
   /** Gold earned by playing (rewards.ts), and the skins bought with it ("pawn:skull"). */
@@ -38,7 +40,7 @@ interface Settings {
 export type Theme = 'classic' | 'wood' | 'dark' | 'metal' | 'tron' | 'halloween';
 
 const KEY = 'ludo-settings';
-const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true, friendNames: [], myName: '', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false, killFx: 'full', achieved: [] };
+const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true, friendNames: [], myName: '', myColor: 'blue', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false, killFx: 'full', achieved: [] };
 
 function load(): Settings {
   try {
