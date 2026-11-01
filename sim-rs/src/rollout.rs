@@ -135,6 +135,67 @@ pub fn evaluate_mine(g: &Game, rng: &mut Rng, n: usize, cut: u32, eval: Option<&
     Evaluation { cands: cands.into_iter().zip(means).map(|((k, t), m)| (k, t, m)).collect(), base: b, pick: best }
 }
 
+/// The game review's view of one decision (#65): every legal move's candidate (moves that lead to the same
+/// position share one), each candidate's paired playout mean for the mover, the best candidate, and each
+/// candidate's paired gap below the best with that gap's standard error. A fixed `n` playouts per candidate
+/// (no early stopping), so every candidate's value is as precise as the best's: the labels need the gaps.
+pub struct Review {
+    pub of_move: Vec<usize>,
+    pub mean: Vec<f64>,
+    pub gap: Vec<f64>,
+    pub se: Vec<f64>,
+    pub best: usize,
+}
+
+/// See `Review`. The playouts and their pairing are evaluate()'s, seeded from `seed`.
+pub fn review(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy) -> Review {
+    let nm = g.moves.len();
+    let me = g.b.p[g.current].owner;
+    let mut cands: Vec<Game> = Vec::new();
+    let mut keys = Vec::new();
+    let mut of_move = Vec::with_capacity(nm);
+    for k in 0..nm {
+        let mut t = *g;
+        t.play(&g.moves.m[k]);
+        let key = leaf_key(&t);
+        match keys.iter().position(|x| *x == key) {
+            Some(c) => of_move.push(c),
+            None => {
+                keys.push(key);
+                cands.push(t);
+                of_move.push(cands.len() - 1);
+            }
+        }
+    }
+    let nc = cands.len();
+    if nc <= 1 {
+        return Review { of_move, mean: vec![f64::NAN; nc], gap: vec![0.0; nc], se: vec![0.0; nc], best: 0 };
+    }
+    let mut res = vec![vec![0.0f64; n]; nc];
+    for i in 0..n {
+        let s = seed.wrapping_mul(7919).wrapping_add(i as i64);
+        for (c, t) in cands.iter().enumerate() {
+            let mut d = [Rng::seeded(s), Rng::seeded(s ^ 0x1111), Rng::seeded(s ^ 0x2222), Rng::seeded(s ^ 0x3333)];
+            let mut r = Rng::seeded(s ^ 0x1234_5678);
+            res[c][i] = playout(*t, base, base, me, &mut d, &mut r, cut, eval);
+        }
+    }
+    let mean: Vec<f64> = res.iter().map(|r| r.iter().sum::<f64>() / n as f64).collect();
+    let best = (0..nc).fold(0, |b, c| if mean[c] > mean[b] { c } else { b });
+    let (mut gap, mut se) = (vec![0.0; nc], vec![0.0; nc]);
+    for c in 0..nc {
+        if c == best {
+            continue;
+        }
+        let diffs: Vec<f64> = (0..n).map(|i| res[best][i] - res[c][i]).collect();
+        let m = diffs.iter().sum::<f64>() / n as f64;
+        let var = diffs.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / (n.max(2) - 1) as f64;
+        gap[c] = m;
+        se[c] = (var / n as f64).sqrt();
+    }
+    Review { of_move, mean, gap, se, best }
+}
+
 /// One playout to run: the candidate's position, the playout's seed (its dice streams and policy rng
 /// derive from it as in evaluate) and the mover's person.
 #[derive(Clone, Copy)]
