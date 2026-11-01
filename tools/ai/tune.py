@@ -86,7 +86,8 @@ def main():
     # Every rule, including ones the start leaves out (they start at 0).
     names = ['pipsLeft', 'base', 'home', 'column', 'danger', 'dangerProg', 'prey', 'preyProg', 'safe', 'blocks',
              'blocking', 'ambush', 'maxProg', 'minProg', 'turn0', 'turn1', 'turn2', 'turn3',
-             'tray1', 'tray2', 'tray3', 'tray4', 'tray5', 'tray6', 'sixes']
+             'tray1', 'tray2', 'tray3', 'tray4', 'tray5', 'tray6', 'sixes',
+             'rollActive', 'rollBase', 'rollColumn', 'rollPrey', 'leadGap']
     w0 = np.array([start.get(n, 0.0) for n in names])
     opponents = a.opponent.split(',')
     scale = np.abs(w0) + 0.1

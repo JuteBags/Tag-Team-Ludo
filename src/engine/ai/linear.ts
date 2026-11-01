@@ -4,6 +4,7 @@
 // weights are fitted to real game results (tools/ai/train.py --linear), then tuned for strength.
 // The turn in progress counts too, for the person about to roll: each die still in the tray (by face) and
 // the 6s rolled in a row, as in encode.ts, so a mid-turn position is not judged as if the tray were empty.
+import { FINISHED } from '../board';
 import { ownerRanking } from '../game';
 import { isDone } from '../rules';
 import type { GameState } from '../types';
@@ -11,6 +12,28 @@ import { F, FEATURES, stateFeatures } from './features';
 
 /** The turn-in-progress rules: dice in the tray by face (count / 3) and 6s in a row (/ 2). */
 export const TURN_RULES = ['tray1', 'tray2', 'tray3', 'tray4', 'tray5', 'tray6', 'sixes'] as const;
+
+/** Rules for the readable rules only (never net inputs), per colour (extraRules). */
+export const EXTRA_RULES = ['rollActive', 'rollBase', 'rollColumn', 'rollPrey', 'leadGap'] as const;
+
+/**
+ * One colour's extra rules from its hand features `f` (from offset `o`) and its tokens:
+ * rollActive = turn0 * (1 - base - home), rollBase = turn0 * base, rollColumn = turn0 * column,
+ * rollPrey = turn0 * prey (the colour rolls next: worth more or less by what it has to play with),
+ * leadGap = (1st - 2nd highest progress + 1 among unfinished tokens) / 56, 0 with fewer than 2.
+ */
+export function extraRules(f: Float64Array, o: number, tokens: readonly number[]): number[] {
+  const turn0 = f[o + 14]!;
+  let p1 = -1, p2 = -1, live = 0;
+  for (const t of tokens) {
+    if (t === FINISHED) continue;
+    live++;
+    const p = t + 1;
+    if (p > p1) { p2 = p1; p1 = p; } else if (p > p2) p2 = p;
+  }
+  const gap = live >= 2 ? (p1 - p2) / 56 : 0;
+  return [turn0 * (1 - f[o + 1]! - f[o + 2]!), turn0 * f[o + 1]!, turn0 * f[o + 3]!, turn0 * f[o + 6]!, gap];
+}
 
 export interface LinearJSON {
   kind: 'linear';
@@ -26,10 +49,12 @@ export interface Evaluator {
 export class LinearRules implements Evaluator {
   readonly w: Float64Array;
   readonly turn: Float64Array;
+  readonly extra: Float64Array;
 
   constructor(json: LinearJSON) {
     this.w = Float64Array.from(FEATURES, (f) => json.weights[f] ?? 0);
     this.turn = Float64Array.from(TURN_RULES, (f) => json.weights[f] ?? 0);
+    this.extra = Float64Array.from(EXTRA_RULES, (f) => json.weights[f] ?? 0);
   }
 
   /** Each person's score (the softmax input) and who is still playing. */
@@ -45,6 +70,13 @@ export class LinearRules implements Evaluator {
     const me = state.players[state.current]!.owner;
     for (const r of state.rolls) s[me]! += this.turn[r - 1]! / 3;
     s[me]! += (this.turn[6]! * state.sixes) / 2;
+    // the extra rules, only when some weigh anything (older rule files stay bit-identical)
+    if (this.extra.some((x) => x !== 0)) {
+      state.players.forEach((p, i) => {
+        const e = extraRules(f, i * F, p.tokens);
+        for (let k = 0; k < EXTRA_RULES.length; k++) s[p.owner]! += this.extra[k]! * e[k]!;
+      });
+    }
     return { s, live };
   }
 

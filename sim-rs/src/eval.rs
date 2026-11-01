@@ -184,9 +184,36 @@ pub struct Net {
 /// linear.ts TURN_RULES: dice in the tray by face (count / 3) and the 6s in a row (/ 2).
 pub const TURN_RULES: [&str; 7] = ["tray1", "tray2", "tray3", "tray4", "tray5", "tray6", "sixes"];
 
+/// linear.ts EXTRA_RULES: rules for the readable rules only (never net inputs), per colour.
+pub const EXTRA_RULES: [&str; 5] = ["rollActive", "rollBase", "rollColumn", "rollPrey", "leadGap"];
+
+/// linear.ts extraRules: one colour's extra rules from its hand features `f` and tokens.
+///   rollActive = turn0 * (1 - base - home), rollBase = turn0 * base, rollColumn = turn0 * column,
+///   rollPrey = turn0 * prey (the colour rolls next: worth more or less by what it has to play with),
+///   leadGap = (1st - 2nd highest progress + 1 among unfinished tokens) / 56, 0 with fewer than 2.
+pub fn extra_rules(f: &[f64], tokens: &[i8; 4]) -> [f64; 5] {
+    let turn0 = f[14];
+    let (mut p1, mut p2, mut live) = (-1i32, -1i32, 0);
+    for &t in tokens {
+        if t == crate::rules::FINISHED {
+            continue;
+        }
+        live += 1;
+        let p = t as i32 + 1;
+        if p > p1 {
+            p2 = p1;
+            p1 = p;
+        } else if p > p2 {
+            p2 = p;
+        }
+    }
+    let gap = if live >= 2 { (p1 - p2) as f64 / 56.0 } else { 0.0 };
+    [turn0 * (1.0 - f[1] - f[2]), turn0 * f[1], turn0 * f[3], turn0 * f[6], gap]
+}
+
 pub enum Evaluator {
-    /// hand-feature weights, turn-rule weights
-    Linear([f64; F], [f64; 7]),
+    /// hand-feature weights, turn-rule weights, extra-rule weights
+    Linear([f64; F], [f64; 7], [f64; 5]),
     Net(Net),
     /// blend.ts: a person's score = the net's score + alpha * the readable rules' score
     Blend(std::sync::Arc<Evaluator>, std::sync::Arc<Evaluator>, f64),
@@ -206,7 +233,11 @@ impl Evaluator {
             for (k, name) in TURN_RULES.iter().enumerate() {
                 t[k] = get(name);
             }
-            return Evaluator::Linear(w, t);
+            let mut x = [0.0; 5];
+            for (k, name) in EXTRA_RULES.iter().enumerate() {
+                x[k] = get(name);
+            }
+            return Evaluator::Linear(w, t, x);
         }
         let trunk: Vec<Dense> = v["trunk"].as_array().unwrap().iter().map(Dense::from_json).collect();
         let hidden = trunk.last().unwrap().out;
@@ -220,7 +251,7 @@ impl Evaluator {
     }
 
     pub fn linear(weights: [f64; F], turn: [f64; 7]) -> Evaluator {
-        Evaluator::Linear(weights, turn)
+        Evaluator::Linear(weights, turn, [0.0; 5])
     }
 
     /// ownerChances(): each person's chance of winning (people = max owner + 1), into out[..people].
@@ -236,7 +267,7 @@ impl Evaluator {
     pub fn owner_scores(&self, g: &Game, people: usize, s: &mut [f64; 4]) {
         let ps = g.b.players();
         match self {
-            Evaluator::Linear(w, turn) => {
+            Evaluator::Linear(w, turn, extra) => {
                 let mut f = [0.0f64; 4 * F];
                 features(&g.b, g.current, g.singles, &mut f);
                 for (i, p) in ps.iter().enumerate() {
@@ -249,6 +280,15 @@ impl Evaluator {
                     s[me] += turn[r as usize - 1] / 3.0;
                 }
                 s[me] += (turn[6] * g.sixes as f64) / 2.0;
+                // the extra rules, only when some weigh anything (older rule files stay bit-identical)
+                if extra.iter().any(|&x| x != 0.0) {
+                    for (i, p) in ps.iter().enumerate() {
+                        let e = extra_rules(&f[i * F..(i + 1) * F], &p.tokens);
+                        for k in 0..5 {
+                            s[p.owner as usize] += extra[k] * e[k];
+                        }
+                    }
+                }
             }
             Evaluator::Net(net) => net.owner_scores(g, people, s),
             Evaluator::Blend(net, rules, alpha) => {
