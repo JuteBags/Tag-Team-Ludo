@@ -4,10 +4,12 @@
 //   A  the full review, 256 playouts (the review before #101)
 //   B  the full review, 128 playouts (#101 step 5, the reference)
 //   C  the race (fast, no net screen), in game order
-//   D  the race and the net screen (SKIP_BELOW, or --skip), biggest stakes first (what the app runs)
+//   D  the race and the net screen (--skip, default 1 point), biggest stakes first
+//   E  the race, biggest stakes first by the net, no screen (what the app runs with SKIP_BELOW 0)
 //   node tools/ai/dist/review_speed.mjs --layout 2p --mover hard --task eval [--arms BCD] [--from 101] [--games 12] [--skip 1.5]
 //   node tools/ai/dist/review_speed.mjs --layout 2p --mover hard --task tune [--from 1] [--games 8]
-// eval prints one SPEED line per arm: time to the first key verdict (a mistake or blunder), total time,
+// eval prints one SPEED line per arm: time to the first key verdict (inaccuracy or worse) and to the first
+// mistake or blunder, total time,
 // playouts, label agreement with B (all decisions, and those either calls inaccuracy or worse), the mean
 // |Δ accuracy| per game in points, the skip and race-Best shares, and the spread kept on race-Best decisions
 // against B's (selection bias). tune prints TUNE: per net-spread threshold, the share of decisions the
@@ -30,7 +32,7 @@ const task = a.task ?? 'eval';
 const from = Number(a.from ?? (task === 'tune' ? 1 : 101));
 const games = Number(a.games ?? (task === 'tune' ? 8 : 12));
 const arms = (a.arms ?? 'BCD').toUpperCase().split('');
-const skip = Number(a.skip ?? SKIP_BELOW);
+const skip = Number(a.skip ?? (SKIP_BELOW || 1));
 const root = new URL('../../../', import.meta.url);
 const wasm = readFileSync(new URL('src/engine/ai/ludo_wasm.wasm', root));
 const net = JSON.parse(readFileSync(new URL('src/engine/ai/extreme-net.json', root), 'utf8')) as NetJSON;
@@ -82,23 +84,26 @@ const ARMS: Record<string, { base: number; opts: ReviewOptions }> = {
   B: { base: 128, opts: { fast: false } },
   C: { base: 128, opts: { skipBelow: 0 } },
   D: { base: 128, opts: { skipBelow: skip, order: 'stakes' } },
+  E: { base: 128, opts: { skipBelow: 0, order: 'stakes' } },
 };
 
 interface Run {
   moves: MoveReview[];
   ms: number;
   firstKeyMs: number | null;
+  firstMistakeMs: number | null;
   playouts: number;
 }
 
 async function run(rec: GameRecord, states: GameState[], arm: string): Promise<Run> {
   const { reviewer, playouts } = counting();
   const t0 = performance.now();
-  let firstKeyMs: number | null = null;
+  const first: { key: number | null; mistake: number | null } = { key: null, mistake: null };
   const moves = await reviewMoves(rec, states, [0], reviewer, (m) => {
-    if (firstKeyMs === null && MISTAKE.has(m.label)) firstKeyMs = performance.now() - t0;
+    if (first.key === null && KEY.has(m.label)) first.key = performance.now() - t0;
+    if (first.mistake === null && MISTAKE.has(m.label)) first.mistake = performance.now() - t0;
   }, ARMS[arm]!.base, undefined, ARMS[arm]!.opts);
-  return { moves, ms: performance.now() - t0, firstKeyMs, playouts: playouts() };
+  return { moves, ms: performance.now() - t0, firstKeyMs: first.key, firstMistakeMs: first.mistake, playouts: playouts() };
 }
 
 const median = (xs: number[]) => {
@@ -153,8 +158,8 @@ if (task === 'tune') {
   }
   md(`### Review speed: ${layout} ${mover}, seeds ${from}..${from + games - 1} (B = full review at 128)`);
   md('');
-  md('| arm | decisions | first mistake (median s) | total (s) | playouts | agree all | agree key | mean abs Δacc (pts) | net skips | race Best | race-Best spread vs B |');
-  md('|---|---|---|---|---|---|---|---|---|---|---|');
+  md('| arm | decisions | first key (median s) | first mistake (median s) | total (s) | playouts | agree all | agree key | mean abs Δacc (pts) | net skips | race Best | race-Best spread vs B |');
+  md('|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const k of want) {
     const { runs, ref } = per[k]!;
     let n = 0;
@@ -188,18 +193,20 @@ if (task === 'tune') {
       if (Number.isFinite(da)) dAcc.push(Math.abs(da));
     });
     const firsts = runs.map((x) => x.firstKeyMs).filter((x): x is number => x !== null);
+    const firstMs = runs.map((x) => x.firstMistakeMs).filter((x): x is number => x !== null);
     const total = runs.reduce((s, x) => s + x.ms, 0) / 1000;
     const playouts = runs.reduce((s, x) => s + x.playouts, 0);
     const stats = {
       layout, mover, arm: k, games, decisions: n,
-      firstMistakeS: +(median(firsts) / 1000).toFixed(2), gamesWithMistake: firsts.length,
+      firstKeyS: +(median(firsts) / 1000).toFixed(2), gamesWithKey: firsts.length,
+      firstMistakeS: +(median(firstMs) / 1000).toFixed(2), gamesWithMistake: firstMs.length,
       totalS: +total.toFixed(1), playouts,
       agree: +(same / Math.max(1, n)).toFixed(4), agreeKey: +(keySame / Math.max(1, keyN)).toFixed(4), keyN,
       meanAbsDAcc: +(dAcc.reduce((s, x) => s + x, 0) / Math.max(1, dAcc.length)).toFixed(2),
       netSkips: skips, raceBest, raceBestSpreadRatio: sRef ? +(sArm / sRef).toFixed(4) : null,
     };
     console.log('SPEED ' + JSON.stringify(stats));
-    md(`| ${k} | ${n} | ${f1(stats.firstMistakeS)} (${firsts.length} games) | ${f1(total)} | ${playouts} | ${pct(same, n)} | ${pct(keySame, keyN)} of ${keyN} | ${stats.meanAbsDAcc} | ${pct(skips, n)} | ${pct(raceBest, n)} | ${stats.raceBestSpreadRatio ?? '-'} |`);
+    md(`| ${k} | ${n} | ${f1(stats.firstKeyS)} (${firsts.length} games) | ${f1(stats.firstMistakeS)} (${firstMs.length} games) | ${f1(total)} | ${playouts} | ${pct(same, n)} | ${pct(keySame, keyN)} of ${keyN} | ${stats.meanAbsDAcc} | ${pct(skips, n)} | ${pct(raceBest, n)} | ${stats.raceBestSpreadRatio ?? '-'} |`);
   }
   md('');
 }

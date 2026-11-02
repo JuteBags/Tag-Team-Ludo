@@ -13,9 +13,9 @@ on:
   workflow_dispatch:
     inputs:
       arms:
-        description: 'Arms to run besides B: A (full 256), C (race), D (race + screen + stakes order)'
+        description: 'Arms to run besides B: A (full 256), C (race), D (race + net skip + stakes order), E (race + stakes order: the app)'
         required: true
-        default: 'CD'
+        default: 'CE'
       eval_games:
         description: 'Games per layout and mover for the comparison (seeds from 101)'
         required: true
@@ -52,7 +52,7 @@ jobs:
       - run: bash tools/ai/build.sh
       - name: Review bot games
         env:
-          ARMS: ${{ inputs.arms || (contains(github.event.head_commit.message, '[arm-a]') && 'ACD' || 'CD') }}
+          ARMS: ${{ inputs.arms || (contains(github.event.head_commit.message, '[arm-a]') && 'ACE' || 'CE') }}
           EVAL_GAMES: ${{ inputs.eval_games || '12' }}
           TUNE_GAMES: ${{ inputs.tune_games || '8' }}
           SKIP: ${{ inputs.skip }}

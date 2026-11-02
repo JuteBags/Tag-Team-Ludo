@@ -76,10 +76,12 @@ export const REVIEW_VERSION = 3;
 
 /**
  * The net screen (#101): a decision whose candidates the net values within this many points of each other
- * (best minus worst) is labelled Best with no playouts, and is left out of accuracy (its gaps are 0). Tuned on
- * CI (review-speed.yml). It changes labels, so changing it means bumping REVIEW_VERSION.
+ * (best minus worst) is labelled Best with no playouts, and is left out of accuracy (its gaps are 0). It
+ * changes labels, so changing it means bumping REVIEW_VERSION. Off (0): on CI (review-speed.yml run 1) even
+ * a 0.5-point net spread hid real inaccuracies and mistakes in 2p, and 1.5 cut key-move agreement to 83%.
+ * The net still orders the decisions for order 'stakes'.
  */
-export const SKIP_BELOW = 1.5;
+export const SKIP_BELOW = 0;
 
 /** Playouts per candidate, and the most a decision is topped up to when its gap sits near a label's edge. */
 export const PLAYOUTS = 128;

@@ -200,19 +200,32 @@ fn review_stats(of_move: Vec<usize>, res: &[Vec<f64>]) -> Review {
 
 /// See `Review`. The playouts and their pairing are evaluate()'s, seeded from `seed`.
 pub fn review(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy) -> Review {
+    review_cached(g, seed, n, cut, eval, base, &mut Vec::new())
+}
+
+/// review() reusing playouts already made for this decision and seed (`res`, one list per candidate, from an
+/// earlier review or race of it; anything else is dropped): each candidate's playouts are extended up to n
+/// and the review is taken over the first n, so the result is review(n)'s exactly (#101). A top-up from n to
+/// 2n then costs n playouts per candidate instead of 2n. `res` keeps every playout made.
+pub fn review_cached(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy, res: &mut Vec<Vec<f64>>) -> Review {
     let me = g.b.p[g.current].owner;
     let (of_move, cands) = review_cands(g);
     let nc = cands.len();
     if nc <= 1 {
         return Review { of_move, mean: vec![f64::NAN; nc], gap: vec![0.0; nc], se: vec![0.0; nc], best: 0 };
     }
-    let mut res = vec![vec![0.0f64; n]; nc];
+    if res.len() != nc {
+        *res = vec![Vec::with_capacity(n); nc];
+    }
     for i in 0..n {
         for (c, t) in cands.iter().enumerate() {
-            res[c][i] = review_playout(t, seed, i, me, cut, eval, base);
+            if res[c].len() == i {
+                res[c].push(review_playout(t, seed, i, me, cut, eval, base));
+            }
         }
     }
-    review_stats(of_move, &res)
+    let first: Vec<Vec<f64>> = res.iter().map(|r| r[..n].to_vec()).collect();
+    review_stats(of_move, &first)
 }
 
 /// "Best" within this many points (as a fraction) of the top: review.ts BEST_WITHIN.
@@ -231,11 +244,15 @@ pub struct FastReview {
     pub count: Vec<usize>,
     pub complete: bool,
     pub stop: u8,
+    /// Every playout made, per candidate (for review_cached).
+    pub res: Vec<Vec<f64>>,
 }
 
 /// The game review's race (#101): review()'s own playouts, in rounds of BATCH for the candidates still in
 /// it. The played move's candidate never drops out; from the second round on another drops once its paired
-/// deficit to the leader is Z_DROP standard errors. It stops when:
+/// deficit to the leader is Z_DROP standard errors, except the one doing worst, so the spread on a settled
+/// Best decision is measured as fairly as the rest (a candidate dropped on a bad run reads too low). It
+/// stops when:
 ///  - the played move settles as Best: every other candidate still in is, even at +2 se, less than
 ///    BEST_WITHIN better than it (stricter than review.ts labelOf's Best, so a borderline case goes on to the
 ///    full review instead). The values are the race's; dropped candidates' gaps are over their fewer
@@ -248,7 +265,7 @@ pub fn review_race(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evalua
     let (of_move, cands) = review_cands(g);
     let nc = cands.len();
     if nc <= 1 {
-        return FastReview { review: Review { of_move, mean: vec![f64::NAN; nc], gap: vec![0.0; nc], se: vec![0.0; nc], best: 0 }, count: vec![0; nc], complete: true, stop: STOP_NONE };
+        return FastReview { review: Review { of_move, mean: vec![f64::NAN; nc], gap: vec![0.0; nc], se: vec![0.0; nc], best: 0 }, count: vec![0; nc], complete: true, stop: STOP_NONE, res: Vec::new() };
     }
     let p = of_move[played];
     let mut res: Vec<Vec<f64>> = vec![Vec::with_capacity(n); nc];
@@ -287,8 +304,9 @@ pub fn review_race(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evalua
             stop = STOP_BEST;
             break;
         }
+        let worst = active.iter().copied().fold(active[0], |w, c| if mean(&res[c]) < mean(&res[w]) { c } else { w });
         active.retain(|&c| {
-            if c == lead || c == p {
+            if c == lead || c == p || c == worst {
                 return true;
             }
             let (mu, se) = paired(&res[c], &res[lead]);
@@ -307,7 +325,7 @@ pub fn review_race(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evalua
                 se[c] = e;
             }
         }
-        return FastReview { review: Review { of_move, mean: mean_all, gap, se, best }, count, complete: false, stop };
+        return FastReview { review: Review { of_move, mean: mean_all, gap, se, best }, count, complete: false, stop, res };
     }
     // Not settled as Best: every candidate up to n playouts, which is review(n).
     for (c, t) in cands.iter().enumerate() {
@@ -315,7 +333,7 @@ pub fn review_race(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evalua
             res[c].push(review_playout(t, seed, i, me, cut, eval, base));
         }
     }
-    FastReview { review: review_stats(of_move, &res), count: vec![n; nc], complete: true, stop }
+    FastReview { review: review_stats(of_move, &res), count: vec![n; nc], complete: true, stop, res }
 }
 
 /// The game review's net screen (#101): each candidate's value for the mover from the net alone, with base

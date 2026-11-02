@@ -133,6 +133,26 @@ describe('rollout Extreme (wasm)', () => {
       }
     }
     expect(raced).toBe(24);
+    // Top-ups reuse the playouts already made for the decision (same seed): the same values as from scratch.
+    const fresh = await engine();
+    let s: GameState = createGame(SEATS[4].map((color, owner) => ({ color, owner, bot: true, level: 'hard' })));
+    const rng = seeded(300);
+    let topped = 0;
+    for (let i = 0; i < 20000 && s.phase !== 'over' && topped < 6; i++) {
+      if (s.phase === 'roll') s = roll(s, rng);
+      else {
+        if (s.moves.length > 2 && i % 3 === 0) {
+          e.reviewFast(s, 32, 5 + i, { mode: 'race', played: 0 });
+          expect(e.review(s, 64, 5 + i)).toEqual(fresh.review(s, 64, 5 + i));
+          expect(e.review(s, 128, 5 + i)).toEqual(fresh.review(s, 128, 5 + i));
+          expect(e.review(s, 32, 5 + i)).toEqual(fresh.review(s, 32, 5 + i));
+          expect(e.review(s, 64, 6 + i)).toEqual(fresh.review(s, 64, 6 + i));
+          topped++;
+        }
+        s = move(s, chooseBotMove(s, rng));
+      }
+    }
+    expect(topped).toBe(6);
     console.log(`race outcomes over ${raced} decisions: ${JSON.stringify(seen)}`);
   });
 });

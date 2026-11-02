@@ -114,6 +114,25 @@ pub unsafe extern "C" fn moves_len(state: *mut u8, len: usize) -> i32 {
 
 thread_local! {
     static REVIEW: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
+    /// The last decision reviewed or raced (its state bytes and seed) and every playout made for it, so a
+    /// top-up of the same decision only adds the new playouts (rollout.rs review_cached; the same result).
+    static PLAYED: RefCell<(Vec<u8>, u32, Vec<Vec<f64>>)> = const { RefCell::new((Vec::new(), 0, Vec::new())) };
+}
+
+/// The playouts kept for this decision and seed (empty for another one).
+fn kept(s: &[u8], seed: u32) -> Vec<Vec<f64>> {
+    PLAYED.with(|k| {
+        let mut k = k.borrow_mut();
+        if k.0 == s && k.1 == seed {
+            std::mem::take(&mut k.2)
+        } else {
+            Vec::new()
+        }
+    })
+}
+
+fn keep(s: Vec<u8>, seed: u32, res: Vec<Vec<f64>>) {
+    PLAYED.with(|k| *k.borrow_mut() = (s, seed, res));
 }
 
 /// The fast review of one decision (#101), as f64s at the returned pointer, valid until the next call:
@@ -156,6 +175,7 @@ pub unsafe extern "C" fn review_fast(state: *mut u8, len: usize, n: u32, seed: u
                 }
                 (2, None) => {
                     let f = ludo_sim::rollout::review_race(&g, seed as i64, n as usize, CUT, Some(&eng.net), &eng.base, played as usize);
+                    keep(s.clone(), seed, f.res);
                     (f.review, f.count, f.complete, f.stop)
                 }
                 _ => return std::ptr::null(),
@@ -184,7 +204,9 @@ pub unsafe extern "C" fn review(state: *mut u8, len: usize, n: u32, seed: u32) -
     let g = decode(&s);
     ENGINE.with(|e| match e.borrow().as_ref() {
         Some(eng) => {
-            let r = ludo_sim::rollout::review(&g, seed as i64, n as usize, CUT, Some(&eng.net), &eng.base);
+            let mut res = kept(&s, seed);
+            let r = ludo_sim::rollout::review_cached(&g, seed as i64, n as usize, CUT, Some(&eng.net), &eng.base, &mut res);
+            keep(s.clone(), seed, res);
             REVIEW.with(|out| {
                 let mut o = out.borrow_mut();
                 o.clear();
