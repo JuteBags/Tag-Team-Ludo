@@ -1,0 +1,38 @@
+# Times the review's luck pass (#125) on the bench page's review games, the net before #125 against the
+# app's (tools/ai/luck_speed.ts), on a quiet runner, and checks every luck value is the same double. A table
+# in the run summary. On every PR that touches the net or the luck pass, and by hand.
+name: Luck pass speed
+
+on:
+  pull_request:
+    paths:
+      - 'src/engine/ai/net.ts'
+      - 'src/engine/ai/encode.ts'
+      - 'src/engine/ai/review.ts'
+      - 'src/engine/ai/search.ts'
+      - 'tools/ai/luck_speed.ts'
+      - 'tools/ai/dense-net.ts'
+      - '.github/workflows/luck-speed.yml'
+  workflow_dispatch:
+    inputs:
+      reps:
+        description: 'Interleaved rounds per net'
+        required: true
+        default: '3'
+
+permissions:
+  contents: read
+
+jobs:
+  luck:
+    name: luck pass
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - run: node tools/ai/dist/luck_speed.mjs --reps ${{ inputs.reps || '3' }}
