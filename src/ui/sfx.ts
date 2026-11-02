@@ -9,6 +9,33 @@ try {
   // Storage can be blocked; sound just defaults to on.
 }
 
+// A running AudioContext keeps the audio thread rendering silence even when nothing plays (#98), so the
+// context sleeps IDLE_MS after its last sound ends, and at once when the app is hidden. The next sound
+// resumes it: notes scheduled while it resumes start as soon as it runs, so none is dropped.
+const IDLE_MS = 5000;
+/** When the last scheduled sound ends, in the context's time. */
+let until = 0;
+let nap: ReturnType<typeof setTimeout> | undefined;
+
+function sleep() {
+  clearTimeout(nap);
+  if (ctx?.state === 'running') void ctx.suspend();
+}
+
+/** Puts the context to sleep IDLE_MS from now, or later if a scheduled sound hasn't ended by then. */
+function sleepLater() {
+  clearTimeout(nap);
+  nap = setTimeout(() => {
+    if (ctx && ctx.currentTime < until) sleepLater();
+    else sleep();
+  }, IDLE_MS);
+}
+
+/** Keeps the context awake until `end` (context time), when a sound scheduled for then has played. */
+function playing(end: number) {
+  until = Math.max(until, end);
+}
+
 function ac(): AudioContext | null {
   if (muted) return null;
   if (!ctx) {
@@ -17,8 +44,10 @@ function ac(): AudioContext | null {
     ctx = new AC();
   }
   if (ctx.state === 'suspended') void ctx.resume();
+  sleepLater();
   return ctx;
 }
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => document.hidden && sleep());
 // Every tap may (re)start audio: if sound was muted at the first tap and turned on later, the next
 // tap is what unlocks it. ac() is cheap once the context is running.
 // Not in a browser (the unit tests): no audio to unlock.
@@ -40,6 +69,7 @@ function tone(freq: number, dur: number, { type = 'sine' as OscillatorType, vol 
   o.connect(g).connect(a.destination);
   o.start(t);
   o.stop(t + dur + 0.02);
+  playing(t + dur + 0.02);
 }
 
 /** A burst of filtered noise: dice clatter, impacts, whooshes. */
@@ -60,6 +90,7 @@ function noise(dur: number, { vol = 0.25, at = 0, freq = 1800, q = 0.8, type = '
   g.gain.value = vol;
   src.connect(f).connect(g).connect(a.destination);
   src.start(t);
+  playing(t + dur);
 }
 
 function buzz(pattern: number | number[]) {
@@ -77,6 +108,7 @@ export const sfx = {
   },
   setMuted(m: boolean) {
     muted = m;
+    if (m) sleep();
     try {
       localStorage.setItem('ludo-muted', m ? '1' : '0');
     } catch {
