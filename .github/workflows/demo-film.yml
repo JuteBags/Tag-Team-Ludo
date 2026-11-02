@@ -77,8 +77,8 @@ jobs:
             ffmpeg -hide_banner -i "$F" -vf blackdetect=d=0.1:pix_th=0.05 -an -f null - 2>&1 | grep blackdetect || echo "no black frames"
           done
           cd "$LIB"
-          node core/render/readcheck.mjs "$D" --q "lang=$LANG_FILM" || true
-          node core/render/readcheck.mjs "$D" --q "lang=$LANG_FILM&fmt=v" --size 1080x1920 || true
+          node core/render/readcheck.mjs "$D" --q "lang=$LANG_FILM" --latin-cps 18 || true
+          node core/render/readcheck.mjs "$D" --q "lang=$LANG_FILM&fmt=v" --size 1080x1920 --latin-cps 18 || true
           DUR=$(python3 -c "import json;print(int(json.load(open('$D/out/events-$LANG_FILM.json'))['dur']))")
           node core/render/still.mjs "$D" --q "lang=$LANG_FILM" --range 0:$DUR:1 --out "$D/out/contact"
           node core/render/still.mjs "$D" --q "lang=$LANG_FILM&fmt=v" --size 1080x1920 --range 0:$DUR:1 --out "$D/out/contact-v"

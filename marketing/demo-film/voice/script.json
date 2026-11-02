@@ -1,24 +1,92 @@
 {
-  "_note": "Voice-over v2: one idea per line, said the way a normal person talks. Hindi is in Devanagari (English words spelled the way they're said), so the TTS reads it naturally. Each line is one scene of the film (index.html SC).",
-  "voice": {"en": {"voice": "bm_george", "lang": "en-gb", "speed": 0.95}, "hi": {"voice": "hm_omega", "lang": "hi", "speed": 0.92}},
-  "en": [
-    {"id": "01", "text": "This is Ludo. The game you already know."},
-    {"id": "02", "text": "One new rule. Two of your tokens on one square make a pair."},
-    {"id": "03", "text": "A pair moves together."},
-    {"id": "04", "text": "And it blocks the way. Other tokens can't pass it."},
-    {"id": "05", "text": "Play with friends on one phone, or against the computer, from Easy to Extreme."},
-    {"id": "06", "text": "After every game, the app shows you the one move that lost it, and the better move you missed."},
-    {"id": "07", "text": "Win in a row, and unlock special dice and pawns."},
-    {"id": "08", "text": "Tag Team Ludo. Free, and it works offline. On Android and the web."}
-  ],
-  "hi": [
-    {"id": "01", "text": "ये है लूडो। वही खेल, जो आप पहले से जानते हैं।"},
-    {"id": "02", "text": "बस एक नया नियम। आपकी दो गोटियाँ एक ही खाने पर आ जाएँ, तो वो जोड़ी बन जाती हैं।"},
-    {"id": "03", "text": "जोड़ी साथ में चलती है।"},
-    {"id": "04", "text": "और रास्ता रोक देती है। दूसरी गोटियाँ उसे पार नहीं कर सकतीं।"},
-    {"id": "05", "text": "दोस्तों के साथ एक ही फ़ोन पर खेलिए, या कंप्यूटर के साथ, ईज़ी से लेकर एक्सट्रीम तक।"},
-    {"id": "06", "text": "हर गेम के बाद, ऐप आपको वो चाल दिखाता है जिससे आप हारे, और वो बेहतर चाल, जो आपसे छूट गई।"},
-    {"id": "07", "text": "लगातार जीतिए, और ख़ास पासे और गोटियाँ अनलॉक कीजिए।"},
-    {"id": "08", "text": "टैग टीम लूडो। बिल्कुल फ़्री, और बिना इंटरनेट के भी चलता है। एंड्रॉयड और वेब पर।"}
-  ]
+ "_note": "Voice-over v2: one idea per line, said the way a normal person talks. Hindi is in Devanagari (English words spelled the way they're said), so the TTS reads it naturally. Each line is one scene of the film (index.html SC).",
+ "voice": {
+  "en": {
+   "voice": "bm_george",
+   "lang": "en-gb",
+   "speed": 1.12
+  },
+  "hi": {
+   "voice": "hm_omega",
+   "lang": "hi",
+   "speed": 0.92,
+   "tempo": 1.15
+  }
+ },
+ "en": [
+  {
+   "id": "01",
+   "text": "This is Ludo. The game you already know."
+  },
+  {
+   "id": "02",
+   "text": "One new rule. Two of your tokens on one square make a pair."
+  },
+  {
+   "id": "03",
+   "text": "A pair moves together."
+  },
+  {
+   "id": "04",
+   "text": "And it blocks the way. Other tokens can't pass it."
+  },
+  {
+   "id": "05",
+   "text": "Play with friends on one phone, or against the computer, from Easy to Extreme."
+  },
+  {
+   "id": "06",
+   "text": "After every game, our game review engine checks every move you made."
+  },
+  {
+   "id": "07",
+   "text": "It finds the move that lost the game, and shows you the better one."
+  },
+  {
+   "id": "08",
+   "text": "Win in a row, and unlock special dice and pawns."
+  },
+  {
+   "id": "09",
+   "text": "Tag Team Ludo. Free, and it works offline. On Android and the web."
+  }
+ ],
+ "hi": [
+  {
+   "id": "01",
+   "text": "ये है लूडो। वही खेल, जो आप पहले से जानते हैं।"
+  },
+  {
+   "id": "02",
+   "text": "बस एक नया नियम। आपकी दो गोटियाँ एक ही खाने पर आ जाएँ, तो वो जोड़ी बन जाती हैं।"
+  },
+  {
+   "id": "03",
+   "text": "जोड़ी साथ में चलती है।"
+  },
+  {
+   "id": "04",
+   "text": "और रास्ता रोक देती है। दूसरी गोटियाँ उसे पार नहीं कर सकतीं।"
+  },
+  {
+   "id": "05",
+   "text": "दोस्तों के साथ एक ही फ़ोन पर खेलिए, या कंप्यूटर के साथ, ईज़ी से लेकर एक्सट्रीम तक।"
+  },
+  {
+   "id": "06",
+   "text": "हर गेम के बाद, हमारा गेम रिव्यू इंजन आपकी हर चाल को जाँचता है।"
+  },
+  {
+   "id": "07",
+   "text": "वो बताता है कि किस चाल से आप हारे, और बेहतर चाल कौन सी थी।"
+  },
+  {
+   "id": "08",
+   "text": "लगातार जीतिए, और ख़ास पासे और गोटियाँ अनलॉक कीजिए।"
+  },
+  {
+   "id": "09",
+   "text": "टैग टीम लूडो। बिल्कुल फ़्री, और बिना इंटरनेट के भी चलता है। एंड्रॉयड और वेब पर।"
+  }
+ ]
 }

@@ -85,6 +85,15 @@ for L in script:
         p = os.path.join(OUT, f"{L['id']}.take{k}.wav")
         if os.path.exists(p):
             os.remove(p)
+# The film's pace (script.json "voice".<lang>."tempo"): speed each kept line up without changing its pitch.
+tempo = json.load(open(os.path.join(HERE, 'script.json'), encoding='utf-8'))['voice'][LANG].get('tempo', 1.0)
+if abs(tempo - 1.0) > 1e-3:
+    import subprocess
+    for L in script:
+        f = os.path.join(OUT, L['id'] + '.wav'); g = f + '.tmp.wav'
+        subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-i', f, '-filter:a', f'atempo={tempo}', g], check=True)
+        os.replace(g, f)
+        dur[L['id']] = round(sf.info(f).duration, 3)
 json.dump(dur, open(os.path.join(OUT, 'dur.json'), 'w'), indent=1)
 json.dump(report, open(os.path.join(OUT, 'takes.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 low = {i: r['takes'][[t['k'] for t in r['takes']].index(r['picked'])]['score'] for i, r in report.items()}

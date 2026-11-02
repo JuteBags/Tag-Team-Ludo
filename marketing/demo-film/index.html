@@ -53,7 +53,7 @@
 // pointer: it stands on, points at and stomps the thing the voice is talking about.
 // ?lang=en|hi picks the voice-over and captions; ?fmt=v the 9:16 cut. Scene lengths follow the voice lines'
 // real lengths (out/vo/<lang>/dur.json, written by the build), so both languages keep their own pace.
-import { clamp, lerp, seg, eio, eo, ei, hash } from '/core/lib.js';
+import { clamp, lerp, seg, eio, eo, ei, back, hash } from '/core/lib.js';
 
 const Q = new URLSearchParams(location.search);
 const V = Q.get('fmt') === 'v';
@@ -73,43 +73,50 @@ const real = await fetch(`out/vo/${LANG}/dur.json`).then((r) => (r.ok ? r.json()
 const LINES = Object.fromEntries(script[LANG].map((L) => [L.id, L.text]));
 // Without the build's voice files (a quick local still), lengths are estimated from the text.
 const VO = Object.fromEntries(Object.entries(LINES).map(([id, txt]) => [id, real?.[id] ?? txt.length * (LANG === 'hi' ? 0.085 : 0.062)]));
-// How long a caption must stay up to be read (the library's readcheck: 15 letters a second plus a pad).
-const NEED = (txt) => 1.6 + txt.replace(/\s/g, '').length / 15;
+// How long a caption must stay up to be read. The captions say exactly what the voice says, so they're read along
+// with it: the film checks them at 18 letters a second plus a pad (readcheck --latin-cps 18 in the workflow).
+const NEED = (txt) => 1.55 + txt.replace(/\s/g, '').length / 18;
+// The film's pace: every scene's own timings (camera, the mascot, cuts) run this much faster than written below.
+const PACE = 1.25;
 
 // The real-app clips (out/frames/<name>/f_0001.jpg…, 30 fps, extracted by the build from clips/*.mp4).
 const CLIPS = await fetch('out/frames/counts.json').then((r) => (r.ok ? r.json() : null)).catch(() => null) ?? { D: 316, A: 174, B: 141, C1: 132 };
+// Scene timings below are written at normal speed and divided by PACE (`at`, `min`, `tail`, the camera, the mascot).
 const SC = [
   { k: 'play', vo: '01', at: 0.6, min: 8.6, tail: 1.0, clip: { n: 'D', a: 0, b: 10.5 } },
   { k: 'pair', vo: '02', at: 0.3, min: 5.0, tail: 0.8, clip: { n: 'A', a: 0, b: 5.75 } },
   { k: 'move', vo: '03', at: 0.25, min: 3.7, tail: 0.6, clip: { n: 'B', a: 0.5, b: 4.65 } },
   { k: 'block', vo: '04', at: 0.25, min: 4.4, tail: 0.9, clip: { n: 'C1', a: 0, b: 4.35 } },
   { k: 'levels', vo: '05', at: 0.4, min: 6.2, tail: 0.8 },
-  { k: 'review', vo: '06', at: 0.35, min: 7.4, tail: 0.9 },
-  { k: 'win', vo: '07', at: 0.3, min: 4.6, tail: 0.9 },
-  { k: 'end', vo: '08', at: 0.5, min: 6.6, tail: 1.6, nocap: true },
+  { k: 'engine', vo: '06', at: 0.35, min: 5.6, tail: 0.8 },
+  { k: 'review', vo: '07', at: 0.3, min: 7.0, tail: 0.9 },
+  { k: 'win', vo: '08', at: 0.3, min: 4.6, tail: 0.9 },
+  { k: 'end', vo: '09', at: 0.5, min: 6.6, tail: 1.6, nocap: true },
 ];
 let T = 0;
 for (const s of SC) {
   const read = s.nocap ? 0 : NEED(LINES[s.vo]);
-  s.len = Math.max(s.min, s.at + VO[s.vo] + s.tail, s.at + read + 0.9);
+  s.at /= PACE;
+  s.len = Math.max(s.min / PACE, s.at + VO[s.vo] + s.tail / PACE, s.at + read + 0.9);
+  if (s.k === 'end') s.len = Math.max(s.len, 0.4 / PACE + 0.35 + 5.9);   // the end card's own reading time
   s.t0 = T; T += s.len;
   if (s.clip) {
     const span = s.clip.b - s.clip.a;
-    s.rate = clamp(span / s.len, 0.8, 1.35);
+    s.rate = clamp(span / s.len, 1.0, 1.7);
     s.ct = (local) => Math.min(s.clip.b, s.clip.a + local * s.rate);   // scene time → clip time (holds the last frame)
     s.lt = (ct) => (ct - s.clip.a) / s.rate;                             // clip time → scene time
   }
 }
 window.DUR = +T.toFixed(3);
 const S = Object.fromEntries(SC.map((s) => [s.k, s]));
-const at = (k, local) => S[k].t0 + local;            // a scene's local time on the film's clock
+const at = (k, local) => S[k].t0 + local / PACE;     // a scene's written time on the film's clock
 const ck = (k, ct) => S[k].t0 + S[k].lt(ct);        // a clip's own time on the film's clock
 
 // ---------- stills (real app captures, 900×1600) ----------
 const SHOT = {
   home: 'shots/03-home-continue.jpg', easy: 'shots/06-level-easy.jpg', normal: 'shots/07-level-normal.jpg', hard: 'shots/08-level-hard.jpg',
-  extreme: 'shots/09-level-extreme.jpg', keys: 'shots/33-review-2p-key-moves.jpg', replay: 'shots/36-replay-review-mode-ghost.jpg',
-  win: 'shots/26-result-streak-unlocks-skin.jpg',
+  extreme: 'shots/09-level-extreme.jpg', summary: 'shots/32-review-2p-summary.jpg', keys: 'shots/33-review-2p-key-moves.jpg',
+  replay: 'shots/36-replay-review-mode-ghost.jpg', win: 'shots/26-result-streak-unlocks-skin.jpg',
 };
 for (const src of Object.values(SHOT)) { const im = new Image(); im.src = src; }
 // What's on the phone: [film time it has arrived, content, how it comes in]. Content = a SHOT key, or a clip scene.
@@ -117,7 +124,8 @@ const SLIDE = 0.34;
 const SCREENS = [
   [at('play', 0), { clip: 'play' }, 'cut'], [at('pair', 0), { clip: 'pair' }, 'cut'], [at('move', 0), { clip: 'move' }, 'cut'], [at('block', 0), { clip: 'block' }, 'cut'],
   [at('levels', 0), 'home', 'wipe'], [at('levels', 2.0), 'easy', 'slide'], [at('levels', 2.9), 'normal', 'cut'], [at('levels', 3.75), 'hard', 'cut'], [at('levels', 4.6), 'extreme', 'cut'],
-  [at('review', 0), 'keys', 'wipe'], [at('review', 3.4), 'replay', 'whip'],
+  [at('engine', 0), 'summary', 'wipe'],
+  [at('review', 0), 'keys', 'slide'], [at('review', 3.4), 'replay', 'whip'],
   [at('win', 0), 'win', 'slide'],
   [at('end', 0), 'home', 'wipe'],
 ];
@@ -131,11 +139,12 @@ const CAMS = {
   move: [[0, 2.8, 250, 640], [9, 2.8, 300, 640]],
   block: [[0, 2.8, 300, 640], [0.6, 2.5, 290, 650], [9, 2.55, 290, 650]],
   levels: [[0, 1.0, 450, 800], [1.6, 1.0, 450, 820], [2.0, 1.0, 450, 800], [2.35, 1.42, 450, 960], [9, 1.46, 450, 960]],
-  review: [[0, 1.0, 450, 800], [0.5, 1.35, 480, 470], [3.2, 1.4, 470, 480], [3.4, 1.5, 420, 600], [9, 1.55, 410, 620]],
+  engine: [[0, 1.0, 450, 800], [0.6, 1.3, 450, 560], [2.6, 1.3, 450, 600], [3.2, 1.45, 450, 880], [9, 1.5, 450, 890]],
+  review: [[0, 1.3, 460, 520], [0.5, 1.45, 470, 500], [3.2, 1.5, 470, 500], [3.4, 2.25, 420, 640], [9, 2.35, 400, 640]],
   win: [[0, 1.0, 450, 800], [0.8, 1.35, 520, 900], [9, 1.4, 520, 900]],
   end: [[0, 1.0, 450, 800], [1.0, 1.0, 450, 800], [2.0, 1.12, 450, 640], [12, 1.18, 450, 640]],
 };
-const CAM = SC.flatMap((s) => CAMS[s.k].filter(([t]) => t <= s.len + 0.01 || t === CAMS[s.k][CAMS[s.k].length - 1][0]).map(([t, z, x, y]) => [s.t0 + Math.min(t, s.len - 0.001), z, x, y]));
+const CAM = SC.flatMap((s) => CAMS[s.k].map(([t, z, x, y]) => [t / PACE, z, x, y]).filter(([t], i, a) => t <= s.len + 0.01 || i === a.length - 1).map(([t, z, x, y]) => [s.t0 + Math.min(t, s.len - 0.001), z, x, y]));
 function camAt(t) {
   let i = 0;
   while (i < CAM.length - 1 && CAM[i + 1][0] <= t) i++;
@@ -161,7 +170,7 @@ const MAG = '#c43cff', MAG_D = '#7d1fb0', MAG_L = '#e7a2ff';
 const PX = 7;
 // Per scene: [local t0, t1, action, ...], or clip-timed with {c:[ct0, ct1]}; ms = the mascot's size in that scene.
 // Coordinates are the phone screen's pixels (measured on the captures and the clips' frames).
-const MS = { play: 1, pair: 0.7, move: 0.7, block: 0.7, levels: 1, review: 1, win: 1, end: 1 };
+const MS = { play: 1, pair: 0.7, move: 0.7, block: 0.7, levels: 1, engine: 1, review: 1, win: 1, end: 1 };
 const ACTS = {
   play: [
     [0.25, 0.75, 'birth', [450, 690], [450, 352]],
@@ -198,22 +207,29 @@ const ACTS = {
     [4.25, 4.6, 'hop', [522, 945], [667, 945], 70],
     [4.6, 99, 'cheer', [667, 945]],
   ],
+  // the engine at work: on the summary card's accuracy, then running along the winning-chances graph
+  engine: [
+    [0.35, 0.7, 'drop', [760, 380]],
+    [0.7, 2.6, 'point', [760, 380]],
+    [2.6, 3.05, 'hop', [760, 380], [150, 812], 120],
+    [3.05, 4.6, 'run', [150, 812], [740, 812]],
+    [4.6, 99, 'stand', [740, 812], 'left', 'excl'],
+  ],
   review: [
-    [0.6, 0.95, 'drop', [190, 318]],
-    [0.95, 1.7, 'run', [190, 318], [760, 318]],
-    [1.7, 2.0, 'hop', [760, 318], [790, 463], 80],
-    [2.0, 2.2, 'stand', [790, 463], 'down'],
-    [2.2, 2.45, 'stomp', [790, 463]],
-    [2.45, 3.2, 'stand', [790, 463], 'left', 'excl'],
-    [3.6, 3.95, 'drop', [560, 598]],
-    [3.95, 4.8, 'run', [560, 598], [392, 598]],
-    [4.8, 99, 'point', [392, 598]],
+    [0.3, 0.65, 'drop', [190, 465]],
+    [0.65, 1.4, 'run', [190, 465], [700, 465]],
+    [1.4, 1.65, 'stand', [700, 465], 'down'],
+    [1.65, 1.9, 'stomp', [700, 465]],
+    [1.9, 3.2, 'stand', [700, 465], 'left', 'excl'],
+    [3.6, 3.95, 'drop', [520, 600]],
+    [3.95, 4.6, 'run', [520, 600], [430, 600]],
+    [4.6, 99, 'point', [430, 600]],
   ],
   win: [
-    [0.35, 0.7, 'drop', [640, 816]],
-    [0.7, 1.1, 'stand', [640, 816], 'down'],
-    [1.1, 1.5, 'hop', [640, 816], [790, 816], 70],
-    [1.5, 99, 'cheer', [790, 816]],
+    [0.35, 0.7, 'drop', [560, 1012]],
+    [0.7, 1.1, 'stand', [560, 1012], 'down'],
+    [1.1, 1.5, 'hop', [560, 1012], [700, 1012], 60],
+    [1.5, 99, 'cheer', [700, 1012]],
   ],
   end: [
     [0.6, 1.1, 'drop', [450, 392]],
@@ -221,7 +237,7 @@ const ACTS = {
     [3.6, 99, 'stand', [450, 392], 'happy'],
   ],
 };
-const tOf = (s, v) => (typeof v === 'object' ? s.lt(v.c) : v);
+const tOf = (s, v) => (typeof v === 'object' ? s.lt(v.c) : v / PACE);
 const ACT = SC.flatMap((s) => ACTS[s.k].map((a) => {
   const t0 = s.t0 + Math.min(tOf(s, a[0]), s.len), t1 = s.t0 + Math.min(tOf(s, a[1]), s.len);
   return [t0, t1, a[2], ...a.slice(3), MS[s.k]];
@@ -338,30 +354,51 @@ function drawTouches(ctx, t, c) {
   }
 }
 
-// ---------- spotlights: the thing the voice is about, lit; the rest dimmed ----------
-const SPOT_LOCAL = {
-  pair: [[{ c: 2.45 }, 99, 230, 622, 70]],
-  move: [[{ c: 2.6 }, 99, 280, 624, 110]],
-  block: [[{ c: 1.7 }, 99, 284, 628, 125]],
-  levels: [[4.65, 99, 667, 985, 110]],
-  review: [[2.45, 3.25, 640, 495, 330], [4.85, 99, 400, 640, 260]],
-  win: [[1.6, 99, 420, 1045, 280]],
+// ---------- the focus: a pixel selection box, like a game cursor picking an item ----------
+// [from, to, centre x, centre y, width, height] in screen pixels: the rest of the screen dims, and four 8-bit
+// corner brackets snap onto the thing the voice is talking about, then breathe on the beat.
+const FOCUS_LOCAL = {
+  pair: [[{ c: 2.45 }, 99, 230, 626, 74, 74]],
+  move: [[{ c: 2.6 }, 99, 278, 626, 176, 76]],
+  block: [[{ c: 1.7 }, 99, 283, 628, 186, 80]],
+  levels: [[4.65, 99, 667, 987, 150, 92]],
+  engine: [[0.75, 2.7, 600, 428, 360, 112], [3.1, 99, 451, 932, 670, 260]],
+  review: [[1.75, 3.25, 451, 519, 670, 116], [4.65, 99, 366, 638, 112, 112]],
+  win: [[1.55, 99, 416, 1043, 530, 66]],
 };
-const SPOTS = SC.flatMap((s) => (SPOT_LOCAL[s.k] || []).map(([a, b, x, y, r]) => [s.t0 + Math.min(tOf(s, a), s.len), s.t0 + Math.min(tOf(s, b), s.len), x, y, r]));
+const FOCUS = SC.flatMap((s) => (FOCUS_LOCAL[s.k] || []).map(([a, b, x, y, w, h]) => [s.t0 + Math.min(tOf(s, a), s.len), s.t0 + Math.min(tOf(s, b), s.len), x, y, w, h]));
 const spot = document.getElementById('spot').getContext('2d');
 function drawSpot(t, c) {
   spot.clearRect(0, 0, W, H);
-  for (const [a, b, x, y, r] of SPOTS) {
-    const k = Math.min(seg(t, a, a + 0.3), 1 - seg(t, b - 0.25, b));
+  for (const [a, b, x, y, w0, h0] of FOCUS) {
+    const kin = seg(t, a, a + 0.28), kout = 1 - seg(t, b - 0.22, b), k = Math.min(kin, kout);
     if (k <= 0) continue;
-    const [px, py] = toFrame(c, x, y), rr = r * P * c.z;
-    const g = spot.createRadialGradient(px, py, rr * 0.7, px, py, rr * 2.4);
-    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(3,5,20,${0.6 * k})`);
-    spot.fillStyle = g; spot.fillRect(0, 0, W, H);
-    // a gold ring: "this one"
-    spot.strokeStyle = `rgba(255,214,90,${0.95 * k})`; spot.lineWidth = Math.max(4, 6 * P * c.z * 0.6);
-    spot.setLineDash([14, 10]); spot.lineDashOffset = -nowT * 40;
-    spot.beginPath(); spot.arc(px, py, rr * (1.02 + 0.03 * Math.sin(nowT * 6)), 0, Math.PI * 2); spot.stroke(); spot.setLineDash([]);
+    const [px, py] = toFrame(c, x, y), sc = P * c.z;
+    const w = w0 * sc, h = h0 * sc;
+    // dim everything but a soft-cornered window on the thing
+    spot.save();
+    spot.fillStyle = `rgba(4,6,24,${0.55 * k})`;
+    spot.beginPath(); spot.rect(0, 0, W, H);
+    spot.roundRect(px - w / 2 - 6, py - h / 2 - 6, w + 12, h + 12, Math.min(w, h) * 0.18);
+    spot.fill('evenodd');
+    spot.restore();
+    // the brackets: fly in from 1.7x, overshoot a touch, then breathe with the music
+    const snap = kin < 1 ? 1 + 0.7 * (1 - back(kin)) : 1 + 0.035 * Math.sin((t - a) * Math.PI * 2 / BEAT);
+    const bw = w * snap / 2 + 10, bh = h * snap / 2 + 10;
+    const px8 = Math.max(4, Math.round(5 * sc * 0.7));            // one "pixel" of the bracket
+    const arm = Math.max(3, Math.round(Math.min(bw, bh) * 0.55 / px8));   // arm length, in pixels
+    spot.globalAlpha = k;
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const cx = Math.round(px + sx * bw), cy = Math.round(py + sy * bh);
+      for (const [col, off] of [['#7d1fb0', px8 * 0.6], ['#ffffff', 0]]) {   // magenta drop shadow, then white
+        spot.fillStyle = col;
+        for (let i = 0; i < arm; i++) {
+          spot.fillRect(cx - (sx > 0 ? px8 : 0) - sx * i * px8 + off, cy - (sy > 0 ? px8 : 0) + off, px8, px8);
+          spot.fillRect(cx - (sx > 0 ? px8 : 0) + off, cy - (sy > 0 ? px8 : 0) - sy * i * px8 + off, px8, px8);
+        }
+      }
+    }
+    spot.globalAlpha = 1;
   }
 }
 
@@ -481,7 +518,7 @@ for (const sc of SCREENS) {
   if (sc[2] === 'wipe' && sc[0] > 0) EV.push({ t: sc[0] - 0.3, type: 'sweep' });
   if (sc[2] === 'cut' && typeof sc[1] === 'string') EV.push({ t: sc[0], type: 'tick' });
 }
-for (const [a] of SPOTS) EV.push({ t: a, type: 'ding' });
+for (const [a] of FOCUS) EV.push({ t: a, type: 'ding' });
 // the clips' own moments, in each clip's time: dice rolls, taps on a move, the capture
 const CLIP_EV = { play: [[1.05, 'dice'], [2.0, 'six'], [3.05, 'dice'], [4.6, 'tap'], [6.4, 'tap'], [8.45, 'kill']], pair: [[0.45, 'dice'], [1.95, 'tap'], [2.35, 'click']], move: [[1.0, 'dice'], [2.65, 'tap']], block: [[0.9, 'dice'], [1.95, 'nope']] };
 for (const [k, list] of Object.entries(CLIP_EV)) for (const [ct, type] of list) { const s = S[k]; if (ct >= s.clip.a && ct <= s.clip.b && s.lt(ct) < s.len) EV.push({ t: ck(k, ct), type }); }
