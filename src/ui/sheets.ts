@@ -9,6 +9,7 @@ import { ACHIEVEMENTS, takeNew, type AchievementGroup } from './rewards';
 import { summary } from '../engine/ai/review';
 import { isComplete, isQueued, onReviewChange, progressOf } from './reviewQueue';
 import { peopleOf } from './reviewRun';
+import { accuracyText } from './reviewText';
 import { luckBand } from './reviewText';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
 
@@ -196,7 +197,7 @@ export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (r
     if (!sum.moves) return '<span class="pgr off">Not reviewed yet</span>';
     const luck = Number.isFinite(sum.luckPct) ? ` · Luck ${Math.round(sum.luckPct)}%` : '';
     const bad = [sum.labels.mistake ? `? ${sum.labels.mistake}` : '', sum.labels.blunder ? `?? ${sum.labels.blunder}` : ''].filter(Boolean).join(' ');
-    return `<span class="pgr">${Math.round(100 * sum.accuracy)}% accuracy${luck}${bad ? ` · ${bad}` : ''}</span>`;
+    return `<span class="pgr">${accuracyText(sum.accuracy)} accuracy${luck}${bad ? ` · ${bad}` : ''}</span>`;
   };
   const rows = () =>
     past
