@@ -7,6 +7,7 @@ import { COLORS } from '../board';
 import type { GameState, Move } from '../types';
 import type { LinearJSON } from './linear';
 import type { NetJSON } from './net';
+import type { DecisionValues } from './review';
 
 interface Exports {
   memory: WebAssembly.Memory;
@@ -14,6 +15,8 @@ interface Exports {
   init(net: number, netLen: number, rules: number, rulesLen: number): number;
   choose(state: number, len: number, nmax: number, seed: number): number;
   moves_len(state: number, len: number): number;
+  /** The game review's values for one decision (sim-wasm review); missing in modules built before #65. */
+  review?(state: number, len: number, n: number, seed: number): number;
 }
 
 const PHASES = { roll: 0, move: 1, over: 2 } as const;
@@ -68,6 +71,25 @@ export class RolloutEngine {
     const m = state.moves[k];
     if (!m) throw new Error(`rollout engine returned move ${k} of ${state.moves.length}`);
     return m;
+  }
+
+  /**
+   * The game review's values for one decision (#65): `n` paired playouts for every distinct move, no early
+   * stop (sim-rs rollout.rs review). Indexes are into state.moves.
+   */
+  review(state: GameState, n: number, seed: number): DecisionValues {
+    if (!this.x.review) throw new Error('this rollout engine has no review');
+    const [p, l] = this.put(encodeState(state));
+    const at = this.x.review(p, l, n, seed >>> 0);
+    if (!at) throw new Error('rollout engine not initialised');
+    const head = new Float64Array(this.x.memory.buffer, at, 3);
+    const [nm, nc, best] = [head[0]!, head[1]!, head[2]!];
+    const all = new Float64Array(this.x.memory.buffer, at, 3 + nm + 3 * nc);
+    const ofMove = Array.from(all.subarray(3, 3 + nm));
+    const per = all.subarray(3 + nm);
+    const pick = (k: number) => Array.from({ length: nc }, (_, c) => per[3 * c + k]!);
+    if (ofMove.length !== state.moves.length) throw new Error(`review saw ${ofMove.length} moves, the game has ${state.moves.length}`);
+    return { ofMove, mean: pick(0), gap: pick(1), se: pick(2), best };
   }
 
   /** How many moves the engine sees in `state` (must equal state.moves.length). */

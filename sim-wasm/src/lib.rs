@@ -3,6 +3,9 @@
 //! needs no bindings generator. The host copies bytes in through `alloc`, then:
 //!   init(net json, rules json)  once, the leaf net and Hard's rules (both as the app ships them)
 //!   choose(state, nmax, seed)   the index into state.moves of the move to play
+//!   review(state, n, seed)      the game review's values for one decision (#65), as f64s at the returned
+//!                               pointer: moves, candidates, best, then each move's candidate, then per
+//!                               candidate its mean, its gap below the best and that gap's standard error
 //! The state bytes (encodeState in rollout-worker.ts), all u8 unless noted:
 //!   n, singles, current, phase, nrolls, sixes, nrank, ranking[4], turn_count (u32 LE), rolls[nrolls],
 //!   then per player in colour order: colour index, owner, tokens[4] (i8: -1 base .. 56 finished).
@@ -104,4 +107,33 @@ pub unsafe extern "C" fn choose(state: *mut u8, len: usize, nmax: u32, seed: u32
 #[no_mangle]
 pub unsafe extern "C" fn moves_len(state: *mut u8, len: usize) -> i32 {
     decode(&take(state, len)).moves.len() as i32
+}
+
+thread_local! {
+    static REVIEW: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The review of one decision (rollout.rs review: `n` paired playouts per distinct move, no early stop), as
+/// f64s at the returned pointer, valid until the next call: [moves, candidates, best, candidate of each move
+/// ..., then mean, gap, se per candidate ...]. 0 if init was not called.
+#[no_mangle]
+pub unsafe extern "C" fn review(state: *mut u8, len: usize, n: u32, seed: u32) -> *const f64 {
+    let s = take(state, len);
+    let g = decode(&s);
+    ENGINE.with(|e| match e.borrow().as_ref() {
+        Some(eng) => {
+            let r = ludo_sim::rollout::review(&g, seed as i64, n as usize, CUT, Some(&eng.net), &eng.base);
+            REVIEW.with(|out| {
+                let mut o = out.borrow_mut();
+                o.clear();
+                o.extend([r.of_move.len() as f64, r.mean.len() as f64, r.best as f64]);
+                o.extend(r.of_move.iter().map(|&c| c as f64));
+                for c in 0..r.mean.len() {
+                    o.extend([r.mean[c], r.gap[c], r.se[c]]);
+                }
+                o.as_ptr()
+            })
+        }
+        None => std::ptr::null(),
+    })
 }
