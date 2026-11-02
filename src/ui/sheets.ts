@@ -3,12 +3,13 @@ import { COLORS, type GameRecord } from '../engine';
 import { PALETTE, miniBoard, symbolPath } from './art';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
-import { emptyStats, loadCheckIn, loadPastGames, loadStats, resetStats, type PastGame, type Stats } from './store';
+import { emptyStats, loadCheckIn, loadPastGames, loadReview, loadStats, resetStats, type PastGame, type Stats, type StoredReview } from './store';
 import { daysBetween, dayKey } from './checkin';
 import { ACHIEVEMENTS, takeNew, type AchievementGroup } from './rewards';
 import { summary } from '../engine/ai/review';
 import { isComplete, isQueued, onReviewChange, progressOf } from './reviewQueue';
 import { peopleOf } from './reviewRun';
+import { accuracyText } from './reviewText';
 import { luckBand } from './reviewText';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
 
@@ -179,20 +180,24 @@ function ago(t: number): string {
  */
 export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void) {
   const place = (p: number) => ['', '1st', '2nd', '3rd', '4th'][p] ?? '';
+  // Each game's stored review lives under its own key: loaded once, then the rows are drawn again.
+  const reviews = new Map<PastGame, StoredReview | undefined>();
   const status = (g: PastGame) => {
     const live = progressOf(g.rec);
-    if (live && !live.finished) {
-      const pct = live.total ? Math.floor((100 * live.done) / live.total) : 0;
+    // Your side's progress: a bot's side being reviewed on demand doesn't hold the result back.
+    if (live && !live.mine.finished) {
+      const pct = live.mine.total ? Math.floor((100 * live.mine.done) / live.mine.total) : 0;
       return `<span class="pgr"><i class="ring" style="--p:${pct}"></i>Reviewing ${pct}%</span>`;
     }
-    const r = live?.finished ? { moves: live.moves, luck: live.luck } : isComplete(g.review) ? g.review! : g.review?.old;
+    const stored = reviews.get(g);
+    const r = live?.mine.finished ? { moves: live.moves, luck: live.luck } : isComplete(stored) ? stored! : stored?.old;
     const me = peopleOf(g.rec)[0];
     if (!r || me === undefined) return `<span class="pgr off">${isQueued(g.rec) ? 'Review queued' : me === undefined ? '' : 'Not reviewed yet'}</span>`;
     const sum = summary(r.moves, r.luck ?? [], new Set(g.rec.seats.map((x) => x.owner)).size)[me]!;
     if (!sum.moves) return '<span class="pgr off">Not reviewed yet</span>';
     const luck = Number.isFinite(sum.luckPct) ? ` · Luck ${Math.round(sum.luckPct)}%` : '';
     const bad = [sum.labels.mistake ? `? ${sum.labels.mistake}` : '', sum.labels.blunder ? `?? ${sum.labels.blunder}` : ''].filter(Boolean).join(' ');
-    return `<span class="pgr">${Math.round(100 * sum.accuracy)}% accuracy${luck}${bad ? ` · ${bad}` : ''}</span>`;
+    return `<span class="pgr">${accuracyText(sum.accuracy)} accuracy${luck}${bad ? ` · ${bad}` : ''}</span>`;
   };
   const rows = () =>
     past
@@ -206,6 +211,9 @@ export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (r
   const ov = sheet(host, 'Games & reviews', past.length ? `<p class="sub">Tap a game for its review, ▶ for the replay</p><div class="pglist">${rows()}</div>` : `<div class="empty"><b class="disp">No games yet</b><p class="sub">Finish a game and its replay and review show up here.</p></div>`);
   // The statuses follow the reviews while the sheet is open.
   const list = ov.querySelector<HTMLElement>('.pglist');
+  void Promise.all(past.map(async (g) => reviews.set(g, await loadReview(g.rec).catch(() => undefined)))).then(() => {
+    if (list && ov.isConnected) list.innerHTML = rows();
+  });
   const off = onReviewChange(() => {
     if (!ov.isConnected) return off();
     if (list) list.innerHTML = rows();

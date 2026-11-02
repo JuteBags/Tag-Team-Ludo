@@ -13,7 +13,7 @@ import { dieMarkup } from './dice';
 import { framesOf, namesOf } from './replay';
 import { follow } from './reviewQueue';
 import { decisionsToReview, peopleOf, type ReviewProgress } from './reviewRun';
-import { bigRolls, etaText, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, luckBand, luckWords, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
+import { accuracyText, bigRolls, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, luckBand, luckWords, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
 import type { StoredReview } from './store';
 
 const GW = 330;
@@ -119,7 +119,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const card = document.createElement('div');
     card.className = 'rvcard';
     card.setAttribute('style', cssVars(colorOf(pov)));
-    const acc = !ready ? '…' : s.moves && Number.isFinite(s.accuracy) ? `${Math.round(100 * s.accuracy)}%` : '–';
+    const acc = !ready ? '…' : s.moves ? accuracyText(s.accuracy) : '–';
     const band = luckBand(s.luckPct);
     const lpct = d.luck && Number.isFinite(s.luckPct) ? `${Math.round(s.luckPct)}%` : '…';
     const words = d.luck ? luckWords(s.luck, isYou(pov)) : null;
@@ -128,6 +128,13 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       <div class="rvchips">${LABELS.map((l) => `<button data-filter="${l}" style="--c:${LABEL_LOOK[l].color}" aria-label="${LABEL_LOOK[l].name}: ${s.labels[l]}"${filter === l ? ' class="on"' : ''}><i>${LABEL_LOOK[l].sym}</i>${s.labels[l]}</button>`).join('')}</div>
       ${words ? `<div class="rvluck ${band.tone}"><p><b>Luck ${lpct} · ${band.word}:</b> ${words.line}</p></div>` : '<div class="rvluck skel" aria-label="Working out the dice luck"><i></i><i></i></div>'}`;
     card.querySelector('.rvwho b')!.textContent = names[pov]!;
+    // No accuracy for a game without a decision where much was at stake: say why under the card's top row.
+    if (ready && s.moves && !Number.isFinite(s.accuracy)) {
+      const few = document.createElement('p');
+      few.className = 'rvfew';
+      few.textContent = FEW_BIG_DECISIONS;
+      card.querySelector('.rvwho')!.after(few);
+    }
     // With accuracy: how many moves really cost something (mistakes and blunders).
     if (ready && s.moves) {
       const km = document.createElement('small');
@@ -182,7 +189,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     // The turning point sits on its move, or on the first of this side's moves after its roll.
     const ti = !tp ? -1 : tp.kind === 'move' ? mine.indexOf(tp.move) : mine.findIndex((m) => m.at > tp.roll.at);
     const star = ti >= 0 ? `<g class="tpstar" transform="translate(${pts[ti]![0].toFixed(1)} ${(pts[ti]![1] - 12).toFixed(1)})"><path d="M0,-7 L2,-2 7,-2 3,1.5 4.5,6.5 0,3.5 -4.5,6.5 -3,1.5 -7,-2 -2,-2Z"/></g>` : '';
-    q('.rvgraph').innerHTML = `<small>${isYou(pov) ? 'Your' : `${names[pov]}'s`} winning chances</small><svg viewBox="-6 -8 ${GW + 40} ${GH + 16}" aria-hidden="true">
+    q('.rvgraph').innerHTML = `<small></small><svg viewBox="-6 -8 ${GW + 40} ${GH + 16}" aria-hidden="true">
         ${[0, 50, 100].map(tick).join('')}
         <line x1="${GL}" y1="${even}" x2="${GW}" y2="${even}" class="even"/><text x="${GL + 4}" y="${even - 4}">even</text>
         <polyline points="${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')}"/>
@@ -190,6 +197,8 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
         ${star}
         <text x="${end[0] + 6}" y="${Math.max(8, Math.min(GH, end[1] + 4))}" class="final">${Math.round(100 * (result[0] ?? mine.at(-1)!.playedChance))}%</text>
         <rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/></svg>`;
+    // Names go in as text, like everywhere else.
+    q('.rvgraph small').textContent = `${isYou(pov) ? 'Your' : `${names[pov]}'s`} winning chances`;
   };
 
   const moveRow = (m: MoveReview, turning = false) => {
@@ -323,7 +332,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     }
   });
   // Until the queue reports, an empty card (the skeleton) rather than a blank screen.
-  draw({ moves: [], luck: null, chances: null, who: [pov], done: 0, total: 0, finished: false, eta: null });
+  draw({ moves: [], luck: null, chances: null, who: [pov], done: 0, total: 0, finished: false, eta: null, mine: { done: 0, total: 0, finished: false } });
   watchPov();
   return el;
 }

@@ -229,7 +229,7 @@ export interface PastGame {
   at: number;
   mode: 'pvc' | 'pvp';
   place: number;
-  /** The game review so far (#65), at the labels' version: a review from another version is redone. */
+  /** A review stored by an older build inside the entry; reviews now live under their own key (loadReview). */
   review?: StoredReview;
 }
 
@@ -255,16 +255,59 @@ const GAMES = 'ludo-games';
 /** How many finished games are kept, newest first. */
 export const KEEP_GAMES = 20;
 export const loadPastGames = () => read<PastGame[]>(GAMES).then((g) => (Array.isArray(g) ? g : []));
-/** Adds a finished game, dropping the oldest past KEEP_GAMES. */
-export async function savePastGame(g: PastGame): Promise<void> {
-  await write(GAMES, [g, ...(await loadPastGames())].slice(0, KEEP_GAMES));
+
+/**
+ * A game's identity, for its review: who sat where, the seed and every event, so two games never share one.
+ * The same game from storage, the result screen or a link gives the same key.
+ */
+export const keyOf = (rec: GameRecord) => `${rec.seed ?? ''}|${rec.seats.map((s) => `${s.color}${s.owner}${s.bot ? 'b' : ''}`).join(',')}|${rec.first}|${rec.events}`;
+
+/** A short storage key for a game's review (FNV-1a over keyOf, base 36): reviews live apart from the games list. */
+export function reviewKey(rec: GameRecord): string {
+  const k = keyOf(rec);
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < k.length; i++) {
+    const c = k.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ c, 0x0100019d) >>> 0;
+  }
+  return `ludo-review-${h1.toString(36)}${h2.toString(36)}`;
 }
 
-/** Stores the review of the past game with this record (matched by its events), if it is still kept. */
-export async function saveReview(rec: GameRecord, review: StoredReview): Promise<void> {
-  const games = await loadPastGames();
-  const g = games.find((x) => x.rec.events === rec.events && x.rec.first === rec.first);
-  if (!g) return;
-  g.review = review;
-  await write(GAMES, games);
+// Writes to the games list go one at a time, so a game saved while another write is in flight is never lost.
+let gamesChain: Promise<unknown> = Promise.resolve();
+const serial = <T>(f: () => Promise<T>): Promise<T> => {
+  const next = gamesChain.then(f, f);
+  gamesChain = next.catch(() => undefined);
+  return next;
+};
+
+/** Adds a finished game, dropping the oldest past KEEP_GAMES (and their reviews). */
+export function savePastGame(g: PastGame): Promise<void> {
+  return serial(async () => {
+    const all = [g, ...(await loadPastGames())];
+    await write(GAMES, all.slice(0, KEEP_GAMES));
+    for (const old of all.slice(KEEP_GAMES)) await drop(reviewKey(old.rec));
+  });
+}
+
+/**
+ * A game's stored review: under its own key (#92), or, for a game saved before that, inside its past-game
+ * entry. Never written into the games list again, so a review save can't lose a game.
+ */
+export async function loadReview(rec: GameRecord): Promise<StoredReview | undefined> {
+  const own = await read<StoredReview>(reviewKey(rec));
+  if (own) return own;
+  return (await loadPastGames()).find((g) => keyOf(g.rec) === keyOf(rec))?.review;
+}
+
+/**
+ * Stores a game's review under its own key, if the game is still one of the past games. `ok()` is asked again
+ * just before the write (the review runner's "am I still the newest run of this game?").
+ */
+export async function saveReview(rec: GameRecord, review: StoredReview, ok: () => boolean = () => true): Promise<void> {
+  const k = keyOf(rec);
+  if (!(await loadPastGames()).some((g) => keyOf(g.rec) === k)) return;
+  if (ok()) await write(reviewKey(rec), review);
 }

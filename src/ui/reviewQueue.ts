@@ -9,13 +9,13 @@ import type { GameRecord } from '../engine';
 import { REVIEW_VERSION, type Reviewer } from '../engine/ai/review';
 import { stopReviewWorker, workerReviewer } from '../engine/ai/review-worker';
 import { peopleOf, runReview, type ReviewProgress } from './reviewRun';
-import { loadPastGames, type StoredReview } from './store';
+import { keyOf, loadPastGames, loadReview, type StoredReview } from './store';
 
 /** How many of the newest unreviewed games are queued on their own; older ones are reviewed when opened. */
 export const AUTO_QUEUE = 3;
 
-/** A record's identity: the same game from storage or the result screen. */
-export const keyOf = (rec: GameRecord) => `${rec.first}|${rec.events}`;
+/** A record's identity (store.ts): the same game from storage, the result screen or a link. */
+export { keyOf };
 
 /** A stored review that needs no more work: this version, finished. */
 export const isComplete = (r: StoredReview | undefined) => !!r && r.v === REVIEW_VERSION && !!r.done;
@@ -83,7 +83,7 @@ async function pump() {
   starting = true;
   let stored: StoredReview | undefined;
   try {
-    stored = job.keep ? (await loadPastGames()).find((g) => keyOf(g.rec) === job.key)?.review : memory.get(job.key);
+    stored = job.keep ? await loadReview(job.rec) : memory.get(job.key);
   } catch {
     stored = undefined;
   }
@@ -209,11 +209,13 @@ export async function bootReviews() {
     hidden = document.hidden;
     update();
   });
-  const past = await loadPastGames().catch(() => []);
-  past
-    .filter((g) => g.rec.seats.some((s) => !s.bot) && !isComplete(g.review))
-    .slice(0, AUTO_QUEUE)
-    .forEach((g) => enqueue(g.rec, { pvp: g.mode === 'pvp', at: g.at }));
+  const past = (await loadPastGames().catch(() => [])).filter((g) => g.rec.seats.some((s) => !s.bot));
+  const todo = [];
+  for (const g of past) {
+    if (todo.length >= AUTO_QUEUE) break;
+    if (!isComplete(await loadReview(g.rec).catch(() => undefined))) todo.push(g);
+  }
+  todo.forEach((g) => enqueue(g.rec, { pvp: g.mode === 'pvp', at: g.at }));
 }
 
 /** For tests: forget every job. */

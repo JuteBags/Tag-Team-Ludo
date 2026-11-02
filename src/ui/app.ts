@@ -6,7 +6,7 @@ import { handleBack } from './native';
 import type { GameConfig, Mode } from './setup';
 import { setupScreen } from './setupScreen';
 import { storeScreen } from './storeScreen';
-import { giveUpSaved, loadGame, loadPastGames, type SavedGame } from './store';
+import { giveUpSaved, loadGame, loadReview, type SavedGame } from './store';
 import { applyLook } from './themes';
 import { offerUpdate } from './update';
 import { offerCheckIn } from './checkin';
@@ -15,6 +15,7 @@ import { linkPayload } from './replay';
 import { safeReplayScreen } from './replayScreen';
 import { reviewScreen } from './reviewScreen';
 import { bootReviews, setGame } from './reviewQueue';
+import { benchScreen } from './bench';
 
 const W = 390;
 const H = 844;
@@ -54,7 +55,7 @@ export function mountApp(root: HTMLElement) {
   /** The replay of `rec`; `back` returns to where it was opened from. With a stored review it opens in review mode. */
   // `keep`: the game is one of the past games, so its review is stored (not for a game from a link).
   const storedReview = async (rec: GameRecord, keep: boolean) =>
-    keep ? (await loadPastGames()).find((g) => g.rec.events === rec.events && g.rec.first === rec.first)?.review : undefined;
+    keep ? await loadReview(rec) : undefined;
   const watch = async (rec: GameRecord, back: () => void, keep = true, startAt?: number, startCaption?: string, pov?: number) => {
     const stored = await storedReview(rec, keep);
     stage.replaceChildren(safeReplayScreen(rec, back, { startAt, startCaption, pov, keep, review: stored, onReview: (p) => void review(rec, back, keep, p) }));
@@ -112,7 +113,8 @@ export function mountApp(root: HTMLElement) {
   // for a link pasted into a tab that already has the game open.
   const openLink = () => {
     const payload = linkPayload(location.hash);
-    if (payload === null) return false;
+    const bench = location.hash === '#bench';
+    if (payload === null && !bench) return false;
     // A game in progress stops here; it was saved at the start of its turn, so Continue picks it up.
     if (game && stage.contains(game.el)) game.dispose();
     game = null;
@@ -120,7 +122,9 @@ export function mountApp(root: HTMLElement) {
       history.replaceState(null, '', location.pathname + location.search);
       void home();
     };
-    void decodeRecord(payload).then((rec) => (rec ? void watch(rec, leave, false) : stage.replaceChildren(safeReplayScreen(null, leave))));
+    // The hidden Extreme speed test (#62), for timing a real phone.
+    if (bench) stage.replaceChildren(benchScreen(leave));
+    else void decodeRecord(payload!).then((rec) => (rec ? void watch(rec, leave, false) : stage.replaceChildren(safeReplayScreen(null, leave))));
     return true;
   };
   addEventListener('hashchange', () => void openLink());

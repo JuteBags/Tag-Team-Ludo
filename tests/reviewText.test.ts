@@ -1,8 +1,8 @@
 // The game review's words and graph (src/ui/reviewText.ts) and its runner (src/ui/reviewRun.ts).
 import { describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
-import { REVIEW_VERSION, type DecisionValues, type MoveReview } from '../src/engine/ai/review';
-import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken, luckBand, headline, turningPoint } from '../src/ui/reviewText';
+import { REVIEW_VERSION, summary, type DecisionValues, type MoveReview } from '../src/engine/ai/review';
+import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken, luckBand, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS } from '../src/ui/reviewText';
 
 const mem = new Map<string, string>();
 vi.mock('@capacitor/preferences', () => ({
@@ -14,6 +14,7 @@ vi.mock('@capacitor/preferences', () => ({
 }));
 vi.mock('../src/engine/ai/review-worker', () => ({ workerReviewer: () => null, workerLuck: () => Promise.resolve({ luck: [], chances: [] }) }));
 const { runReview, decisionsToReview } = await import('../src/ui/reviewRun');
+const { loadReview, savePastGame, loadPastGames, reviewKey, KEEP_GAMES } = await import('../src/ui/store');
 
 const SEATS: Seat[] = [{ color: 'blue', owner: 0, bot: false }, { color: 'red', owner: 1, bot: true, level: 'hard' }];
 function game(seed: number): GameRecord {
@@ -112,6 +113,30 @@ describe('luck %, headline and turning point', () => {
   });
 });
 
+describe('a game with no meaningful decision', () => {
+  // Every decision's spread under 3 points: small slips in decisions where little was at stake.
+  const mv = (at: number, label: MoveReview['label'], gap: number): MoveReview => ({ at, owner: 0, played: 1, best: 0, playedChance: 0.3, bestChance: 0.32, gap, se: 0.4, label, gaps: [0, gap, 2.5] });
+  const moves = [mv(1, 'best', 0), mv(2, 'inaccuracy', 2.2), mv(3, 'good', 1.6), mv(4, 'inaccuracy', 2)];
+  it('has no accuracy, shown as a dash with the explainer, and never as NaN%', () => {
+    const s = summary(moves, [], 2)[0]!;
+    expect(s.accuracy).toBeNaN();
+    expect(accuracyText(s.accuracy)).toBe('–');
+    expect(FEW_BIG_DECISIONS).toMatch(/^Few big decisions/);
+    expect(accuracyText(0.873)).toBe('87%');
+    // The counts still show.
+    expect(s.labels.inaccuracy).toBe(2);
+    expect(s.keyMistakes).toBe(0);
+  });
+  it('gets a headline that quotes no accuracy', () => {
+    for (const won of [true, false])
+      for (const luckPct of [10, 50, 90]) {
+        const h = headline({ won, accuracy: NaN, luckPct, name: 'You', keyMistakes: 0, inaccuracies: 2 });
+        expect(h).not.toMatch(/NaN/);
+        expect(h).not.toMatch(/played well|great play|\d+% accuracy/);
+      }
+  });
+});
+
 describe('progress words', () => {
   it('rounds the time left to half minutes and says almost done near the end', () => {
     expect(etaText(null)).toBe('');
@@ -162,6 +187,44 @@ describe('review runner', () => {
     const when = await new Promise<number | undefined>((done) => runReview(rec, { v: REVIEW_VERSION, moves: all, luck: [], when: 123 }, (p) => p.finished && done(p.when), false, fake));
     expect(calls).toBe(0);
     expect(when).toBe(123);
+  });
+
+  it('a stopped run never saves over a newer run of the same game, even when its last call resolves last', async () => {
+    mem.clear();
+    const rec = game(12);
+    await savePastGame({ rec, at: 1, mode: 'pvc', place: 2 });
+    const values = (s: GameState): DecisionValues => ({ ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 });
+    // Run 1: its third decision hangs until we let it go.
+    let calls = 0;
+    let release!: () => void;
+    const slow = (s: GameState) => {
+      calls++;
+      return calls === 3 ? new Promise<DecisionValues>((r) => (release = () => r(values(s)))) : Promise.resolve(values(s));
+    };
+    const stop1 = runReview(rec, undefined, () => {}, true, slow);
+    for (let i = 0; i < 200 && !release; i++) await new Promise((r) => setTimeout(r, 1));
+    expect(release).toBeTypeOf('function');
+    stop1();
+    // Run 2 starts at once and finishes the whole review.
+    const done2 = await new Promise<number>((done) => runReview(rec, undefined, (p) => p.finished && done(p.moves.length), true, async (s) => values(s)));
+    // Run 1's hanging call resolves last: nothing it does may reach storage.
+    release();
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 2));
+    const stored = await loadReview(rec);
+    expect(stored?.done).toBe(true);
+    expect(stored?.moves.length).toBe(done2);
+  });
+
+  it('keeps reviews apart from the games list, and drops a review with its game', async () => {
+    mem.clear();
+    const first = game(20);
+    await savePastGame({ rec: first, at: 0, mode: 'pvc', place: 1 });
+    await new Promise<void>((done) => runReview(first, undefined, (p) => p.finished && done(), true, async (s) => ({ ofMove: s.moves.map(() => 0), mean: [0.5], gap: [0], se: [0], best: 0 })));
+    expect(mem.has(reviewKey(first))).toBe(true);
+    expect((await loadPastGames())[0]!.review).toBeUndefined();
+    // KEEP_GAMES newer games push it off the list: its review goes too.
+    for (let i = 0; i < KEEP_GAMES; i++) await savePastGame({ rec: { ...first, seed: 1000 + i }, at: i + 1, mode: 'pvc', place: 1 });
+    expect(mem.has(reviewKey(first))).toBe(false);
   });
 
   it('counts decisions with nothing to choose as done, so a review finishes', async () => {

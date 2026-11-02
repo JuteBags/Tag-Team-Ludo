@@ -69,6 +69,7 @@ export function globalDefs(): string {
   <linearGradient id="gLeaf" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe98f"/><stop offset="1" stop-color="#d88a08"/></linearGradient>
   <linearGradient id="gSilver" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#9aa8bd"/></linearGradient>
   <linearGradient id="gBronze" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd0a0"/><stop offset="1" stop-color="#b85f22"/></linearGradient>
+  <linearGradient id="crownG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff1a0"/><stop offset=".55" stop-color="#ffc21a"/><stop offset="1" stop-color="#c47a00"/></linearGradient>
   <linearGradient id="gPlain" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fb4ff"/><stop offset="1" stop-color="#3a5fb0"/></linearGradient>
   <radialGradient id="pshadow"><stop offset="0" stop-color="#000" stop-opacity=".55"/><stop offset=".6" stop-color="#000" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>`;
   return `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${g}</defs></svg>`;
@@ -202,6 +203,23 @@ const PAWN_SKINS: Record<string, PawnSkin> = {
 <path d="M-3.4,-12.6 C-2,-14 0,-14.8 1.6,-14.6" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.6" stroke-linecap="round"/>`;
     },
   },
+};
+
+/** Grandmaster's crown (#79): gold, five points, a gem in the player's colour, sitting on the head. */
+const CROWN_PATH = 'M-5.8,-13.6 L-6.6,-18.6 L-3.2,-16.2 L0,-19.8 L3.2,-16.2 L6.6,-18.6 L5.8,-13.6Z';
+const crown = (c: Color) => {
+  const v = PALETTE[c];
+  return `<path d="${CROWN_PATH}" fill="url(#crownG)" stroke="#8a4b00" stroke-width=".9" stroke-linejoin="round"/>
+<rect x="-6" y="-15" width="12" height="2" rx=".8" fill="#ffe27a" stroke="#8a4b00" stroke-width=".6"/>
+<circle cx="0" cy="-16.9" r="1.45" fill="${v.m}" stroke="#fff" stroke-width=".6"/><circle cx="-.4" cy="-17.3" r=".45" fill="#fff"/>
+<circle cx="-6.6" cy="-18.6" r=".8" fill="#fff6c2"/><circle cx="6.6" cy="-18.6" r=".8" fill="#fff6c2"/><circle cx="0" cy="-19.8" r=".8" fill="#fff6c2"/>`;
+};
+// The crowned pawn is the classic one, a little smaller and lower so the crown fits the same box.
+const CROWNED = 'translate(0 1.2) scale(.94)';
+PAWN_SKINS.crowned = {
+  sil: `<g transform="${CROWNED}">${PAWN_SKINS.classic!.sil}<path d="${CROWN_PATH}"/></g>`,
+  sym: [0, 4.6],
+  art: (c) => `<g transform="${CROWNED}">${PAWN_SKINS.classic!.art(c)}${crown(c)}</g>`,
 };
 
 /**

@@ -14,7 +14,7 @@ import { drawCard, shareCard } from './shareCard';
 import { clearGame, giveUpNote, givingUpLoses, layoutOf, levelOf, loadStats, recordGame, saveGame, savePastGame, type SavedGame } from './store';
 import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targets';
 import { award, goldFor, newAchievements, nextStreak, total, type GameFacts } from './rewards';
-import { earn, lockLabel, nextGoal } from './skins';
+import { earn, lockLabel, nextGoal, skinUnlockedBy } from './skins';
 import { enqueue, onReviewChange, progressOf, setGame } from './reviewQueue';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
@@ -799,10 +799,11 @@ export class GameScreen {
       // It keeps following while the review screen is open (the card is off-screen then) and stops once done.
       const show = () => {
         const p = progressOf(rec);
-        if (p?.finished) off();
-        rvb.textContent = !p || p.finished ? '★ REVIEW' : p.done && p.total ? `REVIEW ${Math.floor((100 * p.done) / p.total)}%` : 'REVIEW…';
-        rvb.setAttribute('aria-label', !p ? 'Review the game' : p.finished ? 'Review ready' : 'Reviewing the game');
-        rvb.classList.toggle('ready', !!p?.finished);
+        const m = p?.mine;
+        if (m?.finished) off();
+        rvb.textContent = !m || m.finished ? '★ REVIEW' : m.done && m.total ? `REVIEW ${Math.floor((100 * m.done) / m.total)}%` : 'REVIEW…';
+        rvb.setAttribute('aria-label', !m ? 'Review the game' : m.finished ? 'Review ready' : 'Reviewing the game');
+        rvb.classList.toggle('ready', !!m?.finished);
       };
       const off = onReviewChange(show);
       show();
@@ -819,7 +820,9 @@ export class GameScreen {
       const sorted = [...fresh].sort((x, y) => y.gold - x.gold);
       const extra = sorted.reduce((a, x) => a + x.gold, 0);
       sorted.forEach((a, i) => {
-        box.insertAdjacentHTML('beforeend', `<span class="ach" title="${a.blurb}">🏆 ${a.name} <em>+${a.gold}</em></span>`);
+        // An achievement that unlocks a skin says so (#79).
+        const skin = skinUnlockedBy(a.id);
+        box.insertAdjacentHTML('beforeend', `<span class="ach" title="${a.blurb}">🏆 ${a.name} <em>+${a.gold}</em>${skin ? ` · unlocks ${skin.name} ${skin.shelf === 'dice' ? 'dice' : 'pawns'}` : ''}</span>`);
         (box.lastElementChild as HTMLElement).animate([{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'scale(1.1)', offset: 0.7 }, { opacity: 1, transform: 'scale(1)' }], { duration: 380, delay: 1300 + i * 300, easing: 'cubic-bezier(.3,.8,.4,1.2)', fill: 'backwards' });
         setTimeout(() => sfx.home(), 1300 + i * 300);
       });
