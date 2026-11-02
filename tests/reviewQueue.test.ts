@@ -20,7 +20,7 @@ vi.mock('../src/engine/ai/review-worker', () => ({
   workerReviewer: () => async (s: GameState): Promise<DecisionValues> => {
     calls.push(s.players.map((p) => p.tokens.join(',')).join('|'));
     await new Promise<void>((r) => release.push(r));
-    return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.4 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.1 : 0)), se: s.moves.map(() => 0.01), best: 0 };
+    return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 };
   },
   workerLuck: () => Promise.resolve({ luck: [], chances: [] }),
   stopReviewWorker: () => stopped(),

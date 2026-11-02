@@ -135,10 +135,10 @@ describe('review runner', () => {
   it('picks up a stored review and skips the moves already done; another version starts over', async () => {
     const rec = game(9);
     let calls = 0;
-    // Every other move 10 points down: away from every label's edge, so one call per decision.
+    // Every other move 7.5 points down: away from every label's edge, so one call per decision.
     const fake = async (s: GameState): Promise<DecisionValues> => {
       calls++;
-      return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.4 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.1 : 0)), se: s.moves.map(() => 0.01), best: 0 };
+      return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 };
     };
     const run = (stored?: Parameters<typeof runReview>[1]) =>
       new Promise<MoveReview[]>((done) => runReview(rec, stored, (p) => p.finished && done(p.moves), false, fake));
@@ -171,7 +171,7 @@ describe('review runner', () => {
     const fake = async (s: GameState): Promise<DecisionValues> =>
       k++ % 3 === 0
         ? { ofMove: s.moves.map(() => 0), mean: [0.5], gap: [0], se: [0], best: 0 }
-        : { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.4 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.1 : 0)), se: s.moves.map(() => 0.01), best: 0 };
+        : { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 };
     const end = await new Promise<{ done: number; total: number; moves: MoveReview[] }>((done) => runReview(rec, undefined, (p) => p.finished && done(p), false, fake));
     expect(end.done).toBe(end.total);
     expect(end.moves.length).toBeLessThan(end.total);
@@ -179,7 +179,7 @@ describe('review runner', () => {
 
   it('estimates the time left once a few verdicts are in, and dates the finished review', async () => {
     const rec = game(9);
-    const fake = async (s: GameState): Promise<DecisionValues> => ({ ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.4 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.1 : 0)), se: s.moves.map(() => 0.01), best: 0 });
+    const fake = async (s: GameState): Promise<DecisionValues> => ({ ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 });
     const seen: (number | null)[] = [];
     const end = await new Promise<{ when?: number; eta: number | null }>((done) =>
       runReview(rec, undefined, (p) => (p.finished ? done(p) : seen.push(p.eta)), false, fake),

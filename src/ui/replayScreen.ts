@@ -8,7 +8,7 @@
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { replay, type GameRecord, type GameState } from '../engine';
-import { labelOf, type MoveReview } from '../engine/ai/review';
+import { labelOf, layoutKey, type MoveReview } from '../engine/ai/review';
 import { avatarSVG, cssVars, icons, PALETTE } from './art';
 import { BoardView } from './boardView';
 import { moveTargets } from './targets';
@@ -243,7 +243,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     const gap = v.gaps![i] ?? 0;
     const best = s.moves[v.best]!;
     // The labels' cuts come from review.ts (calibrated per layout), never from the UI.
-    const label = i === v.best ? 'best' : labelOf(gap, 0);
+    const label = i === v.best ? 'best' : labelOf(gap, 0, layoutKey(allStates[0]!));
     const look = LABEL_LOOK[label];
     const nameOf = (c: string) => {
       const o = rec.seats.find((x) => x.color === c)?.owner ?? 0;

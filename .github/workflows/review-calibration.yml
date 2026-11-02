@@ -37,9 +37,11 @@ jobs:
       - run: bash tools/ai/build.sh
       - name: Review bot games
         run: |
-          node tools/ai/dist/review_calib.mjs --layout ${{ matrix.layout }} --mover ${{ matrix.mover }} --min ${{ inputs.min_moves || '600' }} | tee calib.txt
+          node tools/ai/dist/review_calib.mjs --layout ${{ matrix.layout }} --mover ${{ matrix.mover }} --dump decisions.jsonl --min ${{ inputs.min_moves || '600' }} | tee calib.txt
           { echo "## ${{ matrix.layout }} ${{ matrix.mover }}"; echo '```'; grep '^CALIB' calib.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:
           name: calib-${{ matrix.layout }}-${{ matrix.mover }}
-          path: calib.txt
+          path: |
+            calib.txt
+            decisions.jsonl
