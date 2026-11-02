@@ -5,17 +5,14 @@ import { homeScreen } from './homeScreen';
 import { handleBack } from './native';
 import type { GameConfig, Mode } from './setup';
 import { setupScreen } from './setupScreen';
-import { storeScreen } from './storeScreen';
 import { giveUpSaved, loadGame, loadReview, type SavedGame } from './store';
 import { applyLook } from './themes';
 import { offerUpdate } from './update';
 import { offerCheckIn } from './checkin';
 import { decodeRecord, type GameRecord } from '../engine';
 import { linkPayload } from './replay';
-import { safeReplayScreen } from './replayScreen';
-import { reviewScreen } from './reviewScreen';
 import { bootReviews, setGame } from './reviewQueue';
-import { benchScreen } from './bench';
+import { prefetchAtIdle, screens, setScreen, show } from './lazy';
 
 const W = 390;
 const H = 844;
@@ -40,14 +37,14 @@ export function mountApp(root: HTMLElement) {
     setGame('none');
     const saved = await loadGame();
     if (game) return; // a game started while the save was loading
-    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => stage.replaceChildren(storeScreen(() => void home())), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()));
-    stage.replaceChildren(screen);
+    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()));
+    setScreen(stage, screen);
     // On the home screen only, never during a game: a newer version on the site, then today's check-in.
     void offerUpdate(screen).then(() => offerCheckIn(screen));
   };
   // Home -> setup (houses, roll for order, pick houses) -> game. Play again keeps the same houses.
   const setup = (mode: Mode, houses: 1 | 2 = 1) =>
-    stage.replaceChildren(setupScreen(mode, count, (cfg) => play(cfg), () => void home(), houses, () => {
+    setScreen(stage, setupScreen(mode, count, (cfg) => play(cfg), () => void home(), houses, () => {
       // From 4 players vs Computer: you and one bot with two colours each.
       count = 2;
       setup(mode, 2);
@@ -58,13 +55,12 @@ export function mountApp(root: HTMLElement) {
     keep ? await loadReview(rec) : undefined;
   const watch = async (rec: GameRecord, back: () => void, keep = true, startAt?: number, startCaption?: string, pov?: number) => {
     const stored = await storedReview(rec, keep);
-    stage.replaceChildren(safeReplayScreen(rec, back, { startAt, startCaption, pov, keep, review: stored, onReview: (p) => void review(rec, back, keep, p) }));
+    await show(stage, screens.replay, (m) => m.safeReplayScreen(rec, back, { startAt, startCaption, pov, keep, review: stored, onReview: (p) => void review(rec, back, keep, p) }), back);
   };
   /** The game review of `rec` (it runs in the review queue); a tapped move opens the replay there, from the same side. */
   const review = async (rec: GameRecord, back: () => void, keep = true, pov?: number) => {
     const stored = await storedReview(rec, keep);
-    const screen = reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p), keep, at, caption, p), keep, pov);
-    stage.replaceChildren(screen);
+    await show(stage, screens.review, (m) => m.reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p), keep, at, caption, p), keep, pov), back);
   };
   // Set while a game starts, so a double tap on Start or Play again can't open two games.
   let starting = false;
@@ -75,10 +71,10 @@ export function mountApp(root: HTMLElement) {
       // A new game replaces any saved one (counted as a loss when it's given up past the first round); a
       // continued game picks up from it.
       if (!saved) await giveUpSaved();
-      const toResult = () => stage.replaceChildren(g.el);
+      const toResult = () => setScreen(stage, g.el);
       const g = new GameScreen(cfg, (to) => (to === 'home' ? void home() : to === 'replay' ? g.finalRecord && void watch(g.finalRecord, toResult) : to === 'review' ? g.finalRecord && void review(g.finalRecord, toResult) : play(cfg)), undefined, saved);
       game = g;
-      stage.replaceChildren(game.el);
+      setScreen(stage, game.el);
       // Reviews keep going during a game, except vs Extreme, whose bots think with the rollout engine.
       setGame(cfg.seats.some((s) => s.bot && s.level === 'extreme') ? 'extreme' : 'light');
       if (import.meta.env.DEV) (window as unknown as { __ludo: GameScreen }).__ludo = game;
@@ -123,12 +119,14 @@ export function mountApp(root: HTMLElement) {
       void home();
     };
     // The hidden Extreme speed test (#62), for timing a real phone.
-    if (bench) stage.replaceChildren(benchScreen(leave));
-    else void decodeRecord(payload!).then((rec) => (rec ? void watch(rec, leave, false) : stage.replaceChildren(safeReplayScreen(null, leave))));
+    if (bench) void show(stage, screens.bench, (m) => m.benchScreen(leave), leave);
+    else void decodeRecord(payload!).then((rec) => (rec ? void watch(rec, leave, false) : void show(stage, screens.replay, (m) => m.safeReplayScreen(null, leave), leave)));
     return true;
   };
   addEventListener('hashchange', () => void openLink());
   if (!openLink()) void home();
   // The newest unreviewed past games are reviewed while the app is open (#96).
   void bootReviews();
+  // The lazily loaded screens, fetched at idle so a web session that started online also works offline (#98).
+  prefetchAtIdle();
 }

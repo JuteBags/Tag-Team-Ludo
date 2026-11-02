@@ -4,13 +4,12 @@ import { FINISHED, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, p
 import { chooseBotMoveAsync } from '../engine/ai/levels';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
-import { playCutscene } from './palace';
 import { dieMarkup, rollDie } from './dice';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
 import type { GameConfig } from './setup';
 import { keepAwake } from './native';
-import { drawCard, shareCard } from './shareCard';
+import { screens } from './lazy';
 import { clearGame, giveUpNote, givingUpLoses, layoutOf, levelOf, loadStats, recordGame, saveGame, savePastGame, type SavedGame } from './store';
 import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targets';
 import { award, goldFor, newAchievements, nextStreak, total, type GameFacts } from './rewards';
@@ -342,7 +341,10 @@ export class GameScreen {
     // welcomed into the palace; a bot's just gets the banner.
     if (!m.captures.length && m.finishes) {
       if (human) {
-        await playCutscene(this.el, m.color, player.tokens, this.speed * (this.welcomed.has(m.color) ? 2.2 : 1));
+        // The cutscene loads on first use (#98); if it can't, the token gets the banner instead.
+        const cutscene = await screens.palace().catch(() => null);
+        if (cutscene) await cutscene.playCutscene(this.el, m.color, player.tokens, this.speed * (this.welcomed.has(m.color) ? 2.2 : 1));
+        else this.toast('HOME!', m.color, 'home');
         this.welcomed.add(m.color);
       }
       else this.toast('HOME!', m.color, 'home');
@@ -750,7 +752,7 @@ export class GameScreen {
         award(fresh.map((a) => a.id));
         earn(fresh.reduce((a, x) => a + x.gold, 0));
       }
-      return { fresh, ended: s.xEnded, streak: level === 'extreme' && won && !pvp ? { now: s.xStreak, next: nextStreak(s, settings.achieved) } : null };
+      return { fresh, ended: s.xEnded, best: s.xBestStreak, streak: level === 'extreme' && won && !pvp ? { now: s.xStreak, next: nextStreak(s, settings.achieved) } : null };
     });
     // Gold for this game, then how close it brings you to the next skin.
     const mineHome = colorsOf(human).reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
@@ -786,8 +788,9 @@ export class GameScreen {
       if (act === 'share' && !btn!.disabled) {
         btn!.disabled = true;
         const text = pvp ? `${winner} won our game of Tag Team Ludo!` : won ? 'I won at Tag Team Ludo!' : `I came ${PLACES[place]!.toLowerCase()} at Tag Team Ludo!`;
-        void drawCard(title, `${pvp ? 'WITH FRIENDS' : 'VS COMPUTER'} · ${order.length} PLAYERS`, card)
-          .then((png) => shareCard(png, text))
+        void screens
+          .shareCard()
+          .then(({ drawCard, shareCard }) => drawCard(title, `${pvp ? 'WITH FRIENDS' : 'VS COMPUTER'} · ${order.length} PLAYERS`, card).then((png) => shareCard(png, text)))
           .catch(() => undefined)
           .finally(() => (btn!.disabled = false));
       }
@@ -809,13 +812,13 @@ export class GameScreen {
       show();
     }
     // New achievements pop in as small chips, and the next-skin bar catches up with their gold.
-    void achievements.then(({ fresh, ended, streak }) => {
+    void achievements.then(({ fresh, ended, best, streak }) => {
       const box = ov.querySelector<HTMLElement>('.achs')!;
       // A live Extreme streak and what the next win in a row would bring, or the streak this game ended.
       if (streak) {
         const next = streak.next ? ` · ${streak.next.name} at ${streak.now + streak.next.more} <em>+${streak.next.gold}</em>` : '';
         box.insertAdjacentHTML('beforeend', `<span class="ach xs">🔥 Extreme streak ${streak.now}${next}</span>`);
-      } else if (ended) box.insertAdjacentHTML('beforeend', `<span class="ach xend">Extreme streak ended at ${ended}</span>`);
+      } else if (ended) box.insertAdjacentHTML('beforeend', `<span class="ach xend">Extreme streak ended at ${ended}${best > ended ? ` · Best ${best}` : ''}</span>`);
       // The biggest reward first, and its gold joins the headline and the breakdown.
       const sorted = [...fresh].sort((x, y) => y.gold - x.gold);
       const extra = sorted.reduce((a, x) => a + x.gold, 0);

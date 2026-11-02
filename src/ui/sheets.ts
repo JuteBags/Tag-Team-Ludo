@@ -9,8 +9,7 @@ import { ACHIEVEMENTS, takeNew, type AchievementGroup } from './rewards';
 import { summary } from '../engine/ai/review';
 import { isComplete, isQueued, onReviewChange, progressOf } from './reviewQueue';
 import { peopleOf } from './reviewRun';
-import { accuracyText } from './reviewText';
-import { luckBand } from './reviewText';
+import { accuracyText, luckBand } from './reviewWords';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
 
 const GROUPS: AchievementGroup[] = ['Ladder', 'Extreme', 'Milestones', 'Everyday'];
@@ -196,8 +195,10 @@ export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (r
     const sum = summary(r.moves, r.luck ?? [], new Set(g.rec.seats.map((x) => x.owner)).size)[me]!;
     if (!sum.moves) return '<span class="pgr off">Not reviewed yet</span>';
     const luck = Number.isFinite(sum.luckPct) ? ` · Luck ${Math.round(sum.luckPct)}%` : '';
-    const bad = [sum.labels.mistake ? `? ${sum.labels.mistake}` : '', sum.labels.blunder ? `?? ${sum.labels.blunder}` : ''].filter(Boolean).join(' ');
-    return `<span class="pgr">${accuracyText(sum.accuracy)} accuracy${luck}${bad ? ` · ${bad}` : ''}</span>`;
+    // Two lines: accuracy and luck, then the key mistakes as small chips (so nothing wraps at 360dp).
+    const chip = (sym: string, n: number, cls: string) => (n ? `<i class="pk ${cls}">${sym} ${n}</i>` : '');
+    const keys = chip('?', sum.labels.mistake, 'mistake') + chip('??', sum.labels.blunder, 'blunder');
+    return `<span class="pgr">${accuracyText(sum.accuracy)} accuracy${luck}</span><span class="pgks">${keys || '<i class="pk none">No key mistakes</i>'}</span>`;
   };
   const rows = () =>
     past
@@ -205,7 +206,7 @@ export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (r
         const people = new Set(g.rec.seats.map((s) => s.owner)).size;
         const colours = [...new Set(g.rec.seats.map((s) => s.color))].map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
         const what = g.mode === 'pvp' ? 'With friends' : 'vs Computer';
-        return `<div class="pg${g.mode === 'pvc' && g.place === 1 ? ' won' : ''}"><button class="pgmain" data-i="${i}"><span class="pgc">${colours}</span><span class="pgt"><b>${what} · ${people} players</b><small>${ago(g.at)}</small>${status(g)}</span><em>${g.mode === 'pvc' ? (g.place === 1 ? '🏆 Won' : place(g.place)) : ''}</em></button><button class="pgplay" data-replay="${i}" aria-label="Watch the replay">▶</button></div>`;
+        return `<div class="pg${g.mode === 'pvc' && g.place === 1 ? ' won' : ''}"><button class="pgmain" data-i="${i}"><span class="pgc">${colours}</span><span class="pgt"><b>${what} · ${people} players</b><small>${ago(g.at)}${g.mode === 'pvc' ? ` · <em>${g.place === 1 ? '🏆 Won' : place(g.place)}</em>` : ''}</small>${status(g)}</span></button><button class="pgplay" data-replay="${i}" aria-label="Watch the replay">▶</button></div>`;
       })
       .join('');
   const ov = sheet(host, 'Games & reviews', past.length ? `<p class="sub">Tap a game for its review, ▶ for the replay</p><div class="pglist">${rows()}</div>` : `<div class="empty"><b class="disp">No games yet</b><p class="sub">Finish a game and its replay and review show up here.</p></div>`);
