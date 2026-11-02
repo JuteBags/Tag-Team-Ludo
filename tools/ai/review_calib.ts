@@ -9,7 +9,8 @@
 // and says how often its label matches the 256 one (agreeKey: over decisions either calls a key move), and
 // how long each took. net (#93, the fast first pass): each decision labelled from the net screen alone (no
 // playouts) against the rollout label: agreement, key moves (mistake or blunder) found and wrongly flagged,
-// the gap error and the per-game accuracy drift (net minus rollout, accuracyOf as the app), and the time.
+// the gap error, the per-game accuracy drift (net minus rollout, accuracyOf as the app), the played move's win
+// chance error (the rough graph's: mean, p50, p90 of |net - rollout| and the bias, in points) and the time.
 // Seeds are fixed (game g uses seed from+g), so a rerun gives the same table.
 import { appendFileSync, readFileSync } from 'node:fs';
 import { createGame, move, roll, seededDie, seeded, type BotLevel, type GameRecord, type Seat } from '../../src/engine';
@@ -85,7 +86,7 @@ const lay = layout.replace('-singles', '');
 const RANK: Label[] = ['best', 'good', 'inaccuracy', 'mistake', 'blunder'];
 const BIG = new Set<Label>(['mistake', 'blunder']);
 /** The fast pass's net-only labels against the rollout labels (#93). */
-function netReport(xs: { roll: Label; net: Label; rgap: number; ngap: number }[], accDiff: number[], tNet: number, tFull: number) {
+function netReport(xs: { roll: Label; net: Label; rgap: number; ngap: number; rch: number; nch: number }[], accDiff: number[], tNet: number, tFull: number) {
   type X = (typeof xs)[number];
   const share = (f: (x: X) => boolean, of: (x: X) => boolean = () => true) => {
     const base = xs.filter(of);
@@ -93,6 +94,9 @@ function netReport(xs: { roll: Label; net: Label; rgap: number; ngap: number }[]
   };
   const err = xs.map((x) => Math.abs(x.ngap - x.rgap));
   const absAcc = accDiff.map(Math.abs);
+  // The rough graph's error (#93 b): the mover's win chance after the played move, net against rollouts, in points.
+  const chErr = xs.map((x) => 100 * Math.abs(x.nch - x.rch));
+  const chBias = xs.reduce((a, x) => a + 100 * (x.nch - x.rch), 0) / Math.max(1, xs.length);
   return {
     agree: share((x) => x.net === x.roll),
     within1: share((x) => Math.abs(RANK.indexOf(x.net) - RANK.indexOf(x.roll)) <= 1),
@@ -104,6 +108,7 @@ function netReport(xs: { roll: Label; net: Label; rgap: number; ngap: number }[]
     // Best by the net, worse than Good by the rollouts.
     bestWrong: share((x) => x.roll !== 'best' && x.roll !== 'good', (x) => x.net === 'best'),
     gapErr: { p50: +quantile(err, 0.5).toFixed(2), p90: +quantile(err, 0.9).toFixed(2) },
+    chance: { mean: +(chErr.reduce((a, d) => a + d, 0) / Math.max(1, chErr.length)).toFixed(2), p50: +quantile(chErr, 0.5).toFixed(2), p90: +quantile(chErr, 0.9).toFixed(2), bias: +chBias.toFixed(2) },
     acc: { games: accDiff.length, mean: +(accDiff.reduce((a, d) => a + d, 0) / Math.max(1, accDiff.length)).toFixed(2), p50abs: +quantile(absAcc, 0.5).toFixed(2), p90abs: +quantile(absAcc, 0.9).toFixed(2) },
     secsNet: +(tNet / 1000).toFixed(2),
     secsFull: Math.round(tFull / 1000),
@@ -122,7 +127,7 @@ for (const mover of movers) {
   let t128 = 0;
   const KEY = new Set<Label>(['inaccuracy', 'mistake', 'blunder']);
   // The net-only labels against the rollout ones, and each game's accuracy drift (points, net minus rollout).
-  const net: { roll: Label; net: Label; rgap: number; ngap: number }[] = [];
+  const net: { roll: Label; net: Label; rgap: number; ngap: number; rch: number; nch: number }[] = [];
   const accDiff: number[] = [];
   let tNet = 0;
   let games = 0;
@@ -146,10 +151,10 @@ for (const mover of movers) {
       const v = engine.reviewFast(st, 0, 0, { mode: 'screen' });
       const gaps = st.moves.map((_, k) => 100 * v.gap[v.ofMove[k]!]!);
       const gap = gaps[m.played]!;
-      return { ...m, gap, se: 0, gaps, label: labelOf(gap, 0, lay), approx: 'net' };
+      return { ...m, gap, se: 0, gaps, label: labelOf(gap, 0, lay), approx: 'net', playedChance: v.mean[v.ofMove[m.played]!]! };
     });
     tNet += Date.now() - t;
-    netOnly.forEach((n, k) => net.push({ roll: full[k]!.label, net: n.label, rgap: full[k]!.gap, ngap: n.gap }));
+    netOnly.forEach((n, k) => net.push({ roll: full[k]!.label, net: n.label, rgap: full[k]!.gap, ngap: n.gap, rch: full[k]!.playedChance, nch: n.playedChance }));
     const ra = accuracyOf(full), na = accuracyOf(netOnly);
     if (Number.isFinite(ra) && Number.isFinite(na)) accDiff.push(100 * (na - ra));
     if (dump)
