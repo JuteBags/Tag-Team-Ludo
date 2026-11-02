@@ -35,6 +35,34 @@ describe('rollout Extreme (wasm)', () => {
     expect(checked).toBeGreaterThan(1000);
   });
 
+  it('keeps its memory and its pace flat over 2000 review calls', { timeout: 300_000 }, async () => {
+    const e = await engine();
+    const mem = () => (e as unknown as { x: { memory: WebAssembly.Memory } }).x.memory.buffer.byteLength;
+    // Decisions from a 4p game, reviewed over and over (few playouts, so the test is quick).
+    const rng = seeded(11);
+    let s: GameState = createGame(SEATS[4].map((color, owner) => ({ color, owner, bot: true, level: 'hard' })));
+    const decisions: GameState[] = [];
+    for (let i = 0; i < 20000 && s.phase !== 'over' && decisions.length < 40; i++) {
+      if (s.phase === 'roll') s = roll(s, rng);
+      else {
+        if (s.moves.length > 1) decisions.push(s);
+        s = move(s, chooseBotMove(s, rng));
+      }
+    }
+    const time = (from: number, to: number) => {
+      const t0 = performance.now();
+      for (let k = from; k < to; k++) e.review(decisions[k % decisions.length]!, 4, k);
+      return (performance.now() - t0) / (to - from);
+    };
+    const early = time(0, 200);
+    const memEarly = mem();
+    time(200, 1800);
+    const late = time(1800, 2000);
+    console.log(`review x2000: ${early.toFixed(2)} -> ${late.toFixed(2)} ms per call, memory ${memEarly} -> ${mem()} bytes`);
+    expect(mem()).toBe(memEarly);
+    expect(late).toBeLessThan(early * 2 + 1);
+  });
+
   it('plays legal moves through a 4p game', { timeout: 300_000 }, async () => {
     const e = await engine();
     const rng = seeded(5);
