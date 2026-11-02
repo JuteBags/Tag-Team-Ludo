@@ -6,6 +6,9 @@
 //!   review(state, n, seed)      the game review's values for one decision (#65), as f64s at the returned
 //!                               pointer: moves, candidates, best, then each move's candidate, then per
 //!                               candidate its mean, its gap below the best and that gap's standard error
+//!   review_fast(state, n, seed, played, mode)   the review's net screen (mode 1) or race (mode 2) (#101),
+//!                               in review's layout with two more header fields and a playout count per
+//!                               candidate (see the function)
 //! The state bytes (encodeState in rollout-worker.ts), all u8 unless noted:
 //!   n, singles, current, phase, nrolls, sixes, nrank, ranking[4], turn_count (u32 LE), rolls[nrolls],
 //!   then per player in colour order: colour index, owner, tokens[4] (i8: -1 base .. 56 finished).
@@ -111,6 +114,47 @@ pub unsafe extern "C" fn moves_len(state: *mut u8, len: usize) -> i32 {
 
 thread_local! {
     static REVIEW: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The fast review of one decision (#101), as f64s at the returned pointer, valid until the next call:
+/// [moves, candidates, best, complete, stop, candidate of each move ..., then mean, gap, se, playouts per
+/// candidate ...]. `mode` 1: the net screen (rollout.rs screen: mean = the net's value, gap = below the net's
+/// best, se and playouts 0; `n`, `seed` and `played` unused). `mode` 2: the race (rollout.rs review_race) up
+/// to `n` playouts, the move played being `played` (an index into the state's moves); when `complete` is 1
+/// the values are exactly review(state, n, seed)'s. 0 if init was not called or `mode` is unknown.
+#[no_mangle]
+pub unsafe extern "C" fn review_fast(state: *mut u8, len: usize, n: u32, seed: u32, played: u32, mode: u32) -> *const f64 {
+    let s = take(state, len);
+    let g = decode(&s);
+    ENGINE.with(|e| match e.borrow().as_ref() {
+        Some(eng) => {
+            let (r, count, complete, stop) = match mode {
+                1 => {
+                    let (of_move, vals) = ludo_sim::rollout::screen(&g, &eng.net, &eng.base);
+                    let nc = vals.len();
+                    let best = (0..nc).fold(0, |b, c| if vals[c] > vals[b] { c } else { b });
+                    let gap = vals.iter().map(|v| if nc > 0 { vals[best] - v } else { 0.0 }).collect();
+                    (ludo_sim::rollout::Review { of_move, mean: vals, gap, se: vec![0.0; nc], best }, vec![0usize; nc], true, 0u8)
+                }
+                2 => {
+                    let f = ludo_sim::rollout::review_race(&g, seed as i64, n as usize, CUT, Some(&eng.net), &eng.base, played as usize);
+                    (f.review, f.count, f.complete, f.stop)
+                }
+                _ => return std::ptr::null(),
+            };
+            REVIEW.with(|out| {
+                let mut o = out.borrow_mut();
+                o.clear();
+                o.extend([r.of_move.len() as f64, r.mean.len() as f64, r.best as f64, complete as u8 as f64, stop as f64]);
+                o.extend(r.of_move.iter().map(|&c| c as f64));
+                for c in 0..r.mean.len() {
+                    o.extend([r.mean[c], r.gap[c], r.se[c], count[c] as f64]);
+                }
+                o.as_ptr()
+            })
+        }
+        None => std::ptr::null(),
+    })
 }
 
 /// The review of one decision (rollout.rs review: `n` paired playouts per distinct move, no early stop), as
