@@ -8,6 +8,7 @@
 //    (rebuilt from the game's seed; dice.ts). The chance after a face is the best play of the dice it
 //    completes (a depth-1 search), or the net's value while the tray is still being rolled. Its mean is 0
 //    for any value function, so it can be summed per person: the result minus the luck is the skill.
+import { COLORS } from '../board';
 import { diceWeights } from '../dice';
 import { roll } from '../game';
 import type { GameRecord } from '../record';
@@ -33,22 +34,48 @@ export type Reviewer = (state: GameState, n: number, seed: number) => Promise<De
 export type Label = 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder';
 
 /**
- * Win chance given up (points, 0-100) at the top of each label. Starting values (#65): to be calibrated on
- * reviewed games so that strong play reads mostly best/good and Normal's visibly worse.
+ * The label cuts in 2p (points of win chance given up, 0-100), calibrated in tools/ai/REVIEW_CALIB.md: "best"
+ * up to BEST_WITHIN (or within one standard error: a coin flip isn't a mistake), then the top of each label.
  */
+export const BEST_WITHIN = 1.5;
 export const THRESHOLDS: [Label, number][] = [
-  ['good', 3],
-  ['inaccuracy', 7],
-  ['mistake', 15],
+  ['good', 2],
+  ['inaccuracy', 5],
+  ['mistake', 10],
 ];
 
-/** "Best" within this many points of the top, or within one standard error of it (a coin flip isn't a mistake). */
-export const BEST_WITHIN = 1.5;
+/**
+ * Each layout's scale on the 2p cuts (REVIEW_CALIB.md): with more players a move's gaps are smaller, so the
+ * same cut would be harsher. The p95 ratio of Normal's gaps on meaningful decisions, against 2p. 2h-side
+ * uses 2h-opposite's; doubles-off games use their layout's. 3p, 4p and the 2h rows are provisional (wide
+ * bootstrap intervals): see tools/ai/REVIEW_CALIB.md.
+ */
+export const THRESHOLDS_BY_LAYOUT: Record<string, number> = { '2p': 1, '3p': 0.85, '4p': 0.85, '2h-opposite': 0.7, '2h-side': 0.7 };
 
-/** The label for a move that gave up `gap` points (± `se`). */
-export function labelOf(gap: number, se: number): Label {
-  if (gap <= BEST_WITHIN || gap <= se) return 'best';
-  for (const [label, top] of THRESHOLDS) if (gap < top) return label;
+/** No scaled cut goes under this many points. */
+const CUT_FLOOR = 1;
+
+/** A game's layout, as the calibration names it: "2p", "3p", "4p", "2h-opposite" or "2h-side" (two houses each). */
+export function layoutKey(s: GameState): string {
+  const owners = new Set(s.players.map((p) => p.owner)).size;
+  if (s.players.length === owners) return `${owners}p`;
+  // Colours two apart in COLORS face each other across the board (as store.ts layoutOf).
+  const mine = s.players.filter((p) => p.owner === s.players[0]!.owner).map((p) => COLORS.indexOf(p.color));
+  return Math.abs(mine[0]! - mine[1]!) === 2 ? '2h-opposite' : '2h-side';
+}
+
+/** The cuts for a layout: the 2p ones scaled by THRESHOLDS_BY_LAYOUT (1 for a layout not in it), none under CUT_FLOOR. */
+export function cutsFor(layout = '2p'): { best: number; tops: [Label, number][] } {
+  const f = THRESHOLDS_BY_LAYOUT[layout] ?? 1;
+  const cut = (x: number) => Math.max(CUT_FLOOR, x * f);
+  return { best: cut(BEST_WITHIN), tops: THRESHOLDS.map(([l, t]) => [l, cut(t)]) };
+}
+
+/** The label for a move that gave up `gap` points (± `se`) in a game of `layout` (layoutKey). */
+export function labelOf(gap: number, se: number, layout = '2p'): Label {
+  const c = cutsFor(layout);
+  if (gap <= c.best || gap <= se) return 'best';
+  for (const [label, top] of c.tops) if (gap < top) return label;
   return 'blunder';
 }
 
@@ -58,7 +85,10 @@ export const PLAYOUTS_MAX = 1024;
 /** How near (points) a label's edge a gap must be to get more playouts. */
 const EDGE = 2;
 
-const nearEdge = (gap: number) => [BEST_WITHIN, ...THRESHOLDS.map(([, t]) => t)].some((t) => Math.abs(gap - t) < EDGE);
+const nearEdge = (gap: number, layout = '2p') => {
+  const c = cutsFor(layout);
+  return [c.best, ...c.tops.map(([, t]) => t)].some((t) => Math.abs(gap - t) < EDGE);
+};
 
 export interface MoveReview {
   /** Index into the replay's states of the position the move was made in. */
@@ -92,6 +122,7 @@ const decisionSeed = (rec: GameRecord, s: GameState) => mixSeed(rec.seed ?? 0x5e
  * are skipped. Calls `onMove` as each decision is done, so the screen can show verdicts as they arrive.
  */
 export async function reviewMoves(rec: GameRecord, states: GameState[], who: number[], reviewer: Reviewer, onMove?: (m: MoveReview, done: number, total: number) => void, base = PLAYOUTS): Promise<MoveReview[]> {
+  const layout = states[0] ? layoutKey(states[0]) : '2p';
   const todo: number[] = [];
   for (let i = 0; i + 1 < states.length; i++) {
     const s = states[i]!;
@@ -108,7 +139,7 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     let v = await reviewer(s, n, decisionSeed(rec, s));
     const c = v.ofMove[played]!;
     if (v.mean.length < 2) continue; // every move reaches the same position: nothing to choose
-    while (n < PLAYOUTS_MAX && c !== v.best && nearEdge(100 * v.gap[c]!)) {
+    while (n < PLAYOUTS_MAX && c !== v.best && nearEdge(100 * v.gap[c]!, layout)) {
       n *= 2;
       v = await reviewer(s, n, decisionSeed(rec, s));
     }
@@ -116,7 +147,7 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     const gap = cp === v.best ? 0 : 100 * v.gap[cp]!;
     const se = cp === v.best ? 0 : 100 * v.se[cp]!;
     const best = v.ofMove.indexOf(v.best);
-    const r: MoveReview = { at: i, owner: s.players[s.current]!.owner, played, best, playedChance: v.mean[cp]!, bestChance: v.mean[v.best]!, gap, se, label: labelOf(gap, se) };
+    const r: MoveReview = { at: i, owner: s.players[s.current]!.owner, played, best, playedChance: v.mean[cp]!, bestChance: v.mean[v.best]!, gap, se, label: labelOf(gap, se, layout) };
     out.push(r);
     onMove?.(r, out.length, todo.length);
   }

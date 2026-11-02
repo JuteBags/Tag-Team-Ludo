@@ -69,7 +69,7 @@ const quantile = (xs: number[], p: number) => {
 /** Gap quantiles, label rates and accuracy (LABEL_SCORE, as the app) of a set of verdicts. */
 function stats(xs: { gap: number; se: number }[]) {
   const g = xs.map((x) => x.gap);
-  const labels: Label[] = xs.map((x) => labelOf(x.gap, x.se));
+  const labels: Label[] = xs.map((x) => labelOf(x.gap, x.se, layout.replace('-singles', '')));
   const rate = (l: Label) => +(labels.filter((x) => x === l).length / Math.max(1, labels.length)).toFixed(4);
   return {
     moves: xs.length,
