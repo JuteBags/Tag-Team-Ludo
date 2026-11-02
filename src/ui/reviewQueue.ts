@@ -58,9 +58,10 @@ function next(): Job | undefined {
 function politeReviewer(): Reviewer | null {
   const base = workerReviewer();
   if (!base) return null;
-  return async (s, n, seed) => {
+  // It forwards every argument the Reviewer type has (#101 adds an optional 4th).
+  return async (...args: Parameters<Reviewer>) => {
     await new Promise((r) => setTimeout(r, 0));
-    return base(s, n, seed);
+    return base(...args);
   };
 }
 
