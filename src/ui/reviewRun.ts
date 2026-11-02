@@ -33,6 +33,11 @@ export interface ReviewProgress {
 
 /** Verdicts this run must make before its pace is trusted for an estimate. */
 export const ETA_AFTER = 6;
+/**
+ * Verdicts this run makes before the luck pass (#93): luck is one long worker call and the least urgent
+ * number on the screen, so the biggest decisions are checked first. A side with fewer decisions gets it at the end.
+ */
+export const LUCK_AFTER = 5;
 
 /** The owners whose moves are reviewed by default: the people (bots only when asked for). */
 export const peopleOf = (rec: GameRecord) => [...new Set(rec.seats.filter((s) => !s.bot).map((s) => s.owner))];
@@ -95,7 +100,9 @@ export function runReview(
   // The pace of this run: when its first decision started and how many it has done.
   let t0 = 0;
   let fresh = 0;
-  const eta = () => (fresh >= ETA_AFTER ? ((Date.now() - t0) / 1000 / fresh) * Math.max(0, total - settled()) : null);
+  // The luck pass's time is left out of the pace: it runs once, between verdicts.
+  let luckMs = 0;
+  const eta = () => (fresh >= ETA_AFTER ? ((Date.now() - t0 - luckMs) / 1000 / fresh) * Math.max(0, total - settled()) : null);
   // The people's side alone, for the status shown on the result card and in Games & reviews.
   const people = peopleOf(rec);
   const mineTotal = decisionsToReview(rec, states, people);
@@ -117,17 +124,21 @@ export function runReview(
   report(done());
   if (!reviewer || done()) return () => {};
   void (async () => {
-    // The luck pass (one long worker call) runs once the decisions are listed (#93), so the list shows straight away.
-    const luckPass = async () => {
-      if (luck || stopped) return;
-      const r = (await luckOf(rec)?.catch(() => null)) ?? null;
-      if (stopped) return;
-      luck = r?.luck ?? null;
-      chances = r?.chances ?? null;
-      changed = true;
-      report(false);
-      void keep();
-    };
+    // The luck pass (one long worker call): after this run's first LUCK_AFTER verdicts, or at the end (#93). Once.
+    let luckRun: Promise<void> | undefined;
+    const luckPass = () =>
+      (luckRun ??= (async () => {
+        if (luck || stopped) return;
+        const t = Date.now();
+        const r = (await luckOf(rec)?.catch(() => null)) ?? null;
+        luckMs += Date.now() - t;
+        if (stopped) return;
+        luck = r?.luck ?? null;
+        chances = r?.chances ?? null;
+        changed = true;
+        report(false);
+        void keep();
+      })());
     const have = new Set([...moves.map((m) => m.at), ...skipped]);
     // Only the decisions not reviewed yet; the reviewer is skipped (and the call aborted) once stopped.
     // It forwards every argument the Reviewer type has (#101 adds an optional 4th).
@@ -146,6 +157,8 @@ export function runReview(
         changed = true;
         report(false);
         if (moves.length % 5 === 0) void keep();
+        // Queued in the worker behind the call in progress, ahead of the next decision's.
+        if (fresh === LUCK_AFTER) void luckPass();
       }, undefined, (at) => {
         if (stopped) return;
         skipped.add(at);
@@ -155,11 +168,8 @@ export function runReview(
         if (stopped) return;
         order = o;
         report(false);
-      }, afterOrder: async () => {
-        await luckPass();
-        t0 = Date.now(); // the pace (for the estimate) counts the rollouts only
       } });
-      // Nothing left to review (all done earlier): the luck pass still has to run.
+      // Fewer than LUCK_AFTER decisions left (or none): the luck pass runs now.
       await luckPass();
     } catch {
       // Stopped, or the worker failed: what's done so far is kept.

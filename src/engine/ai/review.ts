@@ -160,8 +160,6 @@ export interface ReviewOptions {
   /** Called once with the decisions (state indexes) in the order they'll be reviewed: the stakes order when the
    *  net screened them (#93: the review screen lists them all straight away, "…" until each verdict lands). */
   onOrder?: (order: number[]) => void;
-  /** Awaited after onOrder, before the first rollout: work that would otherwise hold up the order (the luck pass). */
-  afterOrder?: () => Promise<void>;
 }
 
 export interface RollLuck {
@@ -217,7 +215,6 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
   if (opts.order === 'stakes') todo.sort((a, b) => stakes(b) - stakes(a) || a - b);
   // Decisions where every move reaches the same position aren't choices: they're skipped, so not listed.
   opts.onOrder?.(todo.filter((i) => !(screens.get(i) && screens.get(i)!.mean.length < 2)));
-  await opts.afterOrder?.();
   const out: MoveReview[] = [];
   for (const i of todo) {
     const s = states[i]!;
