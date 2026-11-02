@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { positionKey } from '../src/engine/rng';
 import { REVIEW_VERSION, summary, type DecisionValues, type MoveReview, type ReviewAsk, type Reviewer } from '../src/engine/ai/review';
-import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken, luckBand, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS } from '../src/ui/reviewText';
+import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken, luckBand, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS, plainVerdict, BETTER_COLOR, LABEL_LOOK, type VerdictPart } from '../src/ui/reviewText';
+import type { Move } from '../src/engine';
 
 const mem = new Map<string, string>();
 vi.mock('@capacitor/preferences', () => ({
@@ -312,5 +313,53 @@ describe('review runner', () => {
     expect(seen.at(-1)).not.toBeNull();
     expect(end.eta).toBe(0);
     expect(end.when).toBeGreaterThan(0);
+  });
+});
+
+describe('plain verdicts (#124)', () => {
+  const mv = (o: Partial<Move>): Move => ({ kind: 'single', color: 'blue', tokens: [0], from: 10, to: 13, steps: 3, roll: 3, captures: [], finishes: 0, ...o }) as Move;
+  const text = (parts: VerdictPart[]) => parts.map((p) => (typeof p === 'string' ? p : `[${p.pill}:${p.text}]`)).join('');
+  const say = (played: Move, best: Move, label: 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder' = 'mistake', gap = 8, who = 'You') =>
+    plainVerdict({ label, played: 0, best: 1, gap }, { moves: [played, best] }, who);
+
+  it('names the better move that gets a token home', () => {
+    expect(text(say(mv({ steps: 3 }), mv({ tokens: [1], steps: 6, finishes: 1 }), 'blunder', 19).parts)).toBe('You moved [you:this token] 3. Moving [better:that one] 6 gets it home.');
+  });
+  it('names a capture', () => {
+    expect(text(say(mv({}), mv({ tokens: [2], steps: 4, captures: [{ color: 'red', token: 0 }] as Move['captures'] })).parts)).toBe('You moved [you:this token] 3. Moving [better:that one] 4 captures.');
+  });
+  it('brings a token out, either way round', () => {
+    expect(text(say(mv({}), mv({ kind: 'release', tokens: [3] })).parts)).toBe('You moved [you:this token] 3. [better:Bringing a new one out] was better.');
+    expect(text(say(mv({ kind: 'release', tokens: [3] }), mv({ steps: 6 })).parts)).toBe('You brought a new token out. Moving [better:that one] 6 was better.');
+  });
+  it('says pair for a pair', () => {
+    expect(text(say(mv({ kind: 'pair', tokens: [0, 1], steps: 1 }), mv({ tokens: [2], steps: 2 }), 'inaccuracy', 2).parts)).toBe('You moved [you:this pair] 1. Moving [better:that one] 2 was better.');
+    expect(text(say(mv({ tokens: [2], steps: 2 }), mv({ kind: 'pair', tokens: [0, 1], steps: 1 })).parts)).toBe('You moved [you:this token] 2. Moving [better:that pair] 1 was better.');
+  });
+  it('says "it" when the better move is the same token by another die', () => {
+    expect(text(say(mv({ steps: 2 }), mv({ steps: 5 })).parts)).toBe('You moved [you:this token] 2. Moving [better:it] 5 was better.');
+  });
+  it('uses the player name, and says what the played move did', () => {
+    expect(text(say(mv({ steps: 4, finishes: 1 }), mv({ tokens: [1], steps: 6 }), 'mistake', 6, 'Aarav').parts)).toBe('Aarav moved [you:this token] 4 home. Moving [better:that one] 6 was better.');
+    expect(text(say(mv({ captures: [{ color: 'red', token: 1 }] as Move['captures'] }), mv({ tokens: [1], steps: 6 })).parts)).toBe('You moved [you:this token] 3, capturing. Moving [better:that one] 6 was better.');
+  });
+  it('a Best move: no better move and no win chance', () => {
+    const v = plainVerdict({ label: 'best', played: 0, best: 0, gap: 0 }, { moves: [mv({})] }, 'You');
+    expect(text(v.parts)).toBe('You found the best move.');
+    expect(v.better).toBe(false);
+    expect(v.win).toBeNull();
+  });
+  it('the win chance: always +N in the better colour on Inaccuracy, Mistake and Blunder; never on Best or Good', () => {
+    for (const [label, gap, want] of [['inaccuracy', 2.4, '+2% to win'], ['mistake', 7.6, '+8% to win'], ['blunder', 19.2, '+19% to win']] as const) {
+      const v = say(mv({}), mv({ tokens: [1] }), label, gap);
+      expect(v.win).toEqual({ text: want, color: BETTER_COLOR });
+      expect(v.win!.text.startsWith('+')).toBe(true);
+      expect(v.name).toBe(LABEL_LOOK[label].name);
+      expect(v.color).toBe(LABEL_LOOK[label].color);
+    }
+    expect(say(mv({}), mv({ tokens: [1] }), 'good', 1.2).win).toBeNull();
+    expect(say(mv({}), mv({ tokens: [1] }), 'good', 1.2).better).toBe(true);
+    // A gap that rounds to 0 still says +1: the better move was better.
+    expect(say(mv({}), mv({ tokens: [1] }), 'inaccuracy', 0.3).win!.text).toBe('+1% to win');
   });
 });

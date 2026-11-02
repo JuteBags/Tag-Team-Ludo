@@ -140,11 +140,13 @@ export class BoardView {
   }
 
   /**
-   * The review's picture of a decision (the replay in review mode): the move played as a solid trail with its
-   * label's symbol at the head, and the best move as a dashed trail to a dashed ghost pawn tagged "Best", so
-   * the two differ by shape, not only colour. Null clears it.
+   * The review's picture of a decision (the replay in review mode, #124): the move played as a white "You"
+   * path and the better move as a thicker green "Better" path with a ring where it lands, each with an arrow
+   * and a labelled pill, so the two differ by width and words, not only colour. Paths that share squares run
+   * side by side, half a lane apart. The rest of the board steps back under a light shade. Nothing moves
+   * (no animation, so nothing to calm under reduced motion). Null clears it.
    */
-  showVerdict(v: { played: Move; best?: Move; sym: string; color: string } | null) {
+  showVerdict(v: { played: Move; best?: Move } | null) {
     if (!v) {
       this.marks.innerHTML = '';
       return;
@@ -155,20 +157,43 @@ export class BoardView {
       pts[pts.length - 1] = spot(m.color, m.to, t).pt;
       return pts;
     };
-    const line = (pts: Pt[]) => pts.map((p) => p.join(',')).join(' ');
-    let s = '';
-    if (v.best) {
-      const pts = trail(v.best);
-      const [x, y] = pts.at(-1)!;
-      // A white dash over a dark outline reads on every tile (a green dash vanished on the green track).
-      s += `<polyline class="vtrail bestbg" points="${line(pts)}"/><polyline class="vtrail best" points="${line(pts)}"/>
-        <g class="ghost" transform="translate(${x} ${y})"><circle r="22" class="gpulse"/><circle r="20" class="gring"/><g class="gpawn">${pawnArt(v.best.color)}</g>
-        <g transform="translate(0 -40)"><rect x="-32" y="-15" width="64" height="30" rx="15" class="gtag"/><text y="6.5" text-anchor="middle">BEST</text></g></g>`;
+    // Each point moved `d` across the path (to its left), for two paths through the same squares.
+    const side = (ps: Pt[], d: number): Pt[] =>
+      ps.map((p, i) => {
+        const a = ps[Math.max(0, i - 1)]!, b = ps[Math.min(ps.length - 1, i + 1)]!;
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+        return [p[0] - ((b[1] - a[1]) / len) * d, p[1] + ((b[0] - a[0]) / len) * d];
+      });
+    let you = trail(v.played);
+    let better = v.best ? trail(v.best) : [];
+    if (better.length && you.some(([x, y]) => better.some(([u, w]) => Math.hypot(x - u, y - w) < 6))) {
+      you = side(you, -9);
+      better = side(better, 9);
     }
-    const pts = trail(v.played);
-    const [hx, hy] = pts.at(-1)!;
-    s += `<polyline class="vtrail played" points="${line(pts)}" style="--c:${v.color}"/>
-      <g class="vhead" transform="translate(${hx + 16} ${hy - 16})" style="--c:${v.color}"><circle r="12"/><text y="5" text-anchor="middle">${v.sym}</text></g>`;
+    const line = (pts: Pt[]) => pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+    const arrow = (pts: Pt[], cls: string, w: number) => {
+      if (pts.length < 2) return '';
+      const a = pts.at(-2)!, b = pts.at(-1)!;
+      const deg = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+      return `<path class="vhead ${cls}" transform="translate(${b[0].toFixed(1)} ${b[1].toFixed(1)}) rotate(${deg.toFixed(1)})" d="M-4,-${w} L${w + 6},0 L-4,${w} Z"/>`;
+    };
+    const pill = ([x, y]: Pt, text: string, cls: string, dy: number) =>
+      `<g class="vpill ${cls}" transform="translate(${x.toFixed(1)} ${(y + dy).toFixed(1)})"><rect x="${-text.length * 9 - 14}" y="-17" width="${text.length * 18 + 28}" height="34" rx="17"/><text y="8" text-anchor="middle">${text}</text></g>`;
+    // The shade, with clear windows along both paths.
+    const holes = [...you, ...better].map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="34"/>`).join('');
+    let s = `<defs><mask id="vshade"><rect width="600" height="600" fill="#fff"/><g fill="#000">${holes}</g></mask></defs>
+      <rect class="vshade" width="600" height="600" mask="url(#vshade)"/>
+      <polyline class="vtrail you-bg" points="${line(you)}"/><polyline class="vtrail you" points="${line(you)}"/>${arrow(you, 'you', 9)}`;
+    if (better.length) {
+      const [bx, by] = better.at(-1)!;
+      s += `<polyline class="vtrail better-bg" points="${line(better)}"/><polyline class="vtrail better" points="${line(better)}"/>${arrow(better, 'better', 12)}
+        <circle class="vring" cx="${bx.toFixed(1)}" cy="${by.toFixed(1)}" r="25"/>`;
+    }
+    // The pills last, over both paths; above their ends, or the lower one below when the ends are close.
+    const ye = you.at(-1)!, be = better.at(-1);
+    const close = !!be && Math.hypot(ye[0] - be[0], ye[1] - be[1]) < 70;
+    s += pill(ye, 'You', 'you', close && ye[1] >= be![1] ? 40 : -40);
+    if (be) s += pill(be, 'Better', 'better', close && be[1] > ye[1] ? 40 : -40);
     this.marks.innerHTML = s;
   }
 
