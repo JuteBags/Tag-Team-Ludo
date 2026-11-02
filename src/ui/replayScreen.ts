@@ -16,7 +16,7 @@ import { dieMarkup } from './dice';
 import { framesOf, namesOf, shareLink, type Frame } from './replay';
 import { follow } from './reviewQueue';
 import { peopleOf, type ReviewProgress } from './reviewRun';
-import { KEY_LABELS, LABEL_LOOK, turningPoint, verdictMoves, verdictText } from './reviewText';
+import { KEY_LABELS, LABEL_LOOK, plainVerdict, turningPoint, type PlainVerdict } from './reviewText';
 import { SITE } from './shareCard';
 import type { StoredReview } from './store';
 
@@ -31,14 +31,6 @@ const ENDS = (back: boolean) => `<svg viewBox="0 0 24 24"${flip(back)}><path d="
 /** Jump to the previous / next mistake: a step arrow with a "?" badge. */
 const JUMP = (back: boolean) => `<svg viewBox="0 0 24 24"><path d="${back ? 'M9 6L2 12l7 6z' : 'M15 6l7 6-7 6z'}" fill="#fff"/><circle cx="${back ? 15 : 9}" cy="12" r="7.5" fill="#fb923c" stroke="#fff" stroke-width="1.5"/><text x="${back ? 15 : 9}" y="16" text-anchor="middle" font-size="12" font-weight="900" fill="#1a1300">?</text></svg>`;
 
-const BEST_KEY = 'ludo-show-best';
-const loadShowBest = () => {
-  try {
-    return localStorage.getItem(BEST_KEY) !== '0';
-  } catch {
-    return true;
-  }
-};
 
 export interface ReplayOptions {
   /** Open at the first move after this position (an index into the replay's states), and play it. */
@@ -72,7 +64,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     <div class="rpchips" role="tablist" aria-label="Whose side"></div>
     <div class="wcbar" hidden aria-hidden="true"></div>
     <div class="gboard"></div>
-    <div class="rpcap" aria-live="polite"><span class="rpdice"></span><span class="rptext"></span><button class="findchip" data-act="find" hidden>Find the better move?</button><button class="bestchip" data-act="best" hidden aria-pressed="true">Show best move</button></div>
+    <div class="rpcap" aria-live="polite"><span class="rpdice"></span><span class="rptext"></span><button class="findchip" data-act="find" hidden>Find the better move?</button></div>
     <input class="rpscrub" type="range" min="0" max="${Math.max(0, frames.length - 1)}" value="0" aria-label="Move">
     <svg class="rpticks" hidden aria-hidden="true" preserveAspectRatio="none"></svg>
     <div class="rpctl">
@@ -110,7 +102,6 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
 
   // Review mode: the review's verdicts, from one side.
   let pov = opts.pov ?? people[0] ?? owners[0]!;
-  let showBest = loadShowBest();
   let moves: MoveReview[] = opts.review?.moves ?? [];
   let chances: number[][] | null = opts.review?.chances ?? null;
   let luck = opts.review?.luck ?? null;
@@ -124,7 +115,38 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
   // "Find the better move?" (#96): on one of your mistakes, you pick a move before the reveal.
   let puzzle: 'pick' | 'shown' | null = null;
 
+  /** The verdict in plain words (#124): its label, "+N% to win" and one sentence, all set as text, never markup. */
+  const plainCaption = (pv: PlainVerdict) => {
+    const box = q('.rptext');
+    box.replaceChildren();
+    const tag = document.createElement('span');
+    tag.className = 'vtag';
+    tag.style.setProperty('--c', pv.color);
+    tag.textContent = pv.name;
+    box.append(tag);
+    if (pv.win) {
+      const w = document.createElement('span');
+      w.className = 'vwin';
+      w.style.color = pv.win.color;
+      w.textContent = pv.win.text;
+      box.append(w);
+    }
+    const line = document.createElement('span');
+    line.className = 'vline';
+    for (const part of pv.parts) {
+      if (typeof part === 'string') line.append(part);
+      else {
+        const b = document.createElement('span');
+        b.className = `vp ${part.pill}`;
+        b.textContent = part.text;
+        line.append(b);
+      }
+    }
+    box.append(line);
+    q('.rpcap').classList.add('plain');
+  };
   const markCaption = (text: string) => {
+    q('.rpcap').classList.remove('plain');
     // Captures in red and tokens home in gold; the text itself is set as text, never as markup.
     const box = q('.rptext');
     box.replaceChildren();
@@ -182,11 +204,9 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     if (!f) return;
     const v = reviewOn() ? verdictOf(f) : undefined;
     const s = v ? statesOf(f) : undefined;
-    const text = notes.get(at) ?? (v && s ? (() => {
-      const t = verdictText(v, s, isYou(v.owner) ? 'You' : names[v.owner]!, (c) => { const o = rec.seats.find((x) => x.color === c)?.owner ?? 0; return isYou(o) ? 'you' : names[o]!; });
-      return `${LABEL_LOOK[v.label].sym} ${t.head} · ${t.line}`;
-    })() : f.caption);
-    markCaption(text);
+    const note = notes.get(at);
+    if (note === undefined && v && s) plainCaption(plainVerdict(v, s, isYou(v.owner) ? 'You' : names[v.owner]!));
+    else markCaption(note ?? f.caption);
     q('.rpcap').classList.toggle('verdict', !!v || notes.has(at));
     q('.rpdice').innerHTML = f.dice.map((d) => `<i>${dieMarkup(d, 22)}</i>`).join('');
     q('.rpcount').textContent = frames.length > 1 ? `Step ${at} of ${frames.length - 1}` : '';
@@ -195,12 +215,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     if (puzzle) return;
     const find = q<HTMLButtonElement>('.findchip');
     find.hidden = !v || !KEY_LABELS.includes(v.label) || !v.gaps?.length || !isYou(v.owner);
-    const chip = q<HTMLButtonElement>('.bestchip');
-    chip.hidden = !v || v.label === 'best';
-    chip.setAttribute('aria-pressed', String(showBest));
-    chip.textContent = showBest ? 'Hide best move' : 'Show best move';
-    const look = v ? LABEL_LOOK[v.label] : null;
-    view.showVerdict(v && s && look && !busy ? { played: s.moves[v.played]!, best: showBest && v.played !== v.best && v.label !== 'best' ? s.moves[v.best] : undefined, sym: look.sym, color: look.color } : null);
+    view.showVerdict(v && s && !busy ? { played: s.moves[v.played]!, best: v.played !== v.best && v.label !== 'best' ? s.moves[v.best] : undefined } : null);
     drawBar();
   };
 
@@ -230,7 +245,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     const s = f && statesOf(f);
     if (!f || !v || !s || !v.gaps) return;
     puzzle = 'pick';
-    q<HTMLElement>('.findchip').hidden = q<HTMLElement>('.bestchip').hidden = true;
+    q<HTMLElement>('.findchip').hidden = true;
     view.showVerdict(null);
     view.markMoved([]);
     view.layout(s.players);
@@ -244,14 +259,9 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     const best = s.moves[v.best]!;
     // The labels' cuts come from review.ts (calibrated per layout), never from the UI.
     const label = i === v.best ? 'best' : labelOf(gap, 0, layoutKey(allStates[0]!));
-    const look = LABEL_LOOK[label];
-    const nameOf = (c: string) => {
-      const o = rec.seats.find((x) => x.color === c)?.owner ?? 0;
-      return isYou(o) ? 'you' : names[o]!;
-    };
-    const [mine, bestText] = verdictMoves(s, s.moves[i]!, best, nameOf);
-    markCaption(label === 'best' ? `★ That's the best move: ${mine}.` : `Your pick (${mine}): ${look.sym} −${Math.round(gap)} · Best: ${bestText} · In the game: −${Math.round(v.gap)}`);
-    view.showVerdict({ played: s.moves[i]!, best: label === 'best' ? undefined : best, sym: look.sym, color: look.color });
+    // Your pick, in the same plain words as a verdict: "You moved this token 3. Moving that one 6 gets it home."
+    plainCaption(plainVerdict({ label, played: i, best: v.best, gap }, s, 'You'));
+    view.showVerdict({ played: s.moves[i]!, best: label === 'best' ? undefined : best });
     const again = document.createElement('button');
     again.className = 'findchip';
     again.dataset.act = 'again';
@@ -344,14 +354,6 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
       startPuzzle();
     } else if (act === 'again') {
       endPuzzle();
-    } else if (act === 'best') {
-      showBest = !showBest;
-      try {
-        localStorage.setItem(BEST_KEY, showBest ? '1' : '0');
-      } catch {
-        // Storage blocked: the choice lasts for this screen.
-      }
-      draw();
     } else if (act === 'play') {
       if (timer) return stop();
       if (at >= frames.length - 1) await go(0);

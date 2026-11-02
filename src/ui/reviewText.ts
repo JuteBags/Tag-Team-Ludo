@@ -194,6 +194,49 @@ export function turningPoint(moves: MoveReview[], luck: RollLuck[], owner: numbe
   return mv >= rv ? { kind: 'move', move: m! } : { kind: 'roll', roll: r! };
 }
 
+/** The better move's colour (#124): its path, its pill and its "+N% to win" all share it. */
+export const BETTER_COLOR = '#34d399';
+/** A piece of a plain verdict: text, or a word shown as a pill in the colour of its path on the board. */
+export type VerdictPart = string | { pill: 'you' | 'better'; text: string };
+export interface PlainVerdict {
+  label: Label;
+  /** The label in words ("Blunder"), and its colour. */
+  name: string;
+  color: string;
+  /** What the better move would have kept, for Inaccuracy, Mistake and Blunder only: always "+N% to win", in the better move's colour. */
+  win: { text: string; color: string } | null;
+  /** One sentence: what was played and, when it wasn't the best, what was better. */
+  parts: VerdictPart[];
+  /** A better move to draw on the board. */
+  better: boolean;
+}
+
+/**
+ * The replay's verdict in plain words (#124): "You moved this token 3. Moving that one 6 gets it home.",
+ * with "this token" and "that one" as pills in the colours of the "You" and "Better" paths on the board.
+ * No symbols, token numbers or points: the win chance given up is "+19% to win". `who` is "You" or a name.
+ */
+export function plainVerdict(m: Pick<MoveReview, 'label' | 'played' | 'best' | 'gap'>, s: Pick<GameState, 'moves'>, who: string): PlainVerdict {
+  const look = LABEL_LOOK[m.label];
+  const played = s.moves[m.played]!;
+  const best = s.moves[m.best]!;
+  const isBest = m.label === 'best' || m.played === m.best;
+  const base = { label: m.label, name: look.name, color: look.color };
+  if (isBest) return { ...base, win: null, better: false, parts: [`${who} found the best move.`] };
+  const you: VerdictPart[] =
+    played.kind === 'release'
+      ? [`${who} brought a new token out.`]
+      : [`${who} moved `, { pill: 'you', text: played.tokens.length > 1 ? 'this pair' : 'this token' }, ` ${played.steps}${played.finishes ? ' home' : played.captures.length ? ', capturing' : ''}.`];
+  const sameToken = played.kind !== 'release' && best.kind !== 'release' && played.tokens.length === best.tokens.length && played.tokens.every((t) => best.tokens.includes(t));
+  const ending = best.finishes ? ' gets it home.' : best.captures.length ? ' captures.' : ' was better.';
+  const better: VerdictPart[] =
+    best.kind === 'release'
+      ? [{ pill: 'better', text: 'Bringing a new one out' }, ' was better.']
+      : ['Moving ', { pill: 'better', text: sameToken ? 'it' : best.tokens.length > 1 ? 'that pair' : 'that one' }, ` ${best.steps}${ending}`];
+  const key = m.label === 'inaccuracy' || m.label === 'mistake' || m.label === 'blunder';
+  return { ...base, better: true, win: key ? { text: `+${Math.max(1, Math.round(m.gap))}% to win`, color: BETTER_COLOR } : null, parts: [...you, ' ', ...better] };
+}
+
 /**
  * A decision's verdict in words: `head` "Inaccuracy −4" and `line` "You moved 5 · Best: moved a pair 3" (the best
  * only when it differs). `who` is "You" or the player's name.
