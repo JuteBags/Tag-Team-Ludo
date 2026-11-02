@@ -799,10 +799,11 @@ export class GameScreen {
       // It keeps following while the review screen is open (the card is off-screen then) and stops once done.
       const show = () => {
         const p = progressOf(rec);
-        if (p?.finished) off();
-        rvb.textContent = !p || p.finished ? '★ REVIEW' : p.done && p.total ? `REVIEW ${Math.floor((100 * p.done) / p.total)}%` : 'REVIEW…';
-        rvb.setAttribute('aria-label', !p ? 'Review the game' : p.finished ? 'Review ready' : 'Reviewing the game');
-        rvb.classList.toggle('ready', !!p?.finished);
+        const m = p?.mine;
+        if (m?.finished) off();
+        rvb.textContent = !m || m.finished ? '★ REVIEW' : m.done && m.total ? `REVIEW ${Math.floor((100 * m.done) / m.total)}%` : 'REVIEW…';
+        rvb.setAttribute('aria-label', !m ? 'Review the game' : m.finished ? 'Review ready' : 'Reviewing the game');
+        rvb.classList.toggle('ready', !!m?.finished);
       };
       const off = onReviewChange(show);
       show();
