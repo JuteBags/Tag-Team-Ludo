@@ -422,6 +422,22 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .wiz h3{font-size:28px;font-weight:400;color:#ffd65a;text-align:center;line-height:1.1}
 .wiz .sub{font-size:14px;font-weight:800;opacity:.85;text-align:center;margin:6px 0 18px}
 .wiz .go{position:absolute;left:4px;right:4px;bottom:34px}
+/* The content between the subtitle and the fixed bottom buttons, centred in that room (auto margins, so
+   content taller than the room stays top-aligned instead of clipping). Padding = the buttons + 16px. */
+.wiz .mid{flex:1;min-height:0;display:flex;flex-direction:column;padding-bottom:112px}
+.wiz.quickfoot .mid{padding-bottom:190px}
+.wiz .mid>:first-child{margin-top:auto}
+.wiz .mid>:last-child{margin-bottom:auto}
+/* Options: a larger house preview, capped well below the board. */
+.setup .pv{width:280px;gap:10px}
+.setup .pvh{height:56px}
+.setup .pvh .pw svg{width:26px;height:30px}
+.setup .pvh b{font-size:17px}
+/* Order: taller rows and dice with room to spare (names and the status text keep their size). */
+.people .prow{min-height:84px}
+.people .prow .dbox{width:60px;height:60px;border-radius:17px}
+.people[data-n="4"] .prow{min-height:72px}
+.people[data-n="4"] .prow .dbox{width:56px;height:56px;border-radius:16px}
 .wiz [data-act=roll-all]{bottom:34px}
 .howto{list-style:none;text-align:left;display:flex;flex-direction:column;gap:9px;margin:6px 0 14px;font-size:13.5px;font-weight:700;line-height:1.35}
 .howto b{color:#ffd65a}
@@ -438,8 +454,12 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .pvh.empty{opacity:.35;filter:saturate(.4)}
 .setup .pvh{cursor:pointer}
 .setup .pvh:active{transform:translateY(2px)}
-.q.teams{width:100%;text-align:left;border-radius:14px;padding:10px 12px;background:rgba(255,214,90,.12);border:1.5px dashed rgba(255,214,90,.6);color:#fff}
+/* The team-game box is a button: a solid border, a chevron and a press, not a dashed hint. */
+.q.teams{width:100%;text-align:left;border-radius:14px;padding:10px 40px 10px 12px;position:relative;background:rgba(255,214,90,.12);border:1.5px solid rgba(255,214,90,.6);color:#fff}
 .q.teams .lbl{color:#ffd65a}
+.q.teams .chev{position:absolute;right:12px;top:50%;width:22px;height:22px;margin-top:-11px;color:#ffd65a}
+.q.teams .chev svg{display:block;width:100%;height:100%}
+.q.teams:active{transform:translateY(2px)}
 .pvh.empty .pw{visibility:hidden}
 .sp{border-radius:22px;padding:16px;background:linear-gradient(180deg,rgba(14,38,104,.92),rgba(7,21,64,.92));border:1.5px solid rgba(255,214,90,.45)}
 .row2{display:flex;align-items:center;justify-content:space-between;gap:10px}
