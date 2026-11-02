@@ -27,9 +27,26 @@ export interface DecisionValues {
   gap: number[];
   se: number[];
   best: number;
+  /** Fast reviews only (#101): each candidate's playouts, and what was asked and how it ended. */
+  count?: number[];
+  /** 'screen': the net's values (no playouts). A race: 'net' (the net's values: its spread was under the
+   *  skip, no playouts), 'best' (the played move settled as Best: the race's values, fewer playouts for
+   *  dropped candidates), 'worse' or 'full' (filled up to n: review(n) exactly). */
+  kind?: 'screen' | 'net' | 'full' | 'best' | 'worse';
+  /** Every candidate has all n playouts (the values are review(n)'s). */
+  complete?: boolean;
 }
 
-export type Reviewer = (state: GameState, n: number, seed: number) => Promise<DecisionValues>;
+/**
+ * What to ask the engine for instead of the full review (#101): the net screen, or the race for the move
+ * played (an index into state.moves), which first skips the playouts when the net's spread is under `skip`
+ * points, and settles Best within `best` points (the layout's Best cut; BEST_WITHIN when missing) at `z`
+ * standard errors (0 or missing: the engine's schedule, rollout.rs best_z).
+ */
+export type ReviewAsk = { mode: 'screen' } | { mode: 'race'; played: number; best?: number; skip?: number; z?: number };
+
+/** One decision's values: the full review of `n` paired playouts per candidate, or with `ask` a fast one (an engine without it answers with the full review). */
+export type Reviewer = (state: GameState, n: number, seed: number, ask?: ReviewAsk) => Promise<DecisionValues>;
 
 export type Label = 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder';
 
@@ -79,11 +96,23 @@ export function labelOf(gap: number, se: number, layout = '2p'): Label {
   return 'blunder';
 }
 
-/** The version of the labels (thresholds and playouts): a cached review from another version is redone. */
-export const REVIEW_VERSION = 2;
+/**
+ * The version of the labels (thresholds, playouts and SKIP_BELOW): a cached review from another version is
+ * redone. 3: a base of 128 playouts, the race and the net screen (#101).
+ */
+export const REVIEW_VERSION = 3;
+
+/**
+ * The net screen (#101): a decision whose candidates the net values within this many points of each other
+ * (best minus worst) is labelled Best with no playouts, and is left out of accuracy (its gaps are 0). It
+ * changes labels, so changing it means bumping REVIEW_VERSION. Off (0): on CI (review-speed.yml run 1) even
+ * a 0.5-point net spread hid real inaccuracies and mistakes in 2p, and 1.5 cut key-move agreement to 83%.
+ * The net still orders the decisions for order 'stakes'.
+ */
+export const SKIP_BELOW = 0;
 
 /** Playouts per candidate, and the most a decision is topped up to when its gap sits near a label's edge. */
-export const PLAYOUTS = 256;
+export const PLAYOUTS = 128;
 export const PLAYOUTS_MAX = 1024;
 /** How near (points) a label's edge a gap must be to get more playouts. */
 const EDGE = 2;
@@ -109,6 +138,25 @@ export interface MoveReview {
   label: Label;
   /** Every move's points below the best (one per state.moves, 1 decimal), for the replay's ghost and "find the better move". */
   gaps?: number[];
+  /**
+   * How the verdict was reached when it wasn't the full review (#101). 'race': the played move settled as
+   * Best in the race, so the other moves' gaps are the race's (fewer playouts for the clearly worse ones).
+   * 'net': the net saw nothing at stake, so it's Best with no playouts, gaps 0 and the chances the net's.
+   * Every verdict other than Best is a full review.
+   */
+  approx?: 'race' | 'net';
+}
+
+/** Options for reviewMoves (#101). */
+export interface ReviewOptions {
+  /** 'stakes': the decisions with the most at stake (the net's spread) first; otherwise in game order. */
+  order?: 'stakes';
+  /** False: the full review of every decision, no screen or race (for measuring). */
+  fast?: boolean;
+  /** The net screen's threshold in points (SKIP_BELOW); 0 turns the screen off. */
+  skipBelow?: number;
+  /** The race's bound for settling Best, in standard errors at every look (for measuring); the engine's schedule by default. */
+  raceZ?: number;
 }
 
 export interface RollLuck {
@@ -127,14 +175,41 @@ const decisionSeed = (rec: GameRecord, s: GameState) => mixSeed(rec.seed ?? 0x5e
 /**
  * Reviews the person's decisions (owners in `who`) in a replayed game. Forced moves (one position to reach)
  * are skipped. Calls `onMove` as each decision is done, so the screen can show verdicts as they arrive.
+ *
+ * Fast by default (#101), where the reviewer can be asked for it:
+ *  1. the net screens every decision first: nothing at stake (spread under SKIP_BELOW) is Best, no playouts;
+ *  2. a race spends playouts until the played move's verdict is settled: Best (the race's values, unless
+ *     its spread is near MEANINGFUL: see SPREAD_EXACT), or not Best, and then every move is played out
+ *     fully, exactly as the full review would, top-ups included.
+ * So every verdict but Best is the full review's, and Best comes early only when it's clear.
  */
-export async function reviewMoves(rec: GameRecord, states: GameState[], who: number[], reviewer: Reviewer, onMove?: (m: MoveReview, done: number, total: number) => void, base = PLAYOUTS, onSkip?: (at: number) => void): Promise<MoveReview[]> {
+export async function reviewMoves(rec: GameRecord, states: GameState[], who: number[], reviewer: Reviewer, onMove?: (m: MoveReview, done: number, total: number) => void, base = PLAYOUTS, onSkip?: (at: number) => void, opts: ReviewOptions = {}): Promise<MoveReview[]> {
+  const fast = opts.fast !== false;
+  const skipBelow = opts.skipBelow ?? SKIP_BELOW;
   const layout = states[0] ? layoutKey(states[0]) : '2p';
+  // The race settles Best within the layout's own Best cut (labelOf's), so it never calls Best what the cuts call Good.
+  const bestCut = cutsFor(layout).best;
   const todo: number[] = [];
   for (let i = 0; i + 1 < states.length; i++) {
     const s = states[i]!;
     if (s.phase === 'move' && who.includes(s.players[s.current]!.owner) && s.moves.length > 1) todo.push(i);
   }
+  // For the stakes order, the net screen of every decision first (no seed: it plays nothing out); a reviewer
+  // without it answers with something else and the order stays the game's. Otherwise the race screens.
+  const screens = new Map<number, DecisionValues>();
+  if (fast && opts.order === 'stakes') {
+    for (const i of todo) {
+      const v = await reviewer(states[i]!, 0, 0, { mode: 'screen' });
+      if (v.kind !== 'screen') break;
+      screens.set(i, v);
+    }
+  }
+  // What's at stake in a decision by the net, in points (best minus worst); unknown sorts first.
+  const stakes = (i: number) => {
+    const v = screens.get(i);
+    return v && v.gap.length > 1 ? 100 * Math.max(...v.gap) : Infinity;
+  };
+  if (opts.order === 'stakes') todo.sort((a, b) => stakes(b) - stakes(a) || a - b);
   const out: MoveReview[] = [];
   for (const i of todo) {
     const s = states[i]!;
@@ -142,14 +217,45 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     const ev = next.event;
     if (ev?.type !== 'moved') continue;
     const played = s.moves.findIndex((m) => JSON.stringify(m) === JSON.stringify(ev.move));
+    const owner = s.players[s.current]!.owner;
+    // Nothing at stake by the net: Best with no playouts (from the stakes pass, or the race's own screen).
+    const netBest = (sv: DecisionValues) => {
+      const chance = sv.mean[sv.ofMove[played]!]!;
+      const r: MoveReview = { at: i, owner, played, best: played, playedChance: chance, bestChance: chance, gap: 0, se: 0, label: 'best', gaps: s.moves.map(() => 0), approx: 'net' };
+      out.push(r);
+      onMove?.(r, out.length, todo.length);
+    };
+    const sv = screens.get(i);
+    if (sv && sv.mean.length < 2) {
+      onSkip?.(i); // every move reaches the same position: nothing to choose
+      continue;
+    }
+    if (sv && skipBelow > 0 && stakes(i) < skipBelow) {
+      netBest(sv);
+      continue;
+    }
     let n = base;
-    let v = await reviewer(s, n, decisionSeed(rec, s));
+    let v = await reviewer(s, n, decisionSeed(rec, s), fast ? { mode: 'race', played, best: bestCut, skip: sv ? 0 : skipBelow, ...(opts.raceZ ? { z: opts.raceZ } : {}) } : undefined);
     const c = v.ofMove[played]!;
     if (v.mean.length < 2) {
       onSkip?.(i); // every move reaches the same position: nothing to choose
       continue;
     }
-    while (n < PLAYOUTS_MAX && c !== v.best && nearEdge(100 * v.gap[c]!, layout)) {
+    if (v.kind === 'net') {
+      netBest(v);
+      continue;
+    }
+    // Settled as Best, unless what's at stake is near the line that puts it in accuracy: then the full review.
+    let settledBest = v.kind === 'best';
+    if (settledBest) {
+      const spread = 100 * Math.max(...v.gap);
+      if (spread >= SPREAD_EXACT[0] && spread < SPREAD_EXACT[1]) {
+        v = await reviewer(s, n, decisionSeed(rec, s));
+        settledBest = false;
+      }
+    }
+    // Not settled as Best: the full review's values (the race filled up to n), topped up near an edge as always.
+    while (!settledBest && n < PLAYOUTS_MAX && c !== v.best && nearEdge(100 * v.gap[c]!, layout)) {
       n *= 2;
       v = await reviewer(s, n, decisionSeed(rec, s));
     }
@@ -158,7 +264,10 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     const se = cp === v.best ? 0 : 100 * v.se[cp]!;
     const best = v.ofMove.indexOf(v.best);
     const gaps = v.ofMove.map((c) => (c === v.best ? 0 : Math.round(1000 * v.gap[c]!) / 10));
-    const r: MoveReview = { at: i, owner: s.players[s.current]!.owner, played, best, playedChance: v.mean[cp]!, bestChance: v.mean[v.best]!, gap, se, label: labelOf(gap, se, layout), gaps };
+    // The race settles Best only when every rival is, even at +z se, under the layout's Best cut better: labelOf agrees.
+    const label = settledBest ? 'best' : labelOf(gap, se, layout);
+    const r: MoveReview = { at: i, owner, played, best, playedChance: v.mean[cp]!, bestChance: v.mean[v.best]!, gap, se, label, gaps };
+    if (settledBest) r.approx = 'race';
     out.push(r);
     onMove?.(r, out.length, todo.length);
   }
@@ -231,6 +340,16 @@ export function luckPercent(luck: RollLuck[], owner: number): number {
 /** Each person's accuracy (the mean label score of their reviewed moves, 0-1), total luck and luck percentile. */
 /** A decision is meaningful when its best and worst moves are at least this many points apart (#96). */
 export const MEANINGFUL = 3;
+
+/**
+ * A decision the race settled as Best whose spread (by the race) falls in this range (points) is reviewed in
+ * full after all (#101): accuracy counts only decisions with a spread of MEANINGFUL or more, and near that
+ * line the race's fewer playouts would move decisions in and out of it (review-speed run 2: |Δ accuracy| per
+ * 4p game 0.67 against the full review, 0.25 with this). Set around MEANINGFUL, so it moves with it. The engine
+ * keeps the race's playouts, so the full review only adds the rest, and its values are the full review's
+ * exactly. It changes labels and values, so changing it means bumping REVIEW_VERSION.
+ */
+export const SPREAD_EXACT: [number, number] = [MEANINGFUL - 1, MEANINGFUL + 2];
 
 /** A decision's spread: its best move minus its worst, in points (NaN for reviews without every move's gap). */
 export const spreadOf = (m: MoveReview) => (m.gaps?.length ? Math.max(...m.gaps) : NaN);

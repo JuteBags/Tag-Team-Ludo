@@ -130,6 +130,7 @@ export function runReview(
     t0 = Date.now();
     const rest = states.map((s, i) => (have.has(i) ? { ...s, moves: s.moves.slice(0, 1) } : s));
     try {
+      // The biggest decisions first (#101): key moves and the turning point show within seconds.
       await reviewMoves(rec, rest, covered, skip, (m) => {
         if (stopped) return; // a late verdict from a stopped run is dropped
         moves.push(m);
@@ -142,7 +143,7 @@ export function runReview(
         skipped.add(at);
         changed = true;
         report(false);
-      });
+      }, { order: 'stakes' });
     } catch {
       // Stopped, or the worker failed: what's done so far is kept.
     }
