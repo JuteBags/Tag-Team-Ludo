@@ -5,7 +5,7 @@ import { COLORS } from '../src/engine';
 import { pawnArt } from '../src/ui/art';
 import { THROWER_ART, dieMarkup } from '../src/ui/dice';
 import { settings } from '../src/ui/settings';
-import { SHELVES, SKINS, equip, equipped, isUnlocked, lockLabel, shelfSkins } from '../src/ui/skins';
+import { SHELVES, SKINS, buy, equip, equipped, isUnlocked, lockLabel, shelfSkins, skinUnlockedBy } from '../src/ui/skins';
 import { THEMES } from '../src/ui/themes';
 // @ts-expect-error: the project has no @types/node; Vitest runs on Node.
 import { readFileSync } from 'node:fs';
@@ -56,4 +56,30 @@ describe('the Store catalogue', () => {
       if (s.id !== 'classic') expect(css, s.id).toContain(`[data-theme=${s.id}]{`);
     }
   });
+
+  it('opens the streak skins with their achievements, and never sells them', () => {
+    const inferno = SKINS.find((x) => x.shelf === 'dice' && x.id === 'inferno')!;
+    const crowned = SKINS.find((x) => x.shelf === 'pawn' && x.id === 'crowned')!;
+    expect(lockLabel(inferno)).toBe('Win 5 in a row vs Extreme');
+    expect(lockLabel(crowned)).toBe('Win 7 in a row vs Extreme');
+    expect(skinUnlockedBy('x-streak-5')).toBe(inferno);
+    expect(skinUnlockedBy('x-streak-7')).toBe(crowned);
+    expect(skinUnlockedBy('first-win')).toBeUndefined();
+    const before = settings.achieved;
+    settings.gold = 100_000;
+    settings.achieved = [];
+    expect(isUnlocked(inferno, false)).toBe(false);
+    expect(buy(inferno)).toBe(false);
+    settings.achieved = ['x-streak-5'];
+    expect(isUnlocked(inferno, false)).toBe(true);
+    expect(isUnlocked(crowned, false)).toBe(false);
+    expect(equip(inferno, false)).toBe(true);
+    settings.achieved = ['x-streak-5', 'x-streak-7'];
+    expect(isUnlocked(crowned, false)).toBe(true);
+    expect(settings.gold).toBe(100_000);
+    settings.achieved = before;
+    settings.gold = 0;
+    settings.equipped = { ...settings.equipped, dice: 'classic' };
+  });
 });
+
