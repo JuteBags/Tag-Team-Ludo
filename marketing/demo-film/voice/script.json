@@ -1,0 +1,21 @@
+{
+  "_note": "Voice-over v2: one idea per line, said the way a normal person talks. Hindi is in Devanagari (English words spelled the way they're said), so the TTS reads it naturally.",
+  "en": [
+    {"id": "01", "text": "This is Ludo. The game you already know."},
+    {"id": "02", "text": "One new rule. Two of your tokens on one square make a pair."},
+    {"id": "03", "text": "A pair moves together, and blocks the way."},
+    {"id": "04", "text": "Play with friends on one phone, or against the computer, from Easy to Extreme."},
+    {"id": "05", "text": "After every game, the app shows you the one move that lost it, and the better move you missed."},
+    {"id": "06", "text": "Win in a row, and unlock special dice and pawns."},
+    {"id": "07", "text": "Tag Team Ludo. Free, and it works offline. On Android and the web."}
+  ],
+  "hi": [
+    {"id": "01", "text": "ये है लूडो। वही खेल, जो आप पहले से जानते हैं।"},
+    {"id": "02", "text": "बस एक नया नियम। आपकी दो गोटियाँ एक ही खाने पर आ जाएँ, तो वो जोड़ी बन जाती हैं।"},
+    {"id": "03", "text": "जोड़ी साथ में चलती है, और रास्ता रोक देती है।"},
+    {"id": "04", "text": "दोस्तों के साथ एक ही फ़ोन पर खेलिए, या कंप्यूटर के साथ, ईज़ी से लेकर एक्सट्रीम तक।"},
+    {"id": "05", "text": "हर गेम के बाद, ऐप आपको वो चाल दिखाता है जिससे आप हारे, और वो बेहतर चाल, जो आपसे छूट गई।"},
+    {"id": "06", "text": "लगातार जीतिए, और ख़ास पासे और गोटियाँ अनलॉक कीजिए।"},
+    {"id": "07", "text": "टैग टीम लूडो। बिल्कुल फ़्री, और बिना इंटरनेट के भी चलता है। एंड्रॉयड और वेब पर।"}
+  ]
+}
