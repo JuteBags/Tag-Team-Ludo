@@ -1,0 +1,84 @@
+# Would a Float32 net do (#98)? Measures the Extreme net rounded to Float32 against the shipped Float64 one,
+# with no change to the app (tools/ai/net_f32.ts):
+#   sizes     the .bin as Float64 and as Float32, raw and gzip;
+#   strength  Extreme vs Hard in all 10 modes (tools/ai/levels_check.py, fair dice), once per net, same seeds;
+#   review    the REVIEW_CALIB games reviewed with each net: labels unchanged (all and key), and Extreme's choice.
+# Every table goes in the run summary. By hand, or by pushing an f32/* branch (a workflow that isn't on main
+# yet can't be started by hand).
+name: Float32 net
+
+on:
+  push:
+    branches: ['f32/**']
+  workflow_dispatch:
+    inputs:
+      extreme_seeds:
+        description: 'Seeds per mode for Extreme vs Hard, per net'
+        required: true
+        default: '50'
+      games:
+        description: 'REVIEW_CALIB games per layout and mover'
+        required: true
+        default: '10'
+
+permissions:
+  contents: read
+
+jobs:
+  sizes:
+    name: sizes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - run: node tools/ai/dist/net_f32.mjs make
+
+  strength:
+    name: strength ${{ matrix.net }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        net: [f64, f32]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - name: The app's rules and the nets for the Rust engine
+        run: bash tools/ai/build.sh && node tools/ai/dist/levels-json.mjs && node tools/ai/dist/net_f32.mjs make > /dev/null
+      - name: Build the Rust engine
+        run: cargo build --release --bin ludo-arena --manifest-path sim-rs/Cargo.toml
+      - name: Extreme vs Hard
+        run: >
+          python3 tools/ai/levels_check.py --arena sim-rs/target/release/ludo-arena --only-extreme
+          --extreme-seeds ${{ inputs.extreme_seeds || '50' }} --dice fair
+          --net ${{ matrix.net == 'f32' && 'tools/ai/dist/extreme-net-f32.json' || 'src/engine/ai/extreme-net.json' }}
+
+  review:
+    name: review ${{ matrix.layout }} ${{ matrix.mover }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        layout: [2p, 3p, 4p, 2h-opposite]
+        mover: [hard, normal]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - run: node tools/ai/dist/net_f32.mjs review --layout ${{ matrix.layout }} --mover ${{ matrix.mover }} --games ${{ inputs.games || '10' }} | tee f32.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: f32-review-${{ matrix.layout }}-${{ matrix.mover }}
+          path: f32.txt

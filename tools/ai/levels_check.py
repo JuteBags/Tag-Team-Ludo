@@ -2,6 +2,7 @@
 
     python tools/ai/levels_check.py --arena sim-rs/target/release/ludo-arena [--seeds 1000]
                                     [--extreme-seeds 0] [--dice fair|app|both] [--threads N]
+                                    [--net extreme-net.json] [--only-extreme]
 
 Levels as the app plays them (src/engine/ai/levels.ts): Easy = the original Hard rule bot, Normal = Hard's
 rules judging each move alone, Hard = Hard's rules planning the turn, Extreme = the rollout player
@@ -10,7 +11,8 @@ own files through tools/ai/dist/levels/ (build.sh runs levels-json.ts). Each row
 against people all of the level below, on the same seeds 0..N-1 every run, so a run is reproducible and a
 change in a number is a change in a bot. A row fails when its 95% interval does not clear an even share
 (1 / people): the level is no longer a step up from the one below. Writes a markdown table (to
-$GITHUB_STEP_SUMMARY when set) and exits 1 on any failed row.
+$GITHUB_STEP_SUMMARY when set) and exits 1 on any failed row. --net swaps Extreme's net (e.g. the Float32-
+rounded one, .github/workflows/net-f32.yml); --only-extreme plays just the Extreme vs Hard rows.
 """
 import argparse, json, os, pathlib, subprocess, sys
 
@@ -51,12 +53,15 @@ def main():
     ap.add_argument("--extreme-seeds", type=int, default=0)
     ap.add_argument("--dice", choices=["fair", "app", "both"], default="fair")
     ap.add_argument("--threads", type=int, default=0)
+    ap.add_argument("--net", default=str(NET), help="Extreme's net (JSON)")
+    ap.add_argument("--only-extreme", action="store_true", help="only the Extreme vs Hard rows")
     a = ap.parse_args()
+    LEVELS["Extreme"] = LEVELS["Extreme"].replace(str(NET), str(pathlib.Path(a.net).resolve()))
     dice = ["fair", "app"] if a.dice == "both" else [a.dice]
     rows = []
     for d in dice:
         for m in MODES:
-            for x, y in STEPS:
+            for x, y in ([] if a.only_extreme else STEPS):
                 rows.append(run(a.arena, x, y, m, a.seeds, d, a.threads))
                 print(json.dumps(rows[-1]), flush=True)
             if a.extreme_seeds:
