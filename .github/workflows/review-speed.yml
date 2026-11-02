@@ -15,7 +15,7 @@ on:
       arms:
         description: 'Arms besides B: A (full 256), C (race), F (race, 2.7 se), D (race + net skip + stakes), E (race + stakes: the app)'
         required: true
-        default: 'CFE'
+        default: 'E'
       tune:
         description: 'Also run the net skip threshold table'
         type: boolean
@@ -34,7 +34,7 @@ jobs:
       matrix:
         layout: [2p, 4p]
         mover: [hard, normal]
-        part: [1, 2, 3]
+        part: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -44,7 +44,7 @@ jobs:
       - run: bash tools/ai/build.sh
       - name: Review bot games
         env:
-          ARMS: ${{ inputs.arms || (contains(github.event.head_commit.message, '[arm-a]') && 'ACFE' || 'CFE') }}
+          ARMS: ${{ inputs.arms || (contains(github.event.head_commit.message, '[arm-a]') && 'AE' || 'E') }}
         run: node tools/ai/dist/review_speed.mjs --task eval --layout ${{ matrix.layout }} --mover ${{ matrix.mover }} --from $((101 + 10 * (${{ matrix.part }} - 1))) --games 10 --arms "$ARMS" | tee speed.txt
       - uses: actions/upload-artifact@v7
         with:

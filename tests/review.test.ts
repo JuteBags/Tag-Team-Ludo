@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { HARD_RULES } from '../src/engine/ai/hard-rules';
 import { LinearRules } from '../src/engine/ai/linear';
-import { faceChances, labelOf, PLAYOUTS, reviewMoves, rollLuck, SKIP_BELOW, summary, type DecisionValues, type Label, type Reviewer, type ReviewAsk } from '../src/engine/ai/review';
+import { faceChances, labelOf, MEANINGFUL, PLAYOUTS, reviewMoves, rollLuck, SKIP_BELOW, SPREAD_EXACT, summary, type DecisionValues, type Label, type Reviewer, type ReviewAsk } from '../src/engine/ai/review';
 
 const SEATS: Seat[] = [
   { color: 'blue', owner: 0, bot: false },
@@ -138,6 +138,28 @@ describe('fast review (#101)', () => {
         if (m.played !== 0) expect(mine.slice(1).map((a) => [a.n, a.ask])).toEqual([[PLAYOUTS * 2, undefined], [PLAYOUTS * 4, undefined], [PLAYOUTS * 8, undefined]]);
       }
     }
+  });
+
+  it('reviews a settled Best in full when its spread is near the meaningful line', async () => {
+    const rec = game(6);
+    const { states } = replay(rec) as { states: GameState[] };
+    const asks: (ReviewAsk | undefined)[] = [];
+    // The race settles Best with a 3.5-point spread (inside SPREAD_EXACT); the full review agrees on the values.
+    const reviewer: Reviewer = async (s, _n, _seed, ask) => {
+      asks.push(ask);
+      const top = ask?.mode === 'race' ? ask.played : 0;
+      const ofMove = s.moves.map((_, i) => i);
+      return { ofMove, mean: ofMove.map((i) => (i === top ? 0.5 : 0.465)), gap: ofMove.map((i) => (i === top ? 0 : 0.035)), se: ofMove.map(() => 0.004), best: top, kind: ask ? 'best' : undefined };
+    };
+    const out = await reviewMoves(rec, states, [0], reviewer);
+    expect(out.length).toBeGreaterThan(5);
+    expect(asks.filter((a) => a === undefined).length).toBe(out.length);
+    for (const m of out) {
+      expect(m.approx).toBeUndefined();
+      expect(Math.max(...m.gaps!)).toBeCloseTo(3.5, 6);
+    }
+    expect(SPREAD_EXACT[0]).toBeLessThan(MEANINGFUL);
+    expect(SPREAD_EXACT[1]).toBeGreaterThan(MEANINGFUL);
   });
 
   it('with fast off, asks only for full reviews', async () => {

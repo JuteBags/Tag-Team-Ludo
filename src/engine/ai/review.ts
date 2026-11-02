@@ -83,6 +83,15 @@ export const REVIEW_VERSION = 3;
  */
 export const SKIP_BELOW = 0;
 
+/**
+ * A decision the race settled as Best whose spread (by the race) falls in this range (points) is reviewed in
+ * full after all (#101): accuracy counts only decisions with a spread of MEANINGFUL or more, and near that
+ * line the race's fewer playouts would move decisions in and out of it (review-speed run 2: |Δ accuracy| per
+ * 4p game 0.67 against the full review, 0.25 with this). The engine keeps the race's playouts, so the full
+ * review only adds the rest, and its values are the full review's exactly.
+ */
+export const SPREAD_EXACT: [number, number] = [2, 5];
+
 /** Playouts per candidate, and the most a decision is topped up to when its gap sits near a label's edge. */
 export const PLAYOUTS = 128;
 export const PLAYOUTS_MAX = 1024;
@@ -147,8 +156,9 @@ const decisionSeed = (rec: GameRecord, s: GameState) => mixSeed(rec.seed ?? 0x5e
  *
  * Fast by default (#101), where the reviewer can be asked for it:
  *  1. the net screens every decision first: nothing at stake (spread under SKIP_BELOW) is Best, no playouts;
- *  2. a race spends playouts until the played move's verdict is settled: Best (the race's values), or not
- *     Best, and then every move is played out fully, exactly as the full review would, top-ups included.
+ *  2. a race spends playouts until the played move's verdict is settled: Best (the race's values, unless
+ *     its spread is near MEANINGFUL: see SPREAD_EXACT), or not Best, and then every move is played out
+ *     fully, exactly as the full review would, top-ups included.
  * So every verdict but Best is the full review's, and Best comes early only when it's clear.
  */
 export async function reviewMoves(rec: GameRecord, states: GameState[], who: number[], reviewer: Reviewer, onMove?: (m: MoveReview, done: number, total: number) => void, base = PLAYOUTS, onSkip?: (at: number) => void, opts: ReviewOptions = {}): Promise<MoveReview[]> {
@@ -210,7 +220,15 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
       netBest(v);
       continue;
     }
-    const settledBest = v.kind === 'best';
+    // Settled as Best, unless what's at stake is near the line that puts it in accuracy: then the full review.
+    let settledBest = v.kind === 'best';
+    if (settledBest) {
+      const spread = 100 * Math.max(...v.gap);
+      if (spread >= SPREAD_EXACT[0] && spread < SPREAD_EXACT[1]) {
+        v = await reviewer(s, n, decisionSeed(rec, s));
+        settledBest = false;
+      }
+    }
     // Not settled as Best: the full review's values (the race filled up to n), topped up near an edge as always.
     while (!settledBest && n < PLAYOUTS_MAX && c !== v.best && nearEdge(100 * v.gap[c]!)) {
       n *= 2;
