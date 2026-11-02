@@ -9,7 +9,7 @@
 // and says how often its label matches the 256 one (agreeKey: over decisions either calls a key move), and
 // how long each took.
 // Seeds are fixed (game g uses seed from+g), so a rerun gives the same table.
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { createGame, move, roll, seededDie, seeded, type BotLevel, type GameRecord, type Seat } from '../../src/engine';
 import { chooseBotMove } from '../../src/engine/ai/levels';
 import type { NetJSON } from '../../src/engine/ai/net';
@@ -24,6 +24,9 @@ const layout = a.layout ?? '2p';
 const minMoves = Number(a.min ?? 600);
 const minGames = Number(a.games ?? 30);
 const from = Number(a.from ?? 1);
+// --dump file: every decision as a JSON line {layout, mover, game, at, label, gap, se, spread, n, label128}, so
+// other accuracy formulas can be tried offline without another run.
+const dump = a.dump as string | undefined;
 // Run as tools/ai/dist/review_calib.mjs: the repo root is three folders up.
 const root = new URL('../../../', import.meta.url);
 const wasm = readFileSync(new URL('src/engine/ai/ludo_wasm.wasm', root));
@@ -101,6 +104,9 @@ for (const mover of movers) {
     t = Date.now();
     const half = new Map((await reviewMoves(rec, r.states, [0], reviewer, undefined, 128)).map((m) => [m.at, m.label]));
     t128 += Date.now() - t;
+    if (dump)
+      for (const m of full)
+        appendFileSync(dump, JSON.stringify({ layout, mover, game: from + games, at: m.at, label: m.label, gap: +m.gap.toFixed(2), se: +m.se.toFixed(2), spread: +(spreads.get(r.states[m.at]!) ?? 0).toFixed(2), n: r.states[m.at]!.moves.length, label128: half.get(m.at) ?? null }) + '\n');
     for (const m of full) {
       const l = half.get(m.at);
       if (!l) continue;
