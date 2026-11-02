@@ -18,11 +18,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lang: [en, hi]
+        include:
+          - lang: en
+            engine: kokoro       # George (bm_george), the owner's pick
+          - lang: hi
+            engine: chatterbox   # the owner's pick for Hindi, cleaned take by take (voice/chatterbox_vo.py)
     env:
       LIB: ${{ github.workspace }}/lemo-opuscar
       LEMO_OPUSCAR_HOME: ${{ github.workspace }}/lemo-opuscar
       LANG_FILM: ${{ matrix.lang }}
+      VO_ENGINE: ${{ matrix.engine }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -45,8 +50,22 @@ jobs:
           sh "$LIB/plugin/skills/lemo-opuscar/scripts/setup.sh" deps voice
           cd "$LIB" && sudo env PATH="$PATH" node node_modules/playwright-core/cli.js install-deps chromium-headless-shell
           cd "$LIB" && sh tools/fetch.sh instruments karoryfer && sh tools/fetch.sh instruments vcsl
+      - uses: actions/setup-python@v5
+        if: matrix.engine == 'chatterbox'
+        with:
+          python-version: '3.11'
+      - name: Chatterbox and Whisper (CPU), in their own venv
+        if: matrix.engine == 'chatterbox'
+        run: |
+          python -m venv "$RUNNER_TEMP/cb"
+          "$RUNNER_TEMP/cb/bin/pip" install -q torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          "$RUNNER_TEMP/cb/bin/pip" install -q chatterbox-tts faster-whisper
+          echo "CB_PY=$RUNNER_TEMP/cb/bin/python" >> "$GITHUB_ENV"
       - name: Render
         run: WORKERS=4 sh marketing/demo-film/build.sh
+      - name: Hindi voice takes (what was kept, and where each take was cut)
+        if: matrix.engine == 'chatterbox'
+        run: cat marketing/demo-film/out/vo/hi/takes.json | head -150
       - name: Checks
         run: |
           D=$GITHUB_WORKSPACE/marketing/demo-film

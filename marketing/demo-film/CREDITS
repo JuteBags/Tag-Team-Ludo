@@ -7,8 +7,9 @@ Picture
   SIL Open Font License 1.1.
 
 Voice
-- Synthetic voice-over made with Kokoro-82M (hexgrad, Apache 2.0) through kokoro-onnx (MIT): the English voice
-  "bm_george" and the Hindi voice "hm_omega". It is a computer voice, not a person.
+- Synthetic voice-over. English: Kokoro-82M (hexgrad, Apache 2.0) through kokoro-onnx (MIT), voice "bm_george".
+  Hindi: Chatterbox multilingual (Resemble AI, MIT), each line checked and trimmed with faster-whisper (MIT).
+  It is a computer voice, not a person.
 
 Sound
 - Versilian Community Sample Library (VCSL), github.com/sgossner/VCSL: CC0 1.0 (vibraphone, glockenspiel, hi-hat,

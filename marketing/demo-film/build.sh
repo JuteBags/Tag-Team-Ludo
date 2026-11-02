@@ -20,7 +20,12 @@ done
 
 # 2. The voice-over (Kokoro; the voice is chosen in voice/script.json). The page sizes its scenes from dur.json.
 "$PY" "$HERE/voice/prep.py" lines "$L" "$HERE/out/vo/$L/lines.json"
-"$PY" "$LIB/core/tts/tts.py" "$HERE/out/vo/$L/lines.json" "$HERE/out/vo/$L"
+if [ "${VO_ENGINE:-kokoro}" = chatterbox ]; then
+  # Chatterbox in its own Python (CB_PY, set up by the workflow), cleaned take by take (voice/chatterbox_vo.py).
+  "${CB_PY:?set CB_PY to the Python that has chatterbox-tts and faster-whisper}" "$HERE/voice/chatterbox_vo.py" "$L" "${VO_TAKES:-4}"
+else
+  "$PY" "$LIB/core/tts/tts.py" "$HERE/out/vo/$L/lines.json" "$HERE/out/vo/$L"
+fi
 
 cd "$LIB"
 # 3. Events (voice cues, the mascot's moves, the clips' dice and taps), then the mix and the captions.

@@ -14,7 +14,7 @@ v2 is for someone who has never seen the app.
 
 **Formats:** 1920×1080 and 1080×1920 (`?fmt=v`), 30 fps.
 
-**Languages:** English (voice `bm_george`) and Hindi (`hm_omega`), both Kokoro.
+**Languages:** English (voice `bm_george`, Kokoro) and Hindi (Chatterbox multilingual, cleaned take by take: several takes per line, Whisper finds where the line ends, anything said after is cut, and the best-matching take is kept).
 - The voice lines are in `voice/script.json`, and captions say exactly what the voice says.
 - Each scene's length comes from its line's real length (`out/vo/<lang>/dur.json`), so each language keeps its own pace. That makes 45 to 60 s.
 

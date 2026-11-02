@@ -91,7 +91,7 @@ const SC = [
 let T = 0;
 for (const s of SC) {
   const read = s.nocap ? 0 : NEED(LINES[s.vo]);
-  s.len = Math.max(s.min, s.at + VO[s.vo] + s.tail, s.at + read + 0.35);
+  s.len = Math.max(s.min, s.at + VO[s.vo] + s.tail, s.at + read + 0.9);
   s.t0 = T; T += s.len;
   if (s.clip) {
     const span = s.clip.b - s.clip.a;
