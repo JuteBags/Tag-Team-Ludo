@@ -153,7 +153,9 @@ describe('fast review (#101)', () => {
     };
     const out = await reviewMoves(rec, states, [0], reviewer);
     expect(out.length).toBeGreaterThan(5);
-    expect(asks.filter((a) => a === undefined).length).toBe(out.length);
+    // Every decision gets a full review after its race (and top-ups after that when the played move's 3.5 sits near an edge).
+    expect(asks.filter((a) => a?.mode === 'race').length).toBe(out.length);
+    expect(asks.filter((a) => a === undefined).length).toBeGreaterThanOrEqual(out.length);
     for (const m of out) {
       expect(m.approx).toBeUndefined();
       expect(Math.max(...m.gaps!)).toBeCloseTo(3.5, 6);
