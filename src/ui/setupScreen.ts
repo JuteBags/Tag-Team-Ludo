@@ -9,7 +9,8 @@ import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
 import { NAME_MAX, cleanName, defaultName, pickSequence, pickable, previewLayout, quickSeats, rankRolls, turnLayout, type GameConfig, type Mode, type Pairing, type PickRules, type Picks } from './setup';
 
-const DIE = 30;
+/** The die face on the Order step: larger in the taller 2–3 player rows. */
+const dieFor = (count: number) => (count === 4 ? 32 : 34);
 const ROLL_MS = 900;
 const NEUTRAL = '--l:#7cb0ff;--m:#2f66df;--d:#173f9e;--t:#cfe0ff';
 /** A small pencil: this name can be changed. */
@@ -117,15 +118,17 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     <div class="gtop"><button class="rbtn" data-act="back" aria-label="Back">${icons.back}</button>
       <div class="mode"><small>${mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}</small><b>${count} PLAYERS</b></div><span class="rbtn-space"></span></div>
     <ol class="steps">${steps.map((s, i) => `<li data-s="${s}"><i>${i + 1}</i><span>${{ opts: 'Options', roll: 'Order', pick: 'Houses' }[s]}</span></li>`).join('')}</ol>
-    ${hasOptions ? `<section class="wiz" data-step="opts">
+    ${hasOptions ? `<section class="wiz${mode === 'pvc' ? ' quickfoot' : ''}" data-step="opts">
       <h3 class="disp">Game options</h3><p class="sub">${mode === 'pvc' ? 'Tap a house to play that colour' : 'Set these before rolling'}</p>
+      <div class="mid">
       <div class="pv" aria-hidden="true">${GRID.map((c) => `<div class="pvh" data-c="${c}" style="${cssVars(c)}"><span class="pw">${pawnSVG(c)}</span><b></b></div>`).join('')}</div>
       <div class="sp opts">
         ${count === 2 ? `<div class="row2 q"><span class="lbl">How many colours does each player play?</span><div class="tg" data-k="houses"><button data-v="1"${houses === 1 ? ' class="on"' : ''}>1 colour</button><button data-v="2"${houses === 2 ? ' class="on"' : ''}>2 colours</button></div><small class="qh">With 2 colours you move both; they're one team</small></div>
         <div class="row2 q pairs" hidden><span class="lbl">Where are your two colours?</span><div class="tg" data-k="pairing"><button data-v="opposite" class="on">${mini([1, 2])}Opposite</button><button data-v="adjacent">${mini([2, 3])}Side by side</button></div></div>` : ''}
-        ${mode === 'pvc' && count === 4 && teams ? `<button class="row2 q teams" data-act="teams"><span class="lbl">Two colours each, you and one bot?</span><small class="qh">A team game: you move both your colours</small></button>` : ''}
+        ${mode === 'pvc' && count === 4 && teams ? `<button class="row2 q teams" data-act="teams"><span class="lbl">Two colours each, you and one bot?</span><small class="qh">A team game: you move both your colours</small><em class="chev" aria-hidden="true">›</em></button>` : ''}
         ${mode === 'pvp' ? `<div class="row2 q bots"><span class="lbl">Fill the empty colours with computer players?</span><div class="tg" data-k="bots"></div><small class="qh"></small></div>` : ''}
         <div class="row2 q lvl"><span class="lbl">How good are the bots?</span><div class="tg" data-k="level">${(['easy', 'normal', 'hard', 'extreme'] as const).map((l) => `<button data-v="${l}"${l === level ? ' class="on"' : ''}>${l[0]!.toUpperCase() + l.slice(1)}</button>`).join('')}</div><small class="qh lvlh" aria-live="polite">${levelBlurb(level)}</small></div>
+      </div>
       </div>
       ${mode === 'pvc' ? '<button class="quick" data-act="quick"><b class="disp">QUICK START</b><small></small></button>' : ''}
       <button class="b3 green disp go" data-act="to-roll">ROLL FOR ORDER</button>
@@ -133,7 +136,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     <section class="wiz" data-step="roll">
       <h3 class="disp">Roll for order</h3><p class="sub">Highest roll picks first and plays first. Tap a name to change it</p>
       <p class="porder sr" hidden aria-live="polite"></p>
-      <div class="sp people"></div>
+      <div class="mid"><div class="sp people" data-n="${count}"></div></div>
       <button class="b3 blue disp go" data-act="roll-all">ROLL FOR EVERYONE</button>
       <button class="b3 green disp go" data-act="to-pick" hidden>PICK HOUSES</button>
     </section>
@@ -296,7 +299,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     const v = rand();
     const box = peopleEl.querySelector<HTMLElement>(`.prow[data-p="${i}"] .dbox`)!;
     box.classList.remove('can-roll');
-    await rollDie(box, v, DIE, ROLL_MS);
+    await rollDie(box, v, dieFor(count), ROLL_MS);
     if (e !== epoch) return;
     busy = false;
     rolls[i]!.push(v);
