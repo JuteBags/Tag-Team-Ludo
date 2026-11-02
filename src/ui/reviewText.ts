@@ -134,6 +134,9 @@ export function luckBand(pct: number): { word: string; tone: 'lucky' | 'unlucky'
   return { word: 'lucky', tone: 'lucky' };
 }
 
+/** Below this accuracy (0-1) with no key mistakes, the headline explains the small slips. */
+export const SMALL_SLIPS_BELOW = 0.75;
+
 /** Accuracy (0-1) the headline calls great play. */
 export const GREAT_PLAY = 0.9;
 
@@ -143,6 +146,9 @@ export const GREAT_PLAY = 0.9;
  */
 export function headline(o: { won: boolean; accuracy: number; luckPct: number; name: string; decider?: MoveReview; keyMistakes?: number; inaccuracies?: number }): string {
   const you = o.name === 'You';
+  // No mistake or blunder but a low accuracy: the losses were small slips in close decisions. Say so, rather
+  // than anything that would read against "No key mistakes" on the card.
+  if (o.keyMistakes === 0 && o.accuracy < SMALL_SLIPS_BELOW) return 'No big mistakes, but small slips added up in close decisions.';
   // A loss turned by one bad move says so, whatever the accuracy.
   if (!o.won && o.decider && (o.decider.label === 'blunder' || o.decider.label === 'mistake'))
     return `One ${o.decider.label} decided it: a single move cost ${Math.round(o.decider.gap)} points of winning chance.`;
