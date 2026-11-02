@@ -7,7 +7,8 @@
 //   node tools/ai/dist/net_f32.mjs review --layout 2p --mover hard [--games 10] [--from 1]
 //       reviews the REVIEW_CALIB games (review_calib's generator and seeds) with the app's engine and review
 //       twice, once per net, and prints the label agreement (all decisions, and key ones: either side
-//       inaccuracy or worse) and how often Extreme's own choice (choose, 128 playouts) differs.
+//       inaccuracy or worse), the accuracy change per game (points), and how often Extreme's own choice
+//       (choose, 128 playouts) differs.
 // Both engines load through init_bin; the f32 one from the rounded weights stored as Float64, which is
 // exactly what a Float32 .bin would decode to.
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
@@ -17,7 +18,7 @@ import { chooseBotMove } from '../../src/engine/ai/levels';
 import type { NetJSON } from '../../src/engine/ai/net';
 import { encodeNet } from '../../src/engine/ai/netbin';
 import { PLAYOUT_RULES } from '../../src/engine/ai/playout-rules';
-import { reviewMoves, type Label, type Reviewer } from '../../src/engine/ai/review';
+import { accuracyOf, reviewMoves, type Label, type Reviewer } from '../../src/engine/ai/review';
 import { RolloutEngine } from '../../src/engine/ai/rollout';
 import { replay } from '../../src/engine/record';
 import { flags, MODES } from './common';
@@ -115,13 +116,17 @@ if (task === 'make') {
 
   const KEY = new Set<Label>(['inaccuracy', 'mistake', 'blunder']);
   let n = 0, same = 0, keyN = 0, keySame = 0, choices = 0, choiceSame = 0;
+  const dAcc: number[] = [];
   for (let g = 0; g < games; g++) {
     const rec = game(from + g);
     const r = replay(rec);
     if (!r.ok) throw new Error(`game ${from + g} does not replay: ${r.error}`);
     const states = r.states as GameState[];
-    const A = new Map((await reviewMoves(rec, states, [0], reviewer(e64))).map((m) => [m.at, m.label]));
+    const RA = await reviewMoves(rec, states, [0], reviewer(e64));
+    const A = new Map(RA.map((m) => [m.at, m.label]));
     const B = await reviewMoves(rec, states, [0], reviewer(e32));
+    const da = 100 * (accuracyOf(B) - accuracyOf(RA));
+    if (Number.isFinite(da)) dAcc.push(Math.abs(da));
     for (const m of B) {
       const l = A.get(m.at);
       if (!l) continue;
@@ -137,12 +142,14 @@ if (task === 'make') {
     }
   }
   const pct = (x: number, t: number) => (t ? `${((100 * x) / t).toFixed(2)}% (${x}/${t})` : '-');
-  console.log('F32 ' + JSON.stringify({ layout, mover, games, decisions: n, same, keyN, keySame, choices, choiceSame }));
+  const meanD = dAcc.length ? dAcc.reduce((s, x) => s + x, 0) / dAcc.length : NaN;
+  const maxD = dAcc.length ? Math.max(...dAcc) : NaN;
+  console.log('F32 ' + JSON.stringify({ layout, mover, games, decisions: n, same, keyN, keySame, choices, choiceSame, meanAbsDAcc: meanD, maxAbsDAcc: maxD }));
   md(`### Review with a Float32 net: ${layout} ${mover}, REVIEW_CALIB seeds ${from}..${from + games - 1}`);
   md('');
-  md(`| decisions | labels unchanged | key labels unchanged | Extreme's choice unchanged |`);
-  md('|---:|---:|---:|---:|');
-  md(`| ${n} | ${pct(same, n)} | ${pct(keySame, keyN)} | ${pct(choiceSame, choices)} |`);
+  md(`| decisions | labels unchanged | key labels unchanged | Extreme's choice unchanged | mean / max abs Δ accuracy per game (pts) |`);
+  md('|---:|---:|---:|---:|---:|');
+  md(`| ${n} | ${pct(same, n)} | ${pct(keySame, keyN)} | ${pct(choiceSame, choices)} | ${meanD.toFixed(2)} / ${maxD.toFixed(2)} |`);
   md('');
 } else {
   throw new Error(`unknown task ${task}: make | review`);

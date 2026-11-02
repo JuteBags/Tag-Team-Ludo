@@ -39,6 +39,8 @@ jobs:
 
   strength:
     name: strength ${{ matrix.net }}
+    # A push whose commit message says [review-only] skips this (slow) job.
+    if: ${{ !contains(github.event.head_commit.message, '[review-only]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     strategy:
