@@ -9,8 +9,7 @@ import { ACHIEVEMENTS, takeNew, type AchievementGroup } from './rewards';
 import { summary } from '../engine/ai/review';
 import { isComplete, isQueued, onReviewChange, progressOf } from './reviewQueue';
 import { peopleOf } from './reviewRun';
-import { accuracyText } from './reviewText';
-import { luckBand } from './reviewText';
+import { accuracyText, luckBand } from './reviewWords';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
 
 const GROUPS: AchievementGroup[] = ['Ladder', 'Extreme', 'Milestones', 'Everyday'];
