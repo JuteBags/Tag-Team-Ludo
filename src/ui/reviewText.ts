@@ -123,3 +123,65 @@ export function reviewedText(when: number | undefined, now = Date.now()): string
   const month = d.toLocaleString('en-GB', { month: 'short' });
   return `Reviewed ${d.getDate()} ${month}${d.getFullYear() === new Date(now).getFullYear() ? '' : ` ${d.getFullYear()}`}`;
 }
+
+/** A luck percentile in words, as agreed for #96: "unlucky" under 20, "a bit unlucky" to 40, "average" to 60, "a bit lucky" to 80, then "lucky". */
+export function luckBand(pct: number): { word: string; tone: 'lucky' | 'unlucky' | 'average' } {
+  if (!Number.isFinite(pct)) return { word: 'average', tone: 'average' };
+  if (pct < 20) return { word: 'unlucky', tone: 'unlucky' };
+  if (pct < 40) return { word: 'a bit unlucky', tone: 'unlucky' };
+  if (pct <= 60) return { word: 'average', tone: 'average' };
+  if (pct <= 80) return { word: 'a bit lucky', tone: 'lucky' };
+  return { word: 'lucky', tone: 'lucky' };
+}
+
+/** Accuracy (0-1) the headline calls great play. */
+export const GREAT_PLAY = 0.9;
+
+/**
+ * The story of the game in one sentence, from one player's side: whether they won, how well they played
+ * (accuracy 0-1) and how their dice were (luck percentile). `name` is "You" or the player's name.
+ */
+export function headline(o: { won: boolean; accuracy: number; luckPct: number; name: string }): string {
+  const you = o.name === 'You';
+  const acc = `${Math.round(100 * o.accuracy)}%`;
+  const luck = `luck ${Math.round(o.luckPct)}%`;
+  const them = you ? 'you' : 'them';
+  const great = o.accuracy >= GREAT_PLAY;
+  const unlucky = o.luckPct < 40;
+  const lucky = o.luckPct > 60;
+  if (o.won) {
+    if (great && unlucky) return `Won against the dice: great play (${acc}) beat unlucky rolls (${luck}).`;
+    if (great) return `Won on great play: ${acc} accuracy.`;
+    if (lucky) return `Won, with the dice on ${you ? 'your' : 'their'} side (${luck}).`;
+    return 'Won, with a few slips to learn from.';
+  }
+  if (great && unlucky) return `${o.name} played well (${acc}), but the dice went against ${them} (${luck}).`;
+  if (great) return `${o.name} played well (${acc}): the turning point decided it.`;
+  if (lucky) return `The dice were kind (${luck}), but the mistakes cost the game.`;
+  return 'Lost on mistakes: the key moves show where.';
+}
+
+/**
+ * The turning point from one owner's side: the biggest swing in their winning chances, either one of their
+ * moves (the points it gave up) or anyone's roll (its luck). Null when there's nothing to show.
+ */
+export function turningPoint(moves: MoveReview[], luck: RollLuck[], owner: number): { kind: 'move'; move: MoveReview } | { kind: 'roll'; roll: RollLuck } | null {
+  const m = moves.filter((x) => x.owner === owner).sort((a, b) => b.gap - a.gap || a.at - b.at)[0];
+  const r = [...luck].sort((a, b) => Math.abs(b.luck) - Math.abs(a.luck) || a.at - b.at)[0];
+  const mv = m && m.gap >= 1 ? m.gap : 0;
+  const rv = r ? Math.abs(r.luck) : 0;
+  if (!mv && rv < 1) return null;
+  return mv >= rv ? { kind: 'move', move: m! } : { kind: 'roll', roll: r! };
+}
+
+/**
+ * A decision's verdict in words: `head` "Inaccuracy −4" and `line` "You moved 5 · Best: moved a pair 3" (the best
+ * only when it differs). `who` is "You" or the player's name.
+ */
+export function verdictText(m: MoveReview, s: GameState, who: string): { head: string; line: string } {
+  const look = LABEL_LOOK[m.label];
+  const head = `${look.name}${m.label !== 'best' && m.gap >= 1 ? ` −${Math.round(m.gap)}` : ''}`;
+  const plain = m.played === m.best || m.label === 'best';
+  const [played, best] = verdictMoves(s, s.moves[m.played]!, s.moves[m.best]!);
+  return { head, line: `${who} ${plain ? moveText(s.moves[m.played]!) : played}${plain ? '' : ` · Best: ${best}`}` };
+}

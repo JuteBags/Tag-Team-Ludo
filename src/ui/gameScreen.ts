@@ -15,6 +15,7 @@ import { clearGame, giveUpNote, givingUpLoses, layoutOf, levelOf, loadStats, rec
 import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targets';
 import { award, goldFor, newAchievements, nextStreak, total, type GameFacts } from './rewards';
 import { earn, lockLabel, nextGoal } from './skins';
+import { enqueue, onReviewChange, progressOf, setGame } from './reviewQueue';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
 const DIE = 38;
@@ -717,9 +718,12 @@ export class GameScreen {
     // its last place is played out (a vote to stop, no people left, or you finished vs Computer) ends with
     // STOP_EVENT, so a replay knows its result is the position's ownerRanking, as here.
     const rec = this.record();
+    // The game is over, so reviews may run again; this one is queued once it's saved (#96).
+    setGame('none');
     if (rec) {
       if (this.state.phase !== 'over') rec.events += STOP_EVENT;
-      void savePastGame({ rec, at: Date.now(), mode: this.config.mode, place });
+      const at = Date.now();
+      void savePastGame({ rec, at, mode: this.config.mode, place }).then(() => rec.seats.some((s) => !s.bot) && enqueue(rec, { pvp, at }));
     }
     this.finalRecord = rec;
     const rows = order
@@ -789,6 +793,18 @@ export class GameScreen {
       }
     });
     this.el.appendChild(ov);
+    // The Review button follows the review running in the queue: "Reviewing 40%", then "Review ready" (#96).
+    const rvb = ov.querySelector<HTMLElement>('[data-act=review]');
+    if (rvb && rec) {
+      const show = () => {
+        if (!rvb.isConnected) return off();
+        const p = progressOf(rec);
+        rvb.textContent = !p ? '★ REVIEW GAME' : p.finished ? '★ REVIEW READY' : `REVIEWING ${p.total ? Math.floor((100 * p.done) / p.total) : 0}%`;
+        rvb.classList.toggle('ready', !!p?.finished);
+      };
+      const off = onReviewChange(show);
+      show();
+    }
     // New achievements pop in as small chips, and the next-skin bar catches up with their gold.
     void achievements.then(({ fresh, ended, streak }) => {
       const box = ov.querySelector<HTMLElement>('.achs')!;

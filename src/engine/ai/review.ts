@@ -77,6 +77,8 @@ export interface MoveReview {
   gap: number;
   se: number;
   label: Label;
+  /** Every move's points below the best (one per state.moves, 1 decimal), for the replay's ghost and "find the better move". */
+  gaps?: number[];
 }
 
 export interface RollLuck {
@@ -121,7 +123,8 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     const gap = cp === v.best ? 0 : 100 * v.gap[cp]!;
     const se = cp === v.best ? 0 : 100 * v.se[cp]!;
     const best = v.ofMove.indexOf(v.best);
-    const r: MoveReview = { at: i, owner: s.players[s.current]!.owner, played, best, playedChance: v.mean[cp]!, bestChance: v.mean[v.best]!, gap, se, label: labelOf(gap, se) };
+    const gaps = v.ofMove.map((c) => (c === v.best ? 0 : Math.round(1000 * v.gap[c]!) / 10));
+    const r: MoveReview = { at: i, owner: s.players[s.current]!.owner, played, best, playedChance: v.mean[cp]!, bestChance: v.mean[v.best]!, gap, se, label: labelOf(gap, se), gaps };
     out.push(r);
     onMove?.(r, out.length, todo.length);
   }
@@ -160,6 +163,12 @@ export function rollLuck(rec: GameRecord, states: GameState[], net: Evaluator): 
     out.push({ at: i, owner: s.players[s.current]!.owner, face, luck: 100 * (v[face - 1]! - expect), sd: 100 * sd });
   }
   return out;
+}
+
+/** Every owner's win chance (whole %, from the net) at every state, for the replay's win-chance bar. */
+export function netChances(rec: GameRecord, states: GameState[], net: Evaluator): number[][] {
+  const owners = new Set(rec.seats.map((x) => x.owner)).size;
+  return states.map((s) => [...ownerValues(net, s, owners)].map((v) => Math.round(100 * v)));
 }
 
 /** What each label scores toward accuracy: a blunder costs more than an inaccuracy. */

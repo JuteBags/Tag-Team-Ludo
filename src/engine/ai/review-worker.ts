@@ -15,10 +15,10 @@ function reviewWorker(): Worker | null {
   } catch {
     return (worker = null);
   }
-  worker.onmessage = (e: MessageEvent<{ id: number; values?: DecisionValues; luck?: RollLuck[]; error?: string }>) => {
+  worker.onmessage = (e: MessageEvent<{ id: number; values?: DecisionValues; luck?: RollLuck[]; chances?: number[][]; error?: string }>) => {
     const p = pending.get(e.data.id);
     pending.delete(e.data.id);
-    const v = e.data.values ?? e.data.luck;
+    const v = e.data.values ?? (e.data.luck ? { luck: e.data.luck, chances: e.data.chances ?? [] } : undefined);
     if (v) p?.done(v as never);
     else p?.fail(new Error(e.data.error ?? 'review failed'));
   };
@@ -42,13 +42,22 @@ export function workerReviewer(): Reviewer | null {
     });
 }
 
-/** The luck of every roll in `rec` (review.ts rollLuck), worked out in the worker. Null where workers can't run. */
-export function workerLuck(rec: GameRecord): Promise<RollLuck[]> | null {
+/** The luck of every roll in `rec` and everyone's net win chance at every state, worked out in the worker. Null where workers can't run. */
+export function workerLuck(rec: GameRecord): Promise<{ luck: RollLuck[]; chances: number[][] }> | null {
   const w = reviewWorker();
   if (!w) return null;
-  return new Promise<RollLuck[]>((done, fail) => {
+  return new Promise<{ luck: RollLuck[]; chances: number[][] }>((done, fail) => {
     const id = nextId++;
     pending.set(id, { done: done as (v: never) => void, fail });
     w.postMessage({ id, kind: 'luck', rec });
   });
+}
+
+/** Ends the worker (the review queue calls it once it's empty), so no idle worker holds memory. */
+export function stopReviewWorker() {
+  if (!worker) return;
+  worker.terminate();
+  for (const p of pending.values()) p.fail(new Error('review worker stopped'));
+  pending.clear();
+  worker = undefined;
 }

@@ -724,7 +724,12 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .pastrow b{font-size:15px}.pastrow small{font-size:12px;font-weight:700;opacity:.85}
 .pastrow em{font-style:normal;font-size:26px;opacity:.8}
 .pglist{display:flex;flex-direction:column;gap:6px;max-height:520px;overflow-y:auto;margin-top:10px;text-align:left}
-.pg{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;color:#fff;background:rgba(0,0,0,.25);text-align:left}
+.pg{display:flex;align-items:stretch;border-radius:14px;background:rgba(0,0,0,.25)}
+.pg .pgmain{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:10px 12px;background:none;color:#fff;text-align:left}
+.pg .pgplay{flex:none;width:48px;border-left:1px solid rgba(255,255,255,.12);background:none;color:#fff;font-size:16px}
+.pg .pgr{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:#ffd65a}
+.pg .pgr.off{color:rgba(255,255,255,.55)}
+.pg .pgr .ring{width:14px;height:14px;border-radius:50%;background:conic-gradient(#ffd65a calc(var(--p)*1%),rgba(255,255,255,.18) 0);flex:none}
 .pg.won{box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.55)}
 .pg .pgc{display:grid;grid-template-columns:repeat(2,10px);gap:3px;flex:none}
 .pg .pgc i{width:10px;height:10px;border-radius:3px}
@@ -818,3 +823,41 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .vhead{pointer-events:none}
 .vhead circle{fill:var(--c);stroke:#0b1d5c;stroke-width:2}
 .vhead text{fill:#1a1300;font-size:12px;font-weight:900}
+
+/* Review (#96): whose side, luck % beside accuracy, the story, an older review while it updates. */
+.review .rvpov{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.review .rvp{display:flex;align-items:center;gap:6px;min-height:40px;padding:3px 10px 3px 3px;border-radius:14px;background:rgba(0,0,0,.28);color:#fff;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.15);opacity:.75}
+.review .rvp.on{opacity:1;box-shadow:inset 0 0 0 2px var(--m)}
+.review .rvp i{width:30px;height:30px;border-radius:50%;padding:1.5px;background:var(--m);flex:none}
+.review .rvp i svg{width:100%;height:100%;border-radius:50%;display:block}
+.review .rvp b{font-size:13px;font-weight:900;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.review .rvp small{font-size:9.5px;font-weight:900;letter-spacing:.06em;opacity:.7}
+.review .rvwho em+em{margin-left:14px}
+.review .rvwho em.lk{color:#cbd5e1}
+.review .rvwho em.lk.lucky{color:#4ade80}.review .rvwho em.lk.unlucky{color:#f87171}
+.review .rvhead1{margin:0 0 10px;padding:10px 14px;border-radius:14px;background:rgba(255,214,90,.12);box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.4);font-size:15px;font-weight:900;line-height:1.35}
+.review .rvstale{margin:0 0 8px;font-size:12px;font-weight:900;color:#ffd65a}
+.review.stale .rvcards,.review.stale .rvgraph,.review.stale .rvlist{opacity:.5}
+.review .rvrow em{font-style:normal;font-size:11px;font-weight:900;color:#ffd65a;letter-spacing:.04em}
+.review .rvrow.turning{box-shadow:inset 0 0 0 2px #ffd65a}
+.review .rvgraph .tpstar path{fill:#ffd65a;stroke:#0b1d5c;stroke-width:1}
+
+/* Replay in review mode (#96): the POV chips, the win-chance bar, a larger board, the verdict card, ticks. */
+.replay .rpc{color:#fff}
+.replay.rvmode .rpc{opacity:.7}
+.replay.rvmode .rpc.on{opacity:1;box-shadow:inset 0 0 0 2px var(--m),0 0 0 2px rgba(255,255,255,.25)}
+.replay .wcbar{position:absolute;top:110px;left:28px;right:28px;height:14px;display:flex;border-radius:7px;overflow:hidden;background:rgba(0,0,0,.3);z-index:3}
+.replay .wcbar[hidden]{display:none}
+.replay .wcbar i{display:block;height:100%;font-style:normal;font-size:10px;font-weight:900;line-height:14px;text-align:center;color:#fff;text-shadow:0 1px 1px rgba(0,0,0,.6);transition:width .35s ease}
+.replay.rvmode .gboard{top:136px}
+.replay.rvmode .rpcap{top:552px}
+.replay.rvmode .rpscrub{top:622px}
+.replay .rpticks{position:absolute;top:644px;left:36px;right:36px;width:auto;height:10px;z-index:3;pointer-events:none}
+.replay .rpticks[hidden]{display:none}
+.replay.rvmode .rpctl{top:666px}
+.replay.rvmode .rpcount{top:730px}
+.replay .rptext .cap{color:#fca5a5}.replay .rptext .home{color:#ffd65a}
+.replay .rptext{flex:1}
+.replay .bestchip{flex:none;align-self:center;min-height:36px;padding:0 10px;border-radius:12px;border:1.5px dashed #4ade80;background:rgba(74,222,128,.14);color:#bbf7d0;font-size:12px;font-weight:900}
+.replay .bestchip[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){.replay .wcbar i{transition:none}}

@@ -6,6 +6,10 @@ import { sfx } from './sfx';
 import { emptyStats, loadCheckIn, loadPastGames, loadStats, resetStats, type PastGame, type Stats } from './store';
 import { daysBetween, dayKey } from './checkin';
 import { ACHIEVEMENTS, takeNew, type AchievementGroup } from './rewards';
+import { summary } from '../engine/ai/review';
+import { isComplete, isQueued, onReviewChange, progressOf } from './reviewQueue';
+import { peopleOf } from './reviewRun';
+import { luckBand } from './reviewText';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
 
 const GROUPS: AchievementGroup[] = ['Ladder', 'Extreme', 'Milestones', 'Everyday'];
@@ -96,7 +100,7 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
   toggle(ov, 'killfx', (v) => saveSetting('killFx', v as 'full' | 'short' | 'off'));
 }
 
-export async function statsSheet(host: HTMLElement, onReplay?: (rec: GameRecord) => void) {
+export async function statsSheet(host: HTMLElement, onReplay?: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void) {
   const s: Stats = await loadStats().catch(() => emptyStats());
   const past = await loadPastGames().catch(() => [] as PastGame[]);
   // The check-in achievements show the current run (still alive if the last check-in was today or yesterday);
@@ -117,7 +121,7 @@ export async function statsSheet(host: HTMLElement, onReplay?: (rec: GameRecord)
     : `<p class="sub">vs Computer, on this device</p>
     <div class="stats">${cell(s.played, 'Games')}${cell(s.wins, 'Wins')}${cell(rate, 'Win rate')}${cell(best, 'Best place')}${cell(s.streak, 'Win streak')}${cell(s.bestStreak, 'Best streak')}${cell(s.kills, 'Kills')}${cell(s.sixes, 'Sixes')}${cell(s.xStreak, s.xBestStreak ? `Extreme (best ${s.xBestStreak})` : 'Extreme streak')}</div>
     <p class="sub">With friends: ${s.friends} game${s.friends === 1 ? '' : 's'}</p>
-    ${onReplay ? `<button class="pastrow" data-act="past"><span><b>Past games</b><small>${past.length ? `Your last ${past.length}: watch the replays` : 'Finished games show up here'}</small></span><em>›</em></button>` : ''}
+    ${onReplay ? `<button class="pastrow" data-act="past"><span><b>Games &amp; reviews</b><small>${past.length ? `Your last ${past.length}: replays and reviews` : 'Finished games show up here'}</small></span><em>›</em></button>` : ''}
     <button class="reset" data-act="reset">Reset stats</button>`;
   const achPane = `<div class="achscroll">${GROUPS.map((g) => `<h4 class="achg">${g}</h4><div class="achlist">${ACHIEVEMENTS.filter((a) => a.group === g).map((a) => {
       const done = settings.achieved.includes(a.id);
@@ -134,7 +138,7 @@ export async function statsSheet(host: HTMLElement, onReplay?: (rec: GameRecord)
   );
   ov.querySelector('[data-act=past]')?.addEventListener('click', () => {
     ov.remove();
-    pastGamesSheet(host, past, onReplay!);
+    pastGamesSheet(host, past, onReplay!, onReview);
   });
   ov.querySelector('.tabs')!.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLButtonElement>('[data-tab]');
@@ -168,22 +172,53 @@ function ago(t: number): string {
   return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} day${h < 36 ? '' : 's'} ago`;
 }
 
-/** The last finished games, newest first; tapping one opens its replay. */
-export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (rec: GameRecord) => void) {
+/**
+ * The last finished games, newest first, with their reviews (#96): accuracy, luck % and the mistakes once
+ * reviewed, a progress ring while the review runs. Tapping a game opens its review (or its replay, for a
+ * game with no person in it); ▶ opens the replay.
+ */
+export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void) {
   const place = (p: number) => ['', '1st', '2nd', '3rd', '4th'][p] ?? '';
-  const rows = past
-    .map((g, i) => {
-      const people = new Set(g.rec.seats.map((s) => s.owner)).size;
-      const colours = [...new Set(g.rec.seats.map((s) => s.color))].map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
-      const what = g.mode === 'pvp' ? 'With friends' : 'vs Computer';
-      return `<button class="pg${g.mode === 'pvc' && g.place === 1 ? ' won' : ''}" data-i="${i}"><span class="pgc">${colours}</span><span class="pgt"><b>${what} · ${people} players</b><small>${ago(g.at)}</small></span><em>${g.mode === 'pvc' ? (g.place === 1 ? '🏆 Won' : place(g.place)) : ''}</em></button>`;
-    })
-    .join('');
-  const ov = sheet(host, 'Past games', past.length ? `<p class="sub">Tap a game to watch its replay</p><div class="pglist">${rows}</div>` : `<div class="empty"><b class="disp">No games yet</b><p class="sub">Finish a game and its replay shows up here.</p></div>`);
-  ov.querySelector('.pglist')?.addEventListener('click', (e) => {
-    const b = (e.target as Element).closest<HTMLElement>('[data-i]');
-    if (!b) return;
+  const status = (g: PastGame) => {
+    const live = progressOf(g.rec);
+    if (live && !live.finished) {
+      const pct = live.total ? Math.floor((100 * live.done) / live.total) : 0;
+      return `<span class="pgr"><i class="ring" style="--p:${pct}"></i>Reviewing ${pct}%</span>`;
+    }
+    const r = live?.finished ? { moves: live.moves, luck: live.luck } : isComplete(g.review) ? g.review! : g.review?.old;
+    const me = peopleOf(g.rec)[0];
+    if (!r || me === undefined) return `<span class="pgr off">${isQueued(g.rec) ? 'Review queued' : me === undefined ? '' : 'Not reviewed yet'}</span>`;
+    const sum = summary(r.moves, r.luck ?? [], new Set(g.rec.seats.map((x) => x.owner)).size)[me]!;
+    if (!sum.moves) return '<span class="pgr off">Not reviewed yet</span>';
+    const luck = Number.isFinite(sum.luckPct) ? ` · Luck ${Math.round(sum.luckPct)}%` : '';
+    const bad = [sum.labels.mistake ? `? ${sum.labels.mistake}` : '', sum.labels.blunder ? `?? ${sum.labels.blunder}` : ''].filter(Boolean).join(' ');
+    return `<span class="pgr">${Math.round(100 * sum.accuracy)}% accuracy${luck}${bad ? ` · ${bad}` : ''}</span>`;
+  };
+  const rows = () =>
+    past
+      .map((g, i) => {
+        const people = new Set(g.rec.seats.map((s) => s.owner)).size;
+        const colours = [...new Set(g.rec.seats.map((s) => s.color))].map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
+        const what = g.mode === 'pvp' ? 'With friends' : 'vs Computer';
+        return `<div class="pg${g.mode === 'pvc' && g.place === 1 ? ' won' : ''}"><button class="pgmain" data-i="${i}"><span class="pgc">${colours}</span><span class="pgt"><b>${what} · ${people} players</b><small>${ago(g.at)}</small>${status(g)}</span><em>${g.mode === 'pvc' ? (g.place === 1 ? '🏆 Won' : place(g.place)) : ''}</em></button><button class="pgplay" data-replay="${i}" aria-label="Watch the replay">▶</button></div>`;
+      })
+      .join('');
+  const ov = sheet(host, 'Games & reviews', past.length ? `<p class="sub">Tap a game for its review, ▶ for the replay</p><div class="pglist">${rows()}</div>` : `<div class="empty"><b class="disp">No games yet</b><p class="sub">Finish a game and its replay and review show up here.</p></div>`);
+  // The statuses follow the reviews while the sheet is open.
+  const list = ov.querySelector<HTMLElement>('.pglist');
+  const off = onReviewChange(() => {
+    if (!ov.isConnected) return off();
+    if (list) list.innerHTML = rows();
+  });
+  list?.addEventListener('click', (e) => {
+    const t = e.target as Element;
+    const r = t.closest<HTMLElement>('[data-replay]')?.dataset.replay;
+    const i = t.closest<HTMLElement>('[data-i]')?.dataset.i;
+    if (r === undefined && i === undefined) return;
+    off();
     ov.remove();
-    onReplay(past[Number(b.dataset.i)]!.rec);
+    const g = past[Number(r ?? i)]!;
+    if (r === undefined && onReview && g.rec.seats.some((s) => !s.bot)) onReview(g.rec);
+    else onReplay(g.rec);
   });
 }

@@ -239,6 +239,14 @@ export interface StoredReview {
   luck: RollLuck[] | null;
   /** When it was last worked on (ms since 1970), shown as "Reviewed today". */
   when?: number;
+  /** Every owner's net win chance (whole %) at every state, for the replay's win-chance bar. */
+  chances?: number[][];
+  /** The owners it covers (people by default, plus any bot whose side was asked for). */
+  who?: number[];
+  /** A review from an older label version, shown (greyed) until this one is finished. */
+  old?: StoredReview;
+  /** Set once every decision and the luck are in. */
+  done?: boolean;
 }
 
 const GAMES = 'ludo-games';

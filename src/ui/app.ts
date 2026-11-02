@@ -14,6 +14,7 @@ import { decodeRecord, type GameRecord } from '../engine';
 import { linkPayload } from './replay';
 import { safeReplayScreen } from './replayScreen';
 import { reviewScreen } from './reviewScreen';
+import { bootReviews, setGame } from './reviewQueue';
 
 const W = 390;
 const H = 844;
@@ -35,9 +36,10 @@ export function mountApp(root: HTMLElement) {
   let game: GameScreen | null = null;
   const home = async () => {
     game = null;
+    setGame('none');
     const saved = await loadGame();
     if (game) return; // a game started while the save was loading
-    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => stage.replaceChildren(storeScreen(() => void home())), (rec) => watch(rec, () => void home()));
+    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => stage.replaceChildren(storeScreen(() => void home())), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()));
     stage.replaceChildren(screen);
     // On the home screen only, never during a game: a newer version on the site, then today's check-in.
     void offerUpdate(screen).then(() => offerCheckIn(screen));
@@ -49,14 +51,18 @@ export function mountApp(root: HTMLElement) {
       count = 2;
       setup(mode, 2);
     }));
-  /** The replay of `rec`; `back` returns to where it was opened from. */
+  /** The replay of `rec`; `back` returns to where it was opened from. With a stored review it opens in review mode. */
   // `keep`: the game is one of the past games, so its review is stored (not for a game from a link).
-  const watch = (rec: GameRecord, back: () => void, keep = true, startAt?: number, startCaption?: string) =>
-    stage.replaceChildren(safeReplayScreen(rec, back, { startAt, startCaption, onReview: () => void review(rec, back, keep) }));
-  /** The game review of `rec`, picking up a stored one; a tapped move opens the replay there. */
-  const review = async (rec: GameRecord, back: () => void, keep = true) => {
-    const stored = keep ? (await loadPastGames()).find((g) => g.rec.events === rec.events && g.rec.first === rec.first)?.review : undefined;
-    const screen = reviewScreen(rec, stored, back, (at, caption) => watch(rec, () => void review(rec, back, keep), keep, at, caption), keep);
+  const storedReview = async (rec: GameRecord, keep: boolean) =>
+    keep ? (await loadPastGames()).find((g) => g.rec.events === rec.events && g.rec.first === rec.first)?.review : undefined;
+  const watch = async (rec: GameRecord, back: () => void, keep = true, startAt?: number, startCaption?: string, pov?: number) => {
+    const stored = await storedReview(rec, keep);
+    stage.replaceChildren(safeReplayScreen(rec, back, { startAt, startCaption, pov, keep, review: stored, onReview: (p) => void review(rec, back, keep, p) }));
+  };
+  /** The game review of `rec` (it runs in the review queue); a tapped move opens the replay there, from the same side. */
+  const review = async (rec: GameRecord, back: () => void, keep = true, pov?: number) => {
+    const stored = await storedReview(rec, keep);
+    const screen = reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p), keep, at, caption, p), keep, pov);
     stage.replaceChildren(screen);
   };
   // Set while a game starts, so a double tap on Start or Play again can't open two games.
@@ -69,9 +75,11 @@ export function mountApp(root: HTMLElement) {
       // continued game picks up from it.
       if (!saved) await giveUpSaved();
       const toResult = () => stage.replaceChildren(g.el);
-      const g = new GameScreen(cfg, (to) => (to === 'home' ? void home() : to === 'replay' ? g.finalRecord && watch(g.finalRecord, toResult) : to === 'review' ? g.finalRecord && void review(g.finalRecord, toResult) : play(cfg)), undefined, saved);
+      const g = new GameScreen(cfg, (to) => (to === 'home' ? void home() : to === 'replay' ? g.finalRecord && void watch(g.finalRecord, toResult) : to === 'review' ? g.finalRecord && void review(g.finalRecord, toResult) : play(cfg)), undefined, saved);
       game = g;
       stage.replaceChildren(game.el);
+      // Reviews keep going during a game, except vs Extreme, whose bots think with the rollout engine.
+      setGame(cfg.seats.some((s) => s.bot && s.level === 'extreme') ? 'extreme' : 'light');
       if (import.meta.env.DEV) (window as unknown as { __ludo: GameScreen }).__ludo = game;
     } finally {
       starting = false;
@@ -112,9 +120,11 @@ export function mountApp(root: HTMLElement) {
       history.replaceState(null, '', location.pathname + location.search);
       void home();
     };
-    void decodeRecord(payload).then((rec) => (rec ? watch(rec, leave, false) : stage.replaceChildren(safeReplayScreen(null, leave))));
+    void decodeRecord(payload).then((rec) => (rec ? void watch(rec, leave, false) : stage.replaceChildren(safeReplayScreen(null, leave))));
     return true;
   };
   addEventListener('hashchange', () => void openLink());
   if (!openLink()) void home();
+  // The newest unreviewed past games are reviewed while the app is open (#96).
+  void bootReviews();
 }

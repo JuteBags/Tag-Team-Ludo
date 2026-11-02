@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { REVIEW_VERSION, type DecisionValues, type MoveReview } from '../src/engine/ai/review';
-import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken } from '../src/ui/reviewText';
+import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken, luckBand, headline, turningPoint } from '../src/ui/reviewText';
 
 const mem = new Map<string, string>();
 vi.mock('@capacitor/preferences', () => ({
@@ -12,7 +12,7 @@ vi.mock('@capacitor/preferences', () => ({
     remove: async ({ key }: { key: string }) => void mem.delete(key),
   },
 }));
-vi.mock('../src/engine/ai/review-worker', () => ({ workerReviewer: () => null, workerLuck: () => Promise.resolve([]) }));
+vi.mock('../src/engine/ai/review-worker', () => ({ workerReviewer: () => null, workerLuck: () => Promise.resolve({ luck: [], chances: [] }) }));
 const { runReview, decisionsToReview } = await import('../src/ui/reviewRun');
 
 const SEATS: Seat[] = [{ color: 'blue', owner: 0, bot: false }, { color: 'red', owner: 1, bot: true, level: 'hard' }];
@@ -81,6 +81,23 @@ describe('key moves and big rolls', () => {
     expect(r.map((x) => x.at)).toEqual([2, 3, 5]);
     expect(rollText(r[0]!, 'Aarav', false)).toBe("Aarav's lucky 6: +15 for them");
     expect(rollText(r[1]!, 'You', true)).toBe('Your unlucky 1: −12');
+  });
+});
+
+describe('luck %, headline and turning point', () => {
+  it('puts a luck percentile into bands', () => {
+    expect([10, 25, 50, 70, 95].map((p) => luckBand(p).word)).toEqual(['unlucky', 'a bit unlucky', 'average', 'a bit lucky', 'lucky']);
+  });
+  it('tells the story of the game', () => {
+    expect(headline({ won: false, accuracy: 0.92, luckPct: 12, name: 'You' })).toBe('You played well (92%), but the dice went against you (luck 12%).');
+    expect(headline({ won: true, accuracy: 0.95, luckPct: 50, name: 'You' })).toBe('Won on great play: 95% accuracy.');
+    expect(headline({ won: false, accuracy: 0.7, luckPct: 50, name: 'Aarav' })).toBe('Lost on mistakes: the key moves show where.');
+  });
+  it('finds the biggest swing, a move or a roll', () => {
+    const mv = (at: number, gap: number): MoveReview => ({ at, owner: 0, played: 0, best: 1, playedChance: 0.5, bestChance: 0.5, gap, se: 0.5, label: 'mistake' });
+    expect(turningPoint([mv(3, 12), mv(5, 4)], [{ at: 2, owner: 1, face: 6, luck: 9 }], 0)).toMatchObject({ kind: 'move', move: { at: 3 } });
+    expect(turningPoint([mv(3, 6)], [{ at: 2, owner: 1, face: 6, luck: -15 }], 0)).toMatchObject({ kind: 'roll', roll: { at: 2 } });
+    expect(turningPoint([], [], 0)).toBeNull();
   });
 });
 
