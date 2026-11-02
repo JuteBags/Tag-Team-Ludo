@@ -141,7 +141,7 @@ export const GREAT_PLAY = 0.9;
  * The story of the game in one sentence, from one player's side: whether they won, how well they played
  * (accuracy 0-1) and how their dice were (luck percentile). `name` is "You" or the player's name.
  */
-export function headline(o: { won: boolean; accuracy: number; luckPct: number; name: string; decider?: MoveReview }): string {
+export function headline(o: { won: boolean; accuracy: number; luckPct: number; name: string; decider?: MoveReview; keyMistakes?: number; inaccuracies?: number }): string {
   const you = o.name === 'You';
   // A loss turned by one bad move says so, whatever the accuracy.
   if (!o.won && o.decider && (o.decider.label === 'blunder' || o.decider.label === 'mistake'))
@@ -160,8 +160,10 @@ export function headline(o: { won: boolean; accuracy: number; luckPct: number; n
   }
   if (great && unlucky) return `${o.name} played well (${acc}), but the dice went against ${them} (${luck}).`;
   if (great) return `${o.name} played well (${acc}): the turning point decided it.`;
-  if (lucky) return `The dice were kind (${luck}), but the mistakes cost the game.`;
-  return 'Lost on mistakes: the key moves show where.';
+  // No key mistakes: it was the small slips that added up, so say that rather than "mistakes".
+  const slips = !o.keyMistakes && o.inaccuracies ? `${o.inaccuracies} small slip${o.inaccuracies === 1 ? '' : 's'}` : '';
+  if (lucky) return slips ? `The dice were kind (${luck}), but ${slips} added up.` : `The dice were kind (${luck}), but the mistakes cost the game.`;
+  return slips ? `Lost on ${slips}: the key moves show where.` : 'Lost on mistakes: the key moves show where.';
 }
 
 /** A swing only counts as the turning point while the game was still open: the side's chance before it inside this band. */
