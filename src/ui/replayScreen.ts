@@ -16,7 +16,7 @@ import { dieMarkup } from './dice';
 import { framesOf, namesOf, shareLink, type Frame } from './replay';
 import { follow } from './reviewQueue';
 import { peopleOf, type ReviewProgress } from './reviewRun';
-import { KEY_LABELS, LABEL_LOOK, moveText, turningPoint, verdictText } from './reviewText';
+import { KEY_LABELS, LABEL_LOOK, turningPoint, verdictMoves, verdictText } from './reviewText';
 import { SITE } from './shareCard';
 import type { StoredReview } from './store';
 
@@ -168,7 +168,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
       const v = verdictOf(f);
       if (v && KEY_LABELS.includes(v.label)) s += `<rect x="${x(i)}" y="0" width=".9" height="9" fill="${LABEL_LOOK[v.label].color}"/>`;
     });
-    const tp = luck ? turningPoint(moves.filter((m) => m.owner === pov), luck, pov) : null;
+    const tp = luck ? turningPoint(moves.filter((m) => m.owner === pov), luck, pov, (at) => (chances?.[at]?.[pov] !== undefined ? chances[at]![pov]! / 100 : undefined)) : null;
     if (tp) {
       const i = frames.findIndex((f) => f.at > (tp.kind === 'move' ? tp.move.at : tp.roll.at));
       if (i >= 0) s += `<text x="${x(i)}" y="9" font-size="9" text-anchor="middle" fill="#ffd65a">★</text>`;
@@ -245,7 +245,12 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     // The labels' cuts come from review.ts (calibrated per layout), never from the UI.
     const label = i === v.best ? 'best' : labelOf(gap, 0);
     const look = LABEL_LOOK[label];
-    markCaption(label === 'best' ? `★ That's the best move: ${moveText(best)}.` : `Your pick: ${look.sym} −${Math.round(gap)} · Best: ${moveText(best)} (the game: −${Math.round(v.gap)})`);
+    const nameOf = (c: string) => {
+      const o = rec.seats.find((x) => x.color === c)?.owner ?? 0;
+      return isYou(o) ? 'you' : names[o]!;
+    };
+    const [mine, bestText] = verdictMoves(s, s.moves[i]!, best, nameOf);
+    markCaption(label === 'best' ? `★ That's the best move: ${mine}.` : `Your pick (${mine}): ${look.sym} −${Math.round(gap)} · Best: ${bestText} · In the game: −${Math.round(v.gap)}`);
     view.showVerdict({ played: s.moves[i]!, best: label === 'best' ? undefined : best, sym: look.sym, color: look.color });
     const again = document.createElement('button');
     again.className = 'findchip';

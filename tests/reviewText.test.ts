@@ -100,9 +100,13 @@ describe('luck %, headline and turning point', () => {
   });
   it('finds the biggest swing, a move or a roll', () => {
     const mv = (at: number, gap: number): MoveReview => ({ at, owner: 0, played: 0, best: 1, playedChance: 0.5, bestChance: 0.5, gap, se: 0.5, label: 'mistake' });
-    expect(turningPoint([mv(3, 12), mv(5, 4)], [{ at: 2, owner: 1, face: 6, luck: 9 }], 0)).toMatchObject({ kind: 'move', move: { at: 3 } });
-    expect(turningPoint([mv(3, 6)], [{ at: 2, owner: 1, face: 6, luck: -15 }], 0)).toMatchObject({ kind: 'roll', roll: { at: 2 } });
+    const r = (at: number, luck: number) => ({ at, owner: 1, face: 6, luck });
+    expect(turningPoint([mv(3, 12), mv(5, 4), mv(9, 1)], [r(2, 9), r(8, 2)], 0)).toMatchObject({ kind: 'move', move: { at: 3 } });
+    expect(turningPoint([mv(3, 6), mv(9, 1)], [r(2, -15), r(8, 2)], 0)).toMatchObject({ kind: 'roll', roll: { at: 2 } });
     expect(turningPoint([], [], 0)).toBeNull();
+    // The last roll (the one that ends the game) never counts, nor a swing once the game was decided.
+    expect(turningPoint([mv(3, 2), mv(9, 1)], [r(2, 1.5), r(8, 40)], 0)).toMatchObject({ kind: 'move', move: { at: 3 } });
+    expect(turningPoint([mv(3, 2), mv(9, 1)], [r(2, 30), r(8, 1)], 0, (at) => (at === 2 ? 0.04 : 0.5))).toMatchObject({ kind: 'move', move: { at: 3 } });
   });
 });
 
