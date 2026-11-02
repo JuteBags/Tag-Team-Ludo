@@ -105,3 +105,57 @@ export function nearest<T extends { pt: Pt }>(items: T[], at: Pt, radius: number
   }
   return best;
 }
+
+/** The landing markers are drawn at this scale (boardView: `scale(1.22)`), pills and all. */
+export const MARK_SCALE = 1.22;
+/** A pill's height (unscaled) and the slack around a drawn pill that still counts as a tap on it. */
+const PILL_H = 26;
+const PILL_SLACK = 3;
+
+/** A marker's label pill: its offset from the marker (unscaled, as drawn), and its box on the board. */
+export interface Pill {
+  t: Target;
+  text: string;
+  /** Width (unscaled), and offset from the marker's centre (unscaled, inside the marker's scale). */
+  w: number;
+  lx: number;
+  ly: number;
+  /** Its box in board units: centre and half sizes, the marker's scale applied. */
+  cx: number;
+  cy: number;
+  hw: number;
+  hh: number;
+}
+
+/**
+ * Where each shown marker's label pill goes (#112: the board draws from this, and taps are tested against it,
+ * so the two never disagree). Above the marker, else below, else nudged sideways, so neighbouring labels
+ * never cover each other; always inside the board. A numbered marker has its words on its button instead,
+ * so it gets no pill.
+ */
+export function labelLayout(shown: Target[], numbered: Target[] = []): Pill[] {
+  const taken: { x: number; y: number; w: number }[] = [];
+  const out: Pill[] = [];
+  for (const t of shown) {
+    if (numbered.includes(t)) continue;
+    const [x, y] = t.dest;
+    const w = t.label.length * 9.6 + (t.tag === 'kill' ? 50 : 20);
+    const text = t.tag === 'kill' ? `${t.label} KILL` : t.label;
+    const clampX = (cx: number) => Math.min(Math.max(cx, w / 2 + 4), 596 - w / 2);
+    const free = (cx: number, cy: number) => taken.every((r) => Math.abs(r.x - cx) > (r.w + w) / 2 + 2 || Math.abs(r.y - cy) > 28);
+    const tries: [number, number][] = [];
+    for (const dy of y < 60 ? [36, -36] : [-36, 36]) for (const dx of [0, w * 0.6, -w * 0.6]) tries.push([dx, dy]);
+    const [dx, dy] = tries.find(([dx, dy]) => free(clampX(x + dx), y + dy)) ?? tries[0]!;
+    const px = clampX(x + dx);
+    taken.push({ x: px, y: y + dy, w });
+    const lx = px - x;
+    out.push({ t, text, w, lx, ly: dy, cx: x + MARK_SCALE * lx, cy: y + MARK_SCALE * dy, hw: (MARK_SCALE * w) / 2, hh: (MARK_SCALE * PILL_H) / 2 });
+  }
+  return out;
+}
+
+/** The pill drawn under `at` (with a little slack), or null: a tap on a label is a tap on its marker (#112). */
+export function pillAt(pills: Pill[], at: Pt): Pill | null {
+  return pills.find((p) => Math.abs(at[0] - p.cx) <= p.hw + PILL_SLACK && Math.abs(at[1] - p.cy) <= p.hh + PILL_SLACK) ?? null;
+}
+

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { legalMoves, squareOf } from '../src/engine';
 import { TIPS, TURNS, centerOf, spot } from '../src/ui/geometry';
-import { choiceText, crowded, moveTargets, nearest, whyStuck } from '../src/ui/targets';
+import { choiceText, crowded, labelLayout, MARK_SCALE, moveTargets, nearest, pillAt, whyStuck } from '../src/ui/targets';
 import { B, mk, prog } from './helpers';
 
 describe('track turns', () => {
@@ -115,3 +115,44 @@ describe('crowded move markers', () => {
     expect(kill && choiceText(kill)).toEqual({ what: '+2', does: 'kill' });
   });
 });
+
+// #112: a tap on a marker's label pill ("+4", "Out") plays that marker's move. The pill is drawn about 44 board
+// units from its marker, outside boardView's HIT (34) around it, so the plain nearest-marker test missed it.
+describe('label pills', () => {
+  const HIT = 34; // boardView.ts
+  const atPill = (p: { cx: number; cy: number }) => [p.cx, p.cy] as [number, number];
+
+  it("a tap at a pill's centre picks its move, which the nearest-marker test alone misses", () => {
+    const ps = mk({ blue: [10, 30, -1, -1], red: B });
+    const t = moveTargets(ps, legalMoves(ps, 'blue', 6));
+    expect(t.map((x) => x.label).sort()).toEqual(['+6', '+6', 'Out']);
+    expect(crowded(t, ps)).toEqual([]);
+    const pills = labelLayout(t, []);
+    expect(pills).toHaveLength(3);
+    for (const p of pills) {
+      expect(pillAt(pills, atPill(p))!.t).toBe(p.t);
+      // Its own marker is about 44 units away (36 x the marker scale): beyond HIT, so a tap there used to do nothing.
+      expect(Math.hypot(p.cx - p.t.dest[0], p.cy - p.t.dest[1])).toBeCloseTo(36 * MARK_SCALE, 0);
+      expect(nearest(t.map((x) => ({ x, pt: x.dest })), atPill(p), HIT)?.x).not.toBe(p.t);
+    }
+    expect(pills.find((p) => p.t.label === 'Out')).toBeDefined();
+  });
+
+  it("a tap just outside a pill isn't one", () => {
+    const ps = mk({ blue: [3, 30, -1, -1], red: B });
+    const pills = labelLayout(moveTargets(ps, legalMoves(ps, 'blue', 4)), []);
+    const p = pills[0]!;
+    expect(pillAt(pills, [p.cx + p.hw + 6, p.cy])).toBeNull();
+    expect(pillAt(pills, [p.cx, p.cy + p.hh + 6])).toBeNull();
+  });
+
+  it('crowded moves keep their numbered buttons: numbered markers get no pill to tap', () => {
+    const ps = mk({ blue: [0, 0, -1, -1], red: B });
+    const t = moveTargets(ps, legalMoves(ps, 'blue', 2));
+    const numbered = crowded(t, ps);
+    expect(numbered).toHaveLength(2);
+    const pills = labelLayout(t, numbered);
+    expect(pills.some((p) => numbered.includes(p.t))).toBe(false);
+  });
+});
+

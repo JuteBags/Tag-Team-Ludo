@@ -4,7 +4,7 @@ import { PALETTE, boardSVG, pawnArt } from './art';
 import { playFinisher } from './finishers';
 import { spot, stepPoints, type Pt } from './geometry';
 import { sfx } from './sfx';
-import { nearest, type Target } from './targets';
+import { labelLayout, MARK_SCALE, nearest, pillAt, type Pill, type Target } from './targets';
 
 const NS = 'http://www.w3.org/2000/svg';
 const HOP_MS = 150;
@@ -57,20 +57,6 @@ const tween = (ms: number, f: (t: number) => void): Promise<void> => {
 };
 const ease = (t: number) => 1 - (1 - t) * (1 - t);
 
-/**
- * Where a marker's label goes, relative to the marker: above, else below, else nudged sideways,
- * so neighbouring labels never cover each other; always inside the board. Records the spot in `taken`.
- */
-function placeLabel(x: number, y: number, w: number, taken: { x: number; y: number; w: number }[]) {
-  const clampX = (cx: number) => Math.min(Math.max(cx, w / 2 + 4), 596 - w / 2);
-  const free = (cx: number, cy: number) => taken.every((r) => Math.abs(r.x - cx) > (r.w + w) / 2 + 2 || Math.abs(r.y - cy) > 28);
-  const tries: [number, number][] = [];
-  for (const dy of y < 60 ? [36, -36] : [-36, 36]) for (const dx of [0, w * 0.6, -w * 0.6]) tries.push([dx, dy]);
-  const [dx, dy] = tries.find(([dx, dy]) => free(clampX(x + dx), y + dy)) ?? tries[0]!;
-  const cx = clampX(x + dx);
-  taken.push({ x: cx, y: y + dy, w });
-  return { lx: cx - x, ly: dy };
-}
 const TAG_COLOR = { kill: '#ff3b3b', finish: '#ffc21a', home: '#ffffff', safe: '#ffd23f' } as const;
 
 export class BoardView {
@@ -86,6 +72,8 @@ export class BoardView {
   private targets: Target[] = [];
   /** Targets with a numbered button below the board (crowded ones): their marker shows the number. */
   private numbered: Target[] = [];
+  /** The label pills as drawn (labelLayout), for the tap test. */
+  private pills: Pill[] = [];
   private onChoose: ((t: Target) => void) | null = null;
   private onSelect: ((ts: Target[]) => void) | null = null;
   private onStuck: ((pawn: string) => void) | null = null;
@@ -279,6 +267,7 @@ export class BoardView {
   clearMovable() {
     this.targets = [];
     this.numbered = [];
+    this.pills = [];
     this.onChoose = this.onSelect = this.onStuck = null;
     this.selected = null;
     this.focusKey = '';
@@ -330,8 +319,14 @@ export class BoardView {
     f?.(t);
   }
 
-  /** Nearest movable pawn or landing spot. A pawn wins a near-tie: its marker may sit on another pawn. */
+  /**
+   * A tap on a marker's label pill picks its move (#112: pills sit outside HIT of their marker, and they're
+   * drawn over whatever lies beneath). Otherwise the nearest movable pawn or landing spot; a pawn wins a
+   * near-tie, as its marker may sit on another pawn.
+   */
   private hit(at: Pt): { pawn: string } | { target: Target } | null {
+    const pill = pillAt(this.pills, at);
+    if (pill) return { target: pill.t };
     const keys = [...new Set((this.selected ? this.targetsOf(this.selected) : this.targets).flatMap((t) => t.pawns))];
     const pawn = nearest(keys.map((k) => ({ k, pt: [this.placed.get(k)!.x, this.placed.get(k)!.y] as Pt })), at, HIT);
     const pool = this.selected ? this.targetsOf(this.selected) : this.targets;
@@ -359,25 +354,21 @@ export class BoardView {
       s += `<polyline class="trail" points="${pts.map((p) => p.join(',')).join(' ')}"/>`;
     }
     let m = '';
-    const taken: { x: number; y: number; w: number }[] = [];
+    this.pills = labelLayout(shown, this.numbered);
     for (const t of shown) {
       const c = t.tag === 'plain' ? PALETTE[t.move.color].m : TAG_COLOR[t.tag];
       const [x, y] = t.dest;
       const n = this.numbered.indexOf(t) + 1;
-      const w = t.label.length * 9.6 + (t.tag === 'kill' ? 50 : 20);
-      const text = t.tag === 'kill' ? `${t.label} KILL` : t.label;
       // A numbered marker has its words on its button instead, so no pill piles up on a crowded spot.
-      const pill = n ? '' : (() => {
-        const { lx, ly } = placeLabel(x, y, w, taken);
-        return `<g transform="translate(${lx} ${ly})"><rect x="${-w / 2}" y="-13" width="${w}" height="26" rx="13" class="pill"/><text y="6.5" text-anchor="middle">${text}</text></g>`;
-      })();
+      const p = this.pills.find((q) => q.t === t);
+      const pill = p ? `<g transform="translate(${p.lx} ${p.ly})"><rect x="${-p.w / 2}" y="-13" width="${p.w}" height="26" rx="13" class="pill"/><text y="6.5" text-anchor="middle">${p.text}</text></g>` : '';
       const icon =
         n ? `<text class="num" y="6.5" text-anchor="middle">${n}</text>`
         : t.tag === 'kill' ? `<path d="M-6,-6 L6,6 M6,-6 L-6,6" stroke="#fff" stroke-width="3" stroke-linecap="round"/>`
         : t.tag === 'safe' ? `<path d="M0,-7 L2,-2 7,-2 3,1.5 4.5,6.5 0,3.5 -4.5,6.5 -3,1.5 -7,-2 -2,-2Z" fill="#fff"/>`
         : t.tag === 'home' || t.tag === 'finish' ? `<path d="M-6,1 L0,-6 L6,1 M-4,0 V6 H4 V0" fill="none" stroke="#5a2d00" stroke-width="2.2" stroke-linejoin="round"/>`
         : `<circle r="4" fill="#fff"/>`;
-      m += `<g class="mark ${t.tag}${on.includes(t) ? ' on' : ''}${this.fresh ? ' fresh' : ''}" transform="translate(${x} ${y}) scale(1.22)" style="--c:${c}">
+      m += `<g class="mark ${t.tag}${on.includes(t) ? ' on' : ''}${this.fresh ? ' fresh' : ''}" transform="translate(${x} ${y}) scale(${MARK_SCALE})" style="--c:${c}">
         <circle class="ring" r="18"/><circle class="core" r="13"/>${icon}${pill}</g>`;
     }
     this.fx.innerHTML = s;
