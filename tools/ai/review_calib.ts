@@ -7,13 +7,16 @@
 // Prints CALIB {layout, mover, games, moves, q, rates, acc, spread: {q, ge3: {moves, acc, q, rates}, ge5: ...},
 // base128: {agree, agreeKey, ...}}: base128 reviews the same decisions from 128 playouts (with the same top-ups)
 // and says how often its label matches the 256 one (agreeKey: over decisions either calls a key move), and
-// how long each took.
+// how long each took. net (#93, the fast first pass): each decision labelled from the net screen alone (no
+// playouts) against the rollout label: agreement, key moves (mistake or blunder) found and wrongly flagged,
+// the gap error, the per-game accuracy drift (net minus rollout, accuracyOf as the app), the played move's win
+// chance error (the rough graph's: mean, p50, p90 of |net - rollout| and the bias, in points) and the time.
 // Seeds are fixed (game g uses seed from+g), so a rerun gives the same table.
 import { appendFileSync, readFileSync } from 'node:fs';
 import { createGame, move, roll, seededDie, seeded, type BotLevel, type GameRecord, type Seat } from '../../src/engine';
 import { chooseBotMove } from '../../src/engine/ai/levels';
 import { PLAYOUT_RULES } from '../../src/engine/ai/playout-rules';
-import { LABEL_SCORE, labelOf, reviewMoves, type Label } from '../../src/engine/ai/review';
+import { accuracyOf, LABEL_SCORE, labelOf, reviewMoves, type Label, type MoveReview } from '../../src/engine/ai/review';
 import { RolloutEngine } from '../../src/engine/ai/rollout';
 import { replay } from '../../src/engine/record';
 import { flags, MODES } from './common';
@@ -79,6 +82,39 @@ function stats(xs: { gap: number; se: number }[]) {
   };
 }
 
+const lay = layout.replace('-singles', '');
+const RANK: Label[] = ['best', 'good', 'inaccuracy', 'mistake', 'blunder'];
+const BIG = new Set<Label>(['mistake', 'blunder']);
+/** The fast pass's net-only labels against the rollout labels (#93). */
+function netReport(xs: { roll: Label; net: Label; rgap: number; ngap: number; rch: number; nch: number }[], accDiff: number[], tNet: number, tFull: number) {
+  type X = (typeof xs)[number];
+  const share = (f: (x: X) => boolean, of: (x: X) => boolean = () => true) => {
+    const base = xs.filter(of);
+    return { n: base.length, p: +(base.filter(f).length / Math.max(1, base.length)).toFixed(4) };
+  };
+  const err = xs.map((x) => Math.abs(x.ngap - x.rgap));
+  const absAcc = accDiff.map(Math.abs);
+  // The rough graph's error (#93 b): the mover's win chance after the played move, net against rollouts, in points.
+  const chErr = xs.map((x) => 100 * Math.abs(x.nch - x.rch));
+  const chBias = xs.reduce((a, x) => a + 100 * (x.nch - x.rch), 0) / Math.max(1, xs.length);
+  return {
+    agree: share((x) => x.net === x.roll),
+    within1: share((x) => Math.abs(RANK.indexOf(x.net) - RANK.indexOf(x.roll)) <= 1),
+    // Of the rollouts' key moves (mistake or blunder): how many the net also calls one, and how many it calls Best or Good.
+    keyFound: share((x) => BIG.has(x.net), (x) => BIG.has(x.roll)),
+    keyHidden: share((x) => x.net === 'best' || x.net === 'good', (x) => BIG.has(x.roll)),
+    // Of the net's key moves: how many the rollouts call Best or Good (a provisional key move that goes away).
+    keyFalse: share((x) => x.roll === 'best' || x.roll === 'good', (x) => BIG.has(x.net)),
+    // Best by the net, worse than Good by the rollouts.
+    bestWrong: share((x) => x.roll !== 'best' && x.roll !== 'good', (x) => x.net === 'best'),
+    gapErr: { p50: +quantile(err, 0.5).toFixed(2), p90: +quantile(err, 0.9).toFixed(2) },
+    chance: { mean: +(chErr.reduce((a, d) => a + d, 0) / Math.max(1, chErr.length)).toFixed(2), p50: +quantile(chErr, 0.5).toFixed(2), p90: +quantile(chErr, 0.9).toFixed(2), bias: +chBias.toFixed(2) },
+    acc: { games: accDiff.length, mean: +(accDiff.reduce((a, d) => a + d, 0) / Math.max(1, accDiff.length)).toFixed(2), p50abs: +quantile(absAcc, 0.5).toFixed(2), p90abs: +quantile(absAcc, 0.9).toFixed(2) },
+    secsNet: +(tNet / 1000).toFixed(2),
+    secsFull: Math.round(tFull / 1000),
+  };
+}
+
 const movers: Mover[] = a.mover ? [a.mover as Mover] : ['hard', 'normal', 'first'];
 for (const mover of movers) {
   const verdicts: { gap: number; se: number; spread: number }[] = [];
@@ -90,6 +126,10 @@ for (const mover of movers) {
   let t256 = 0;
   let t128 = 0;
   const KEY = new Set<Label>(['inaccuracy', 'mistake', 'blunder']);
+  // The net-only labels against the rollout ones, and each game's accuracy drift (points, net minus rollout).
+  const net: { roll: Label; net: Label; rgap: number; ngap: number; rch: number; nch: number }[] = [];
+  const accDiff: number[] = [];
+  let tNet = 0;
   let games = 0;
   const t0 = Date.now();
   while (games < minGames || verdicts.length < minMoves) {
@@ -104,9 +144,22 @@ for (const mover of movers) {
     t = Date.now();
     const half = new Map((await reviewMoves(rec, r.states, [0], reviewer, undefined, 128)).map((m) => [m.at, m.label]));
     t128 += Date.now() - t;
+    // The fast first pass (#93): the same decisions labelled from the net screen alone, as the app would.
+    t = Date.now();
+    const netOnly: MoveReview[] = full.map((m) => {
+      const st = r.states[m.at]!;
+      const v = engine.reviewFast(st, 0, 0, { mode: 'screen' });
+      const gaps = st.moves.map((_, k) => 100 * v.gap[v.ofMove[k]!]!);
+      const gap = gaps[m.played]!;
+      return { ...m, gap, se: 0, gaps, label: labelOf(gap, 0, lay), approx: 'net', playedChance: v.mean[v.ofMove[m.played]!]! };
+    });
+    tNet += Date.now() - t;
+    netOnly.forEach((n, k) => net.push({ roll: full[k]!.label, net: n.label, rgap: full[k]!.gap, ngap: n.gap, rch: full[k]!.playedChance, nch: n.playedChance }));
+    const ra = accuracyOf(full), na = accuracyOf(netOnly);
+    if (Number.isFinite(ra) && Number.isFinite(na)) accDiff.push(100 * (na - ra));
     if (dump)
-      for (const m of full)
-        appendFileSync(dump, JSON.stringify({ layout, mover, game: from + games, at: m.at, label: m.label, gap: +m.gap.toFixed(2), se: +m.se.toFixed(2), spread: +(spreads.get(r.states[m.at]!) ?? 0).toFixed(2), n: r.states[m.at]!.moves.length, label128: half.get(m.at) ?? null }) + '\n');
+      for (const [k, m] of full.entries())
+        appendFileSync(dump, JSON.stringify({ layout, mover, game: from + games, at: m.at, label: m.label, gap: +m.gap.toFixed(2), se: +m.se.toFixed(2), spread: +(spreads.get(r.states[m.at]!) ?? 0).toFixed(2), n: r.states[m.at]!.moves.length, label128: half.get(m.at) ?? null, netLabel: netOnly[k]!.label, netGap: +netOnly[k]!.gap.toFixed(2) }) + '\n');
     for (const m of full) {
       const l = half.get(m.at);
       if (!l) continue;
@@ -133,6 +186,7 @@ for (const mover of movers) {
       ge5: stats(verdicts.filter((x) => x.spread >= 5)),
     },
     base128: { agree: +(same / Math.max(1, pairs)).toFixed(4), agreeKey: +(keySame / Math.max(1, keyPairs)).toFixed(4), keyPairs, secs256: Math.round(t256 / 1000), secs128: Math.round(t128 / 1000) },
+    net: netReport(net, accDiff, tNet, t256),
   };
   console.log('CALIB ' + JSON.stringify(out));
 }

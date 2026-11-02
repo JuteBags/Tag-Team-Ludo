@@ -24,10 +24,20 @@ export interface ReviewProgress {
   old?: StoredReview;
   /** The people's own decisions (bots' sides asked for on demand don't count): what "Reviewing 40%" reports. */
   mine: { done: number; total: number; finished: boolean };
+  /** This run's decisions still to review when it started, biggest at stake first (#93): the screen lists them
+   *  straight away with "…" until each verdict lands. Never stored: the net screen redoes it in a moment. */
+  order?: number[];
+  /** With `order`: the decisions found to have nothing to choose (dropped from that list). */
+  skipped?: number[];
 }
 
 /** Verdicts this run must make before its pace is trusted for an estimate. */
 export const ETA_AFTER = 6;
+/**
+ * Verdicts this run makes before the luck pass (#93): luck is one long worker call and the least urgent
+ * number on the screen, so the biggest decisions are checked first. A side with fewer decisions gets it at the end.
+ */
+export const LUCK_AFTER = 5;
 
 /** The owners whose moves are reviewed by default: the people (bots only when asked for). */
 export const peopleOf = (rec: GameRecord) => [...new Set(rec.seats.filter((s) => !s.bot).map((s) => s.owner))];
@@ -86,10 +96,13 @@ export function runReview(
   const settled = () => moves.length + skipped.size;
   const done = () => settled() >= total && luck !== null;
   let when = prior?.when;
+  let order: number[] | undefined;
   // The pace of this run: when its first decision started and how many it has done.
   let t0 = 0;
   let fresh = 0;
-  const eta = () => (fresh >= ETA_AFTER ? ((Date.now() - t0) / 1000 / fresh) * Math.max(0, total - settled()) : null);
+  // The luck pass's time is left out of the pace: it runs once, between verdicts.
+  let luckMs = 0;
+  const eta = () => (fresh >= ETA_AFTER ? ((Date.now() - t0 - luckMs) / 1000 / fresh) * Math.max(0, total - settled()) : null);
   // The people's side alone, for the status shown on the result card and in Games & reviews.
   const people = peopleOf(rec);
   const mineTotal = decisionsToReview(rec, states, people);
@@ -99,7 +112,7 @@ export function runReview(
     return { done, total: mineTotal, finished: done >= mineTotal && luck !== null };
   };
   const report = (finished: boolean) =>
-    onUpdate({ moves: [...moves].sort((a, b) => a.at - b.at), luck, chances, who: covered, done: settled(), total, finished, eta: finished ? 0 : eta(), when: finished ? when : undefined, old: finished ? undefined : old, mine: mine() });
+    onUpdate({ moves: [...moves].sort((a, b) => a.at - b.at), luck, chances, who: covered, done: settled(), total, finished, eta: finished ? 0 : eta(), when: finished ? when : undefined, old: finished ? undefined : old, mine: mine(), ...(order && !finished ? { order, skipped: [...skipped] } : {}) });
   // Kept only when this run added something, so reopening a finished review keeps its date.
   let changed = false;
   const keep = () => {
@@ -111,15 +124,21 @@ export function runReview(
   report(done());
   if (!reviewer || done()) return () => {};
   void (async () => {
-    if (!luck) {
-      const r = (await luckOf(rec)?.catch(() => null)) ?? null;
-      if (stopped) return;
-      luck = r?.luck ?? null;
-      chances = r?.chances ?? null;
-      changed = true;
-      report(false);
-      void keep();
-    }
+    // The luck pass (one long worker call): after this run's first LUCK_AFTER verdicts, or at the end (#93). Once.
+    let luckRun: Promise<void> | undefined;
+    const luckPass = () =>
+      (luckRun ??= (async () => {
+        if (luck || stopped) return;
+        const t = Date.now();
+        const r = (await luckOf(rec)?.catch(() => null)) ?? null;
+        luckMs += Date.now() - t;
+        if (stopped) return;
+        luck = r?.luck ?? null;
+        chances = r?.chances ?? null;
+        changed = true;
+        report(false);
+        void keep();
+      })());
     const have = new Set([...moves.map((m) => m.at), ...skipped]);
     // Only the decisions not reviewed yet; the reviewer is skipped (and the call aborted) once stopped.
     // It forwards every argument the Reviewer type has (#101 adds an optional 4th).
@@ -138,12 +157,20 @@ export function runReview(
         changed = true;
         report(false);
         if (moves.length % 5 === 0) void keep();
+        // Queued in the worker behind the call in progress, ahead of the next decision's.
+        if (fresh === LUCK_AFTER) void luckPass();
       }, undefined, (at) => {
         if (stopped) return;
         skipped.add(at);
         changed = true;
         report(false);
-      }, { order: 'stakes' });
+      }, { order: 'stakes', onOrder: (o) => {
+        if (stopped) return;
+        order = o;
+        report(false);
+      } });
+      // Fewer than LUCK_AFTER decisions left (or none): the luck pass runs now.
+      await luckPass();
     } catch {
       // Stopped, or the worker failed: what's done so far is kept.
     }

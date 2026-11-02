@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        layout: [2p, 3p, 4p, 2h-opposite]
+        layout: [2p, 3p, 4p, 2h-opposite, 2h-side]
         mover: [hard, normal, first]
     steps:
       - uses: actions/checkout@v7

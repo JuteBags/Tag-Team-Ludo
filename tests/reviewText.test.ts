@@ -14,7 +14,7 @@ vi.mock('@capacitor/preferences', () => ({
   },
 }));
 vi.mock('../src/engine/ai/review-worker', () => ({ workerReviewer: () => null, workerLuck: () => Promise.resolve({ luck: [], chances: [] }) }));
-const { runReview, decisionsToReview } = await import('../src/ui/reviewRun');
+const { runReview, decisionsToReview, LUCK_AFTER } = await import('../src/ui/reviewRun');
 const { loadReview, savePastGame, loadPastGames, reviewKey, KEEP_GAMES } = await import('../src/ui/store');
 
 const SEATS: Seat[] = [{ color: 'blue', owner: 0, bot: false }, { color: 'red', owner: 1, bot: true, level: 'hard' }];
@@ -189,6 +189,32 @@ describe('review runner', () => {
     const when = await new Promise<number | undefined>((done) => runReview(rec, { v: REVIEW_VERSION, moves: all, luck: [], when: 123 }, (p) => p.finished && done(p.when), false, fake));
     expect(calls).toBe(0);
     expect(when).toBe(123);
+  });
+
+  it('runs the luck pass after the first verdicts, not before them, and still runs it for a short review (#93)', async () => {
+    const rec = game(9);
+    let calls = 0;
+    const fake = async (s: GameState, _n: number, _seed: number, ask?: ReviewAsk): Promise<DecisionValues> => {
+      if (ask?.mode !== 'screen') calls++;
+      return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 };
+    };
+    const lucks: number[] = [];
+    const luckOf = () => {
+      lucks.push(calls); // the verdicts' calls made when the luck pass starts
+      return Promise.resolve({ luck: [], chances: [] });
+    };
+    const run = (stored?: Parameters<typeof runReview>[1]) =>
+      new Promise<{ moves: MoveReview[]; luck: unknown }>((done) => runReview(rec, stored, (p) => p.finished && done(p), false, fake, undefined, luckOf));
+    const all = await run();
+    expect(all.moves.length).toBeGreaterThan(LUCK_AFTER);
+    expect(lucks).toEqual([LUCK_AFTER]);
+    expect(all.luck).toEqual([]);
+    // Fewer decisions left than LUCK_AFTER: the luck pass runs once, at the end.
+    lucks.length = 0;
+    calls = 0;
+    const short = await run({ v: REVIEW_VERSION, moves: all.moves.slice(0, all.moves.length - 2), luck: null });
+    expect(lucks).toEqual([2]);
+    expect(short.luck).toEqual([]);
   });
 
   it('reports the decision with the most at stake first (the net screen orders them, #101)', async () => {

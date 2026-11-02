@@ -224,6 +224,49 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     b.querySelector('small')!.textContent = `Move ${step > 0 ? step : '?'} · ${frames[step]?.caption ?? ''}`;
     return b;
   };
+  /** A decision still to review (#93): where it is in the game, and "…" until its verdict lands. */
+  const pendingRow = (at: number, checking: boolean) => {
+    const r = document.createElement('div');
+    r.className = `rvrow pending${checking ? ' checking' : ''}`;
+    r.setAttribute('role', 'listitem');
+    const step = frameAfter(at);
+    r.innerHTML = `<i aria-hidden="true">…</i><span><b></b><small></small></span>`;
+    r.querySelector('b')!.textContent = checking ? 'Checking this move…' : 'Not checked yet';
+    r.querySelector('small')!.textContent = `Move ${step > 0 ? step : '?'} · ${frames[step]?.caption ?? ''}`;
+    return r;
+  };
+  /** How many decisions still to check the key view lists before "+N more". */
+  const PENDING_SHOWN = 8;
+  /**
+   * While a review runs (#93): this side's decisions straight away, biggest at stake first (the order the
+   * review works in), each a verdict once it lands or "…" until then. Verdicts from an earlier run (the
+   * biggest, done first then) lead. `all`: every decision in game order instead.
+   */
+  const checkingList = (list: HTMLElement, p: ReviewProgress, mine: MoveReview[], all: boolean) => {
+    const done = new Map(mine.map((m) => [m.at, m]));
+    const skipped = new Set(p.skipped ?? []);
+    const ownerAt = (at: number) => states[at]!.players[states[at]!.current]!.owner;
+    const order = (p.order ?? []).filter((at) => ownerAt(at) === pov && !skipped.has(at));
+    const next = (p.order ?? []).find((at) => !done.has(at) && !skipped.has(at) && !p.moves.some((m) => m.at === at));
+    const inOrder = new Set(order);
+    const ats = all ? [...new Set([...mine.map((m) => m.at), ...order])].sort((a, b) => a - b) : [...mine.filter((m) => !inOrder.has(m.at)).map((m) => m.at), ...order];
+    let pending = 0;
+    let more = 0;
+    for (const at of ats) {
+      const m = done.get(at);
+      if (m) {
+        if (!filter || m.label === filter) list.appendChild(moveRow(m));
+      } else if (!filter) {
+        if (!all && pending >= PENDING_SHOWN) more++;
+        else {
+          list.appendChild(pendingRow(at, at === next));
+          pending++;
+        }
+      }
+    }
+    if (more) list.appendChild(note(`+${more} more to check`));
+  };
+
   const note = (text: string) => {
     const p = document.createElement('p');
     p.className = 'rvnote';
@@ -241,6 +284,17 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     if (filter) f.querySelector('span')!.textContent = `Showing ${LABEL_LOOK[filter].sym} ${LABEL_LOOK[filter].name} only`;
     const list = q('.rvlist');
     list.replaceChildren();
+    // While the review runs: every decision straight away, "…" until its verdict lands (#93).
+    if (!d.finished && !d.stale && prog?.order) {
+      if (view === 'key') {
+        const h = document.createElement('h3');
+        h.className = 'rvhead';
+        h.textContent = 'Biggest decisions first';
+        list.appendChild(h);
+      }
+      checkingList(list, prog, mine, view === 'all');
+      return;
+    }
     if (mine.length < SHOW_AFTER && !d.finished) return;
     if (view === 'all') {
       const shownMoves = filter ? mine.filter((m) => m.label === filter) : mine;

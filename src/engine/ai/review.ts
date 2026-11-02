@@ -159,6 +159,9 @@ export interface ReviewOptions {
   skipBelow?: number;
   /** The race's bound for settling Best, in standard errors at every look (for measuring); the engine's schedule by default. */
   raceZ?: number;
+  /** Called once with the decisions (state indexes) in the order they'll be reviewed: the stakes order when the
+   *  net screened them (#93: the review screen lists them all straight away, "…" until each verdict lands). */
+  onOrder?: (order: number[]) => void;
 }
 
 export interface RollLuck {
@@ -212,6 +215,8 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     return v && v.gap.length > 1 ? 100 * Math.max(...v.gap) : Infinity;
   };
   if (opts.order === 'stakes') todo.sort((a, b) => stakes(b) - stakes(a) || a - b);
+  // Decisions where every move reaches the same position aren't choices: they're skipped, so not listed.
+  opts.onOrder?.(todo.filter((i) => !(screens.get(i) && screens.get(i)!.mean.length < 2)));
   const out: MoveReview[] = [];
   for (const i of todo) {
     const s = states[i]!;
