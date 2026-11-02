@@ -1,10 +1,10 @@
 # Measures the game review's speed (#101): reviews the same fixed-seed bot games with the full review and the
-# fast one (the race and the net screen) and compares them (tools/ai/review_speed.ts). One job per layout,
-# mover and task: `eval` writes per-arm speed, playouts and agreement with the full review at 128 to the run
-# summary; `tune` writes the net screen's threshold table on separate seeds, so SKIP_BELOW isn't fitted to
-# the games it's judged on. Arm A (the full review at 256) is slow: only when asked.
+# fast ones (the race, the stakes order) and compares them (tools/ai/review_speed.ts, which lists the arms).
+# The eval games are split into parts that run in parallel (part k reviews seeds 101 + 10(k-1) .. +9); the
+# report job joins every part into one table per layout and mover and per layout, in the run summary.
+# `tune` (the net skip's threshold table, seeds 1..) runs only when asked.
 # By hand, or by pushing a speed/* branch (a workflow that isn't on main yet can't be started by hand); a
-# push runs arm A only when its commit message says [arm-a].
+# push runs arm A (the full review at 256, slow) only when its commit message says [arm-a].
 name: Review speed
 
 on:
@@ -13,36 +13,28 @@ on:
   workflow_dispatch:
     inputs:
       arms:
-        description: 'Arms to run besides B: A (full 256), C (race), D (race + net skip + stakes order), E (race + stakes order: the app)'
+        description: 'Arms besides B: A (full 256), C (race), F (race, 2.7 se), D (race + net skip + stakes), E (race + stakes: the app)'
         required: true
-        default: 'CE'
-      eval_games:
-        description: 'Games per layout and mover for the comparison (seeds from 101)'
-        required: true
-        default: '12'
-      tune_games:
-        description: 'Games per layout and mover for the threshold table (seeds from 1)'
-        required: true
-        default: '8'
-      skip:
-        description: 'Net screen threshold for arm D, in points (empty: SKIP_BELOW)'
-        required: false
-        default: ''
+        default: 'CFE'
+      tune:
+        description: 'Also run the net skip threshold table'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
-  speed:
-    name: ${{ matrix.task }} ${{ matrix.layout }} ${{ matrix.mover }}
+  eval:
+    name: eval ${{ matrix.layout }} ${{ matrix.mover }} part ${{ matrix.part }}
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 300
     strategy:
       fail-fast: false
       matrix:
         layout: [2p, 4p]
         mover: [hard, normal]
-        task: [eval, tune]
+        part: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -52,19 +44,53 @@ jobs:
       - run: bash tools/ai/build.sh
       - name: Review bot games
         env:
-          ARMS: ${{ inputs.arms || (contains(github.event.head_commit.message, '[arm-a]') && 'ACE' || 'CE') }}
-          EVAL_GAMES: ${{ inputs.eval_games || '12' }}
-          TUNE_GAMES: ${{ inputs.tune_games || '8' }}
-          SKIP: ${{ inputs.skip }}
-        run: |
-          if [ "${{ matrix.task }}" = tune ]; then
-            node tools/ai/dist/review_speed.mjs --layout ${{ matrix.layout }} --mover ${{ matrix.mover }} --task tune --from 1 --games "$TUNE_GAMES" | tee speed.txt
-          else
-            node tools/ai/dist/review_speed.mjs --layout ${{ matrix.layout }} --mover ${{ matrix.mover }} --task eval --from 101 --games "$EVAL_GAMES" --arms "$ARMS" ${SKIP:+--skip "$SKIP"} | tee speed.txt
-          fi
+          ARMS: ${{ inputs.arms || (contains(github.event.head_commit.message, '[arm-a]') && 'ACFE' || 'CFE') }}
+        run: node tools/ai/dist/review_speed.mjs --task eval --layout ${{ matrix.layout }} --mover ${{ matrix.mover }} --from $((101 + 10 * (${{ matrix.part }} - 1))) --games 10 --arms "$ARMS" | tee speed.txt
       - uses: actions/upload-artifact@v7
         with:
-          name: speed-${{ matrix.task }}-${{ matrix.layout }}-${{ matrix.mover }}
+          name: speed-eval-${{ matrix.layout }}-${{ matrix.mover }}-${{ matrix.part }}
           path: |
             speed.txt
+            games.jsonl
             decisions.jsonl
+
+  report:
+    name: report
+    needs: eval
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: speed-eval-*
+          path: parts
+      - run: node tools/ai/dist/review_speed.mjs --task report parts | tee report.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: speed-report
+          path: report.txt
+
+  tune:
+    name: tune ${{ matrix.layout }} ${{ matrix.mover }}
+    if: ${{ inputs.tune }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        layout: [2p, 4p]
+        mover: [hard, normal]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - run: node tools/ai/dist/review_speed.mjs --task tune --layout ${{ matrix.layout }} --mover ${{ matrix.mover }} --from 1 --games 8 | tee speed.txt

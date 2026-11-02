@@ -39,9 +39,9 @@ export interface DecisionValues {
 /**
  * What to ask the engine for instead of the full review (#101): the net screen, or the race for the move
  * played (an index into state.moves), which first skips the playouts when the net's spread is under `skip`
- * points.
+ * points, and settles Best at `z` standard errors (0 or missing: the engine's schedule, rollout.rs best_z).
  */
-export type ReviewAsk = { mode: 'screen' } | { mode: 'race'; played: number; skip?: number };
+export type ReviewAsk = { mode: 'screen' } | { mode: 'race'; played: number; skip?: number; z?: number };
 
 /** One decision's values: the full review of `n` paired playouts per candidate, or with `ask` a fast one (an engine without it answers with the full review). */
 export type Reviewer = (state: GameState, n: number, seed: number, ask?: ReviewAsk) => Promise<DecisionValues>;
@@ -124,6 +124,8 @@ export interface ReviewOptions {
   fast?: boolean;
   /** The net screen's threshold in points (SKIP_BELOW); 0 turns the screen off. */
   skipBelow?: number;
+  /** The race's bound for settling Best, in standard errors at every look (for measuring); the engine's schedule by default. */
+  raceZ?: number;
 }
 
 export interface RollLuck {
@@ -198,7 +200,7 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
       continue;
     }
     let n = base;
-    let v = await reviewer(s, n, decisionSeed(rec, s), fast ? { mode: 'race', played, skip: sv ? 0 : skipBelow } : undefined);
+    let v = await reviewer(s, n, decisionSeed(rec, s), fast ? { mode: 'race', played, skip: sv ? 0 : skipBelow, ...(opts.raceZ ? { z: opts.raceZ } : {}) } : undefined);
     const c = v.ofMove[played]!;
     if (v.mean.length < 2) {
       onSkip?.(i); // every move reaches the same position: nothing to choose

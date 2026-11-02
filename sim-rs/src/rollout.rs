@@ -231,6 +231,19 @@ pub fn review_cached(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Eval
 /// "Best" within this many points (as a fraction) of the top: review.ts BEST_WITHIN.
 const BEST_WITHIN: f64 = 0.015;
 
+/// The race settles a Best no earlier than this many playouts.
+const SETTLE_MIN: usize = 48;
+
+/// The race's default bound for settling Best after k playouts: stricter on the early looks, where a lucky
+/// first rounds would otherwise settle it (the check is repeated every round).
+fn best_z(k: usize) -> f64 {
+    if k <= 64 {
+        3.0
+    } else {
+        2.5
+    }
+}
+
 /// How a fast review (#101) ended: it ran to n (filled up to it), the played move settled as Best, or the
 /// played move settled as not Best (and every candidate was filled up to n).
 pub const STOP_NONE: u8 = 0;
@@ -253,14 +266,15 @@ pub struct FastReview {
 /// deficit to the leader is Z_DROP standard errors, except the one doing worst, so the spread on a settled
 /// Best decision is measured as fairly as the rest (a candidate dropped on a bad run reads too low). It
 /// stops when:
-///  - the played move settles as Best: every other candidate still in is, even at +2 se, less than
-///    BEST_WITHIN better than it (stricter than review.ts labelOf's Best, so a borderline case goes on to the
-///    full review instead). The values are the race's; dropped candidates' gaps are over their fewer
-///    playouts, paired with the leader's;
+///  - the played move settles as Best: from SETTLE_MIN playouts on, every other candidate still in is, even
+///    at +z se, less than BEST_WITHIN better than it (stricter than review.ts labelOf's Best, so a borderline
+///    case goes on to the full review instead). The check is made after every round, so z is above a single
+///    test's 2: `z` > 0 for that z at every look, or 0 for best_z's schedule. The values are the race's;
+///    dropped candidates' gaps are over their fewer playouts, paired with the leader's;
 ///  - the played move settles as not Best: its paired deficit to the leader minus 2 se exceeds BEST_WITHIN.
 ///    Every candidate is then filled up to n playouts, so the result is review(n) exactly;
 ///  - n playouts: filled up to n as well, so again review(n) exactly.
-pub fn review_race(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy, played: usize) -> FastReview {
+pub fn review_race(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy, played: usize, z: f64) -> FastReview {
     let me = g.b.p[g.current].owner;
     let (of_move, cands) = review_cands(g);
     let nc = cands.len();
@@ -293,12 +307,13 @@ pub fn review_race(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evalua
                 break;
             }
         }
-        let settled = active.iter().all(|&c| {
+        let zk = if z > 0.0 { z } else { best_z(k) };
+        let settled = k >= SETTLE_MIN && active.iter().all(|&c| {
             if c == p {
                 return true;
             }
             let (mu, se) = paired(&res[c], &res[p]);
-            mu + 2.0 * se < BEST_WITHIN
+            mu + zk * se < BEST_WITHIN
         });
         if settled {
             stop = STOP_BEST;

@@ -18,7 +18,7 @@ interface Exports {
   /** The game review's values for one decision (sim-wasm review); missing in modules built before #65. */
   review?(state: number, len: number, n: number, seed: number): number;
   /** The review's net screen (mode 1) and race (mode 2) (#101); missing in modules built before it. */
-  review_fast?(state: number, len: number, n: number, seed: number, played: number, mode: number, skip: number): number;
+  review_fast?(state: number, len: number, n: number, seed: number, played: number, mode: number, skip: number, z: number): number;
 }
 
 const PHASES = { roll: 0, move: 1, over: 2 } as const;
@@ -108,7 +108,7 @@ export class RolloutEngine {
     if (!ask || !this.x.review_fast) return this.review(state, n, seed);
     const [p, l] = this.put(encodeState(state));
     const race = ask.mode === 'race' ? ask : undefined;
-    const at = this.x.review_fast(p, l, n, seed >>> 0, race?.played ?? 0, race ? 2 : 1, (race?.skip ?? 0) / 100);
+    const at = this.x.review_fast(p, l, n, seed >>> 0, race?.played ?? 0, race ? 2 : 1, (race?.skip ?? 0) / 100, race?.z ?? 0);
     if (!at) throw new Error('rollout engine not initialised');
     const head = new Float64Array(this.x.memory.buffer, at, 5);
     const [nm, nc, best, complete, stop] = [head[0]!, head[1]!, head[2]!, head[3]!, head[4]!];
