@@ -4,8 +4,9 @@
 //   Extreme moves (#62): the same fixed decisions on every device (positions from seeded bot games) through
 //     the real rollout worker, at 128 and 256 playouts, in 2- and 4-player games: p50 / p90 / max per move.
 //   Game review (#105): two fixed games (review-speed.yml's, so a phone compares with the CI runner) reviewed
-//     exactly as the app reviews a game (reviewRun.ts: the luck first, then the biggest decisions first), in a
-//     worker of the bench's own: when the luck, the first key verdict and the whole review are in.
+//     exactly as the app reviews a game (reviewRun.ts: the biggest decisions first, the luck pass after the
+//     first few), in a worker of the bench's own: when the first key verdict and the whole review are in, and
+//     the luck pass's own time.
 // The review queue waits while a test runs, so a past game's review doesn't share the phone's time.
 import { SEATS as TABLE, chooseMove, createGame, move, roll, seeded, seededDie, type Color, type GameRecord, type GameState, type Seat } from '../engine';
 import type { DecisionValues, Label, Reviewer, RollLuck } from '../engine/ai/review';
@@ -145,10 +146,11 @@ function reviewClient(worker: Worker) {
 }
 
 export interface ReviewTiming {
-  /** Since the review started (ms): the luck (and the win-chance bar) in, the first key verdict in, all done. */
-  luckMs: number | null;
+  /** Since the review started (ms): the first key verdict in, and all done. */
   firstKeyMs: number | null;
   totalMs: number;
+  /** The luck pass's own call (ms): one worker call that holds up the verdicts behind it (#93, #125). */
+  luckMs: number | null;
   decisions: number;
   reviewed: number;
 }
@@ -162,19 +164,22 @@ function timeReview(rec: GameRecord, client: ReturnType<typeof reviewClient>, on
     const t0 = performance.now();
     let luckMs: number | null = null;
     let firstKeyMs: number | null = null;
+    const luck = (r: GameRecord) => {
+      const t = performance.now();
+      return client.luck(r).then((v) => ((luckMs = performance.now() - t), v));
+    };
     const stop = runReview(
       rec,
       undefined,
       (p) => {
         const now = performance.now() - t0;
-        if (luckMs === null && p.luck) luckMs = now;
         if (firstKeyMs === null && p.moves.some((m) => KEY.has(m.label))) firstKeyMs = now;
         if (p.finished) resolve({ luckMs, firstKeyMs, totalMs: now, decisions: p.total, reviewed: p.done });
       },
       false,
       client.reviewer,
       [0],
-      client.luck,
+      luck,
     );
     onStop(() => {
       stop();
@@ -290,7 +295,7 @@ async function movesBench(worker: Worker, say: (l: string) => void, hidden: () =
   }
 }
 
-/** The game review test (#105): per game, when the luck, the first key verdict and the whole review are in. */
+/** The game review test (#105): per game, the first key verdict, the whole review, and the luck pass. */
 async function reviewBench(worker: Worker, say: (l: string) => void, hidden: () => boolean, onStop: (stop: () => void) => void) {
   const client = reviewClient(worker);
   const games = REVIEW_GAMES.map((g) => ({ ...g, rec: reviewRecord(g) }));
@@ -305,6 +310,6 @@ async function reviewBench(worker: Worker, say: (l: string) => void, hidden: () 
     const r = await timeReview(g.rec, client, onStop);
     if (!r) return;
     const missing = r.reviewed < r.decisions ? `; only ${r.reviewed} of ${r.decisions} reviewed: the worker failed` : '';
-    say(`review ${g.layout} game ${g.seed}: first key verdict ${sec(r.firstKeyMs)}, all ${sec(r.totalMs)} (luck ${sec(r.luckMs)}, ${r.decisions} decisions${missing})`);
+    say(`review ${g.layout} game ${g.seed}: first key verdict ${sec(r.firstKeyMs)}, all ${sec(r.totalMs)} (of which the luck pass ${sec(r.luckMs)}; ${r.decisions} decisions${missing})`);
   }
 }
