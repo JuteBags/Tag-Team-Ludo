@@ -52,10 +52,15 @@ interface Person {
 /** A player's order rolls, ties re-rolled: "5", "5, then 3". */
 export const rolledText = (rolls: number[]) => rolls.join(', then ');
 
-/** A status that would run past its row (a tie re-rolled more than once) steps down one font size, measured. */
+/** A status wraps to two lines; one that needs more (a tie re-rolled more than once) steps down one font size, measured. */
 function fit(st: HTMLElement) {
   st.classList.remove('long');
-  requestAnimationFrame(() => st.classList.toggle('long', st.scrollWidth > st.clientWidth + 1));
+  requestAnimationFrame(() => {
+    // Measured at the base size every time: two fits in one tick (refreshRoll, then finishRoll) agree.
+    st.classList.remove('long');
+    const line = parseFloat(getComputedStyle(st).lineHeight) || 16;
+    st.classList.toggle('long', st.scrollHeight > line * 2 + 2);
+  });
 }
 
 export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameConfig) => void, onBack: () => void, houses: 1 | 2 = 1, teams?: () => void): HTMLElement {
