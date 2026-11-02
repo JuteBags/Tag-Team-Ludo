@@ -13,5 +13,9 @@ node core/render/video.mjs "$HERE" --fps 30 --workers "${WORKERS:-4}" --out "$HE
 "$PY" "$HERE/score.py"
 "$PY" core/render/srt.py "$HERE/cues.json" "$HERE/out/tag-team-ludo-demo.srt"
 sh core/render/mux.sh "$HERE/out/video.mp4" "$HERE/out/mix.wav" "$HERE/out/tag-team-ludo-demo.mp4" 30 0
+# the 9:16 cut for Reels, Shorts and stories: same timeline, same mix
+node core/render/video.mjs "$HERE" --fps 30 --workers "${WORKERS:-4}" --q 'fmt=v' --size 1080x1920 --out "$HERE/out/video-v.mp4"
+sh core/render/mux.sh "$HERE/out/video-v.mp4" "$HERE/out/mix.wav" "$HERE/out/tag-team-ludo-demo-vertical.mp4" 30 0
 ffmpeg -y -loglevel error -ss 25.4 -i "$HERE/out/tag-team-ludo-demo.mp4" -frames:v 1 -q:v 3 "$HERE/out/poster.jpg"
-echo "done: $HERE/out/tag-team-ludo-demo.mp4"
+ffmpeg -y -loglevel error -ss 25.4 -i "$HERE/out/tag-team-ludo-demo-vertical.mp4" -frames:v 1 -q:v 3 "$HERE/out/poster-vertical.jpg"
+echo "done: $HERE/out/tag-team-ludo-demo.mp4 and tag-team-ludo-demo-vertical.mp4"

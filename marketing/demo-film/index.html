@@ -32,6 +32,13 @@
   #endcard p{margin:6px 0 0;font:500 34px Fredoka}
   #endcard small{display:block;margin-top:6px;font:500 26px Fredoka;color:#bcd0ff}
   #wipe{position:absolute;inset:0;image-rendering:pixelated}
+  /* 9:16 (?fmt=v): the same film for Reels, Shorts and stories */
+  .v #chap{left:50%;transform:translateX(-50%);top:44px}
+  .v #cap{width:max-content;max-width:940px;white-space:normal;text-align:center;bottom:64px;border-radius:44px;font-size:48px;line-height:1.2}
+  .v #endcard{bottom:70px}
+  .v #endcard h1{font-size:78px}
+  .v #endcard p{font-size:40px}
+  .v #endcard small{font-size:30px}
 </style></head>
 <body>
 <div id="stage">
@@ -47,7 +54,14 @@
 <script type="module">
 import { clamp, lerp, seg, eio, eo, ei, back, hash } from '/core/lib.js';
 
-const W = 1920, H = 1080, FPS = 30;
+// ?fmt=v renders the 9:16 cut: a portrait frame, a bigger phone, the captions under it
+const V = new URLSearchParams(location.search).get('fmt') === 'v';
+const W = V ? 1080 : 1920, H = V ? 1920 : 1080, FPS = 30;
+if (V) {
+  document.documentElement.classList.add('v');
+  const st = document.getElementById('stage'); st.style.width = W + 'px'; st.style.height = H + 'px';
+  for (const id of ['fx', 'spot', 'wipe']) { const cv = document.getElementById(id); cv.width = W; cv.height = H; cv.style.width = W + 'px'; cv.style.height = H + 'px'; }
+}
 window.DUR = 37.5;
 const BEAT = 60 / 112;
 
@@ -82,10 +96,12 @@ function camAt(t) {
   while (i < CAM.length - 1 && CAM[i + 1][0] <= t) i++;
   const a = CAM[i], b = CAM[Math.min(i + 1, CAM.length - 1)];
   const k = b[0] > a[0] ? eio(seg(t, a[0], b[0])) : 0;
-  return { z: lerp(a[1], b[1], k), fx: lerp(a[2], b[2], k), fy: lerp(a[3], b[3], k) };
+  const z = lerp(a[1], b[1], k);
+  // portrait: the phone already fills the frame, so push-ins go half as far (and stay near 1:1 on the captures)
+  return { z: V ? 1 + (z - 1) * .55 : z, fx: lerp(a[2], b[2], k), fy: lerp(a[3], b[3], k) };
 }
-const P = 0.56;                 // phone screen px → frame px at z = 1
-const CX = 960, CY = 498;       // where the focus point sits in the frame
+const P = V ? 0.9 : 0.56;        // phone screen px → frame px at z = 1
+const CX = V ? 540 : 960, CY = V ? 900 : 498;   // where the focus point sits in the frame
 function toFrame(c, x, y) { return [CX + (x - c.fx) * P * c.z, CY + (y - c.fy) * P * c.z]; }
 
 // ---------- the mascot: "Tag", a magenta pixel pawn ----------
@@ -379,8 +395,8 @@ window.render = (t) => {
 window.TEXTS = (t) => {
   const out = [];
   const cap = CAPS.find(([a, b]) => t >= a + .22 && t < b - .22);
-  if (cap) out.push({ id: 'cap' + CAPS.indexOf(cap), text: plain(cap[2]), x0: 200, y0: 950, x1: 1720, y1: 1040 });
-  if (t >= END[0] + .35) out.push({ id: 'end', text: 'TAG TEAM LUDO Free on Android & the web jutebags.github.io/Tag-Team-Ludo', x0: 560, y0: 820, x1: 1360, y1: 1040 });
+  if (cap) out.push({ id: 'cap' + CAPS.indexOf(cap), text: plain(cap[2]), ...(V ? { x0: 70, y0: 1700, x1: 1010, y1: 1856 } : { x0: 200, y0: 950, x1: 1720, y1: 1040 }) });
+  if (t >= END[0] + .35) out.push({ id: 'end', text: 'TAG TEAM LUDO Free on Android & the web jutebags.github.io/Tag-Team-Ludo', ...(V ? { x0: 120, y0: 1560, x1: 960, y1: 1850 } : { x0: 560, y0: 820, x1: 1360, y1: 1040 }) });
   return out;
 };
 
