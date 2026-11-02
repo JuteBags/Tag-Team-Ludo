@@ -142,7 +142,8 @@ export function runReview(
         skipped.add(at);
         changed = true;
         report(false);
-      });
+        // The biggest decisions first (#101): key moves and the turning point show within seconds.
+      }, { order: 'stakes' });
     } catch {
       // Stopped, or the worker failed: what's done so far is kept.
     }
