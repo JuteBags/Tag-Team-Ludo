@@ -64,10 +64,10 @@ export const THRESHOLDS: [Label, number][] = [
 /**
  * Each layout's scale on the 2p cuts (REVIEW_CALIB.md): with more players a move's gaps are smaller, so the
  * same cut would be harsher. The p95 ratio of Normal's gaps on meaningful decisions, against 2p. 2h-side
- * uses 2h-opposite's; doubles-off games use their layout's. 3p, 4p and the 2h rows are provisional (wide
+ * uses 2h-opposite's; doubles-off games use their layout's. Every row but 2p is provisional (wide
  * bootstrap intervals): see tools/ai/REVIEW_CALIB.md.
  */
-export const THRESHOLDS_BY_LAYOUT: Record<string, number> = { '2p': 1, '3p': 0.85, '4p': 0.85, '2h-opposite': 0.7, '2h-side': 0.7 };
+export const THRESHOLDS_BY_LAYOUT: Record<string, number> = { '2p': 1, '3p': 0.85, '4p': 0.85, '2h-opposite': 0.65, '2h-side': 0.65 };
 
 /** No scaled cut goes under this many points. */
 const CUT_FLOOR = 1;

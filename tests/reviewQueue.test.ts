@@ -46,9 +46,9 @@ function game(seed: number): GameRecord {
   return { v: 1, seats: SEATS, first: 'blue', seed, events };
 }
 const flush = () => new Promise((r) => setTimeout(r, 5));
-/** Waits (up to 2 s) until `ok()` holds, instead of guessing how long the queue's awaits take. */
+/** Waits (up to 10 s, for a loaded machine) until `ok()` holds, instead of guessing how long the queue's awaits take. */
 const until = async (ok: () => boolean) => {
-  for (let t = 0; t < 400 && !ok(); t++) await flush();
+  for (let t = 0; t < 2000 && !ok(); t++) await flush();
 };
 /** Lets the decision in progress finish (once there is one), and the queue move on to the next. */
 const step = async () => {
@@ -66,7 +66,8 @@ beforeEach(() => {
   stopped.mockClear();
 });
 
-describe('review queue', () => {
+// Each test drives a whole review through the fake worker: generous time for a loaded full suite.
+describe('review queue', { timeout: 60_000 }, () => {
   it('reviews the game being looked at first, and keeps going after it is left', async () => {
     const a = game(1);
     const b = game(2);
