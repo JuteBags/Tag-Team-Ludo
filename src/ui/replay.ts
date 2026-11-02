@@ -7,6 +7,8 @@ const COLOR_NAME: Record<Color, string> = { blue: 'Blue', green: 'Green', red: '
 
 /** One step of the replay: the position to show, the move that led to it (to animate), and what happened. */
 export interface Frame {
+  /** The index of `state` in the replay's states. */
+  at: number;
   state: GameState;
   move?: Move;
   caption: string;
@@ -70,20 +72,20 @@ export function framesOf(rec: GameRecord): { frames: Frame[]; error?: string; st
   if (!states.length) return { frames, error: r.ok ? undefined : r.error, stopped: false };
   // "You play", "Aarav plays".
   const s3 = (who: string, verb: string) => `${who} ${who === 'You' ? verb : verb + 's'}`;
-  frames.push({ state: states[0]!, caption: `${s3(ownerName(states[0]!.players[states[0]!.current]!.color), 'play')} first`, dice: [] });
+  frames.push({ at: 0, state: states[0]!, caption: `${s3(ownerName(states[0]!.players[states[0]!.current]!.color), 'play')} first`, dice: [] });
   for (let i = 1; i < states.length; i++) {
     const s = states[i]!;
     const before = states[i - 1]!;
     const ev = s.event;
     if (!ev || ev.type === 'rolled') continue;
-    if (ev.type === 'moved') frames.push({ state: s, move: ev.move, caption: describe(ev.move, ownerName(ev.move.color), ownerName), dice: before.rolls });
-    else if (ev.type === 'no-move') frames.push({ state: s, caption: `${ownerName(ev.color)} rolled ${[...before.rolls, ev.dice].join(' · ')}: no move`, dice: [...before.rolls, ev.dice] });
-    else if (ev.type === 'three-sixes') frames.push({ state: s, caption: `${ownerName(ev.color)} rolled three 6s: the turn is lost`, dice: [6, 6, 6] });
+    if (ev.type === 'moved') frames.push({ at: i, state: s, move: ev.move, caption: describe(ev.move, ownerName(ev.move.color), ownerName), dice: before.rolls });
+    else if (ev.type === 'no-move') frames.push({ at: i, state: s, caption: `${ownerName(ev.color)} rolled ${[...before.rolls, ev.dice].join(' · ')}: no move`, dice: [...before.rolls, ev.dice] });
+    else if (ev.type === 'three-sixes') frames.push({ at: i, state: s, caption: `${ownerName(ev.color)} rolled three 6s: the turn is lost`, dice: [6, 6, 6] });
   }
   const last = states.at(-1)!;
   if (r.ok && (last.phase === 'over' || r.stopped)) {
     const order = ownerRanking(last);
-    frames.push({ state: last, caption: `${s3(names[order[0]!] ?? 'Someone', 'win')}${r.stopped ? ' (the game ended early)' : ''}`, dice: [] });
-  } else frames.push({ state: last, caption: r.ok ? 'The record ends here' : 'The record is damaged from here', dice: [] });
+    frames.push({ at: states.length - 1, state: last, caption: `${s3(names[order[0]!] ?? 'Someone', 'win')}${r.stopped ? ' (the game ended early)' : ''}`, dice: [] });
+  } else frames.push({ at: states.length - 1, state: last, caption: r.ok ? 'The record ends here' : 'The record is damaged from here', dice: [] });
   return { frames, error: r.ok ? undefined : r.error, stopped: r.ok && r.stopped };
 }

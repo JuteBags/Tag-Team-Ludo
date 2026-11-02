@@ -3,6 +3,7 @@
 // web. Every call is guarded: if storage fails, the game simply isn't saved.
 import { Preferences } from '@capacitor/preferences';
 import { COLORS, type BotLevel, type Color, type GameRecord, type GameState } from '../engine';
+import type { MoveReview, RollLuck } from '../engine/ai/review';
 import type { GameConfig } from './setup';
 
 async function read<T>(key: string): Promise<T | null> {
@@ -228,13 +229,85 @@ export interface PastGame {
   at: number;
   mode: 'pvc' | 'pvp';
   place: number;
+  /** A review stored by an older build inside the entry; reviews now live under their own key (loadReview). */
+  review?: StoredReview;
+}
+
+export interface StoredReview {
+  v: number;
+  moves: MoveReview[];
+  luck: RollLuck[] | null;
+  /** When it was last worked on (ms since 1970), shown as "Reviewed today". */
+  when?: number;
+  /** Every owner's net win chance (whole %) at every state, for the replay's win-chance bar. */
+  chances?: number[][];
+  /** The owners it covers (people by default, plus any bot whose side was asked for). */
+  who?: number[];
+  /** A review from an older label version, shown (greyed) until this one is finished. */
+  old?: StoredReview;
+  /** Decisions with nothing to choose (every move reaches the same position): counted as done, never asked again. */
+  skip?: number[];
+  /** Set once every decision and the luck are in. */
+  done?: boolean;
 }
 
 const GAMES = 'ludo-games';
 /** How many finished games are kept, newest first. */
 export const KEEP_GAMES = 20;
 export const loadPastGames = () => read<PastGame[]>(GAMES).then((g) => (Array.isArray(g) ? g : []));
-/** Adds a finished game, dropping the oldest past KEEP_GAMES. */
-export async function savePastGame(g: PastGame): Promise<void> {
-  await write(GAMES, [g, ...(await loadPastGames())].slice(0, KEEP_GAMES));
+
+/**
+ * A game's identity, for its review: who sat where, the seed and every event, so two games never share one.
+ * The same game from storage, the result screen or a link gives the same key.
+ */
+export const keyOf = (rec: GameRecord) => `${rec.seed ?? ''}|${rec.seats.map((s) => `${s.color}${s.owner}${s.bot ? 'b' : ''}`).join(',')}|${rec.first}|${rec.events}`;
+
+/** A short storage key for a game's review (FNV-1a over keyOf, base 36): reviews live apart from the games list. */
+export function reviewKey(rec: GameRecord): string {
+  const k = keyOf(rec);
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < k.length; i++) {
+    const c = k.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ c, 0x0100019d) >>> 0;
+  }
+  return `ludo-review-${h1.toString(36)}${h2.toString(36)}`;
+}
+
+// Writes to the games list go one at a time, so a game saved while another write is in flight is never lost.
+let gamesChain: Promise<unknown> = Promise.resolve();
+const serial = <T>(f: () => Promise<T>): Promise<T> => {
+  const next = gamesChain.then(f, f);
+  gamesChain = next.catch(() => undefined);
+  return next;
+};
+
+/** Adds a finished game, dropping the oldest past KEEP_GAMES (and their reviews). */
+export function savePastGame(g: PastGame): Promise<void> {
+  return serial(async () => {
+    const all = [g, ...(await loadPastGames())];
+    await write(GAMES, all.slice(0, KEEP_GAMES));
+    for (const old of all.slice(KEEP_GAMES)) await drop(reviewKey(old.rec));
+  });
+}
+
+/**
+ * A game's stored review: under its own key (#92), or, for a game saved before that, inside its past-game
+ * entry. Never written into the games list again, so a review save can't lose a game.
+ */
+export async function loadReview(rec: GameRecord): Promise<StoredReview | undefined> {
+  const own = await read<StoredReview>(reviewKey(rec));
+  if (own) return own;
+  return (await loadPastGames()).find((g) => keyOf(g.rec) === keyOf(rec))?.review;
+}
+
+/**
+ * Stores a game's review under its own key, if the game is still one of the past games. `ok()` is asked again
+ * just before the write (the review runner's "am I still the newest run of this game?").
+ */
+export async function saveReview(rec: GameRecord, review: StoredReview, ok: () => boolean = () => true): Promise<void> {
+  const k = keyOf(rec);
+  if (!(await loadPastGames()).some((g) => keyOf(g.rec) === k)) return;
+  if (ok()) await write(reviewKey(rec), review);
 }
