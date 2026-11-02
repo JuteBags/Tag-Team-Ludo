@@ -14,7 +14,7 @@ import { drawCard, shareCard } from './shareCard';
 import { clearGame, giveUpNote, givingUpLoses, layoutOf, levelOf, loadStats, recordGame, saveGame, savePastGame, type SavedGame } from './store';
 import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targets';
 import { award, goldFor, newAchievements, nextStreak, total, type GameFacts } from './rewards';
-import { earn, lockLabel, nextGoal } from './skins';
+import { earn, lockLabel, nextGoal, skinUnlockedBy } from './skins';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
 const DIE = 38;
@@ -801,7 +801,9 @@ export class GameScreen {
       const sorted = [...fresh].sort((x, y) => y.gold - x.gold);
       const extra = sorted.reduce((a, x) => a + x.gold, 0);
       sorted.forEach((a, i) => {
-        box.insertAdjacentHTML('beforeend', `<span class="ach" title="${a.blurb}">🏆 ${a.name} <em>+${a.gold}</em></span>`);
+        // An achievement that unlocks a skin says so (#79).
+        const skin = skinUnlockedBy(a.id);
+        box.insertAdjacentHTML('beforeend', `<span class="ach" title="${a.blurb}">🏆 ${a.name} <em>+${a.gold}</em>${skin ? ` · unlocks ${skin.name} ${skin.shelf === 'dice' ? 'dice' : 'pawns'}` : ''}</span>`);
         (box.lastElementChild as HTMLElement).animate([{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'scale(1.1)', offset: 0.7 }, { opacity: 1, transform: 'scale(1)' }], { duration: 380, delay: 1300 + i * 300, easing: 'cubic-bezier(.3,.8,.4,1.2)', fill: 'backwards' });
         setTimeout(() => sfx.home(), 1300 + i * 300);
       });

@@ -47,9 +47,10 @@ export function storeScreen(onBack: () => void): HTMLElement {
     q('.grid').innerHTML = shelfSkins(shelf)
       .map((s) => {
         const open = isUnlocked(s);
-        const label = s.unlock.kind === 'gold' ? `<i class="coin"></i>${lockLabel(s)}` : `${icons.lock}${lockLabel(s)}`;
+        const label = s.unlock.kind === 'gold' ? `<i class="coin"></i>${lockLabel(s)}` : `${icons.lock}${lockLabel(s, true)}`;
         const state = s.id === inUse.id ? '<em class="using">In use</em>' : open ? '' : `<em class="lock">${label}</em>`;
-        return `<button class="card${s.id === picked.id ? ' on' : ''}${open ? '' : ' locked'}" data-id="${s.id}">${thumb(s)}<b>${s.name}</b>${state}</button>`;
+        // Skins earned with an achievement aren't dimmed when locked: their look is what makes them worth earning.
+        return `<button class="card${s.id === picked.id ? ' on' : ''}${open ? '' : ' locked'}${s.unlock.kind === 'achievement' ? ' earn' : ''}" data-id="${s.id}">${thumb(s)}<b>${s.name}</b>${state}</button>`;
       })
       .join('');
     q('.info b').textContent = picked.name;
@@ -63,7 +64,7 @@ export function storeScreen(onBack: () => void): HTMLElement {
     use.dataset.mode = open ? 'use' : 'buy';
     use.innerHTML = open
       ? picked.id === inUse.id ? 'IN USE' : 'USE'
-      : price ? `${canBuy ? 'BUY' : 'NEED'} <i class="coin"></i>${price}${canBuy ? '' : ` · YOU HAVE ${settings.gold}`}` : `LOCKED · ${lockLabel(picked).toUpperCase()}`;
+      : price ? `${canBuy ? 'BUY' : 'NEED'} <i class="coin"></i>${price}${canBuy ? '' : ` · YOU HAVE ${settings.gold}`}` : `<span class="lk">${icons.lock}</span>${lockLabel(picked).toUpperCase()}`;
     use.classList.toggle('locked', !open && !canBuy);
     preview();
   };
