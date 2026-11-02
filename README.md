@@ -21,7 +21,7 @@
 - The pair move: on an even roll a pair moves half the roll each (4 → 2 + 2). Single tokens can't jump an enemy pair (they can stop on it), and only a pair can cut a pair. Prefer classic Ludo? Turn **Doubles** off in Settings.
 - A board that shows the way: arrows at every turn, a marker where every possible move lands, and big numbered buttons when moves crowd one spot.
 - Keep playing or stop: when someone finishes, the players still in vote on whether to play on for the next place.
-- Continue an unfinished game, even after the app was closed. A continued game rolls the same dice it would have, so closing the app can't re-roll a bad turn. Giving up vs Computer after the first round counts as a loss, and the game warns you first.
+- Continue an unfinished game, even after the app was closed. Closing the app can't undo a bad roll. Giving up vs Computer after the first round counts as a loss, and the game warns you first.
 
 ### Bots
 - **Four levels: Easy, Normal, Hard and Extreme**, each a step up from the one before, with a line under the picker on how each one plays. Harder bots pay more gold.
@@ -61,7 +61,7 @@ Needs Node 24.
 npm install
 npm run dev        # game at http://localhost:5173
 npm test           # rules, dice, replay, review and bot tests
-npm run sim        # 18,000 all-bot games: kills, idle rolls, game length (minutes)
+npm run sim        # the long all-bot simulations (~40,000 games: kills, idle rolls, game length; minutes)
 npm run build      # typecheck + production build to dist/
 ```
 
@@ -75,7 +75,7 @@ The Extreme bot and the game review run on a Rust engine (`sim-rs/`) compiled to
 | `sim.yml` | All-bot simulations on every PR, compared with `main` in a PR comment |
 | `ai-levels.yml` | Checks each bot level still beats the one below, on PRs that touch the engine |
 | `wasm.yml` | Builds and tests the WebAssembly engine |
-| `review-calibration.yml`, `review-speed.yml` | Run by hand: calibrate the review's labels and measure its speed on bot games (`tools/ai/REVIEW_CALIB.md`) |
+| `review-calibration.yml`, `review-speed.yml` | Run by hand, or on pushing a `calib/*` or `speed/*` branch: calibrate the review's labels (`tools/ai/REVIEW_CALIB.md`) and measure its speed (`tools/ai/review_speed.ts`) on bot games |
 
 ## Project layout
 
