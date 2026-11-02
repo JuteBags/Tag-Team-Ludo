@@ -9,7 +9,7 @@ import type { GameRecord } from '../engine';
 import { REVIEW_VERSION, type Reviewer } from '../engine/ai/review';
 import { stopReviewWorker, workerReviewer } from '../engine/ai/review-worker';
 import { peopleOf, runReview, type ReviewProgress } from './reviewRun';
-import { keyOf, loadPastGames, loadReview, type StoredReview } from './store';
+import { keyOf, loadPastGames, loadReview, loadSummaries, loadSummary, type StoredReview } from './store';
 
 /** How many of the newest unreviewed games are queued on their own; older ones are reviewed when opened. */
 export const AUTO_QUEUE = 3;
@@ -210,10 +210,15 @@ export async function bootReviews() {
     update();
   });
   const past = (await loadPastGames().catch(() => [])).filter((g) => g.rec.seats.some((s) => !s.bot));
+  // Finished or not, from the reviews' summaries (one small read, #98). A game without a current summary is
+  // read in full once, which writes its summary for the next start.
+  const index = await loadSummaries().catch(() => ({}));
   const todo = [];
   for (const g of past) {
     if (todo.length >= AUTO_QUEUE) break;
-    if (!isComplete(await loadReview(g.rec).catch(() => undefined))) todo.push(g);
+    const s = await loadSummary(g.rec, index);
+    const complete = s ? s.done : isComplete(await loadReview(g.rec).catch(() => undefined));
+    if (!complete) todo.push(g);
   }
   todo.forEach((g) => enqueue(g.rec, { pvp: g.mode === 'pvp', at: g.at }));
 }

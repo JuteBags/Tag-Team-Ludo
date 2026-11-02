@@ -3,7 +3,7 @@
 // web. Every call is guarded: if storage fails, the game simply isn't saved.
 import { Preferences } from '@capacitor/preferences';
 import { COLORS, type BotLevel, type Color, type GameRecord, type GameState } from '../engine';
-import type { MoveReview, RollLuck } from '../engine/ai/review';
+import { REVIEW_VERSION, summary, type MoveReview, type RollLuck } from '../engine/ai/review';
 import type { GameConfig } from './setup';
 
 async function read<T>(key: string): Promise<T | null> {
@@ -283,12 +283,62 @@ const serial = <T>(f: () => Promise<T>): Promise<T> => {
   return next;
 };
 
-/** Adds a finished game, dropping the oldest past KEEP_GAMES (and their reviews). */
+/** Adds a finished game, dropping the oldest past KEEP_GAMES (and their reviews and summaries). */
 export function savePastGame(g: PastGame): Promise<void> {
   return serial(async () => {
     const all = [g, ...(await loadPastGames())];
     await write(GAMES, all.slice(0, KEEP_GAMES));
-    for (const old of all.slice(KEEP_GAMES)) await drop(reviewKey(old.rec));
+    const gone = all.slice(KEEP_GAMES).map((old) => reviewKey(old.rec));
+    for (const k of gone) await drop(k);
+    if (gone.length) {
+      const index = await loadSummaries();
+      if (gone.some((k) => k in index)) await write(INDEX, Object.fromEntries(Object.entries(index).filter(([k]) => !gone.includes(k))));
+    }
+  });
+}
+
+/**
+ * A review in a few numbers (#98): what the app start (is it finished?) and the Stats list (accuracy, luck,
+ * key mistakes) need, so they don't read every full review. Only a hint: opening a game always reads the full
+ * review, which rewrites the summary when it's missing, old or different.
+ */
+export interface ReviewSummary {
+  v: number;
+  done: boolean;
+  /** Per owner: decisions reviewed, accuracy (0-1) and luck percentile (null when there's none), mistakes, blunders. */
+  owners: { moves: number; accuracy: number | null; luckPct: number | null; mistake: number; blunder: number }[];
+}
+
+const INDEX = 'ludo-review-index';
+const finite = (x: number) => (Number.isFinite(x) ? x : null);
+
+/** The summary of a stored review of `rec`. */
+export function summaryOf(rec: GameRecord, r: StoredReview): ReviewSummary {
+  const owners = new Set(rec.seats.map((s) => s.owner)).size;
+  return {
+    v: r.v,
+    done: !!r.done,
+    owners: summary(r.moves, r.luck ?? [], owners).map((o) => ({ moves: o.moves, accuracy: finite(o.accuracy), luckPct: finite(o.luckPct), mistake: o.labels.mistake, blunder: o.labels.blunder })),
+  };
+}
+
+/** Every stored review's summary, by review key: one small read. */
+export const loadSummaries = () => read<Record<string, ReviewSummary>>(INDEX).then((x) => x ?? {});
+
+/** The summary of `rec`'s review, if one is stored and it's for this label version (else read the full review). */
+export async function loadSummary(rec: GameRecord, index?: Record<string, ReviewSummary>): Promise<ReviewSummary | undefined> {
+  const s = (index ?? (await loadSummaries()))[reviewKey(rec)];
+  return s?.v === REVIEW_VERSION ? s : undefined;
+}
+
+/** Writes `rec`'s summary into the index, unless it's already the same (writes go one at a time). */
+function keepSummary(rec: GameRecord, s: ReviewSummary): Promise<void> {
+  return serial(async () => {
+    const index = await loadSummaries();
+    const k = reviewKey(rec);
+    if (JSON.stringify(index[k]) === JSON.stringify(s)) return;
+    index[k] = s;
+    await write(INDEX, index);
   });
 }
 
@@ -298,8 +348,10 @@ export function savePastGame(g: PastGame): Promise<void> {
  */
 export async function loadReview(rec: GameRecord): Promise<StoredReview | undefined> {
   const own = await read<StoredReview>(reviewKey(rec));
-  if (own) return own;
-  return (await loadPastGames()).find((g) => keyOf(g.rec) === keyOf(rec))?.review;
+  const r = own ?? (await loadPastGames()).find((g) => keyOf(g.rec) === keyOf(rec))?.review;
+  // The full review is the truth: its summary is (re)written if it's missing, old or different (#98).
+  if (r) void keepSummary(rec, summaryOf(rec, r));
+  return r;
 }
 
 /**
@@ -309,5 +361,8 @@ export async function loadReview(rec: GameRecord): Promise<StoredReview | undefi
 export async function saveReview(rec: GameRecord, review: StoredReview, ok: () => boolean = () => true): Promise<void> {
   const k = keyOf(rec);
   if (!(await loadPastGames()).some((g) => keyOf(g.rec) === k)) return;
-  if (ok()) await write(reviewKey(rec), review);
+  if (!ok()) return;
+  await write(reviewKey(rec), review);
+  // Then its summary, so a summary never runs ahead of the review it describes (#98).
+  await keepSummary(rec, summaryOf(rec, review));
 }
