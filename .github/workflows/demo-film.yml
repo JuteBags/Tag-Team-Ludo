@@ -1,6 +1,7 @@
-# Renders the marketing demo film (marketing/demo-film) on a runner, not a laptop: every frame in headless
-# Chrome, the score and foley in Python, then mux and loudness to −14 LUFS. The MP4, poster and .srt come out as
-# an artifact. Manual only (it takes ~15 min of runner time): Actions → Demo film → Run workflow, or
+# Renders the demo film (marketing/demo-film, "Ludo, explained") on runners, not a laptop: one job per language
+# (English and Hindi voice-over), each making the 16:9 and the 9:16 cut. Every frame in headless Chrome, the voice
+# with Kokoro, the score and foley in Python, then mux and loudness to -14 LUFS, then checks.
+# Manual only (it takes about 20 min of runner time): Actions -> Demo film -> Run workflow, or:
 #   gh workflow run demo-film.yml --ref <branch>
 name: Demo film
 
@@ -13,10 +14,15 @@ permissions:
 jobs:
   render:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [en, hi]
     env:
       LIB: ${{ github.workspace }}/lemo-opuscar
       LEMO_OPUSCAR_HOME: ${{ github.workspace }}/lemo-opuscar
+      LANG_FILM: ${{ matrix.lang }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -26,43 +32,43 @@ jobs:
       # The film tools need ffmpeg 7+ (Ubuntu 24.04 ships 6.1): a static release build.
       - name: ffmpeg 7
         run: |
-          curl -fsSL -o ff.tar.xz https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz             || curl -fsSL -o ff.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          curl -fsSL -o ff.tar.xz https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz || curl -fsSL -o ff.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
           mkdir ff && tar -xf ff.tar.xz -C ff --strip-components 1
           [ -d ff/bin ] || { mkdir -p ff/bin && mv ff/ffmpeg ff/ffprobe ff/bin/; }
           ff/bin/ffmpeg -version | head -1
           echo "$PWD/ff/bin" >> "$GITHUB_PATH"
-      - name: Film library and its tools
+      - name: Film library, its voice tier and instruments
         run: |
           git clone --quiet --depth 1 --filter=blob:none --sparse https://github.com/lemomo-ai/lemo-opuscar.git "$LIB"
           git -C "$LIB" sparse-checkout set --no-cone '/*' '!/styles/*/demo/' '!/styleboard/' '!/docs/'
           git -C "$LIB" config lemo.managed true
-          sh "$LIB/plugin/skills/lemo-opuscar/scripts/setup.sh" deps
+          sh "$LIB/plugin/skills/lemo-opuscar/scripts/setup.sh" deps voice
           cd "$LIB" && sudo env PATH="$PATH" node node_modules/playwright-core/cli.js install-deps chromium-headless-shell
           cd "$LIB" && sh tools/fetch.sh instruments karoryfer && sh tools/fetch.sh instruments vcsl
       - name: Render
         run: WORKERS=4 sh marketing/demo-film/build.sh
       - name: Checks
         run: |
-          F=marketing/demo-film/out/tag-team-ludo-demo.mp4
-          ffmpeg -hide_banner -i "$F" -af ebur128=framelog=quiet -f null - 2>&1 | grep -A3 'Integrated loudness' || true
-          ffmpeg -hide_banner -i "$F" -vf blackdetect=d=0.1:pix_th=0.05 -an -f null - 2>&1 | grep blackdetect || echo "no black frames"
-          cd "$LIB" && node core/render/readcheck.mjs "$GITHUB_WORKSPACE/marketing/demo-film" || true
-          node core/render/still.mjs "$GITHUB_WORKSPACE/marketing/demo-film" --range 0:37:1 --out "$GITHUB_WORKSPACE/marketing/demo-film/out/contact"
-          V=$GITHUB_WORKSPACE/marketing/demo-film/out/tag-team-ludo-demo-vertical.mp4
-          echo "--- 9:16 cut"
-          ffprobe -v error -select_streams v -show_entries stream=width,height -show_entries format=duration -of csv=p=0 "$V"
-          ffmpeg -hide_banner -i "$V" -af ebur128=framelog=quiet -f null - 2>&1 | grep -A1 'Integrated loudness' || true
-          ffmpeg -hide_banner -i "$V" -vf blackdetect=d=0.1:pix_th=0.05 -an -f null - 2>&1 | grep blackdetect || echo "no black frames"
-          node core/render/readcheck.mjs "$GITHUB_WORKSPACE/marketing/demo-film" --q 'fmt=v' --size 1080x1920 || true
-          node core/render/still.mjs "$GITHUB_WORKSPACE/marketing/demo-film" --q 'fmt=v' --size 1080x1920 --range 0:37:1 --out "$GITHUB_WORKSPACE/marketing/demo-film/out/contact-v"
+          D=$GITHUB_WORKSPACE/marketing/demo-film
+          if [ "$LANG_FILM" = en ]; then "$LIB/.venv/bin/python" "$LIB/core/tts/asr_check.py" "$D/out/vo/en/lines.json" "$D/out/vo/en" --lang en | tail -4 || true; fi
+          for F in "$D/out/tag-team-ludo-demo-$LANG_FILM.mp4" "$D/out/tag-team-ludo-demo-$LANG_FILM-vertical.mp4"; do
+            echo "--- $(basename "$F")"
+            ffprobe -v error -select_streams v -show_entries stream=width,height -show_entries format=duration -of csv=p=0 "$F"
+            ffmpeg -hide_banner -i "$F" -af ebur128=framelog=quiet -f null - 2>&1 | grep -A1 'Integrated loudness' || true
+            ffmpeg -hide_banner -i "$F" -vf blackdetect=d=0.1:pix_th=0.05 -an -f null - 2>&1 | grep blackdetect || echo "no black frames"
+          done
+          cd "$LIB"
+          node core/render/readcheck.mjs "$D" --q "lang=$LANG_FILM" || true
+          node core/render/readcheck.mjs "$D" --q "lang=$LANG_FILM&fmt=v" --size 1080x1920 || true
+          DUR=$(python3 -c "import json;print(int(json.load(open('$D/out/events-$LANG_FILM.json'))['dur']))")
+          node core/render/still.mjs "$D" --q "lang=$LANG_FILM" --range 0:$DUR:1 --out "$D/out/contact"
+          node core/render/still.mjs "$D" --q "lang=$LANG_FILM&fmt=v" --size 1080x1920 --range 0:$DUR:1 --out "$D/out/contact-v"
       - uses: actions/upload-artifact@v5
         with:
-          name: demo-film
+          name: demo-film-${{ matrix.lang }}
           path: |
-            marketing/demo-film/out/tag-team-ludo-demo.mp4
-            marketing/demo-film/out/tag-team-ludo-demo.srt
-            marketing/demo-film/out/poster.jpg
+            marketing/demo-film/out/tag-team-ludo-demo-*.mp4
+            marketing/demo-film/out/tag-team-ludo-demo-*.srt
+            marketing/demo-film/out/poster-*.jpg
             marketing/demo-film/out/contact/
-            marketing/demo-film/out/tag-team-ludo-demo-vertical.mp4
-            marketing/demo-film/out/poster-vertical.jpg
             marketing/demo-film/out/contact-v/

@@ -1,13 +1,19 @@
-"The One Move", a demo film for Tag Team Ludo (JuteBags).
+"Ludo, explained", a demo film for Tag Team Ludo (JuteBags). English and Hindi voice-over, 16:9 and 9:16.
 
 Picture
-- Tag Team Ludo app captures (2.5.0): JuteBags' own product.
+- Tag Team Ludo app captures and gameplay recordings (2.5.0 and later): JuteBags' own product.
 - Avatars inside the app: Fun Emoji by Davis Uche, CC BY 4.0, generated with DiceBear.
-- Fonts: Fredoka and Lilita One, SIL Open Font License 1.1 (Google Fonts).
+- Fonts: Fredoka and Lilita One (Google Fonts), and Baloo 2 by Ek Type for the Hindi captions (fonts/OFL.txt):
+  SIL Open Font License 1.1.
+
+Voice
+- Synthetic voice-over made with Kokoro-82M (hexgrad, Apache 2.0) through kokoro-onnx (MIT): the English voice
+  "bm_george" and the Hindi voice "hm_omega". It is a computer voice, not a person.
 
 Sound
-- Versilian Community Sample Library (VCSL), github.com/sgossner/VCSL: CC0 1.0 (vibraphone, glockenspiel, hi-hat, snare, toms, claps, suspended cymbal).
+- Versilian Community Sample Library (VCSL), github.com/sgossner/VCSL: CC0 1.0 (vibraphone, glockenspiel, hi-hat,
+  snare, suspended cymbal).
 - Karoryfer Samples, Sneakybass (jazz double bass), github.com/sfzinstruments: CC0 1.0.
-- Chiptune voice, kick and foley: synthesized in code.
+- Chiptune voice, kick, dice and foley: synthesized in code.
 
 Made with code-rendered film tools (Lemo-Opuscar library, MIT).
