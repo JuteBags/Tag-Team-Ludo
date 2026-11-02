@@ -147,6 +147,10 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .pawn.movable .hit{pointer-events:all}
 .pawn.movable .pawn-art{animation:bob .6s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:50% 100%}
 @keyframes bob{from{transform:translateY(0)}to{transform:translateY(-5px)}}
+/* A calm board (calm.ts, #98): no endless repaint after a while without input; movable pawns stay raised as the cue. */
+.calm .pawn.movable .pawn-art{animation:none;transform:translateY(-4px)}
+.calm .trail{animation:none}
+.calm .dk-inferno .f i.p,.calm .dk-inferno .f i.p.r{animation:none}
 .fx .glow{fill:#fff6c2;opacity:.45;pointer-events:none}
 /* One moving cue while you choose: the pawn bobs. Its glow, ring and the landing markers stay still,
    so the eye has one target and the board isn't repainted every frame. */

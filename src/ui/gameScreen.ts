@@ -2,6 +2,7 @@
 // a person passing the device; a person with two houses plays both colours' turns.
 import { FINISHED, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type Rng, STOP_EVENT } from '../engine';
 import { chooseBotMoveAsync, RolloutStopped, stopRolloutWorker } from '../engine/ai/levels';
+import { calmAfter } from './calm';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
 import { dieMarkup, rollDie } from './dice';
@@ -59,6 +60,8 @@ export class GameScreen {
   private paused = false;
   private waiting: (() => void)[] = [];
   private disposed = false;
+  /** The board calms down after a while without input (#98): no endless repaint while a player thinks. */
+  private calm: ReturnType<typeof calmAfter> | null = null;
   /** Last face each player rolled, to redraw the resting dice when the setting changes. */
   private lastFace = new Map<Color, number>();
   /** People already handed the phone in "With friends" (each once, in the game's first round). */
@@ -111,6 +114,7 @@ export class GameScreen {
     for (const [c, f] of saved?.faces ?? []) this.lastFace.set(c, f);
     const people = config.names.length;
     this.el.className = 'screen game';
+    this.calm = calmAfter(this.el);
     this.el.innerHTML = `
       <div class="gtop"><button class="rbtn" data-act="menu" aria-label="Menu">${icons.menu}</button>
         <div class="mode"><small>${config.mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}${this.state.singles ? ' · NO DOUBLES' : ''}</small><b>${people} PLAYERS</b></div><span class="rbtn-space"></span></div>
@@ -195,6 +199,7 @@ export class GameScreen {
   private async run() {
     await this.sleep(400);
     while (!this.disposed && !this.ended && this.state.phase !== 'over' && !this.humanDone()) {
+      this.calm?.poke(); // a roll or a move: the board is lively again
       this.save();
       const p = this.cur;
       this.markActive(p.color);
@@ -698,6 +703,7 @@ export class GameScreen {
 
   dispose() {
     this.disposed = true;
+    this.calm?.stop();
     stopRolloutWorker();
     keepAwake(false);
     document.removeEventListener('visibilitychange', this.onHidden);
