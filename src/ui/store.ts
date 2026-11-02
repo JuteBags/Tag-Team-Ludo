@@ -245,6 +245,8 @@ export interface StoredReview {
   who?: number[];
   /** A review from an older label version, shown (greyed) until this one is finished. */
   old?: StoredReview;
+  /** Decisions with nothing to choose (every move reaches the same position): counted as done, never asked again. */
+  skip?: number[];
   /** Set once every decision and the luck are in. */
   done?: boolean;
 }

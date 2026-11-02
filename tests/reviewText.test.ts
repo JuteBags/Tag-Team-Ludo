@@ -158,6 +158,19 @@ describe('review runner', () => {
     expect(when).toBe(123);
   });
 
+  it('counts decisions with nothing to choose as done, so a review finishes', async () => {
+    const rec = game(9);
+    let k = 0;
+    // Every third decision: all its moves reach the same position (one candidate).
+    const fake = async (s: GameState): Promise<DecisionValues> =>
+      k++ % 3 === 0
+        ? { ofMove: s.moves.map(() => 0), mean: [0.5], gap: [0], se: [0], best: 0 }
+        : { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.4 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.1 : 0)), se: s.moves.map(() => 0.01), best: 0 };
+    const end = await new Promise<{ done: number; total: number; moves: MoveReview[] }>((done) => runReview(rec, undefined, (p) => p.finished && done(p), false, fake));
+    expect(end.done).toBe(end.total);
+    expect(end.moves.length).toBeLessThan(end.total);
+  });
+
   it('estimates the time left once a few verdicts are in, and dates the finished review', async () => {
     const rec = game(9);
     const fake = async (s: GameState): Promise<DecisionValues> => ({ ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.4 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.1 : 0)), se: s.moves.map(() => 0.01), best: 0 });

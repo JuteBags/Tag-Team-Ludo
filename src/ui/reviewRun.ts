@@ -58,25 +58,27 @@ export function runReview(
   const prior = stored?.v === REVIEW_VERSION ? stored : undefined;
   const old = olderOf(stored);
   const moves = [...(prior?.moves ?? [])];
+  const skipped = new Set(prior?.skip ?? []);
   let luck: RollLuck[] | null = prior?.luck ?? null;
   let chances: number[][] | null = prior?.chances ?? null;
   // Whoever a stored review already covers stays covered.
   const covered = [...new Set([...who, ...(prior?.who ?? [])])].sort((a, b) => a - b);
   const total = decisionsToReview(rec, states, covered);
-  const done = () => moves.length >= total && luck !== null;
+  const settled = () => moves.length + skipped.size;
+  const done = () => settled() >= total && luck !== null;
   let when = prior?.when;
   // The pace of this run: when its first decision started and how many it has done.
   let t0 = 0;
   let fresh = 0;
-  const eta = () => (fresh >= ETA_AFTER ? ((Date.now() - t0) / 1000 / fresh) * Math.max(0, total - moves.length) : null);
+  const eta = () => (fresh >= ETA_AFTER ? ((Date.now() - t0) / 1000 / fresh) * Math.max(0, total - settled()) : null);
   const report = (finished: boolean) =>
-    onUpdate({ moves: [...moves].sort((a, b) => a.at - b.at), luck, chances, who: covered, done: moves.length, total, finished, eta: finished ? 0 : eta(), when: finished ? when : undefined, old: finished ? undefined : old });
+    onUpdate({ moves: [...moves].sort((a, b) => a.at - b.at), luck, chances, who: covered, done: settled(), total, finished, eta: finished ? 0 : eta(), when: finished ? when : undefined, old: finished ? undefined : old });
   // Kept only when this run added something, so reopening a finished review keeps its date.
   let changed = false;
   const keep = () => {
     if (!changed) return Promise.resolve();
     when = Date.now();
-    return store ? saveReview(rec, { v: REVIEW_VERSION, moves, luck, chances: chances ?? undefined, who: covered, when, old: done() ? undefined : old, done: done() || undefined }) : Promise.resolve();
+    return store ? saveReview(rec, { v: REVIEW_VERSION, moves, luck, chances: chances ?? undefined, who: covered, skip: skipped.size ? [...skipped] : undefined, when, old: done() ? undefined : old, done: done() || undefined }) : Promise.resolve();
   };
   report(done());
   if (!reviewer || done()) return () => {};
@@ -90,7 +92,7 @@ export function runReview(
       report(false);
       void keep();
     }
-    const have = new Set(moves.map((m) => m.at));
+    const have = new Set([...moves.map((m) => m.at), ...skipped]);
     // Only the decisions not reviewed yet; the reviewer is skipped (and the call aborted) once stopped.
     const skip: Reviewer = async (s, n, seed) => {
       if (stopped) throw new Error('stopped');
@@ -105,6 +107,10 @@ export function runReview(
         changed = true;
         report(false);
         if (moves.length % 5 === 0) void keep();
+      }, undefined, (at) => {
+        skipped.add(at);
+        changed = true;
+        report(false);
       });
     } catch {
       // Stopped, or the worker failed: what's done so far is kept.
