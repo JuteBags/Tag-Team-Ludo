@@ -86,7 +86,8 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
 
   const who = (o: number) => (isYou(o) ? 'You' : names[o]!);
   /** A decision's verdict, for its row and the replay's caption: "?! Inaccuracy −4 · You moved 5 · Best: moved a pair 3". */
-  const verdict = (m: MoveReview) => ({ ...verdictText(m, states[m.at]!, who(m.owner)), step: frameAfter(m.at) });
+  const ownerName = (c: string) => { const o = rec.seats.find((x) => x.color === c)?.owner ?? 0; return isYou(o) ? 'you' : names[o]!; };
+  const verdict = (m: MoveReview) => ({ ...verdictText(m, states[m.at]!, who(m.owner), ownerName), step: frameAfter(m.at) });
 
   /** The live review, or the older one (greyed) while the new one isn't finished. */
   const shown = (p: ReviewProgress): Shown =>

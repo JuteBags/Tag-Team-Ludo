@@ -67,6 +67,9 @@ describe('which token', () => {
     expect(whichToken(s, mv([2], 4))).toBe('back');
     expect(verdictMoves(s, mv([2], 4), mv([1], 4))).toEqual(['moved the back token 4', 'moved the front token 4']);
     expect(verdictMoves(s, mv([2], 4), mv([1], 2))).toEqual(['moved 4', 'moved 2']);
+    // The same die, one capturing: still both named, and who is captured.
+    const cap = { ...(mv([1], 4) as object), captures: [{ color: 'red', token: 0 }] } as never;
+    expect(verdictMoves(s, mv([2], 4), cap, () => 'Aarav')).toEqual(['moved the back token 4', 'moved the front token 4, capturing Aarav']);
   });
 });
 

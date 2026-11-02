@@ -28,7 +28,7 @@ const flip = (back: boolean) => (back ? ' style="transform:scaleX(-1)"' : '');
 const STEP = (back: boolean) => `<svg viewBox="0 0 24 24"${flip(back)}><path d="M6 5l9 7-9 7z" fill="#fff"/><rect x="16" y="5" width="3" height="14" rx="1.2" fill="#fff"/></svg>`;
 const ENDS = (back: boolean) => `<svg viewBox="0 0 24 24"${flip(back)}><path d="M3 5l8 7-8 7zM11 5l8 7-8 7z" fill="#fff"/><rect x="19" y="5" width="2.6" height="14" rx="1.1" fill="#fff"/></svg>`;
 /** Jump to the previous / next mistake: a step arrow with a "?" badge. */
-const JUMP = (back: boolean) => `<svg viewBox="0 0 24 24"${flip(back)}><path d="M4 6l8 6-8 6z" fill="#fff"/><circle cx="17.5" cy="12" r="5" fill="#fb923c"/><text x="17.5" y="15" text-anchor="middle" font-size="8" font-weight="900" fill="#1a1300"${back ? ' transform="scale(-1 1) translate(-35 0)"' : ''}>?</text></svg>`;
+const JUMP = (back: boolean) => `<svg viewBox="0 0 24 24"><path d="${back ? 'M9 6L2 12l7 6z' : 'M15 6l7 6-7 6z'}" fill="#fff"/><circle cx="${back ? 15 : 9}" cy="12" r="7.5" fill="#fb923c" stroke="#fff" stroke-width="1.5"/><text x="${back ? 15 : 9}" y="16" text-anchor="middle" font-size="12" font-weight="900" fill="#1a1300">?</text></svg>`;
 
 const BEST_KEY = 'ludo-show-best';
 const loadShowBest = () => {
@@ -180,7 +180,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     const v = reviewOn() ? verdictOf(f) : undefined;
     const s = v ? statesOf(f) : undefined;
     const text = notes.get(at) ?? (v && s ? (() => {
-      const t = verdictText(v, s, isYou(v.owner) ? 'You' : names[v.owner]!);
+      const t = verdictText(v, s, isYou(v.owner) ? 'You' : names[v.owner]!, (c) => { const o = rec.seats.find((x) => x.color === c)?.owner ?? 0; return isYou(o) ? 'you' : names[o]!; });
       return `${LABEL_LOOK[v.label].sym} ${t.head} · ${t.line}`;
     })() : f.caption);
     markCaption(text);

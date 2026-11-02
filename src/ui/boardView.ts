@@ -172,9 +172,10 @@ export class BoardView {
     if (v.best) {
       const pts = trail(v.best);
       const [x, y] = pts.at(-1)!;
-      s += `<polyline class="vtrail best" points="${line(pts)}"/>
-        <g class="ghost" transform="translate(${x} ${y})"><circle r="19" class="gring"/><g class="gpawn" transform="scale(.85)">${pawnArt(v.best.color)}</g>
-        <g transform="translate(0 -31)"><rect x="-21" y="-10" width="42" height="20" rx="10" class="gtag"/><text y="5" text-anchor="middle">Best</text></g></g>`;
+      // A white dash over a dark outline reads on every tile (a green dash vanished on the green track).
+      s += `<polyline class="vtrail bestbg" points="${line(pts)}"/><polyline class="vtrail best" points="${line(pts)}"/>
+        <g class="ghost" transform="translate(${x} ${y})"><circle r="22" class="gpulse"/><circle r="20" class="gring"/><g class="gpawn">${pawnArt(v.best.color)}</g>
+        <g transform="translate(0 -40)"><rect x="-32" y="-15" width="64" height="30" rx="15" class="gtag"/><text y="6.5" text-anchor="middle">BEST</text></g></g>`;
     }
     const pts = trail(v.played);
     const [hx, hy] = pts.at(-1)!;

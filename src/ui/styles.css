@@ -739,7 +739,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 
 /* ---------- game review (reviewScreen.ts) ---------- */
 .review .rvbody{position:absolute;top:74px;left:0;right:0;bottom:0;overflow-y:auto;padding:8px 20px 24px;
-  -webkit-mask:linear-gradient(transparent,#000 12px);mask:linear-gradient(transparent,#000 12px)}
+  -webkit-mask:linear-gradient(transparent,#000 28px);mask:linear-gradient(transparent,#000 28px)}
 .review .rvcard{padding:12px 14px;border-radius:18px;background:rgba(5,20,70,.62);box-shadow:inset 0 0 0 1.5px var(--m);margin-bottom:10px}
 .review .rvwho{display:flex;align-items:center;gap:10px}
 .review .rvwho i{width:36px;height:36px;border-radius:50%;padding:2px;background:var(--m);flex:none}
@@ -814,12 +814,16 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 /* The review's verdict on the board (replay in review mode): played = solid trail + symbol, best = dashed trail + dashed ghost. */
 .vtrail{fill:none;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 .vtrail.played{stroke:var(--c);stroke-width:5;opacity:.9}
-.vtrail.best{stroke:#4ade80;stroke-width:4;stroke-dasharray:7 6}
+.vtrail.bestbg{stroke:#0b1d5c;stroke-width:7;opacity:.85}
+.vtrail.best{stroke:#fff;stroke-width:3.6;stroke-dasharray:8 6}
 .ghost{pointer-events:none}
-.ghost .gring{fill:rgba(74,222,128,.18);stroke:#4ade80;stroke-width:2.6;stroke-dasharray:5 4}
-.ghost .gpawn{opacity:.55}
-.ghost .gtag{fill:#4ade80;stroke:#0b3d1f;stroke-width:1.5}
-.ghost text{fill:#0b3d1f;font-size:12px;font-weight:900}
+.ghost .gring{fill:rgba(74,222,128,.22);stroke:#fff;stroke-width:3;stroke-dasharray:6 4}
+.ghost .gpulse{fill:none;stroke:#4ade80;stroke-width:3;transform-box:fill-box;transform-origin:center;animation:gpulse 1.4s ease-out infinite}
+@keyframes gpulse{from{transform:scale(1);opacity:.9}to{transform:scale(1.5);opacity:0}}
+.ghost .gpawn{opacity:.6}
+.ghost .gtag{fill:#16a34a;stroke:#fff;stroke-width:2}
+.ghost text{fill:#fff;font-size:18px;font-weight:900;letter-spacing:.04em}
+@media (prefers-reduced-motion:reduce){.ghost .gpulse{animation:none;opacity:.6}}
 .vhead{pointer-events:none}
 .vhead circle{fill:var(--c);stroke:#0b1d5c;stroke-width:2}
 .vhead text{fill:#1a1300;font-size:12px;font-weight:900}
@@ -850,14 +854,16 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .replay .wcbar[hidden]{display:none}
 .replay .wcbar i{display:block;height:100%;font-style:normal;font-size:10px;font-weight:900;line-height:14px;text-align:center;color:#fff;text-shadow:0 1px 1px rgba(0,0,0,.6);transition:width .35s ease}
 .replay.rvmode .gboard{top:136px}
-.replay.rvmode .rpcap{top:552px}
-.replay.rvmode .rpscrub{top:622px}
-.replay .rpticks{position:absolute;top:644px;left:38px;width:calc(100% - 76px);height:10px;z-index:3;pointer-events:none}
+.replay.rvmode .rpcap{top:534px;flex-wrap:wrap;row-gap:4px}
+.replay.rvmode .rpscrub{top:646px}
+.replay .rpticks{position:absolute;top:668px;left:38px;width:calc(100% - 76px);height:10px;z-index:3;pointer-events:none}
 .replay .rpticks[hidden]{display:none}
-.replay.rvmode .rpctl{top:666px}
-.replay.rvmode .rpcount{top:730px}
+.replay.rvmode .rpctl{top:686px}
+.replay.rvmode .rpcount{top:754px}
 .replay .rptext .cap{color:#fca5a5}.replay .rptext .home{color:#ffd65a}
-.replay .rptext{flex:1}
-.replay .bestchip{flex:none;align-self:center;min-height:36px;padding:0 10px;border-radius:12px;border:1.5px dashed #4ade80;background:rgba(74,222,128,.14);color:#bbf7d0;font-size:12px;font-weight:900}
+.replay .rptext{flex:1 1 200px;min-width:0}
+.replay .bestchip{flex:0 0 auto;margin-left:auto;align-self:center;min-height:36px;padding:0 10px;border-radius:12px;border:1.5px dashed #4ade80;background:rgba(74,222,128,.14);color:#bbf7d0;font-size:12px;font-weight:900}
 .replay .bestchip[hidden]{display:none}
 @media (prefers-reduced-motion:reduce){.replay .wcbar i{transition:none}}
+.replay [data-act=prevkey],.replay [data-act=nextkey]{position:relative}
+.replay [data-act=prevkey]::after,.replay [data-act=nextkey]::after{content:'Mistake';position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:5px;font-size:11px;font-weight:900;color:#fdba74;white-space:nowrap}

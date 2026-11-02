@@ -31,10 +31,10 @@ export function luckWords(luck: number, you: boolean): { word: string; tone: 'lu
 }
 
 /** What a move does, in a few words: "moved 5", "brought a token out", "moved a pair 3". */
-export function moveText(m: Move): string {
+export function moveText(m: Move, nameOf?: (c: Move['color']) => string): string {
   if (m.kind === 'release') return 'brought a token out';
   const base = m.tokens.length > 1 ? `moved a pair ${m.steps}` : `moved ${m.steps}`;
-  if (m.captures.length) return `${base}, capturing`;
+  if (m.captures.length) return `${base}, capturing${nameOf ? ` ${[...new Set(m.captures.map((c) => nameOf(c.color)))].join(' and ')}` : ''}`;
   if (m.finishes) return `${base}, home`;
   return base;
 }
@@ -56,14 +56,14 @@ export function whichToken(s: GameState, m: Move): string {
  * The played and best moves in words, for a verdict. When they'd read the same ("moved 4 · Best: moved 4": same
  * steps, another token), both say which token: "moved the back token 4 · Best: moved the front token 4".
  */
-export function verdictMoves(s: GameState, played: Move, best: Move): [string, string] {
-  const a = moveText(played);
-  const b = moveText(best);
-  if (a !== b) return [a, b];
+export function verdictMoves(s: GameState, played: Move, best: Move, nameOf?: (c: Move['color']) => string): [string, string] {
+  // Moves by the same die (same steps) could be either token: both say which ("moved 5 · Best: moved 5,
+  // capturing" reads as the same move twice).
+  const sameDie = played.kind !== 'release' && best.kind !== 'release' && played.steps === best.steps;
   const named = (m: Move) => {
-    const w = whichToken(s, m);
-    if (!w) return moveText(m);
-    return moveText(m).replace(/^moved (a pair )?/, (_, pair: string | undefined) => `moved the ${w} ${pair ? 'pair ' : 'token '}`);
+    const t = moveText(m, nameOf);
+    const w = sameDie ? whichToken(s, m) : '';
+    return w ? t.replace(/^moved (a pair )?/, (_, pair: string | undefined) => `moved the ${w} ${pair ? 'pair ' : 'token '}`) : t;
   };
   return [named(played), named(best)];
 }
@@ -181,10 +181,10 @@ export function turningPoint(moves: MoveReview[], luck: RollLuck[], owner: numbe
  * A decision's verdict in words: `head` "Inaccuracy −4" and `line` "You moved 5 · Best: moved a pair 3" (the best
  * only when it differs). `who` is "You" or the player's name.
  */
-export function verdictText(m: MoveReview, s: GameState, who: string): { head: string; line: string } {
+export function verdictText(m: MoveReview, s: GameState, who: string, nameOf?: (c: Move['color']) => string): { head: string; line: string } {
   const look = LABEL_LOOK[m.label];
   const head = `${look.name}${m.label !== 'best' && m.gap >= 1 ? ` −${Math.round(m.gap)}` : ''}`;
   const plain = m.played === m.best || m.label === 'best';
-  const [played, best] = verdictMoves(s, s.moves[m.played]!, s.moves[m.best]!);
-  return { head, line: `${who} ${plain ? moveText(s.moves[m.played]!) : played}${plain ? '' : ` · Best: ${best}`}` };
+  const [played, best] = verdictMoves(s, s.moves[m.played]!, s.moves[m.best]!, nameOf);
+  return { head, line: `${who} ${plain ? moveText(s.moves[m.played]!, nameOf) : played}${plain ? '' : ` · Best: ${best}`}` };
 }
