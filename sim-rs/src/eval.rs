@@ -231,22 +231,30 @@ impl Evaluator {
         })
     }
 
-    /// A value net from extreme-net.bin's bytes (#98; src/engine/ai/netbin.ts has the layout): the same
-    /// weights as the JSON gives, read as f64, with no JSON parse.
+    /// A value net from extreme-net.bin's bytes (#98; src/engine/ai/netbin.ts has the layout): version 1 holds
+    /// the weights as f64, version 2 (what ships) as f32; either is read into f64 with no JSON parse.
     pub fn from_bin(bytes: &[u8]) -> Evaluator {
         fn u32_at(bytes: &[u8], o: &mut usize) -> usize {
             let v = u32::from_le_bytes(bytes[*o..*o + 4].try_into().unwrap());
             *o += 4;
             v as usize
         }
-        fn f64s_at(bytes: &[u8], o: &mut usize, n: usize) -> Vec<f64> {
-            let v = (0..n).map(|i| f64::from_le_bytes(bytes[*o + 8 * i..*o + 8 * i + 8].try_into().unwrap())).collect();
-            *o += 8 * n;
+        // Version 1 stores the weights as f64; version 2 (shipped since #98's Float32 switch) as f32, read
+        // back exactly into f64.
+        fn f64s_at(bytes: &[u8], o: &mut usize, n: usize, f32s: bool) -> Vec<f64> {
+            let v = if f32s {
+                (0..n).map(|i| f32::from_le_bytes(bytes[*o + 4 * i..*o + 4 * i + 4].try_into().unwrap()) as f64).collect()
+            } else {
+                (0..n).map(|i| f64::from_le_bytes(bytes[*o + 8 * i..*o + 8 * i + 8].try_into().unwrap())).collect()
+            };
+            *o += (if f32s { 4 } else { 8 }) * n;
             v
         }
         let mut o = 0usize;
         assert_eq!(u32_at(bytes, &mut o), 0x5445_4e4c, "not a net file");
-        assert_eq!(u32_at(bytes, &mut o), 1, "net file version");
+        let version = u32_at(bytes, &mut o);
+        assert!(version == 1 || version == 2, "net file version {version}");
+        let f32s = version == 2;
         let ni = u32_at(bytes, &mut o);
         let inputs: Vec<usize> = (0..ni).map(|_| u32_at(bytes, &mut o)).collect();
         let nt = u32_at(bytes, &mut o);
@@ -254,8 +262,8 @@ impl Evaluator {
         for _ in 0..nt + 2 {
             let out = u32_at(bytes, &mut o);
             let inn = u32_at(bytes, &mut o);
-            let w = f64s_at(bytes, &mut o, out * inn);
-            let b = f64s_at(bytes, &mut o, out);
+            let w = f64s_at(bytes, &mut o, out * inn, f32s);
+            let b = f64s_at(bytes, &mut o, out, f32s);
             layers.push(Dense::from_rows(&w, b, out, inn));
         }
         assert_eq!(o, bytes.len(), "net file has trailing bytes");

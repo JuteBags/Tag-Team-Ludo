@@ -2,21 +2,26 @@
 
     python tools/ai/levels_check.py --arena sim-rs/target/release/ludo-arena [--seeds 1000]
                                     [--extreme-seeds 0] [--dice fair|app|both] [--threads N]
+                                    [--net extreme-net.bin] [--only-extreme] [--compare-net extreme-net.json]
 
 Levels as the app plays them (src/engine/ai/levels.ts): Easy = the original Hard rule bot, Normal = Hard's
 rules judging each move alone, Hard = Hard's rules planning the turn, Extreme = the rollout player
-(race:128, the playout rules in the playouts, extreme-net.json at the cut). The rules come from the app's
+(race:128, the playout rules in the playouts, the shipped extreme-net.bin at the cut). The rules come from the app's
 own files through tools/ai/dist/levels/ (build.sh runs levels-json.ts). Each row is one tested person
 against people all of the level below, on the same seeds 0..N-1 every run, so a run is reproducible and a
 change in a number is a change in a bot. A row fails when its 95% interval does not clear an even share
 (1 / people): the level is no longer a step up from the one below. Writes a markdown table (to
-$GITHUB_STEP_SUMMARY when set) and exits 1 on any failed row.
+$GITHUB_STEP_SUMMARY when set) and exits 1 on any failed row. --net swaps Extreme's net (a .bin or a JSON
+weights file); --only-extreme plays just the Extreme vs Hard rows. --compare-net plays the Extreme rows again
+with a second net on the same seeds and exits 1 if any mode's win rate differs by more than noise (2 standard
+errors of the difference): .github/workflows/net-f32.yml checks the shipped Float32 .bin against the Float64
+training JSON this way, so a retrained net is checked at both precisions.
 """
 import argparse, json, os, pathlib, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LV = ROOT / "tools" / "ai" / "dist" / "levels"
-NET = ROOT / "src" / "engine" / "ai" / "extreme-net.json"
+NET = ROOT / "src" / "engine" / "ai" / "extreme-net.bin"
 LEVELS = {
     "Random": "random",
     "Easy": "hard",
@@ -44,6 +49,36 @@ def run(arena, a, b, mode, seeds, dice, threads):
     return {"a": a, "b": b, "mode": mode, "dice": dice, "win": p, "lo": lo, "even": even, "games": n, "ok": lo > even}
 
 
+def compare(a, other):
+    """Extreme vs Hard with --net and with --compare-net, the same seeds; fails on a difference beyond noise."""
+    rows = []
+    for m in MODES:
+        x = run(a.arena, "Extreme", "Hard", m, a.extreme_seeds, "fair", a.threads)
+        LEVELS["Extreme"], keep = other, LEVELS["Extreme"]
+        y = run(a.arena, "Extreme", "Hard", m, a.extreme_seeds, "fair", a.threads)
+        LEVELS["Extreme"] = keep
+        se = ((x["win"] * (1 - x["win"]) + y["win"] * (1 - y["win"])) / x["games"]) ** 0.5
+        ok = abs(x["win"] - y["win"]) <= 2 * se + 1e-12
+        rows.append((m, x["win"], y["win"], x["games"], ok))
+        print(json.dumps({"mode": m, "net": x["win"], "compare": y["win"], "games": x["games"], "ok": ok}), flush=True)
+    md = ["## Extreme vs Hard: two nets on the same seeds", "",
+          f"`{pathlib.Path(a.net).name}` against `{pathlib.Path(a.compare_net).name}`, fair dice, {a.extreme_seeds} seeds per seat. "
+          "A mode fails (✗) when the win rates differ by more than 2 standard errors of the difference.", "",
+          f"| Mode | {pathlib.Path(a.net).name} | {pathlib.Path(a.compare_net).name} | games |", "|---|---|---|---|"]
+    for m, w1, w2, n, ok in rows:
+        base, tag = m.removesuffix("-singles"), " (no doubles)" if m.endswith("-singles") else ""
+        md.append(f"| {NAMES[base]}{tag} | {100 * w1:.1f}% | {100 * w2:.1f}%{'' if ok else ' ✗'} | {n} |")
+    same = sum(1 for _, w1, w2, _, _ in rows if w1 == w2)
+    md += ["", f"Identical win rate in {same} of {len(rows)} modes."]
+    text = "\n".join(md) + "\n"
+    print(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+            f.write(text)
+    if not all(ok for *_, ok in rows):
+        sys.exit(1)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--arena", required=True)
@@ -51,12 +86,19 @@ def main():
     ap.add_argument("--extreme-seeds", type=int, default=0)
     ap.add_argument("--dice", choices=["fair", "app", "both"], default="fair")
     ap.add_argument("--threads", type=int, default=0)
+    ap.add_argument("--net", default=str(NET), help="Extreme's net (JSON)")
+    ap.add_argument("--only-extreme", action="store_true", help="only the Extreme vs Hard rows")
+    ap.add_argument("--compare-net", help="play the Extreme rows again with this net and compare")
     a = ap.parse_args()
+    spec = LEVELS["Extreme"]
+    LEVELS["Extreme"] = spec.replace(str(NET), str(pathlib.Path(a.net).resolve()))
+    if a.compare_net:
+        return compare(a, spec.replace(str(NET), str(pathlib.Path(a.compare_net).resolve())))
     dice = ["fair", "app"] if a.dice == "both" else [a.dice]
     rows = []
     for d in dice:
         for m in MODES:
-            for x, y in STEPS:
+            for x, y in ([] if a.only_extreme else STEPS):
                 rows.append(run(a.arena, x, y, m, a.seeds, d, a.threads))
                 print(json.dumps(rows[-1]), flush=True)
             if a.extreme_seeds:
