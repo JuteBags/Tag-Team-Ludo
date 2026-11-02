@@ -190,6 +190,83 @@ function timeReview(rec: GameRecord, client: ReturnType<typeof reviewClient>, on
 
 const sec = (ms: number | null) => (ms === null ? '-' : `${(ms / 1000).toFixed(1)} s`);
 
+/** A test on a worker: the Extreme moves test or the review test (`onStop` is handed a function that stops it). */
+type BenchTest = (worker: Worker, say: (l: string) => void, hidden: () => boolean, onStop: (stop: () => void) => void) => Promise<void>;
+
+export interface BenchDeps {
+  /** A fresh rollout worker for this run. */
+  worker: () => Worker;
+  /** Pauses (true) or unpauses (false) the review queue (reviewQueue.ts setGame 'extreme' / 'none'). */
+  pause: (on: boolean) => void;
+  say: (line: string) => void;
+  /** The test itself (tests stand one in); by default the Extreme moves test or the review test. */
+  test?: BenchTest;
+}
+
+/**
+ * One run of a test. The review queue waits while it runs, so a past game's review doesn't share the time,
+ * and a run during which the page was hidden is thrown away (it was throttled). `stop` (leaving the bench)
+ * ends it at once: the worker is terminated and the queue unpaused then, never again later. Everything is
+ * ended exactly once, whichever comes first.
+ */
+export function benchRun(review: boolean, deps: BenchDeps): { done: Promise<void>; stop: () => void } {
+  const worker = deps.worker();
+  let hidden = false;
+  let left = false;
+  let over = false;
+  let stopReview = () => {};
+  let lock: { release(): Promise<void> } | null = null;
+  const onHide = () => {
+    if (hidden || document.visibilityState !== 'hidden') return;
+    hidden = true;
+    stopReview();
+  };
+  const end = () => {
+    if (over) return;
+    over = true;
+    document.removeEventListener('visibilitychange', onHide);
+    void lock?.release().catch(() => {});
+    worker.terminate();
+    deps.pause(false);
+  };
+  document.addEventListener('visibilitychange', onHide);
+  deps.pause(true);
+  const test: BenchTest = deps.test ?? (review ? reviewBench : (w, say, h) => movesBench(w, say, h));
+  const done = (async () => {
+    try {
+      lock = (await (navigator as Navigator & { wakeLock?: { request(t: 'screen'): Promise<{ release(): Promise<void> }> } }).wakeLock?.request('screen')) ?? null;
+    } catch {
+      // No wake lock here: the screen may dim, which ends the run.
+    }
+    if (over) {
+      void lock?.release().catch(() => {});
+      return;
+    }
+    const t0 = Date.now();
+    try {
+      await test(worker, deps.say, () => hidden || left, (f) => (stopReview = f));
+      if (left) return;
+      if (hidden) deps.say('interrupted: the page was hidden during the run, so the numbers are left out. Run again.');
+      else {
+        deps.say(`took ${Math.round((Date.now() - t0) / 1000)} s, ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`);
+        deps.say('done');
+      }
+    } catch (err) {
+      if (!left) deps.say(`failed: ${String(err)}`);
+    } finally {
+      end();
+    }
+  })();
+  return {
+    done,
+    stop: () => {
+      left = true;
+      stopReview();
+      end();
+    },
+  };
+}
+
 export function benchScreen(onClose: () => void): HTMLElement {
   const el = document.createElement('div');
   el.className = 'screen bench';
@@ -208,11 +285,16 @@ export function benchScreen(onClose: () => void): HTMLElement {
     out.textContent = lines.join('\n');
   };
   let running = false;
+  let current: { stop(): void } | null = null;
   el.addEventListener('click', async (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-act]');
     if (!b) return;
-    if (b.dataset.act === 'back') onClose();
-    else if (b.dataset.act === 'copy') {
+    if (b.dataset.act === 'back') {
+      // Leaving mid-run stops the run now (#126 review): a run left going would unpause the review queue
+      // whenever it ended, maybe in the middle of an Extreme game started meanwhile.
+      current?.stop();
+      onClose();
+    } else if (b.dataset.act === 'copy') {
       try {
         await navigator.clipboard.writeText(lines.join('\n'));
         b.textContent = 'COPIED';
@@ -227,44 +309,17 @@ export function benchScreen(onClose: () => void): HTMLElement {
       say(`Tag Team Ludo ${review ? 'review' : 'Extreme'} bench, v${__APP_VERSION__}`);
       say(`device: ${navigator.userAgent}`);
       say(`cores: ${navigator.hardwareConcurrency ?? '?'}`);
-      const worker = new Worker(new URL('../engine/ai/rollout-worker.ts', import.meta.url), { type: 'module' });
-      // A run with the page hidden is throttled, so its numbers would mislead: it's thrown away.
-      let hidden = false;
-      let stopReview = () => {};
-      const onHide = () => {
-        if (hidden || document.visibilityState !== 'hidden') return;
-        hidden = true;
-        stopReview();
-      };
-      document.addEventListener('visibilitychange', onHide);
-      // The review queue waits, as it does during an Extreme game, so a past game's review doesn't share the time.
-      setGame('extreme');
-      let lock: { release(): Promise<void> } | null = null;
-      try {
-        lock = await (navigator as Navigator & { wakeLock?: { request(t: 'screen'): Promise<{ release(): Promise<void> }> } }).wakeLock?.request('screen') ?? null;
-      } catch {
-        // No wake lock here: the screen may dim, which ends the run.
-      }
-      const t0 = Date.now();
-      try {
-        if (review) await reviewBench(worker, say, () => hidden, (f) => (stopReview = f));
-        else await movesBench(worker, say, () => hidden);
-        if (hidden) say('interrupted: the page was hidden during the run, so the numbers are left out. Run again.');
-        else {
-          say(`took ${Math.round((Date.now() - t0) / 1000)} s, ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`);
-          say('done');
-        }
-      } catch (err) {
-        say(`failed: ${String(err)}`);
-      } finally {
-        document.removeEventListener('visibilitychange', onHide);
-        void lock?.release().catch(() => {});
-        worker.terminate();
-        setGame('none');
-        running = false;
-        starts.forEach((s) => (s.disabled = false));
-        el.querySelector<HTMLElement>('[data-act=copy]')!.hidden = false;
-      }
+      const run = benchRun(review, {
+        worker: () => new Worker(new URL('../engine/ai/rollout-worker.ts', import.meta.url), { type: 'module' }),
+        pause: (on) => setGame(on ? 'extreme' : 'none'),
+        say,
+      });
+      current = run;
+      await run.done;
+      current = null;
+      running = false;
+      starts.forEach((s) => (s.disabled = false));
+      el.querySelector<HTMLElement>('[data-act=copy]')!.hidden = false;
     }
   });
   return el;
