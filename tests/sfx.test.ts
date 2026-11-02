@@ -79,6 +79,38 @@ describe('sound', () => {
     expect(a.started.length).toBeGreaterThan(before);
   });
 
+  it("doesn't drop the first sound after a sleep: its notes start at the clock where the context resumes", () => {
+    const a = FakeContext.last;
+    sfx.land(5);
+    a.currentTime = 20;
+    vi.advanceTimersByTime(5000);
+    expect(a.state).toBe('suspended');
+    // A suspended context's clock stands still (Web Audio spec), and resuming carries on from it. The next
+    // sound is scheduled while it's still suspended, at that clock, so it starts as soon as it runs: no
+    // await needed, and nothing is scheduled in the past.
+    const n = a.started.length;
+    sfx.land(6);
+    expect(a.state).toBe('running');
+    const notes = a.started.slice(n);
+    expect(notes.length).toBeGreaterThan(0);
+    expect(Math.min(...notes)).toBeGreaterThanOrEqual(20);
+  });
+
+  it('measured: after one dice sound, the context runs about 5 s of a 60 s idle minute (it ran all 60 before #98)', () => {
+    const a = FakeContext.last;
+    const t0 = 100;
+    a.currentTime = t0;
+    sfx.land(1);
+    let running = 0;
+    for (let s = 1; s <= 60; s++) {
+      a.currentTime = t0 + s; // the context's clock, which only moves while it runs; here it stands for wall time
+      vi.advanceTimersByTime(1000);
+      if (a.state === 'running') running++;
+    }
+    console.log(`idle minute after one sound: AudioContext running ${running} s of 60`);
+    expect(running).toBeLessThanOrEqual(6);
+  });
+
   it('sleeps at once when the app is hidden', () => {
     const a = FakeContext.last;
     sfx.land(2);
