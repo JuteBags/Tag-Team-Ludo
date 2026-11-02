@@ -138,7 +138,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .pawn .hit{fill:transparent;pointer-events:none}
 .pawn:not(.mine) .halo,.pawn:not(.mine) .mineglow,.movedring{display:none}
 .pawn.moved .movedring{display:inline}
-.cs-pawn .mineglow,.house .mineglow,.hint .mineglow,.tw .mineglow{display:none}
+.cs-pawn .mineglow,.hint .mineglow,.tw .mineglow{display:none}
 /* 1. The game board leans back in perspective, with a heavy shadow under it (taps are mapped back in boardView). */
 .gboard{perspective:1100px}
 .bframe.tilted{transform:rotateX(18deg);transform-origin:50% 50%}
@@ -182,9 +182,6 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .tip::after{content:'';position:absolute;left:30px;bottom:-9px;border:9px solid transparent;border-bottom:0;border-top-color:#fff6c8}
 .tip b{color:#b0400a}
 /* Houses already taken show their owner's face; houses you can't pick now fade back. */
-.house .owner{position:absolute;top:10px;right:10px;width:38px;height:38px;border-radius:11px;padding:2px;background:#fff;box-shadow:0 3px 0 rgba(0,0,0,.25)}
-.house .owner svg{width:100%;height:100%}
-.house:not(.can):not(.taken){opacity:.3}
 /* Two colours each: the preview links a person's two houses. */
 .pvh.pair1{box-shadow:inset 0 2px 0 rgba(255,255,255,.35),0 3px 0 var(--d),0 0 0 3px #ffd65a}
 .seg{position:absolute;top:512px;left:24px;right:24px;height:60px;border-radius:19px;display:flex;align-items:center;padding:6px;gap:6px;
@@ -509,14 +506,29 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .prow .st{margin-left:auto;font-size:12.5px;line-height:1.25;font-weight:800;opacity:.85;text-align:right;text-wrap:balance}
 .prow .st.long{font-size:11px}
 .prow .dbox{width:52px;height:52px;border-radius:15px;flex:none}
-.houses{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.house{position:relative;height:188px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
-  background:linear-gradient(160deg,var(--l),var(--m) 55%,var(--d));box-shadow:inset 0 3px 0 rgba(255,255,255,.4),0 6px 0 var(--d);opacity:.45;transition:opacity .2s,transform .1s}
-.house .pw svg{width:58px;height:64px;filter:drop-shadow(0 3px 2px rgba(0,0,0,.3))}
-.house b{font-family:'Lilita One';font-weight:400;font-size:19px;text-shadow:0 2px 0 rgba(0,0,0,.3);min-height:22px}
-.house.can{opacity:1;box-shadow:inset 0 3px 0 rgba(255,255,255,.4),0 6px 0 var(--d),0 0 0 3px #fff,0 0 24px rgba(255,255,255,.5)}
-.house.can:active{transform:translateY(3px)}
-.house.taken{opacity:1}
+/* Houses step: the real board; each corner base is a house button (40% of the board, about 132px). */
+.pickboard{position:relative;width:330px;height:330px;margin:0 auto}
+.pickboard .mini-board{display:block;width:100%;height:100%;border-radius:20px;overflow:hidden;box-shadow:0 0 0 3px rgba(255,214,90,.45),0 10px 24px rgba(0,0,0,.45)}
+.pickboard .mini-board svg{display:block;width:100%;height:100%}
+.pc{position:absolute;width:40%;height:40%;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;transition:box-shadow .2s}
+.pc[data-c=green]{left:0;top:0}.pc[data-c=red]{right:0;top:0}.pc[data-c=yellow]{right:0;bottom:0}.pc[data-c=blue]{left:0;bottom:0}
+.pc.can{box-shadow:inset 0 0 0 3px #fff,0 0 20px 2px rgba(255,255,255,.55);animation:pcpulse 1.4s ease-in-out infinite}
+.pc.can:active{transform:translateY(2px)}
+@keyframes pcpulse{50%{box-shadow:inset 0 0 0 3px #ffd65a,0 0 26px 6px rgba(255,214,90,.6)}}
+.pc.off::before{content:'';position:absolute;inset:0;border-radius:14px;background:rgba(4,12,40,.66)}
+.pc b{position:relative;display:flex;align-items:center;gap:5px;font-family:'Lilita One';font-weight:400;font-size:17px;color:#fff;padding:3px 13px;border-radius:999px;background:rgba(0,0,0,.5);text-shadow:0 1px 0 rgba(0,0,0,.4);white-space:nowrap;max-width:118px;overflow:hidden;text-overflow:ellipsis}
+.pc.can b{background:#fff;color:#0c2a74;text-shadow:none}
+.pc .av{position:relative;width:54px;height:54px;border-radius:15px;background:#fff;padding:3px;box-shadow:0 3px 0 rgba(0,0,0,.3)}
+.pc .av svg{width:100%;height:100%;display:block}
+/* Colour-blind symbols: in the pill when offered or taken, alone above the shade when dimmed. */
+.pc .sy{width:14px;height:14px;flex:none;fill:#fff}
+.pc.can .sy{fill:#0c2a74}
+.pc.off>.sy{position:relative;width:30px;height:30px;fill:rgba(255,255,255,.75)}
+:root:not(.symbols) .pc .sy{display:none}
+/* A house filled in by itself (a bot's, or the only option) pops once; not under reduced motion. */
+.pc.pop{animation:pcpop .3s ease-out}
+@keyframes pcpop{40%{transform:scale(1.08)}}
+@media (prefers-reduced-motion: reduce){.pc.can,.pc.pop{animation:none}.pc.can{box-shadow:inset 0 0 0 3px #ffd65a,0 0 20px 2px rgba(255,214,90,.55)}}
 /* "With friends": whose turn it is, in their colour, when the phone changes hands. */
 .toast.turn{font-size:34px;background:linear-gradient(180deg,var(--l),var(--m) 60%,var(--d));box-shadow:0 5px 0 var(--d),0 14px 30px rgba(0,0,0,.45)}
 .foot small{display:block;margin-top:4px;font-size:12px;letter-spacing:0;opacity:.85}

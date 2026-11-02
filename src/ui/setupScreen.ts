@@ -2,7 +2,7 @@
 // in With friends, how well bots play), a roll for order, then picking houses one by one in that order. The highest roller
 // picks first and plays first. Steps with nothing to choose are skipped. Rules live in setup.ts.
 import { COLORS, type BotLevel, type Color, type Seat } from '../engine';
-import { PROFILES, avatarSVG, cssVars, icons, pawnSVG } from './art';
+import { PROFILES, avatarSVG, boardSVG, cssVars, icons, pawnSVG, symbolPath } from './art';
 import { rollDie } from './dice';
 import { levelBonus } from './rewards';
 import { saveSetting, settings } from './settings';
@@ -142,7 +142,10 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     </section>
     <section class="wiz" data-step="pick">
       <h3 class="disp"></h3><p class="sub"></p>
-      <div class="houses">${GRID.map((c) => `<button class="house" data-c="${c}" style="${cssVars(c)}"><span class="pw">${pawnSVG(c)}</span><b></b></button>`).join('')}</div>
+      <div class="mid"><div class="pickboard">
+        <span class="mini-board" data-theme="${settings.theme}" aria-hidden="true">${boardSVG()}</span>
+        ${GRID.map((c) => `<button class="pc" data-c="${c}"></button>`).join('')}
+      </div></div>
       <button class="b3 green disp go" data-act="start" hidden>START GAME</button>
     </section>`;
 
@@ -428,16 +431,25 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     const seq = sequence();
     const picker = seq[turn];
     const options = picker === undefined ? [] : pickable(picks, picker, rules);
-    el.querySelectorAll<HTMLButtonElement>('.house').forEach((b) => {
+    // Each corner base of the board is a house: offered (a ring and "Pick"), taken (the owner's face, in the
+    // colour of the house they picked first: picks keeps pick order, and name) or dimmed. The colour-blind symbol rides along in each.
+    el.querySelectorAll<HTMLButtonElement>('.pc').forEach((b) => {
       const c = b.dataset.c as Color;
       const owner = picks[c];
+      const can = options.includes(c);
       b.classList.toggle('taken', owner !== undefined);
-      b.classList.toggle('can', options.includes(c));
-      b.disabled = !options.includes(c);
-      b.querySelector('b')!.textContent = owner !== undefined ? people[owner]!.name : options.includes(c) ? 'Pick' : '';
-      b.querySelector('.owner')?.remove();
-      // The owner's face, in the colour of the house they picked first.
-      if (owner !== undefined) b.insertAdjacentHTML('beforeend', `<span class="owner">${avatarSVG(COLORS.find((x) => picks[x] === owner)!)}</span>`);
+      b.classList.toggle('can', can);
+      b.classList.toggle('off', !can && owner === undefined);
+      b.disabled = !can;
+      const sym = `<svg class="sy" viewBox="-10 -10 20 20" aria-hidden="true"><path d="${symbolPath(c, 7.5)}"/></svg>`;
+      const name = cap(c);
+      if (owner !== undefined) {
+        b.innerHTML = `<span class="av">${avatarSVG((Object.keys(picks) as Color[]).find((x) => picks[x] === owner)!)}</span><b>${sym}${people[owner]!.name}</b>`;
+        b.setAttribute('aria-label', `${name}: ${people[owner]!.name}`);
+      } else {
+        b.innerHTML = can ? `<b>${sym}Pick</b>` : sym;
+        b.setAttribute('aria-label', can ? `Pick ${name}` : name);
+      }
     });
     if (picker === undefined) return ready();
     const second = rules.houses === 2 && COLORS.some((c) => picks[c] === picker);
@@ -446,19 +458,27 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     // Bots pick by themselves; a pick with only one option fills itself in.
     if (people[picker]!.bot || options.length === 1) {
       const e = epoch;
-      setTimeout(() => e === epoch && choose(options[Math.floor(Math.random() * options.length)]!), 650);
+      setTimeout(() => e === epoch && choose(options[Math.floor(Math.random() * options.length)]!, true), 650);
     }
   };
 
-  const choose = (c: Color) => {
+  /** `auto`: a bot's pick or the only option, filled in by itself; its base pops so you see where it went. */
+  const choose = (c: Color, auto = false) => {
     const picker = sequence()[turn];
     if (picker === undefined || !pickable(picks, picker, rules).includes(c)) return;
     picks[c] = picker;
     turn++;
     refreshPick();
+    if (auto && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const b = q(`.pc[data-c=${c}]`);
+      b.classList.remove('pop');
+      void b.offsetWidth;
+      b.classList.add('pop');
+      setTimeout(() => b.classList.remove('pop'), 320);
+    }
   };
-  q('.houses').addEventListener('click', (e) => {
-    const b = (e.target as Element).closest<HTMLButtonElement>('.house');
+  q('.pickboard').addEventListener('click', (e) => {
+    const b = (e.target as Element).closest<HTMLButtonElement>('.pc');
     const picker = sequence()[turn];
     if (b && picker !== undefined && !people[picker]!.bot) choose(b.dataset.c as Color);
   });
