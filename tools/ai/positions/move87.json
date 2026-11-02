@@ -1,0 +1,12 @@
+{
+  "about": "Move 87 of the 2.5.0 review demo game (2p, you are green, the bot yellow): the '?? Blunder −10' of demo/final-2.5/36-replay-review-mode-ghost.png. Transcribed from that screenshot (the game record is gone); Ludo has no hidden history, so the tokens, the mover and the tray decide the decision. Progress per colour: -1 base, 0-50 track, 51-55 home column, 56 home. Green 13 is track 13 (red's start, a star); green 43 sits on the yellow pair at track 43 (a normal square).",
+  "seats": [
+    { "color": "green", "owner": 0, "bot": false },
+    { "color": "yellow", "owner": 1, "bot": true, "level": "easy" }
+  ],
+  "tokens": { "green": [13, 43, 53, -1], "yellow": [17, 17, 37, 55] },
+  "current": "green",
+  "tray": [1],
+  "played": { "token": 0, "from": 13, "to": 14, "note": "the back token 1: steps off the star into reach of yellow's single on 37 (track 11, 3 behind)" },
+  "best": { "token": 1, "from": 43, "to": 44, "note": "the token on the yellow pair 1: gets past the pair before it moves on" }
+}
