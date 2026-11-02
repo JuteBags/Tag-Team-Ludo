@@ -12,7 +12,7 @@ import { offerCheckIn } from './checkin';
 import { decodeRecord, type GameRecord } from '../engine';
 import { linkPayload } from './replay';
 import { bootReviews, setGame } from './reviewQueue';
-import { prefetchAtIdle, screens, show } from './lazy';
+import { prefetchAtIdle, screens, setScreen, show } from './lazy';
 
 const W = 390;
 const H = 844;
@@ -38,13 +38,13 @@ export function mountApp(root: HTMLElement) {
     const saved = await loadGame();
     if (game) return; // a game started while the save was loading
     const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()));
-    stage.replaceChildren(screen);
+    setScreen(stage, screen);
     // On the home screen only, never during a game: a newer version on the site, then today's check-in.
     void offerUpdate(screen).then(() => offerCheckIn(screen));
   };
   // Home -> setup (houses, roll for order, pick houses) -> game. Play again keeps the same houses.
   const setup = (mode: Mode, houses: 1 | 2 = 1) =>
-    stage.replaceChildren(setupScreen(mode, count, (cfg) => play(cfg), () => void home(), houses, () => {
+    setScreen(stage, setupScreen(mode, count, (cfg) => play(cfg), () => void home(), houses, () => {
       // From 4 players vs Computer: you and one bot with two colours each.
       count = 2;
       setup(mode, 2);
@@ -71,10 +71,10 @@ export function mountApp(root: HTMLElement) {
       // A new game replaces any saved one (counted as a loss when it's given up past the first round); a
       // continued game picks up from it.
       if (!saved) await giveUpSaved();
-      const toResult = () => stage.replaceChildren(g.el);
+      const toResult = () => setScreen(stage, g.el);
       const g = new GameScreen(cfg, (to) => (to === 'home' ? void home() : to === 'replay' ? g.finalRecord && void watch(g.finalRecord, toResult) : to === 'review' ? g.finalRecord && void review(g.finalRecord, toResult) : play(cfg)), undefined, saved);
       game = g;
-      stage.replaceChildren(game.el);
+      setScreen(stage, game.el);
       // Reviews keep going during a game, except vs Extreme, whose bots think with the rollout engine.
       setGame(cfg.seats.some((s) => s.bot && s.level === 'extreme') ? 'extreme' : 'light');
       if (import.meta.env.DEV) (window as unknown as { __ludo: GameScreen }).__ludo = game;

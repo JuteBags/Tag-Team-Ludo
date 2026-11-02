@@ -1,7 +1,7 @@
 // Lazily loaded screens (src/ui/lazy.ts, #98): a failed import shows a retry (never a blank screen), a retry
 // imports again, and the idle prefetch loads every screen and ignores failures.
 import { describe, expect, it, vi } from 'vitest';
-import { lazy, prefetchAtIdle, show } from '../src/ui/lazy';
+import { lazy, prefetchAtIdle, setScreen, show } from '../src/ui/lazy';
 
 /** Just enough of an element for loadFailed(): its markup, and the buttons found in it. */
 class FakeEl {
@@ -57,6 +57,25 @@ describe('lazy screens', () => {
     online = true;
     fail.press('retry');
     await vi.waitFor(() => expect(s.now).toBe('the store'));
+  });
+
+  it('drops a lazy screen that arrives after the player moved on, success or failure', async () => {
+    for (const outcome of ['loads', 'fails'] as const) {
+      let finish!: () => void;
+      const gate = new Promise<void>((r) => (finish = r));
+      const load = lazy(async () => {
+        await gate;
+        if (outcome === 'fails') throw new Error('offline');
+        return { screen: () => 'the store' };
+      });
+      const s = stage();
+      // Tap Store; while its chunk loads, start a game.
+      const pending = show(s as unknown as HTMLElement, load, (m) => m.screen() as unknown as HTMLElement, () => {});
+      setScreen(s as unknown as HTMLElement, 'the game' as unknown as HTMLElement);
+      finish();
+      await pending;
+      expect(s.now).toBe('the game');
+    }
   });
 
   it('prefetches every screen at idle and ignores a failure', async () => {
