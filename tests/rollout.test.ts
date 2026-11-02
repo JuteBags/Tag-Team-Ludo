@@ -85,5 +85,55 @@ describe('rollout Extreme (wasm)', () => {
     }
     expect(reviewed).toBe(12);
   });
+
+  // #101: the race is a prefix of the full review, so a filled race IS review(n); a settled Best is Best.
+  it('races a decision: filled up to n it is review(n) exactly, settled Best it agrees, and the screen values every move', { timeout: 300_000 }, async () => {
+    const e = await engine();
+    expect(e.hasFast).toBe(true);
+    const seen = { full: 0, best: 0, worse: 0, net: 0 };
+    let raced = 0;
+    for (let g = 0; g < 8 && raced < 24; g++) {
+      const rng = seeded(200 + g);
+      let s: GameState = createGame(SEATS[g % 2 ? 4 : 2].map((color, owner) => ({ color, owner, bot: true, level: 'hard' })));
+      for (let i = 0; i < 20000 && s.phase !== 'over' && raced < 24; i++) {
+        if (s.phase === 'roll') s = roll(s, rng);
+        else {
+          if (s.moves.length > 2 && i % 4 === 0) {
+            const played = i % s.moves.length;
+            const n = 64;
+            const full = e.review(s, n, 9 + i);
+            if (full.mean.length > 1) {
+              const sc = e.reviewFast(s, 0, 0, { mode: 'screen' });
+              expect(sc.kind).toBe('screen');
+              expect(sc.ofMove).toEqual(full.ofMove);
+              for (const x of sc.mean) expect(x >= 0 && x <= 1).toBe(true);
+              const v = e.reviewFast(s, n, 9 + i, { mode: 'race', played });
+              expect(v.ofMove).toEqual(full.ofMove);
+              seen[v.kind as keyof typeof seen]++;
+              if (v.complete) {
+                expect(v.kind === 'full' || v.kind === 'worse').toBe(true);
+                expect({ mean: v.mean, gap: v.gap, se: v.se, best: v.best }).toEqual({ mean: full.mean, gap: full.gap, se: full.se, best: full.best });
+                expect(v.count).toEqual(full.mean.map(() => n));
+              } else {
+                expect(v.kind).toBe('best');
+                const p = v.ofMove[played]!;
+                // Settled Best: every candidate still in is under 1.5 points better than the played one.
+                expect(p === v.best || 100 * v.gap[p]! < 1.5).toBe(true);
+                expect(v.count!.every((k) => k <= n)).toBe(true);
+                expect(v.count![p]).toBe(Math.max(...v.count!));
+              }
+              // The same call gives the same answer (fixed seeds), and a big skip skips.
+              expect(e.reviewFast(s, n, 9 + i, { mode: 'race', played })).toEqual(v);
+              expect(e.reviewFast(s, n, 9 + i, { mode: 'race', played, skip: 100 }).kind).toBe('net');
+              raced++;
+            }
+          }
+          s = move(s, chooseBotMove(s, rng));
+        }
+      }
+    }
+    expect(raced).toBe(24);
+    console.log(`race outcomes over ${raced} decisions: ${JSON.stringify(seen)}`);
+  });
 });
 
