@@ -1,0 +1,426 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="/core/fonts/fonts.css">
+<style>
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0b0f2a}
+  #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;transform-origin:0 0}
+  #wall{position:absolute;inset:-40px;background:
+      radial-gradient(1200px 700px at 30% 20%,#3b2a8f 0%,transparent 60%),
+      radial-gradient(1000px 800px at 80% 90%,#0f4d8a 0%,transparent 60%),
+      linear-gradient(160deg,#1a1450 0%,#0b1640 55%,#071026 100%)}
+  #dots{position:absolute;inset:-40px;opacity:.18;background-image:radial-gradient(#9fb6ff 1.2px,transparent 1.6px);background-size:28px 28px}
+  #blurwrap{position:absolute;inset:0}
+  #cam{position:absolute;left:0;top:0;width:900px;height:1600px;transform-origin:0 0}
+  #phone{position:absolute;left:-46px;top:-60px;width:992px;height:1720px;border-radius:118px;
+      background:linear-gradient(145deg,#2c2f45,#0d0f1a 60%,#23263a);box-shadow:0 60px 140px rgba(0,0,0,.6),0 0 0 3px #3a3e58 inset}
+  #screen{position:absolute;left:0;top:0;width:900px;height:1600px;border-radius:78px;overflow:hidden;background:#0d1a55}
+  #screen img{position:absolute;left:0;top:0;width:900px;height:1600px;will-change:transform}
+  #fx{position:absolute;left:0;top:0;width:1920px;height:1080px;image-rendering:pixelated}
+  #spot{position:absolute;inset:0;pointer-events:none}
+  #chap{position:absolute;left:56px;top:48px;padding:12px 26px 12px 18px;border-radius:999px;
+      background:rgba(255,255,255,.14);backdrop-filter:blur(16px);border:1.5px solid rgba(255,255,255,.28);
+      font:500 30px Fredoka;color:#fff;letter-spacing:.5px;display:flex;gap:14px;align-items:center}
+  #chap b{font:400 30px 'Lilita One';color:#ffd65a}
+  #cap{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);max-width:1500px;white-space:nowrap;
+      padding:18px 42px;border-radius:999px;background:rgba(10,14,40,.55);backdrop-filter:blur(18px);
+      border:1.5px solid rgba(255,255,255,.22);font:500 44px Fredoka;color:#fff;box-shadow:0 14px 40px rgba(0,0,0,.35)}
+  #cap em{font-style:normal;color:#ffd65a}
+  #endcard{position:absolute;left:0;right:0;bottom:40px;text-align:center;color:#fff}
+  #endcard .t{display:inline-block;padding:22px 54px 24px;border-radius:40px;background:rgba(10,14,40,.6);
+      backdrop-filter:blur(18px);border:1.5px solid rgba(255,255,255,.25)}
+  #endcard h1{margin:0;font:400 64px 'Lilita One';letter-spacing:1px;color:#ffd65a;text-shadow:0 4px 0 rgba(0,0,0,.35)}
+  #endcard p{margin:6px 0 0;font:500 34px Fredoka}
+  #endcard small{display:block;margin-top:6px;font:500 26px Fredoka;color:#bcd0ff}
+  #wipe{position:absolute;inset:0;image-rendering:pixelated}
+  /* 9:16 (?fmt=v): the same film for Reels, Shorts and stories */
+  .v #chap{left:50%;transform:translateX(-50%);top:44px}
+  .v #cap{width:max-content;max-width:940px;white-space:normal;text-align:center;bottom:64px;border-radius:44px;font-size:48px;line-height:1.2}
+  .v #endcard{bottom:70px}
+  .v #endcard h1{font-size:78px}
+  .v #endcard p{font-size:40px}
+  .v #endcard small{font-size:30px}
+</style></head>
+<body>
+<div id="stage">
+  <div id="wall"></div><div id="dots"></div>
+  <div id="blurwrap"><div id="cam"><div id="phone"></div><div id="screen"></div></div></div>
+  <canvas id="fx" width="1920" height="1080"></canvas>
+  <canvas id="spot" width="1920" height="1080"></canvas>
+  <div id="chap"></div>
+  <div id="cap"></div>
+  <div id="endcard"><div class="t"><h1>TAG TEAM LUDO</h1><p>Free on Android &amp; the web</p><small>jutebags.github.io/Tag-Team-Ludo</small></div></div>
+  <canvas id="wipe" width="1920" height="1080"></canvas>
+</div>
+<script type="module">
+import { clamp, lerp, seg, eio, eo, ei, back, hash } from '/core/lib.js';
+
+// ?fmt=v renders the 9:16 cut: a portrait frame, a bigger phone, the captions under it
+const V = new URLSearchParams(location.search).get('fmt') === 'v';
+const W = V ? 1080 : 1920, H = V ? 1920 : 1080, FPS = 30;
+if (V) {
+  document.documentElement.classList.add('v');
+  const st = document.getElementById('stage'); st.style.width = W + 'px'; st.style.height = H + 'px';
+  for (const id of ['fx', 'spot', 'wipe']) { const cv = document.getElementById(id); cv.width = W; cv.height = H; cv.style.width = W + 'px'; cv.style.height = H + 'px'; }
+}
+window.DUR = 37.5;
+const BEAT = 60 / 112;
+
+// ---------- screens (real app captures, 900×1600) ----------
+const SHOT = {
+  home: 'shots/03-home-continue.jpg', opts: 'shots/09-level-extreme.jpg', game: 'shots/14-crowded-markers.jpg',
+  loss: 'shots/18-result-loss-streak-ended.jpg', card: 'shots/32-review-2p-summary.jpg', keys: 'shots/33-review-2p-key-moves.jpg',
+  replay: 'shots/36-replay-review-mode-ghost.jpg', find: 'shots/39-find-the-better-move.jpg', reveal: 'shots/40-find-the-better-move-reveal.jpg',
+  win: 'shots/26-result-streak-unlocks-skin.jpg',
+};
+// t = when the new screen has fully arrived; kind = how it comes in (an app slide, or a chapter's pixel wipe)
+const SCREENS = [
+  [0, 'home', 'cut'], [4.3, 'opts', 'slide'], [7.0, 'game', 'slide'], [9.6, 'loss', 'wipe'], [11.6, 'card', 'slide'],
+  [14.6, 'keys', 'slide'], [19.0, 'replay', 'whip'], [23.4, 'find', 'slide'], [25.0, 'reveal', 'cut'], [27.0, 'win', 'wipe'], [31.0, 'home', 'wipe'],
+];
+const SLIDE = 0.34;
+const WIPES = SCREENS.filter((s) => s[2] === 'wipe').map((s) => s[0]);
+const CHAPTERS = [[0, '01', 'Play'], [9.6, '02', 'Review'], [27.0, '03', 'Win']];
+
+// ---------- camera: z over the full phone, focus point in screen pixels ----------
+const CAM = [
+  [0, 1.55, 450, 560], [2.2, 1.55, 450, 578], [3.2, 1.0, 450, 800], [5.0, 1.0, 450, 800], [6.0, 1.45, 540, 930],
+  [7.0, 1.45, 540, 930], [7.35, 1.25, 450, 1010], [9.5, 1.25, 450, 1035], [9.6, 1.0, 450, 800], [11.9, 1.0, 450, 800],
+  [12.8, 1.5, 520, 470], [14.6, 1.5, 520, 470], [15.0, 1.2, 450, 420], [16.55, 1.2, 450, 430], [17.1, 1.5, 420, 470],
+  [19.0, 1.5, 420, 470], [19.35, 1.6, 420, 640], [22.7, 1.6, 400, 640], [23.3, 1.15, 450, 980], [25.0, 1.2, 450, 900],
+  [26.9, 1.2, 450, 920], [27.0, 1.0, 450, 800], [27.6, 1.0, 450, 800], [28.2, 1.42, 450, 1080], [30.9, 1.42, 450, 1070],
+  [31.0, 1.0, 450, 800], [31.5, 1.0, 450, 800], [32.4, 1.18, 450, 520], [35.5, 1.22, 450, 520], [37.5, 1.24, 450, 520],
+];
+const WHIPS = [[19.0, 19.35]];
+function camAt(t) {
+  let i = 0;
+  while (i < CAM.length - 1 && CAM[i + 1][0] <= t) i++;
+  const a = CAM[i], b = CAM[Math.min(i + 1, CAM.length - 1)];
+  const k = b[0] > a[0] ? eio(seg(t, a[0], b[0])) : 0;
+  const z = lerp(a[1], b[1], k);
+  // portrait: the phone already fills the frame, so push-ins go half as far (and stay near 1:1 on the captures)
+  return { z: V ? 1 + (z - 1) * .55 : z, fx: lerp(a[2], b[2], k), fy: lerp(a[3], b[3], k) };
+}
+const P = V ? 0.9 : 0.56;        // phone screen px → frame px at z = 1
+const CX = V ? 540 : 960, CY = V ? 900 : 498;   // where the focus point sits in the frame
+function toFrame(c, x, y) { return [CX + (x - c.fx) * P * c.z, CY + (y - c.fy) * P * c.z]; }
+
+// ---------- the mascot: "Tag", a magenta pixel pawn ----------
+const SPRITE = {
+  stand: [
+    '....####....', '...######...', '..########..', '..########..', '..########..', '...######...', '....####....',
+    '...######...', '..########..', '.##########.', '.##########.', '############', '############', '.##########.'],
+  crouch: [
+    '............', '............', '....####....', '...######...', '..########..', '..########..', '..########..',
+    '...######...', '..########..', '.##########.', '############', '############', '############', '.##########.'],
+  stretch: [
+    '....####....', '...######...', '..########..', '..########..', '..########..', '...######...', '....####....',
+    '....####....', '...######...', '..########..', '..########..', '.##########.', '.##########.', '..########..'],
+  cheer: [
+    '#...####...#', '#..######..#', '.#########..', '..########..', '..########..', '...######...', '....####....',
+    '...######...', '..########..', '.##########.', '.##########.', '############', '############', '.##########.'],
+  slump: [
+    '............', '............', '....####....', '...######...', '..########..', '..########..', '#.########.#',
+    '##.######.##', '..########..', '.##########.', '.##########.', '############', '############', '.##########.'],
+};
+const EYES = { stand: 3, crouch: 4, stretch: 3, cheer: 3, slump: 5 };
+const MAG = '#c43cff', MAG_D = '#7d1fb0', MAG_L = '#e7a2ff';
+
+// actions, in screen pixels; each is [t0, t1, type, ...]
+const ACT = [
+  [0.6, 1.05, 'birth', [450, 560], [450, 392]],
+  [1.05, 3.4, 'stand', [450, 392], 'down'],
+  [3.4, 3.85, 'hop', [450, 392], [300, 1042], 170],
+  [3.85, 4.15, 'stand', [300, 1042], 'down'],
+  [4.15, 4.3, 'poof', [300, 1042]],
+  [4.95, 5.3, 'drop', [667, 946]],
+  [5.3, 7.0, 'stand', [667, 946], 'left'],
+  [7.4, 7.75, 'drop', [237, 1313]],
+  [7.75, 8.1, 'stand', [237, 1313], 'up'],
+  [8.1, 8.45, 'hop', [237, 1313], [437, 1313], 90],
+  [8.45, 8.7, 'stand', [437, 1313], 'up'],
+  [8.7, 9.05, 'hop', [437, 1313], [650, 1313], 90],
+  [9.05, 9.6, 'stand', [650, 1313], 'up'],
+  [10.0, 10.35, 'drop', [450, 418]],
+  [10.35, 11.6, 'slump', [450, 418]],
+  [12.0, 12.35, 'drop', [815, 381]],
+  [12.35, 14.6, 'stand', [815, 381], 'left'],
+  [15.0, 15.3, 'drop', [190, 318]],
+  [15.3, 16.1, 'run', [190, 318], [760, 318]],
+  [16.1, 16.45, 'hop', [760, 318], [790, 463], 80],
+  [16.45, 16.893, 'stand', [790, 463], 'down'],
+  [16.893, 17.143, 'stomp', [790, 463]],
+  [17.143, 19.0, 'stand', [790, 463], 'left', 'excl'],
+  [19.6, 19.95, 'drop', [560, 598]],
+  [19.95, 21.0, 'run', [560, 598], [392, 598]],
+  [21.0, 23.1, 'point', [392, 598]],
+  [23.6, 23.95, 'drop', [790, 1031]],
+  [23.95, 25.0, 'stand', [790, 1031], 'left'],
+  [25.0, 26.9, 'cheer', [790, 1031]],
+  [27.6, 27.95, 'drop', [640, 816]],
+  [27.95, 28.4, 'stand', [640, 816], 'down'],
+  [28.4, 28.85, 'hop', [640, 816], [790, 816], 70],
+  [28.85, 29.4, 'stand', [790, 816], 'down'],
+  [29.4, 31.0, 'cheer', [790, 816]],
+  [31.643, 32.143, 'drop', [450, 392]],
+  [32.143, 34.5, 'cheer', [450, 392]],
+  [34.5, 37.5, 'stand', [450, 392], 'happy'],
+];
+const PX = 7;   // sprite pixel in screen pixels
+
+function mascotAt(t) {
+  for (const a of ACT) {
+    if (t < a[0] || t >= a[1]) continue;
+    const [t0, t1, type] = a, u = seg(t, t0, t1);
+    const bob = Math.sin(t * Math.PI * 2 / BEAT) > .6 ? 'crouch' : null;   // breathes on the beat
+    switch (type) {
+      case 'stand': return { x: a[3][0], y: a[3][1], pose: (t - t0) < .12 ? 'crouch' : 'stand', look: a[4], prop: a[5], breathe: bob };
+      case 'slump': return { x: a[3][0], y: a[3][1], pose: 'slump', look: 'down' };
+      case 'point': return { x: a[3][0], y: a[3][1], pose: 'stand', look: 'left', prop: (t - t0) > .15 ? 'excl' : null, breathe: bob };
+      case 'cheer': { const hop = Math.abs(Math.sin((t - t0) * Math.PI / BEAT)) * 22; return { x: a[3][0], y: a[3][1] - hop, pose: hop > 6 ? 'cheer' : 'crouch', look: 'happy', prop: 'spark' }; }
+      case 'hop': {
+        const [x0, y0] = a[3], [x1, y1] = a[4], h = a[5];
+        if (u < .18) return { x: x0, y: y0, pose: 'crouch', look: 'up' };
+        const v = seg(u, .18, 1);
+        return { x: lerp(x0, x1, v), y: lerp(y0, y1, v) - h * 4 * v * (1 - v), pose: v < .55 ? 'stretch' : 'stand', look: x1 < x0 ? 'left' : 'right', flip: x1 < x0 };
+      }
+      case 'run': {
+        const [x0, y0] = a[3], [x1, y1] = a[4];
+        const x = lerp(x0, x1, u), step = Math.floor((t - t0) * 10) % 2;
+        return { x, y: lerp(y0, y1, u) - (step ? 6 : 0), pose: step ? 'stretch' : 'stand', look: x1 < x0 ? 'left' : 'right', flip: x1 < x0, dust: true };
+      }
+      case 'drop': {
+        const [x1, y1] = a[3];
+        if (u < .82) return { x: x1, y: lerp(y1 - 520, y1, ei(u / .82)), pose: 'stretch', look: 'down' };
+        return { x: x1, y: y1, pose: 'crouch', look: 'down', landed: true };
+      }
+      case 'birth': {
+        const [x0, y0] = a[3], [x1, y1] = a[4];
+        return { x: lerp(x0, x1, eo(u)), y: lerp(y0, y1, eo(u)) - 60 * Math.sin(u * Math.PI), pose: u < .7 ? 'stretch' : 'crouch', look: 'up', burst: u, scale: clamp(u * 3) };
+      }
+      case 'stomp': {
+        const x = a[3][0], y = a[3][1];
+        if (u < .5) return { x, y: y - 60 * eo(u / .5), pose: 'stretch', look: 'down' };
+        return { x, y: y - 60 * (1 - ei((u - .5) / .5)), pose: u > .92 ? 'crouch' : 'stretch', look: 'wide' };
+      }
+      case 'poof': return { x: a[3][0], y: a[3][1], pose: 'crouch', look: 'happy', poof: u, scale: 1 - u };
+    }
+  }
+  return null;
+}
+
+const fx = document.getElementById('fx').getContext('2d');
+function drawSprite(ctx, m, c) {
+  const pose = m.breathe || m.pose, rows = SPRITE[pose];
+  const s = Math.max(2, Math.round(PX * P * c.z * (m.scale ?? 1)));
+  const [fx0, fy0] = toFrame(c, m.x, m.y);
+  const w = 12 * s, h = rows.length * s;
+  const ox = Math.round(fx0 - w / 2), oy = Math.round(fy0 - h);
+  for (let r = 0; r < rows.length; r++)
+    for (let q = 0; q < 12; q++) {
+      const ch = rows[r][m.flip ? 11 - q : q];
+      if (ch !== '#') continue;
+      const edge = r === 0 || rows[r - 1][m.flip ? 11 - q : q] !== '#';
+      const right = q === 11 || rows[r][m.flip ? 10 - q : q + 1] !== '#';
+      ctx.fillStyle = edge ? MAG_L : right ? MAG_D : MAG;
+      ctx.fillRect(ox + q * s, oy + r * s, s, s);
+    }
+  // eyes: two white 2×2 blocks with a pupil that looks where the acting says
+  const er = EYES[pose];
+  const look = m.look || 'neutral';
+  const d = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1], wide: [0, 0], happy: [0, 0], neutral: [0, 0] }[look] || [0, 0];
+  for (const ex of [4, 7]) {
+    const bx = ox + (m.flip ? 11 - ex - 1 : ex) * s, by = oy + er * s;
+    ctx.fillStyle = '#fff';
+    if (look === 'happy') { ctx.fillRect(bx, by + s, 2 * s, s * .6); continue; }
+    ctx.fillRect(bx, by, 2 * s, 2 * s);
+    ctx.fillStyle = '#1b1035';
+    const pw = look === 'wide' ? s * .6 : s;
+    ctx.fillRect(bx + (d[0] + 1) * s / 2 + (s - pw) / 2, by + (d[1] + 1) * s / 2 + (s - pw) / 2, pw, pw);
+  }
+  // props on the same pixel grid
+  if (m.prop === 'excl') { ctx.fillStyle = '#ffd65a'; ctx.fillRect(ox + 5 * s, oy - 5 * s, 2 * s, 3 * s); ctx.fillRect(ox + 5 * s, oy - s * 1.5, 2 * s, s); }
+  if (m.prop === 'spark') {
+    const k = Math.floor(performanceTime * 6) % 2;
+    ctx.fillStyle = '#ffd65a';
+    for (const [sx, sy] of k ? [[-3, 1], [14, 3], [13, -2]] : [[-2, -2], [14, 0], [-3, 4]]) ctx.fillRect(ox + sx * s, oy + sy * s, s, s);
+  }
+  if (m.landed || m.dust) { ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fillRect(ox - s, oy + h - s, s, s); ctx.fillRect(ox + w, oy + h - s, s, s); }
+  if (m.burst !== undefined) {
+    const n = 14;
+    for (let i = 0; i < n; i++) {
+      const ang = i / n * Math.PI * 2, r = m.burst * 120 * P * c.z;
+      ctx.fillStyle = i % 2 ? MAG_L : '#ffd65a';
+      ctx.globalAlpha = 1 - m.burst;
+      ctx.fillRect(Math.round(fx0 + Math.cos(ang) * r), Math.round(fy0 - 40 * P * c.z + Math.sin(ang) * r), s, s);
+    }
+    ctx.globalAlpha = 1;
+  }
+  if (m.poof !== undefined) {
+    ctx.fillStyle = MAG_L; ctx.globalAlpha = 1 - m.poof;
+    for (let i = 0; i < 8; i++) { const ang = i / 8 * Math.PI * 2, r = m.poof * 70 * P * c.z; ctx.fillRect(Math.round(fx0 + Math.cos(ang) * r), Math.round(fy0 - 30 + Math.sin(ang) * r), s, s); }
+    ctx.globalAlpha = 1;
+  }
+}
+let performanceTime = 0;
+
+// ---------- the user's touches ----------
+const TOUCH = [[3.95, 290, 1100], [6.6, 667, 982], [23.0, 360, 1152], [24.6, 280, 630], [26.4, 632, 1152]];
+function drawTouches(ctx, t, c) {
+  for (const [tt, x, y] of TOUCH) {
+    const d = t - tt;
+    if (d < -.35 || d > .45) continue;
+    const [px, py] = toFrame(c, x, y);
+    const press = d < 0 ? 1 - seg(d, -.35, 0) * .25 : .75 + seg(d, 0, .45) * .25;
+    const a = d < 0 ? seg(d, -.35, -.1) : 1 - seg(d, .1, .45);
+    ctx.globalAlpha = a * .9;
+    ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(px, py, 34 * press, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (d > 0) { ctx.globalAlpha = (1 - seg(d, 0, .45)) * .8; ctx.beginPath(); ctx.arc(px, py, 34 + 70 * eo(seg(d, 0, .45)), 0, Math.PI * 2); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---------- spotlight freezes ----------
+const SPOTS = [[17.143, 19.0, 450, 500, 300], [25.1, 26.9, 450, 1080, 330], [29.4, 31.0, 420, 1045, 280]];
+const spot = document.getElementById('spot').getContext('2d');
+function drawSpot(t, c) {
+  spot.clearRect(0, 0, W, H);
+  for (const [a, b, x, y, r] of SPOTS) {
+    const k = Math.min(seg(t, a, a + .25), 1 - seg(t, b - .3, b));
+    if (k <= 0) continue;
+    const [px, py] = toFrame(c, x, y), rr = r * P * c.z;
+    const g = spot.createRadialGradient(px, py, rr * .6, px, py, rr * 2.6);
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(3,5,20,${.62 * k})`);
+    spot.fillStyle = g; spot.fillRect(0, 0, W, H);
+  }
+}
+
+// ---------- the chapter pixel wipe ----------
+const wipe = document.getElementById('wipe').getContext('2d');
+function drawWipe(t) {
+  wipe.clearRect(0, 0, W, H);
+  for (const tw of WIPES) {
+    const d = t - tw;
+    if (d < -.38 || d > .42) continue;
+    const S = 60, cols = W / S + 1, rows = Math.ceil(H / S) + 1;
+    for (let r = 0; r < rows; r++)
+      for (let q = 0; q < cols; q++) {
+        const order = (q + r * .6) / (cols + rows * .6) + hash(q * 31 + r * 7) * .12;
+        const cover = d < 0 ? seg(d, -.38 + order * .3, -.08 + order * .3) : 1 - seg(d, order * .3, .12 + order * .3);
+        if (cover <= 0) continue;
+        const sz = Math.round(S * cover);
+        wipe.fillStyle = (q + r) % 3 ? MAG : '#7d1fb0';
+        wipe.fillRect(q * S + (S - sz) / 2, r * S + (S - sz) / 2, sz, sz);
+      }
+  }
+}
+
+// ---------- captions and the chapter pill ----------
+const CAPS = [
+  [0.7, 4.25, 'Ludo with a <em>tag-team</em> twist.'],
+  [4.6, 9.4, 'Four bot levels, up to <em>Extreme</em>.'],
+  [9.9, 14.6, 'Lost? Your game gets a <em>review</em>.'],
+  [14.8, 19.0, 'It finds the move that <em>cost you the game</em>.'],
+  [19.25, 23.05, 'Then shows the <em>best move</em>.'],
+  [23.3, 26.9, 'Could you find it? <em>Try it.</em>'],
+  [27.25, 31.4, 'Win streaks unlock skins you <em>can’t buy</em>.'],
+];
+const END = [31.4, 37.5];
+const capEl = document.getElementById('cap'), chapEl = document.getElementById('chap'), endEl = document.getElementById('endcard');
+function pill(el, t, a, b) {
+  const k = Math.min(seg(t, a, a + .22), 1 - seg(t, b - .22, b));
+  el.style.opacity = k;
+  el.style.transform = `translateX(-50%) translateY(${(1 - eo(k)) * 24}px) scale(${.96 + .04 * k})`;
+}
+const plain = (s) => s.replace(/<[^>]+>/g, '');
+
+// ---------- the screen layers ----------
+const scr = document.getElementById('screen');
+const IMG = {};
+for (const [k, src] of Object.entries(SHOT)) { const im = new Image(); im.src = src; im.style.display = 'none'; scr.appendChild(im); IMG[k] = im; }
+function screensAt(t) {
+  let i = 0;
+  while (i < SCREENS.length - 1 && SCREENS[i + 1][0] - (SCREENS[i + 1][2] === 'slide' || SCREENS[i + 1][2] === 'whip' ? SLIDE : 0) <= t) i++;
+  const cur = SCREENS[i], next = SCREENS[i + 1];
+  if (next && (next[2] === 'slide' || next[2] === 'whip') && t >= next[0] - SLIDE && t < next[0]) {
+    const u = eio(seg(t, next[0] - SLIDE, next[0]));
+    return [[cur[1], -u * 0.3 * 900, 1 - u * .25], [next[1], (1 - u) * 900, 1]];
+  }
+  if (cur[2] === 'wipe' || cur[2] === 'cut' || t >= cur[0]) return [[cur[1], 0, 1]];
+  return [[cur[1], 0, 1]];
+}
+
+const camEl = document.getElementById('cam'), blurEl = document.getElementById('blurwrap');
+const wallEl = document.getElementById('wall'), dotsEl = document.getElementById('dots');
+
+window.render = (t) => {
+  performanceTime = t;
+  const c = camAt(t);
+  // camera: the screen's focus point to (CX, CY)
+  const s = P * c.z;
+  camEl.style.transform = `translate(${CX - c.fx * s}px, ${CY - c.fy * s}px) scale(${s})`;
+  wallEl.style.transform = `translate(${-(c.fx - 450) * .03}px, ${-(c.fy - 800) * .03}px) scale(${1 + (c.z - 1) * .05})`;
+  dotsEl.style.transform = `translate(${-(c.fx - 450) * .06}px, ${-(c.fy - 800) * .06}px)`;
+  // motion blur only on whips, on the untransformed wrapper
+  let blur = 0;
+  for (const [a, b] of WHIPS) if (t >= a && t <= b) blur = Math.sin(seg(t, a, b) * Math.PI) * 14;
+  blurEl.style.filter = blur > .3 ? `blur(${blur.toFixed(1)}px)` : 'none';
+  // screens
+  for (const im of Object.values(IMG)) im.style.display = 'none';
+  for (const [k, x, b] of screensAt(t)) {
+    const im = IMG[k];
+    im.style.display = 'block';
+    im.style.transform = `translateX(${x}px)`;
+    im.style.filter = b < 1 ? `brightness(${b})` : 'none';
+  }
+  // mascot and touches
+  fx.clearRect(0, 0, W, H);
+  const m = mascotAt(t);
+  if (m) drawSprite(fx, m, c);
+  drawTouches(fx, t, c);
+  drawSpot(t, c);
+  drawWipe(t);
+  // captions
+  const cap = CAPS.find(([a, b]) => t >= a && t < b);
+  if (cap) { if (capEl.dataset.k !== cap[2]) { capEl.innerHTML = cap[2]; capEl.dataset.k = cap[2]; } pill(capEl, t, cap[0], cap[1]); }
+  else capEl.style.opacity = 0;
+  const ch = [...CHAPTERS].reverse().find(([a]) => t >= a);
+  chapEl.innerHTML = `<b>${ch[1]}</b>${ch[2]}`;
+  chapEl.style.opacity = t < 31.1 ? Math.min(1, seg(t, .3, .7)) : 1 - seg(t, 31.1, 31.4);
+  const ek = Math.min(seg(t, END[0], END[0] + .35), 1);
+  endEl.style.opacity = ek;
+  endEl.style.transform = `translateY(${(1 - eo(ek)) * 30}px)`;
+};
+
+window.TEXTS = (t) => {
+  const out = [];
+  const cap = CAPS.find(([a, b]) => t >= a + .22 && t < b - .22);
+  if (cap) out.push({ id: 'cap' + CAPS.indexOf(cap), text: plain(cap[2]), ...(V ? { x0: 70, y0: 1700, x1: 1010, y1: 1856 } : { x0: 200, y0: 950, x1: 1720, y1: 1040 }) });
+  if (t >= END[0] + .35) out.push({ id: 'end', text: 'TAG TEAM LUDO Free on Android & the web jutebags.github.io/Tag-Team-Ludo', ...(V ? { x0: 120, y0: 1560, x1: 960, y1: 1850 } : { x0: 560, y0: 820, x1: 1360, y1: 1040 }) });
+  return out;
+};
+
+// ---------- sound and cue events (read by score.py) ----------
+const EV = [];
+for (const a of ACT) {
+  const [t0, t1, type] = a;
+  if (type === 'birth') EV.push({ t: t0, type: 'birth' }, { t: t1, type: 'land' });
+  if (type === 'hop') { EV.push({ t: t0 + (t1 - t0) * .18, type: 'jump' }, { t: t1, type: 'land' }); }
+  if (type === 'drop') EV.push({ t: t0 + (t1 - t0) * .82, type: 'land' });
+  if (type === 'run') for (let tt = t0; tt < t1; tt += .1) EV.push({ t: tt, type: 'step' });
+  if (type === 'stomp') EV.push({ t: t1, type: 'stomp' });
+  if (type === 'poof') EV.push({ t: t0, type: 'poof' });
+}
+for (const [tt] of TOUCH) EV.push({ t: tt, type: 'touch' });
+for (const s of SCREENS) { if (s[2] === 'slide') EV.push({ t: s[0] - SLIDE, type: 'swish' }); if (s[2] === 'whip') EV.push({ t: s[0] - SLIDE, type: 'whoosh' }); if (s[2] === 'wipe' && s[0] > 0) EV.push({ t: s[0] - .3, type: 'sweep' }); }
+EV.push({ t: 21.2, type: 'ding' }, { t: 25.0, type: 'ding' }, { t: 29.4, type: 'coin' }, { t: 32.143, type: 'coin' });
+for (const [a] of CAPS) EV.push({ t: a, type: 'cap' });
+EV.sort((a, b) => a.t - b.t);
+window.EV = EV;
+
+// ---------- ready once fonts and the captures are in ----------
+const fit = () => { const k = Math.min(innerWidth / W, innerHeight / H); document.getElementById('stage').style.transform = `scale(${k})`; };
+addEventListener('resize', fit); fit();
+Promise.all([document.fonts.ready, ...Object.values(IMG).map((im) => im.decode().catch(() => {}))]).then(() => { window.render(0); window.READY = true; });
+</script>
+</body></html>
