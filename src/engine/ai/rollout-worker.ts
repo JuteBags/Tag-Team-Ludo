@@ -29,9 +29,15 @@ self.onmessage = async (e: MessageEvent<{ id: number; kind?: 'review' | 'luck'; 
   const { id, kind, state, nmax, n, seed, ask } = e.data;
   try {
     if (kind === 'luck') {
-      luckNet ??= new Net(decodeNet(await loadNet()));
+      if (!luckNet) {
+        luckNet = new Net(decodeNet(await loadNet()));
+        // Exact memo (#125): half the colours recur within a roll's six faces. Per game: a luck call is one game.
+        luckNet.remember();
+      }
+      luckNet.forget();
       const r = replay(e.data.rec);
       self.postMessage({ id, luck: rollLuck(e.data.rec, r.states, luckNet), chances: netChances(e.data.rec, r.states, luckNet) });
+      luckNet.forget();
       return;
     }
     if (kind === 'review') {
