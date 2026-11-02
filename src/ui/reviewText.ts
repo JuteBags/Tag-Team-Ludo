@@ -1,6 +1,9 @@
 // The game review's words, symbols and graph (#65), pure so they're tested; reviewScreen.ts draws them.
 import { FINISHED, type GameState, type Move } from '../engine';
 import type { Label, MoveReview, RollLuck } from '../engine/ai/review';
+import { accuracyText, luckBand } from './reviewWords';
+// Moved to reviewWords.ts (#98) so the Stats sheet doesn't load this file at startup; still exported from here.
+export { accuracyText, luckBand };
 
 /** Each label's symbol (so colour isn't the only cue), name and colour. */
 export const LABEL_LOOK: Record<Label, { sym: string; name: string; color: string }> = {
@@ -124,18 +127,6 @@ export function reviewedText(when: number | undefined, now = Date.now()): string
   return `Reviewed ${d.getDate()} ${month}${d.getFullYear() === new Date(now).getFullYear() ? '' : ` ${d.getFullYear()}`}`;
 }
 
-/** A luck percentile in words, as agreed for #96: "unlucky" under 20, "a bit unlucky" to 40, "average" to 60, "a bit lucky" to 80, then "lucky". */
-export function luckBand(pct: number): { word: string; tone: 'lucky' | 'unlucky' | 'average' } {
-  if (!Number.isFinite(pct)) return { word: 'average', tone: 'average' };
-  if (pct < 20) return { word: 'unlucky', tone: 'unlucky' };
-  if (pct < 40) return { word: 'a bit unlucky', tone: 'unlucky' };
-  if (pct <= 60) return { word: 'average', tone: 'average' };
-  if (pct <= 80) return { word: 'a bit lucky', tone: 'lucky' };
-  return { word: 'lucky', tone: 'lucky' };
-}
-
-/** Accuracy (0-1) as shown: "87%", or "–" when it can't be scored (no meaningful decision, see accuracyOf). */
-export const accuracyText = (acc: number) => (Number.isFinite(acc) ? `${Math.round(100 * acc)}%` : '–');
 
 /** Under the card's "–": why a game has no accuracy (no decision with much at stake). */
 export const FEW_BIG_DECISIONS = 'Few big decisions this game: accuracy needs a few moves where much was at stake.';

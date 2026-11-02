@@ -4,13 +4,12 @@ import { FINISHED, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, p
 import { chooseBotMoveAsync } from '../engine/ai/levels';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
-import { playCutscene } from './palace';
 import { dieMarkup, rollDie } from './dice';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
 import type { GameConfig } from './setup';
 import { keepAwake } from './native';
-import { drawCard, shareCard } from './shareCard';
+import { screens } from './lazy';
 import { clearGame, giveUpNote, givingUpLoses, layoutOf, levelOf, loadStats, recordGame, saveGame, savePastGame, type SavedGame } from './store';
 import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targets';
 import { award, goldFor, newAchievements, nextStreak, total, type GameFacts } from './rewards';
@@ -342,7 +341,10 @@ export class GameScreen {
     // welcomed into the palace; a bot's just gets the banner.
     if (!m.captures.length && m.finishes) {
       if (human) {
-        await playCutscene(this.el, m.color, player.tokens, this.speed * (this.welcomed.has(m.color) ? 2.2 : 1));
+        // The cutscene loads on first use (#98); if it can't, the token gets the banner instead.
+        const cutscene = await screens.palace().catch(() => null);
+        if (cutscene) await cutscene.playCutscene(this.el, m.color, player.tokens, this.speed * (this.welcomed.has(m.color) ? 2.2 : 1));
+        else this.toast('HOME!', m.color, 'home');
         this.welcomed.add(m.color);
       }
       else this.toast('HOME!', m.color, 'home');
@@ -786,8 +788,9 @@ export class GameScreen {
       if (act === 'share' && !btn!.disabled) {
         btn!.disabled = true;
         const text = pvp ? `${winner} won our game of Tag Team Ludo!` : won ? 'I won at Tag Team Ludo!' : `I came ${PLACES[place]!.toLowerCase()} at Tag Team Ludo!`;
-        void drawCard(title, `${pvp ? 'WITH FRIENDS' : 'VS COMPUTER'} · ${order.length} PLAYERS`, card)
-          .then((png) => shareCard(png, text))
+        void screens
+          .shareCard()
+          .then(({ drawCard, shareCard }) => drawCard(title, `${pvp ? 'WITH FRIENDS' : 'VS COMPUTER'} · ${order.length} PLAYERS`, card).then((png) => shareCard(png, text)))
           .catch(() => undefined)
           .finally(() => (btn!.disabled = false));
       }

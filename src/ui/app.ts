@@ -5,17 +5,14 @@ import { homeScreen } from './homeScreen';
 import { handleBack } from './native';
 import type { GameConfig, Mode } from './setup';
 import { setupScreen } from './setupScreen';
-import { storeScreen } from './storeScreen';
 import { giveUpSaved, loadGame, loadReview, type SavedGame } from './store';
 import { applyLook } from './themes';
 import { offerUpdate } from './update';
 import { offerCheckIn } from './checkin';
 import { decodeRecord, type GameRecord } from '../engine';
 import { linkPayload } from './replay';
-import { safeReplayScreen } from './replayScreen';
-import { reviewScreen } from './reviewScreen';
 import { bootReviews, setGame } from './reviewQueue';
-import { benchScreen } from './bench';
+import { prefetchAtIdle, screens, show } from './lazy';
 
 const W = 390;
 const H = 844;
@@ -40,7 +37,7 @@ export function mountApp(root: HTMLElement) {
     setGame('none');
     const saved = await loadGame();
     if (game) return; // a game started while the save was loading
-    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => stage.replaceChildren(storeScreen(() => void home())), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()));
+    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()));
     stage.replaceChildren(screen);
     // On the home screen only, never during a game: a newer version on the site, then today's check-in.
     void offerUpdate(screen).then(() => offerCheckIn(screen));
@@ -58,13 +55,12 @@ export function mountApp(root: HTMLElement) {
     keep ? await loadReview(rec) : undefined;
   const watch = async (rec: GameRecord, back: () => void, keep = true, startAt?: number, startCaption?: string, pov?: number) => {
     const stored = await storedReview(rec, keep);
-    stage.replaceChildren(safeReplayScreen(rec, back, { startAt, startCaption, pov, keep, review: stored, onReview: (p) => void review(rec, back, keep, p) }));
+    await show(stage, screens.replay, (m) => m.safeReplayScreen(rec, back, { startAt, startCaption, pov, keep, review: stored, onReview: (p) => void review(rec, back, keep, p) }), back);
   };
   /** The game review of `rec` (it runs in the review queue); a tapped move opens the replay there, from the same side. */
   const review = async (rec: GameRecord, back: () => void, keep = true, pov?: number) => {
     const stored = await storedReview(rec, keep);
-    const screen = reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p), keep, at, caption, p), keep, pov);
-    stage.replaceChildren(screen);
+    await show(stage, screens.review, (m) => m.reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p), keep, at, caption, p), keep, pov), back);
   };
   // Set while a game starts, so a double tap on Start or Play again can't open two games.
   let starting = false;
@@ -123,12 +119,14 @@ export function mountApp(root: HTMLElement) {
       void home();
     };
     // The hidden Extreme speed test (#62), for timing a real phone.
-    if (bench) stage.replaceChildren(benchScreen(leave));
-    else void decodeRecord(payload!).then((rec) => (rec ? void watch(rec, leave, false) : stage.replaceChildren(safeReplayScreen(null, leave))));
+    if (bench) void show(stage, screens.bench, (m) => m.benchScreen(leave), leave);
+    else void decodeRecord(payload!).then((rec) => (rec ? void watch(rec, leave, false) : void show(stage, screens.replay, (m) => m.safeReplayScreen(null, leave), leave)));
     return true;
   };
   addEventListener('hashchange', () => void openLink());
   if (!openLink()) void home();
   // The newest unreviewed past games are reviewed while the app is open (#96).
   void bootReviews();
+  // The lazily loaded screens, fetched at idle so a web session that started online also works offline (#98).
+  prefetchAtIdle();
 }
