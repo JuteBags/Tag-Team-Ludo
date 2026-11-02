@@ -94,9 +94,10 @@ export function runReview(
     }
     const have = new Set([...moves.map((m) => m.at), ...skipped]);
     // Only the decisions not reviewed yet; the reviewer is skipped (and the call aborted) once stopped.
-    const skip: Reviewer = async (s, n, seed) => {
+    // It forwards every argument the Reviewer type has (#101 adds an optional 4th).
+    const skip: Reviewer = async (...args: Parameters<Reviewer>) => {
       if (stopped) throw new Error('stopped');
-      return reviewer(s, n, seed);
+      return reviewer(...args);
     };
     t0 = Date.now();
     const rest = states.map((s, i) => (have.has(i) ? { ...s, moves: s.moves.slice(0, 1) } : s));
