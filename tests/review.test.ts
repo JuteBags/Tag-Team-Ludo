@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { HARD_RULES } from '../src/engine/ai/hard-rules';
 import { LinearRules } from '../src/engine/ai/linear';
-import { faceChances, labelOf, PLAYOUTS, reviewMoves, rollLuck, summary, type DecisionValues, type Label } from '../src/engine/ai/review';
+import { faceChances, labelOf, PLAYOUTS, reviewMoves, rollLuck, SKIP_BELOW, summary, type DecisionValues, type Label, type Reviewer, type ReviewAsk } from '../src/engine/ai/review';
 
 const SEATS: Seat[] = [
   { color: 'blue', owner: 0, bot: false },
@@ -87,6 +87,84 @@ describe('move review', () => {
       });
     expect(seeds[0]).toEqual(seeds[1]);
     expect(new Set(seeds[0]).size).toBe(seeds[0]!.length);
+  });
+});
+
+describe('fast review (#101)', () => {
+  // A fake fast engine: the race outcome per decision comes from `kind(at)`; the screen's spread from `spread(at)`.
+  function fakeFast(states: GameState[], kind: (at: number) => 'net' | 'best' | 'worse', spread: (at: number) => number = () => 0.1) {
+    const asks: { at: number; n: number; ask?: ReviewAsk }[] = [];
+    const reviewer: Reviewer = async (s, n, _seed, ask) => {
+      const at = states.indexOf(s);
+      asks.push({ at, n, ask });
+      const k = s.moves.length;
+      const ofMove = s.moves.map((_, i) => i);
+      if (ask?.mode === 'screen') return { ofMove, mean: ofMove.map((i) => (i ? 0.5 - spread(at) : 0.5)), gap: ofMove.map((i) => (i ? spread(at) : 0)), se: ofMove.map(() => 0), best: 0, kind: 'screen' };
+      const kd = ask ? kind(at) : 'full';
+      if (kd === 'net') return { ofMove, mean: ofMove.map(() => 0.5), gap: ofMove.map(() => 0.004), se: ofMove.map(() => 0), best: 0, kind: 'net' };
+      // Move 0 is best (the played one when the race settled it as Best); the others 6.5 points worse (near
+      // the 7-point edge, so a full review tops them up).
+      const top = kd === 'best' && ask?.mode === 'race' ? ask.played : 0;
+      return { ofMove, mean: ofMove.map((i) => (i !== top ? 0.435 : 0.5)), gap: ofMove.map((i) => (i !== top ? 0.065 : 0)), se: new Array(k).fill(0.01), best: top, kind: kd, complete: kd !== 'best' };
+    };
+    return { reviewer, asks };
+  }
+
+  it('takes a settled Best from the race and a net skip with no playouts; anything else is the full review with its top-ups', async () => {
+    const rec = game(6);
+    const { states } = replay(rec) as { states: GameState[] };
+    const kinds = ['net', 'best', 'worse'] as const;
+    const { reviewer, asks } = fakeFast(states, (at) => kinds[at % 3]!);
+    const out = await reviewMoves(rec, states, [0], reviewer);
+    expect(out.length).toBeGreaterThan(5);
+    for (const m of out) {
+      const kd = kinds[m.at % 3]!;
+      const mine = asks.filter((a) => a.at === m.at);
+      expect(mine[0]!.ask).toEqual({ mode: 'race', played: m.played, skip: SKIP_BELOW });
+      expect(mine[0]!.n).toBe(PLAYOUTS);
+      if (kd === 'net') {
+        expect(m).toMatchObject({ label: 'best', gap: 0, approx: 'net' });
+        expect(m.gaps).toEqual(states[m.at]!.moves.map(() => 0));
+        expect(mine.length).toBe(1);
+      } else if (kd === 'best') {
+        expect(m.label).toBe('best');
+        expect(m.approx).toBe('race');
+        expect(Math.max(...m.gaps!)).toBeCloseTo(6.5, 6);
+        expect(mine.length).toBe(1);
+      } else {
+        expect(m.approx).toBeUndefined();
+        expect(m.label).toBe(m.played === 0 ? 'best' : 'inaccuracy');
+        // Top-ups are plain full reviews (no ask), as before.
+        if (m.played !== 0) expect(mine.slice(1).map((a) => [a.n, a.ask])).toEqual([[PLAYOUTS * 2, undefined], [PLAYOUTS * 4, undefined], [PLAYOUTS * 8, undefined]]);
+      }
+    }
+  });
+
+  it('with fast off, asks only for full reviews', async () => {
+    const rec = game(6);
+    const { states } = replay(rec) as { states: GameState[] };
+    const { reviewer, asks } = fakeFast(states, () => 'best');
+    const out = await reviewMoves(rec, states, [0], reviewer, undefined, undefined, undefined, { fast: false });
+    expect(out.every((m) => m.approx === undefined)).toBe(true);
+    expect(asks.every((a) => a.ask === undefined)).toBe(true);
+  });
+
+  it("orders by the net's stakes when asked: the biggest first, and skips below the threshold without a race", async () => {
+    const rec = game(7);
+    const { states } = replay(rec) as { states: GameState[] };
+    const spread = (at: number) => ((at * 37) % 100) / 1000; // 0 to 9.9 points
+    const { reviewer, asks } = fakeFast(states, () => 'worse', spread);
+    const order: number[] = [];
+    const out = await reviewMoves(rec, states, [0], reviewer, (m) => order.push(m.at), undefined, undefined, { order: 'stakes' });
+    const stakes = order.map((at) => spread(at));
+    expect(stakes).toEqual([...stakes].sort((a, b) => b - a));
+    for (const m of out) {
+      const raced = asks.some((a) => a.at === m.at && a.ask?.mode === 'race');
+      expect(raced).toBe(100 * spread(m.at) >= SKIP_BELOW);
+      if (!raced) expect(m.approx).toBe('net');
+    }
+    // The race isn't asked to screen again.
+    expect(asks.filter((a) => a.ask?.mode === 'race').every((a) => a.ask?.mode === 'race' && a.ask.skip === 0)).toBe(true);
   });
 });
 

@@ -7,7 +7,7 @@ import { COLORS } from '../board';
 import type { GameState, Move } from '../types';
 import type { LinearJSON } from './linear';
 import type { NetJSON } from './net';
-import type { DecisionValues } from './review';
+import type { DecisionValues, ReviewAsk } from './review';
 
 interface Exports {
   memory: WebAssembly.Memory;
@@ -17,6 +17,8 @@ interface Exports {
   moves_len(state: number, len: number): number;
   /** The game review's values for one decision (sim-wasm review); missing in modules built before #65. */
   review?(state: number, len: number, n: number, seed: number): number;
+  /** The review's net screen (mode 1) and race (mode 2) (#101); missing in modules built before it. */
+  review_fast?(state: number, len: number, n: number, seed: number, played: number, mode: number, skip: number): number;
 }
 
 const PHASES = { roll: 0, move: 1, over: 2 } as const;
@@ -90,6 +92,33 @@ export class RolloutEngine {
     const pick = (k: number) => Array.from({ length: nc }, (_, c) => per[3 * c + k]!);
     if (ofMove.length !== state.moves.length) throw new Error(`review saw ${ofMove.length} moves, the game has ${state.moves.length}`);
     return { ofMove, mean: pick(0), gap: pick(1), se: pick(2), best };
+  }
+
+  /** Whether this module has the fast review (#101): the net screen and the race. */
+  get hasFast(): boolean {
+    return !!this.x.review_fast;
+  }
+
+  /**
+   * The review's net screen or race for one decision (#101, sim-rs rollout.rs screen and review_race), or
+   * the full review without `ask`. Indexes are into state.moves. Race values with `complete` are exactly
+   * review(state, n, seed)'s.
+   */
+  reviewFast(state: GameState, n: number, seed: number, ask?: ReviewAsk): DecisionValues {
+    if (!ask || !this.x.review_fast) return this.review(state, n, seed);
+    const [p, l] = this.put(encodeState(state));
+    const race = ask.mode === 'race' ? ask : undefined;
+    const at = this.x.review_fast(p, l, n, seed >>> 0, race?.played ?? 0, race ? 2 : 1, (race?.skip ?? 0) / 100);
+    if (!at) throw new Error('rollout engine not initialised');
+    const head = new Float64Array(this.x.memory.buffer, at, 5);
+    const [nm, nc, best, complete, stop] = [head[0]!, head[1]!, head[2]!, head[3]!, head[4]!];
+    const all = new Float64Array(this.x.memory.buffer, at, 5 + nm + 4 * nc);
+    const ofMove = Array.from(all.subarray(5, 5 + nm));
+    const per = all.subarray(5 + nm);
+    const pick = (k: number) => Array.from({ length: nc }, (_, c) => per[4 * c + k]!);
+    if (ofMove.length !== state.moves.length) throw new Error(`review saw ${ofMove.length} moves, the game has ${state.moves.length}`);
+    const kind = ask.mode === 'screen' ? 'screen' : (['full', 'best', 'worse', 'net'] as const)[stop]!;
+    return { ofMove, mean: pick(0), gap: pick(1), se: pick(2), best, count: pick(3), kind, complete: complete === 1 };
   }
 
   /** How many moves the engine sees in `state` (must equal state.moves.length). */

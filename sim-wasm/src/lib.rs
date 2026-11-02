@@ -6,7 +6,7 @@
 //!   review(state, n, seed)      the game review's values for one decision (#65), as f64s at the returned
 //!                               pointer: moves, candidates, best, then each move's candidate, then per
 //!                               candidate its mean, its gap below the best and that gap's standard error
-//!   review_fast(state, n, seed, played, mode)   the review's net screen (mode 1) or race (mode 2) (#101),
+//!   review_fast(state, n, seed, played, mode, skip)   the review's net screen (mode 1) or race (mode 2) (#101),
 //!                               in review's layout with two more header fields and a playout count per
 //!                               candidate (see the function)
 //! The state bytes (encodeState in rollout-worker.ts), all u8 unless noted:
@@ -121,22 +121,40 @@ thread_local! {
 /// candidate ...]. `mode` 1: the net screen (rollout.rs screen: mean = the net's value, gap = below the net's
 /// best, se and playouts 0; `n`, `seed` and `played` unused). `mode` 2: the race (rollout.rs review_race) up
 /// to `n` playouts, the move played being `played` (an index into the state's moves); when `complete` is 1
-/// the values are exactly review(state, n, seed)'s. 0 if init was not called or `mode` is unknown.
+/// the values are exactly review(state, n, seed)'s. With `skip` > 0 the race first screens: if the net's
+/// spread (best minus worst, a fraction) is under `skip`, it returns the screen's values with stop 3 and no
+/// playouts. 0 if init was not called or `mode` is unknown.
 #[no_mangle]
-pub unsafe extern "C" fn review_fast(state: *mut u8, len: usize, n: u32, seed: u32, played: u32, mode: u32) -> *const f64 {
+pub unsafe extern "C" fn review_fast(state: *mut u8, len: usize, n: u32, seed: u32, played: u32, mode: u32, skip: f64) -> *const f64 {
     let s = take(state, len);
     let g = decode(&s);
     ENGINE.with(|e| match e.borrow().as_ref() {
         Some(eng) => {
-            let (r, count, complete, stop) = match mode {
-                1 => {
-                    let (of_move, vals) = ludo_sim::rollout::screen(&g, &eng.net, &eng.base);
-                    let nc = vals.len();
-                    let best = (0..nc).fold(0, |b, c| if vals[c] > vals[b] { c } else { b });
-                    let gap = vals.iter().map(|v| if nc > 0 { vals[best] - v } else { 0.0 }).collect();
-                    (ludo_sim::rollout::Review { of_move, mean: vals, gap, se: vec![0.0; nc], best }, vec![0usize; nc], true, 0u8)
+            let screened = || {
+                let (of_move, vals) = ludo_sim::rollout::screen(&g, &eng.net, &eng.base);
+                let nc = vals.len();
+                let best = (0..nc).fold(0, |b, c| if vals[c] > vals[b] { c } else { b });
+                let gap: Vec<f64> = vals.iter().map(|v| vals[best] - v).collect();
+                ludo_sim::rollout::Review { of_move, mean: vals, gap, se: vec![0.0; nc], best }
+            };
+            // The race's own screen: nothing at stake by the net (a spread under `skip`) means no playouts.
+            let pre = if mode == 2 && skip > 0.0 {
+                let r = screened();
+                (r.mean.len() > 1 && r.gap.iter().cloned().fold(0.0, f64::max) < skip).then_some(r)
+            } else {
+                None
+            };
+            let (r, count, complete, stop) = match (mode, pre) {
+                (1, _) => {
+                    let r = screened();
+                    let nc = r.mean.len();
+                    (r, vec![0usize; nc], true, 0u8)
                 }
-                2 => {
+                (2, Some(r)) => {
+                    let nc = r.mean.len();
+                    (r, vec![0usize; nc], false, 3u8)
+                }
+                (2, None) => {
                     let f = ludo_sim::rollout::review_race(&g, seed as i64, n as usize, CUT, Some(&eng.net), &eng.base, played as usize);
                     (f.review, f.count, f.complete, f.stop)
                 }
