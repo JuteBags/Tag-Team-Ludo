@@ -2,7 +2,7 @@
 // never competes with a bot thinking in a game. Null where workers can't run.
 import type { GameState } from '../types';
 import type { GameRecord } from '../record';
-import type { DecisionValues, Reviewer, RollLuck } from './review';
+import type { DecisionValues, Reviewer, ReviewAsk, RollLuck } from './review';
 
 let worker: Worker | null | undefined;
 let nextId = 0;
@@ -34,11 +34,11 @@ function reviewWorker(): Worker | null {
 export function workerReviewer(): Reviewer | null {
   const w = reviewWorker();
   if (!w) return null;
-  return (state: GameState, n: number, seed: number) =>
+  return (state: GameState, n: number, seed: number, ask?: ReviewAsk) =>
     new Promise<DecisionValues>((done, fail) => {
       const id = nextId++;
       pending.set(id, { done: done as (v: never) => void, fail });
-      w.postMessage({ id, kind: 'review', state, n, seed });
+      w.postMessage({ id, kind: 'review', state, n, seed, ask });
     });
 }
 

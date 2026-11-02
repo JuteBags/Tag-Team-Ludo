@@ -898,3 +898,4 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .benchout{margin-top:14px;padding:10px;max-height:300px;overflow:auto;border-radius:12px;background:rgba(0,0,0,.35);text-align:left;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
 .benchout:empty{display:none}
 .benchbox .later{display:block;margin:8px auto 0;min-height:44px;background:none;border:0;color:#fff;font-size:15px;font-weight:800;text-decoration:underline;opacity:.85}
+.review .rvfew{margin:8px 0 0;font-size:12px;font-weight:700;line-height:1.35;opacity:.8}

@@ -2,7 +2,7 @@
 // cap, and that it ends the worker once empty. Plus the luck percentile (review.ts luckPercent).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
-import { accuracyOf, luckPercent, normalCdf, type DecisionValues, type MoveReview } from '../src/engine/ai/review';
+import { accuracyOf, luckPercent, normalCdf, type DecisionValues, type ReviewAsk, type MoveReview } from '../src/engine/ai/review';
 
 const mem = new Map<string, string>();
 vi.mock('@capacitor/preferences', () => ({
@@ -17,7 +17,9 @@ let calls: string[] = [];
 let release: (() => void)[] = [];
 const stopped = vi.fn();
 vi.mock('../src/engine/ai/review-worker', () => ({
-  workerReviewer: () => async (s: GameState): Promise<DecisionValues> => {
+  workerReviewer: () => async (s: GameState, _n: number, _seed: number, ask?: ReviewAsk): Promise<DecisionValues> => {
+    // The stakes order's net screen (#101): this fake has none, so it answers at once and the order stays the game's.
+    if (ask?.mode === 'screen') return { ofMove: s.moves.map((_, i) => i), mean: [], gap: [], se: [], best: 0 };
     calls.push(s.players.map((p) => p.tokens.join(',')).join('|'));
     await new Promise<void>((r) => release.push(r));
     return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 };
@@ -87,6 +89,18 @@ describe('review queue', { timeout: 60_000 }, () => {
     await step();
     expect(Q.progressOf(b)!.done).toBeGreaterThan(before);
     expect(Q.progressOf(a)!.done).toBe(aDone);
+  });
+
+  it("reports your side's progress apart from a bot's side asked for on demand", async () => {
+    const a = game(13);
+    Q.enqueue(a, { keep: false });
+    for (let i = 0; i < 400 && !Q.progressOf(a)?.finished; i++) await step();
+    expect(Q.progressOf(a)?.mine.finished).toBe(true);
+    // The bot's side, asked for later: the job runs again, but your side stays finished.
+    Q.follow(a, () => {}, { keep: false, open: true, who: [1] });
+    await step();
+    expect(Q.progressOf(a)?.finished).toBe(false);
+    expect(Q.progressOf(a)?.mine.finished).toBe(true);
   });
 
   it('pauses during an Extreme game, not during others', async () => {

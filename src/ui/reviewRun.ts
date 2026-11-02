@@ -22,6 +22,8 @@ export interface ReviewProgress {
   when?: number;
   /** A review from an older label version, shown until this one is finished. */
   old?: StoredReview;
+  /** The people's own decisions (bots' sides asked for on demand don't count): what "Reviewing 40%" reports. */
+  mine: { done: number; total: number; finished: boolean };
 }
 
 /** Verdicts this run must make before its pace is trusted for an estimate. */
@@ -88,8 +90,16 @@ export function runReview(
   let t0 = 0;
   let fresh = 0;
   const eta = () => (fresh >= ETA_AFTER ? ((Date.now() - t0) / 1000 / fresh) * Math.max(0, total - settled()) : null);
+  // The people's side alone, for the status shown on the result card and in Games & reviews.
+  const people = peopleOf(rec);
+  const mineTotal = decisionsToReview(rec, states, people);
+  const ownerAt = (at: number) => states[at]!.players[states[at]!.current]!.owner;
+  const mine = () => {
+    const done = moves.filter((m) => people.includes(m.owner)).length + [...skipped].filter((at) => people.includes(ownerAt(at))).length;
+    return { done, total: mineTotal, finished: done >= mineTotal && luck !== null };
+  };
   const report = (finished: boolean) =>
-    onUpdate({ moves: [...moves].sort((a, b) => a.at - b.at), luck, chances, who: covered, done: settled(), total, finished, eta: finished ? 0 : eta(), when: finished ? when : undefined, old: finished ? undefined : old });
+    onUpdate({ moves: [...moves].sort((a, b) => a.at - b.at), luck, chances, who: covered, done: settled(), total, finished, eta: finished ? 0 : eta(), when: finished ? when : undefined, old: finished ? undefined : old, mine: mine() });
   // Kept only when this run added something, so reopening a finished review keeps its date.
   let changed = false;
   const keep = () => {
@@ -120,6 +130,7 @@ export function runReview(
     t0 = Date.now();
     const rest = states.map((s, i) => (have.has(i) ? { ...s, moves: s.moves.slice(0, 1) } : s));
     try {
+      // The biggest decisions first (#101): key moves and the turning point show within seconds.
       await reviewMoves(rec, rest, covered, skip, (m) => {
         if (stopped) return; // a late verdict from a stopped run is dropped
         moves.push(m);
@@ -132,7 +143,7 @@ export function runReview(
         skipped.add(at);
         changed = true;
         report(false);
-      });
+      }, { order: 'stakes' });
     } catch {
       // Stopped, or the worker failed: what's done so far is kept.
     }

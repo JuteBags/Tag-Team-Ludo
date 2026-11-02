@@ -1,8 +1,9 @@
 // The game review's words and graph (src/ui/reviewText.ts) and its runner (src/ui/reviewRun.ts).
 import { describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
-import { REVIEW_VERSION, type DecisionValues, type MoveReview } from '../src/engine/ai/review';
-import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken, luckBand, headline, turningPoint } from '../src/ui/reviewText';
+import { positionKey } from '../src/engine/rng';
+import { REVIEW_VERSION, summary, type DecisionValues, type MoveReview, type ReviewAsk, type Reviewer } from '../src/engine/ai/review';
+import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken, luckBand, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS } from '../src/ui/reviewText';
 
 const mem = new Map<string, string>();
 vi.mock('@capacitor/preferences', () => ({
@@ -113,6 +114,30 @@ describe('luck %, headline and turning point', () => {
   });
 });
 
+describe('a game with no meaningful decision', () => {
+  // Every decision's spread under 3 points: small slips in decisions where little was at stake.
+  const mv = (at: number, label: MoveReview['label'], gap: number): MoveReview => ({ at, owner: 0, played: 1, best: 0, playedChance: 0.3, bestChance: 0.32, gap, se: 0.4, label, gaps: [0, gap, 2.5] });
+  const moves = [mv(1, 'best', 0), mv(2, 'inaccuracy', 2.2), mv(3, 'good', 1.6), mv(4, 'inaccuracy', 2)];
+  it('has no accuracy, shown as a dash with the explainer, and never as NaN%', () => {
+    const s = summary(moves, [], 2)[0]!;
+    expect(s.accuracy).toBeNaN();
+    expect(accuracyText(s.accuracy)).toBe('–');
+    expect(FEW_BIG_DECISIONS).toMatch(/^Few big decisions/);
+    expect(accuracyText(0.873)).toBe('87%');
+    // The counts still show.
+    expect(s.labels.inaccuracy).toBe(2);
+    expect(s.keyMistakes).toBe(0);
+  });
+  it('gets a headline that quotes no accuracy', () => {
+    for (const won of [true, false])
+      for (const luckPct of [10, 50, 90]) {
+        const h = headline({ won, accuracy: NaN, luckPct, name: 'You', keyMistakes: 0, inaccuracies: 2 });
+        expect(h).not.toMatch(/NaN/);
+        expect(h).not.toMatch(/played well|great play|\d+% accuracy/);
+      }
+  });
+});
+
 describe('progress words', () => {
   it('rounds the time left to half minutes and says almost done near the end', () => {
     expect(etaText(null)).toBe('');
@@ -136,9 +161,10 @@ describe('review runner', () => {
   it('picks up a stored review and skips the moves already done; another version starts over', async () => {
     const rec = game(9);
     let calls = 0;
-    // Every other move 7.5 points down: away from every label's edge, so one call per decision.
-    const fake = async (s: GameState): Promise<DecisionValues> => {
-      calls++;
+    // Every other move 7.5 points down: away from every label's edge, so one call per decision (the
+    // stakes order's net screen, which this fake doesn't do, isn't counted).
+    const fake = async (s: GameState, _n: number, _seed: number, ask?: ReviewAsk): Promise<DecisionValues> => {
+      if (ask?.mode !== 'screen') calls++;
       return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 };
     };
     const run = (stored?: Parameters<typeof runReview>[1]) =>
@@ -163,6 +189,29 @@ describe('review runner', () => {
     const when = await new Promise<number | undefined>((done) => runReview(rec, { v: REVIEW_VERSION, moves: all, luck: [], when: 123 }, (p) => p.finished && done(p.when), false, fake));
     expect(calls).toBe(0);
     expect(when).toBe(123);
+  });
+
+  it('reports the decision with the most at stake first (the net screen orders them, #101)', async () => {
+    const rec = game(9);
+    // The net's spread grows with the decision's index, so the last decision has the most at stake. (The
+    // runner replays the game itself, so its states are found by position.)
+    const index = new Map(replay(rec).states.map((s, i) => [positionKey(s), i]));
+    const stake = (s: GameState) => index.get(positionKey(s))! / 1000;
+    const fake: Reviewer = async (s, _n, _seed, ask) => {
+      const ofMove = s.moves.map((_, i) => i);
+      if (ask?.mode === 'screen') return { ofMove, mean: ofMove.map((i) => (i ? 0.5 - stake(s) : 0.5)), gap: ofMove.map((i) => (i ? stake(s) : 0)), se: ofMove.map(() => 0), best: 0, kind: 'screen' };
+      return { ofMove, mean: ofMove.map((i) => (i ? 0.425 : 0.5)), gap: ofMove.map((i) => (i ? 0.075 : 0)), se: ofMove.map(() => 0.01), best: 0 };
+    };
+    const order: number[] = [];
+    const all = await new Promise<MoveReview[]>((done) =>
+      runReview(rec, undefined, (p) => {
+        if (p.moves.length > order.length) order.push(p.moves.map((m) => m.at).find((at) => !order.includes(at))!);
+        if (p.finished) done(p.moves);
+      }, false, fake),
+    );
+    expect(all.length).toBeGreaterThan(5);
+    expect(order[0]).toBe(Math.max(...all.map((m) => m.at)));
+    expect(order).toEqual([...order].sort((a, b) => b - a));
   });
 
   it('a stopped run never saves over a newer run of the same game, even when its last call resolves last', async () => {
