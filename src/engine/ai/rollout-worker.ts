@@ -1,5 +1,6 @@
 // Extreme's thinking off the UI thread: the rollout engine (rollout.ts) in a Web Worker. Messages in:
 // { id, state, nmax, seed }; out: { id, index } with index into state.moves, or { id, error }.
+// The game review (#65): { id, kind: 'review', state, n, seed }; out: { id, values } (DecisionValues).
 import { PLAYOUT_RULES } from './playout-rules';
 import type { NetJSON } from './net';
 import { RolloutEngine } from './rollout';
@@ -15,9 +16,13 @@ function load(): Promise<RolloutEngine> {
   return engine;
 }
 
-self.onmessage = async (e: MessageEvent<{ id: number; state: GameState; nmax: number; seed: number }>) => {
-  const { id, state, nmax, seed } = e.data;
+self.onmessage = async (e: MessageEvent<{ id: number; kind?: 'review'; state: GameState; nmax: number; n: number; seed: number }>) => {
+  const { id, kind, state, nmax, n, seed } = e.data;
   try {
+    if (kind === 'review') {
+      self.postMessage({ id, values: (await load()).review(state, n, seed) });
+      return;
+    }
     const m = (await load()).choose(state, nmax, seed);
     self.postMessage({ id, index: state.moves.indexOf(m) });
   } catch (err) {
