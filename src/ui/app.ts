@@ -6,7 +6,7 @@ import { handleBack } from './native';
 import type { GameConfig, Mode } from './setup';
 import { setupScreen } from './setupScreen';
 import { storeScreen } from './storeScreen';
-import { giveUpSaved, loadGame, loadPastGames, type SavedGame } from './store';
+import { giveUpSaved, loadGame, loadReview, type SavedGame } from './store';
 import { applyLook } from './themes';
 import { offerUpdate } from './update';
 import { offerCheckIn } from './checkin';
@@ -55,7 +55,7 @@ export function mountApp(root: HTMLElement) {
   /** The replay of `rec`; `back` returns to where it was opened from. With a stored review it opens in review mode. */
   // `keep`: the game is one of the past games, so its review is stored (not for a game from a link).
   const storedReview = async (rec: GameRecord, keep: boolean) =>
-    keep ? (await loadPastGames()).find((g) => g.rec.events === rec.events && g.rec.first === rec.first)?.review : undefined;
+    keep ? await loadReview(rec) : undefined;
   const watch = async (rec: GameRecord, back: () => void, keep = true, startAt?: number, startCaption?: string, pov?: number) => {
     const stored = await storedReview(rec, keep);
     stage.replaceChildren(safeReplayScreen(rec, back, { startAt, startCaption, pov, keep, review: stored, onReview: (p) => void review(rec, back, keep, p) }));

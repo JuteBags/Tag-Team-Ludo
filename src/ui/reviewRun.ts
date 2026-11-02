@@ -4,7 +4,7 @@
 import { replay, type GameRecord, type GameState } from '../engine';
 import { REVIEW_VERSION, reviewMoves, type MoveReview, type Reviewer, type RollLuck } from '../engine/ai/review';
 import { workerLuck, workerReviewer } from '../engine/ai/review-worker';
-import { saveReview, type StoredReview } from './store';
+import { keyOf, saveReview, type StoredReview } from './store';
 
 export interface ReviewProgress {
   moves: MoveReview[];
@@ -35,6 +35,19 @@ export function decisionsToReview(rec: GameRecord, states: GameState[], who = pe
   return states.filter((s, i) => i + 1 < states.length && s.phase === 'move' && who.includes(s.players[s.current]!.owner) && s.moves.length > 1).length;
 }
 
+/**
+ * Each game's newest run: a run that was stopped (paused, or overtaken by a newer run of the same game) must
+ * never save over the newer one, so only the newest run of a game saves, and a stopped run drops late results.
+ */
+const newestRun = new Map<string, number>();
+let runs = 0;
+
+// Stored at the precision anything reads them with (points to 2 decimals, chances to 4): it halves a review's size.
+const r2 = (x: number) => Math.round(100 * x) / 100;
+const r4 = (x: number) => Math.round(10000 * x) / 10000;
+const compactMove = (m: MoveReview): MoveReview => ({ ...m, playedChance: r4(m.playedChance), bestChance: r4(m.bestChance), gap: r2(m.gap), se: r2(m.se) });
+const compactRoll = (l: RollLuck): RollLuck => ({ ...l, luck: r2(l.luck), ...(l.sd === undefined ? {} : { sd: r2(l.sd) }) });
+
 /** The review kept from an older version, if `stored` is one (or carries one). */
 const olderOf = (stored: StoredReview | undefined): StoredReview | undefined =>
   !stored ? undefined : stored.v !== REVIEW_VERSION ? { v: stored.v, moves: stored.moves, luck: stored.luck, when: stored.when } : stored.old;
@@ -54,6 +67,10 @@ export function runReview(
   luckOf: typeof workerLuck = workerLuck,
 ): () => void {
   let stopped = false;
+  const gameKey = keyOf(rec);
+  const me = ++runs;
+  newestRun.set(gameKey, me);
+  const newest = () => newestRun.get(gameKey) === me;
   const states = replay(rec).states;
   const prior = stored?.v === REVIEW_VERSION ? stored : undefined;
   const old = olderOf(stored);
@@ -76,9 +93,10 @@ export function runReview(
   // Kept only when this run added something, so reopening a finished review keeps its date.
   let changed = false;
   const keep = () => {
-    if (!changed) return Promise.resolve();
+    if (!changed || !newest()) return Promise.resolve();
     when = Date.now();
-    return store ? saveReview(rec, { v: REVIEW_VERSION, moves, luck, chances: chances ?? undefined, who: covered, skip: skipped.size ? [...skipped] : undefined, when, old: done() ? undefined : old, done: done() || undefined }) : Promise.resolve();
+    const review: StoredReview = { v: REVIEW_VERSION, moves: moves.map(compactMove), luck: luck && luck.map(compactRoll), chances: chances ?? undefined, who: covered, skip: skipped.size ? [...skipped] : undefined, when, old: done() ? undefined : old, done: done() || undefined };
+    return store ? saveReview(rec, review, newest) : Promise.resolve();
   };
   report(done());
   if (!reviewer || done()) return () => {};
@@ -103,12 +121,14 @@ export function runReview(
     const rest = states.map((s, i) => (have.has(i) ? { ...s, moves: s.moves.slice(0, 1) } : s));
     try {
       await reviewMoves(rec, rest, covered, skip, (m) => {
+        if (stopped) return; // a late verdict from a stopped run is dropped
         moves.push(m);
         fresh++;
         changed = true;
         report(false);
         if (moves.length % 5 === 0) void keep();
       }, undefined, (at) => {
+        if (stopped) return;
         skipped.add(at);
         changed = true;
         report(false);
@@ -116,10 +136,14 @@ export function runReview(
     } catch {
       // Stopped, or the worker failed: what's done so far is kept.
     }
+    if (stopped) return; // saved when it was stopped
     await keep();
-    if (!stopped) report(true);
+    report(true);
   })();
+  // Stopping saves what's done (if this is still the newest run), then drops anything that arrives later.
   return () => {
+    if (stopped) return;
+    void keep();
     stopped = true;
   };
 }

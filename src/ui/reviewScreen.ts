@@ -182,7 +182,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     // The turning point sits on its move, or on the first of this side's moves after its roll.
     const ti = !tp ? -1 : tp.kind === 'move' ? mine.indexOf(tp.move) : mine.findIndex((m) => m.at > tp.roll.at);
     const star = ti >= 0 ? `<g class="tpstar" transform="translate(${pts[ti]![0].toFixed(1)} ${(pts[ti]![1] - 12).toFixed(1)})"><path d="M0,-7 L2,-2 7,-2 3,1.5 4.5,6.5 0,3.5 -4.5,6.5 -3,1.5 -7,-2 -2,-2Z"/></g>` : '';
-    q('.rvgraph').innerHTML = `<small>${isYou(pov) ? 'Your' : `${names[pov]}'s`} winning chances</small><svg viewBox="-6 -8 ${GW + 40} ${GH + 16}" aria-hidden="true">
+    q('.rvgraph').innerHTML = `<small></small><svg viewBox="-6 -8 ${GW + 40} ${GH + 16}" aria-hidden="true">
         ${[0, 50, 100].map(tick).join('')}
         <line x1="${GL}" y1="${even}" x2="${GW}" y2="${even}" class="even"/><text x="${GL + 4}" y="${even - 4}">even</text>
         <polyline points="${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')}"/>
@@ -190,6 +190,8 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
         ${star}
         <text x="${end[0] + 6}" y="${Math.max(8, Math.min(GH, end[1] + 4))}" class="final">${Math.round(100 * (result[0] ?? mine.at(-1)!.playedChance))}%</text>
         <rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/></svg>`;
+    // Names go in as text, like everywhere else.
+    q('.rvgraph small').textContent = `${isYou(pov) ? 'Your' : `${names[pov]}'s`} winning chances`;
   };
 
   const moveRow = (m: MoveReview, turning = false) => {
