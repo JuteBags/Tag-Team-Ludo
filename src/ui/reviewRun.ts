@@ -24,6 +24,11 @@ export interface ReviewProgress {
   old?: StoredReview;
   /** The people's own decisions (bots' sides asked for on demand don't count): what "Reviewing 40%" reports. */
   mine: { done: number; total: number; finished: boolean };
+  /** This run's decisions still to review when it started, biggest at stake first (#93): the screen lists them
+   *  straight away with "…" until each verdict lands. Never stored: the net screen redoes it in a moment. */
+  order?: number[];
+  /** With `order`: the decisions found to have nothing to choose (dropped from that list). */
+  skipped?: number[];
 }
 
 /** Verdicts this run must make before its pace is trusted for an estimate. */
@@ -86,6 +91,7 @@ export function runReview(
   const settled = () => moves.length + skipped.size;
   const done = () => settled() >= total && luck !== null;
   let when = prior?.when;
+  let order: number[] | undefined;
   // The pace of this run: when its first decision started and how many it has done.
   let t0 = 0;
   let fresh = 0;
@@ -99,7 +105,7 @@ export function runReview(
     return { done, total: mineTotal, finished: done >= mineTotal && luck !== null };
   };
   const report = (finished: boolean) =>
-    onUpdate({ moves: [...moves].sort((a, b) => a.at - b.at), luck, chances, who: covered, done: settled(), total, finished, eta: finished ? 0 : eta(), when: finished ? when : undefined, old: finished ? undefined : old, mine: mine() });
+    onUpdate({ moves: [...moves].sort((a, b) => a.at - b.at), luck, chances, who: covered, done: settled(), total, finished, eta: finished ? 0 : eta(), when: finished ? when : undefined, old: finished ? undefined : old, mine: mine(), ...(order && !finished ? { order, skipped: [...skipped] } : {}) });
   // Kept only when this run added something, so reopening a finished review keeps its date.
   let changed = false;
   const keep = () => {
@@ -111,7 +117,9 @@ export function runReview(
   report(done());
   if (!reviewer || done()) return () => {};
   void (async () => {
-    if (!luck) {
+    // The luck pass (one long worker call) runs once the decisions are listed (#93), so the list shows straight away.
+    const luckPass = async () => {
+      if (luck || stopped) return;
       const r = (await luckOf(rec)?.catch(() => null)) ?? null;
       if (stopped) return;
       luck = r?.luck ?? null;
@@ -119,7 +127,7 @@ export function runReview(
       changed = true;
       report(false);
       void keep();
-    }
+    };
     const have = new Set([...moves.map((m) => m.at), ...skipped]);
     // Only the decisions not reviewed yet; the reviewer is skipped (and the call aborted) once stopped.
     // It forwards every argument the Reviewer type has (#101 adds an optional 4th).
@@ -143,7 +151,16 @@ export function runReview(
         skipped.add(at);
         changed = true;
         report(false);
-      }, { order: 'stakes' });
+      }, { order: 'stakes', onOrder: (o) => {
+        if (stopped) return;
+        order = o;
+        report(false);
+      }, afterOrder: async () => {
+        await luckPass();
+        t0 = Date.now(); // the pace (for the estimate) counts the rollouts only
+      } });
+      // Nothing left to review (all done earlier): the luck pass still has to run.
+      await luckPass();
     } catch {
       // Stopped, or the worker failed: what's done so far is kept.
     }

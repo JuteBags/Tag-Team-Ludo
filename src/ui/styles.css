@@ -853,6 +853,13 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvrow b{font-size:14px}.review .rvrow small{font-size:12px;font-weight:700;opacity:.85}
 .review .rvrow.blunder{box-shadow:inset 0 0 0 1.5px rgba(248,113,113,.55)}
 .review .rvrow.mistake{box-shadow:inset 0 0 0 1.5px rgba(251,146,60,.45)}
+/* A decision still to check (#93): greyed, "…" in place of the verdict; the one being checked has a ring. */
+.review .rvrow.pending{opacity:.6;background:rgba(0,0,0,.16)}
+.review .rvrow.pending>i{position:relative;color:#fff;opacity:.8}
+.review .rvrow.pending.checking{opacity:.9}
+.review .rvrow.pending.checking>i::after{content:'';position:absolute;left:50%;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;border:2.5px solid rgba(255,214,90,.25);border-top-color:#ffd65a;animation:rvspin 1s linear infinite}
+@keyframes rvspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.review .rvrow.pending.checking>i::after{display:none}}
 /* The replay's REVIEW button, and the result screen's two links. */
 .replay .rvbtn{height:44px;padding:0 14px;border-radius:14px;border:0;background:linear-gradient(180deg,#ffe27a,#f2a20f);color:#4a2400;font-size:17px;box-shadow:inset 0 2px 0 rgba(255,255,255,.5),0 3px 0 #a35a00}
 .replay .rpcap.verdict{box-shadow:inset 0 0 0 2px #ffd65a}

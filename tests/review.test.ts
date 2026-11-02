@@ -211,6 +211,19 @@ describe('fast review (#101)', () => {
     // The race isn't asked to screen again.
     expect(asks.filter((a) => a.ask?.mode === 'race').every((a) => a.ask?.mode === 'race' && a.ask.skip === 0)).toBe(true);
   });
+
+  it('tells the screen every decision up front, in the order it will review them (#93)', async () => {
+    const rec = game(7);
+    const { states } = replay(rec) as { states: GameState[] };
+    const spread = (at: number) => ((at * 37) % 100) / 1000;
+    const { reviewer } = fakeFast(states, () => 'worse', spread);
+    const told: number[][] = [];
+    const reviewed: number[] = [];
+    await reviewMoves(rec, states, [0], reviewer, (m) => reviewed.push(m.at), undefined, undefined, { order: 'stakes', onOrder: (o) => told.push([...o]) });
+    // Once, before the first verdict, and exactly the verdicts' order.
+    expect(told.length).toBe(1);
+    expect(told[0]).toEqual(reviewed);
+  });
 });
 
 describe('luck', () => {
