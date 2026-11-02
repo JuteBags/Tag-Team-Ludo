@@ -12,7 +12,7 @@ import { avatarSVG, cssVars, icons } from './art';
 import { dieMarkup } from './dice';
 import { framesOf, namesOf } from './replay';
 import { follow } from './reviewQueue';
-import { peopleOf, type ReviewProgress } from './reviewRun';
+import { decisionsToReview, peopleOf, type ReviewProgress } from './reviewRun';
 import { bigRolls, etaText, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, luckBand, luckWords, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
 import type { StoredReview } from './store';
 
@@ -69,6 +69,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
   let view: 'key' | 'all' = 'key';
   let filter: Label | null = null;
   let prog: ReviewProgress | null = null;
+  const povTotals = new Map<number, number>();
 
   // Whose game: a chip per player; bots say BOT and are reviewed when picked.
   const chips = q('.rvpov');
@@ -106,7 +107,8 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     // This side is reviewed once the review covers it and is finished.
     const ready = d.finished && (d.stale || p.who.includes(pov));
     // The story, once there's something to tell.
-    const story = ready && d.luck && s.moves ? headline({ won: won(pov), accuracy: s.accuracy, luckPct: s.luckPct, name: isYou(pov) ? 'You' : names[pov]! }) : '';
+    const tp = ready && d.luck ? turningPoint(mine, d.luck, pov) : null;
+    const story = ready && d.luck && s.moves ? headline({ won: won(pov), accuracy: s.accuracy, luckPct: s.luckPct, name: isYou(pov) ? 'You' : names[pov]!, decider: tp?.kind === 'move' ? tp.move : undefined }) : '';
     q('.rvhead1').hidden = !story;
     q('.rvhead1').textContent = story;
     // The card: accuracy (only once done: a partial one swings) and luck % side by side.
@@ -131,19 +133,21 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
             row.className = 'rvbotluck';
             const b2 = luckBand(sum[o]!.luckPct);
             row.innerHTML = `<i style="${cssVars(colorOf(o))}">${avatarSVG(colorOf(o))}</i><span></span><b class="${b2.tone}">Luck ${Number.isFinite(sum[o]!.luckPct) ? Math.round(sum[o]!.luckPct) : '–'}% · ${b2.word}</b>`;
-            row.querySelector('span')!.textContent = `${names[o]}'s dice`;
+            row.querySelector('span')!.textContent = isYou(o) ? 'Your dice' : `${names[o]}'s dice`;
             return row;
           })
       : [];
     q('.rvcards').replaceChildren(card, ...others);
-    const tp = ready && d.luck ? turningPoint(mine, d.luck, pov) : null;
     drawGraph(mine, tp);
     // Progress: how far, about how long is left, and once done, when.
+    // Progress for the side shown: its decisions only.
+    const povTotal = povTotals.get(pov) ?? (povTotals.set(pov, decisionsToReview(rec, states, [pov])), povTotals.get(pov)!);
+    const povDone = p.moves.filter((m) => m.owner === pov).length;
     const eta = etaText(p.eta);
     q('.rvprog span').textContent = p.finished
-      ? [`${p.done} moves reviewed`, reviewedText(p.when)].filter(Boolean).join(' · ')
-      : `${d.stale ? 'Updating' : 'Reviewing'}… ${p.done} of ${p.total}${eta ? ` · ${eta}` : ''}`;
-    q<HTMLElement>('.rvprog .bar i').style.width = `${p.total ? (100 * p.done) / p.total : 100}%`;
+      ? [`${povDone} moves reviewed`, reviewedText(p.when)].filter(Boolean).join(' · ')
+      : `${d.stale ? 'Updating' : 'Reviewing'}… ${povDone} of ${povTotal}${eta ? ` · ${eta}` : ''}`;
+    q<HTMLElement>('.rvprog .bar i').style.width = `${povTotal ? (100 * povDone) / povTotal : 100}%`;
     q('.rvprog').classList.toggle('done', p.finished);
     q('.rvleave').hidden = p.finished;
     drawList(d, mine, tp);

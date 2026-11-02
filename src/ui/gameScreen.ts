@@ -799,7 +799,7 @@ export class GameScreen {
       const show = () => {
         if (!rvb.isConnected) return off();
         const p = progressOf(rec);
-        rvb.textContent = !p ? '★ REVIEW GAME' : p.finished ? '★ REVIEW READY' : `REVIEWING ${p.total ? Math.floor((100 * p.done) / p.total) : 0}%`;
+        rvb.textContent = !p ? '★ REVIEW GAME' : p.finished ? '★ REVIEW READY' : p.done && p.total ? `REVIEWING ${Math.floor((100 * p.done) / p.total)}%` : 'REVIEWING…';
         rvb.classList.toggle('ready', !!p?.finished);
       };
       const off = onReviewChange(show);

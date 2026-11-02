@@ -141,8 +141,11 @@ export const GREAT_PLAY = 0.9;
  * The story of the game in one sentence, from one player's side: whether they won, how well they played
  * (accuracy 0-1) and how their dice were (luck percentile). `name` is "You" or the player's name.
  */
-export function headline(o: { won: boolean; accuracy: number; luckPct: number; name: string }): string {
+export function headline(o: { won: boolean; accuracy: number; luckPct: number; name: string; decider?: MoveReview }): string {
   const you = o.name === 'You';
+  // A loss turned by one bad move says so, whatever the accuracy.
+  if (!o.won && o.decider && (o.decider.label === 'blunder' || o.decider.label === 'mistake'))
+    return `One ${o.decider.label} decided it: a single move cost ${Math.round(o.decider.gap)} points of winning chance.`;
   const acc = `${Math.round(100 * o.accuracy)}%`;
   const luck = `luck ${Math.round(o.luckPct)}%`;
   const them = you ? 'you' : 'them';

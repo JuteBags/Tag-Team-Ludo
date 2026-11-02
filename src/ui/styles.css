@@ -852,7 +852,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .replay.rvmode .gboard{top:136px}
 .replay.rvmode .rpcap{top:552px}
 .replay.rvmode .rpscrub{top:622px}
-.replay .rpticks{position:absolute;top:644px;left:36px;right:36px;width:auto;height:10px;z-index:3;pointer-events:none}
+.replay .rpticks{position:absolute;top:644px;left:38px;width:calc(100% - 76px);height:10px;z-index:3;pointer-events:none}
 .replay .rpticks[hidden]{display:none}
 .replay.rvmode .rpctl{top:666px}
 .replay.rvmode .rpcount{top:730px}

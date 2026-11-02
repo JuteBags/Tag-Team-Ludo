@@ -92,6 +92,8 @@ describe('luck %, headline and turning point', () => {
     expect(headline({ won: false, accuracy: 0.92, luckPct: 12, name: 'You' })).toBe('You played well (92%), but the dice went against you (luck 12%).');
     expect(headline({ won: true, accuracy: 0.95, luckPct: 50, name: 'You' })).toBe('Won on great play: 95% accuracy.');
     expect(headline({ won: false, accuracy: 0.7, luckPct: 50, name: 'Aarav' })).toBe('Lost on mistakes: the key moves show where.');
+    const blunder = { at: 9, owner: 0, played: 0, best: 1, playedChance: 0.1, bestChance: 0.4, gap: 32, se: 1, label: 'blunder' } as MoveReview;
+    expect(headline({ won: false, accuracy: 0.92, luckPct: 70, name: 'You', decider: blunder })).toBe('One blunder decided it: a single move cost 32 points of winning chance.');
   });
   it('finds the biggest swing, a move or a roll', () => {
     const mv = (at: number, gap: number): MoveReview => ({ at, owner: 0, played: 0, best: 1, playedChance: 0.5, bestChance: 0.5, gap, se: 0.5, label: 'mistake' });
