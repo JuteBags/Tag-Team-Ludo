@@ -89,6 +89,18 @@ describe('review queue', { timeout: 60_000 }, () => {
     expect(Q.progressOf(a)!.done).toBe(aDone);
   });
 
+  it("reports your side's progress apart from a bot's side asked for on demand", async () => {
+    const a = game(13);
+    Q.enqueue(a, { keep: false });
+    for (let i = 0; i < 400 && !Q.progressOf(a)?.finished; i++) await step();
+    expect(Q.progressOf(a)?.mine.finished).toBe(true);
+    // The bot's side, asked for later: the job runs again, but your side stays finished.
+    Q.follow(a, () => {}, { keep: false, open: true, who: [1] });
+    await step();
+    expect(Q.progressOf(a)?.finished).toBe(false);
+    expect(Q.progressOf(a)?.mine.finished).toBe(true);
+  });
+
   it('pauses during an Extreme game, not during others', async () => {
     const a = game(3);
     Q.setGame('extreme');

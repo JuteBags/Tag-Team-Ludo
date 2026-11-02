@@ -325,7 +325,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     }
   });
   // Until the queue reports, an empty card (the skeleton) rather than a blank screen.
-  draw({ moves: [], luck: null, chances: null, who: [pov], done: 0, total: 0, finished: false, eta: null });
+  draw({ moves: [], luck: null, chances: null, who: [pov], done: 0, total: 0, finished: false, eta: null, mine: { done: 0, total: 0, finished: false } });
   watchPov();
   return el;
 }
