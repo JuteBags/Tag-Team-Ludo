@@ -3,7 +3,7 @@ import { COLORS, type GameRecord } from '../engine';
 import { PALETTE, miniBoard, symbolPath } from './art';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
-import { emptyStats, loadCheckIn, loadPastGames, loadReview, loadStats, resetStats, type PastGame, type Stats, type StoredReview } from './store';
+import { emptyStats, loadCheckIn, loadPastGames, loadReview, loadStats, loadSummaries, loadSummary, resetStats, type PastGame, type ReviewSummary, type Stats, type StoredReview } from './store';
 import { daysBetween, dayKey } from './checkin';
 import { ACHIEVEMENTS, takeNew, type AchievementGroup } from './rewards';
 import { summary } from '../engine/ai/review';
@@ -181,6 +181,8 @@ export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (r
   const place = (p: number) => ['', '1st', '2nd', '3rd', '4th'][p] ?? '';
   // Each game's stored review lives under its own key: loaded once, then the rows are drawn again.
   const reviews = new Map<PastGame, StoredReview | undefined>();
+  // A finished review's numbers come from its summary (#98); only the others are read in full.
+  const sums = new Map<PastGame, ReviewSummary>();
   const status = (g: PastGame) => {
     const live = progressOf(g.rec);
     // Your side's progress: a bot's side being reviewed on demand doesn't hold the result back.
@@ -189,10 +191,13 @@ export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (r
       return `<span class="pgr"><i class="ring" style="--p:${pct}"></i>Reviewing ${pct}%</span>`;
     }
     const stored = reviews.get(g);
-    const r = live?.mine.finished ? { moves: live.moves, luck: live.luck } : isComplete(stored) ? stored! : stored?.old;
     const me = peopleOf(g.rec)[0];
-    if (!r || me === undefined) return `<span class="pgr off">${isQueued(g.rec) ? 'Review queued' : me === undefined ? '' : 'Not reviewed yet'}</span>`;
-    const sum = summary(r.moves, r.luck ?? [], new Set(g.rec.seats.map((x) => x.owner)).size)[me]!;
+    const kept = !live?.mine.finished && me !== undefined ? sums.get(g)?.owners[me] : undefined;
+    const r = live?.mine.finished ? { moves: live.moves, luck: live.luck } : isComplete(stored) ? stored! : stored?.old;
+    if ((!r && !kept) || me === undefined) return `<span class="pgr off">${isQueued(g.rec) ? 'Review queued' : me === undefined ? '' : 'Not reviewed yet'}</span>`;
+    const sum = kept
+      ? { moves: kept.moves, accuracy: kept.accuracy ?? NaN, luckPct: kept.luckPct ?? NaN, labels: { mistake: kept.mistake, blunder: kept.blunder } }
+      : summary(r!.moves, r!.luck ?? [], new Set(g.rec.seats.map((x) => x.owner)).size)[me]!;
     if (!sum.moves) return '<span class="pgr off">Not reviewed yet</span>';
     const luck = Number.isFinite(sum.luckPct) ? ` · Luck ${Math.round(sum.luckPct)}%` : '';
     // Two lines: accuracy and luck, then the key mistakes as small chips (so nothing wraps at 360dp).
@@ -212,9 +217,20 @@ export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (r
   const ov = sheet(host, 'Games & reviews', past.length ? `<p class="sub">Tap a game for its review, ▶ for the replay</p><div class="pglist">${rows()}</div>` : `<div class="empty"><b class="disp">No games yet</b><p class="sub">Finish a game and its replay and review show up here.</p></div>`);
   // The statuses follow the reviews while the sheet is open.
   const list = ov.querySelector<HTMLElement>('.pglist');
-  void Promise.all(past.map(async (g) => reviews.set(g, await loadReview(g.rec).catch(() => undefined)))).then(() => {
-    if (list && ov.isConnected) list.innerHTML = rows();
-  });
+  void loadSummaries()
+    .catch(() => ({}))
+    .then((index) =>
+      Promise.all(
+        past.map(async (g) => {
+          const s = await loadSummary(g.rec, index);
+          if (s?.done) sums.set(g, s);
+          else reviews.set(g, await loadReview(g.rec).catch(() => undefined));
+        }),
+      ),
+    )
+    .then(() => {
+      if (list && ov.isConnected) list.innerHTML = rows();
+    });
   const off = onReviewChange(() => {
     if (!ov.isConnected) return off();
     if (list) list.innerHTML = rows();
