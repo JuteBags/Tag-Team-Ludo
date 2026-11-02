@@ -1,7 +1,7 @@
 // Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
 // a person passing the device; a person with two houses plays both colours' turns.
 import { FINISHED, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type Rng, STOP_EVENT } from '../engine';
-import { chooseBotMoveAsync } from '../engine/ai/levels';
+import { chooseBotMoveAsync, RolloutStopped, stopRolloutWorker } from '../engine/ai/levels';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
 import { dieMarkup, rollDie } from './dice';
@@ -78,6 +78,8 @@ export class GameScreen {
   /** Pauses the game and saves it when the app goes to the background. */
   private onHidden = () => {
     if (document.visibilityState !== 'hidden' || this.disposed) return;
+    // Extreme's worker goes too (#98): Android may end a hidden app anyway, and it frees its engine and net.
+    stopRolloutWorker();
     this.save();
     if (!this.el.querySelector('.cs, .vote')) this.openMenu();
   };
@@ -200,6 +202,8 @@ export class GameScreen {
       else await this.humanTurn(p.color);
     }
     if (this.disposed) return;
+    // No more bot moves in this game: Extreme's worker can go (#98).
+    stopRolloutWorker();
     this.markActive(null);
     await this.sleep(500);
     if (!this.disposed) this.showResult();
@@ -221,7 +225,16 @@ export class GameScreen {
       return;
     }
     const t0 = performance.now();
-    const m = await chooseBotMoveAsync(this.state, this.rngFor('bot'));
+    let m;
+    try {
+      m = await chooseBotMoveAsync(this.state, this.rngFor('bot'));
+    } catch (e) {
+      if (!(e instanceof RolloutStopped)) throw e;
+      // The worker was stopped mid-thought (the app was hidden, or the game left): once the game resumes, the
+      // turn loop asks again for this same position, so it's the same move (#98).
+      if (!this.disposed) await this.sleep(0);
+      return;
+    }
     if (this.disposed) return;
     // Light up the die the bot plays, so its turn is easy to follow; thinking time counts toward the pause.
     this.drawTrays(m.roll);
@@ -685,6 +698,7 @@ export class GameScreen {
 
   dispose() {
     this.disposed = true;
+    stopRolloutWorker();
     keepAwake(false);
     document.removeEventListener('visibilitychange', this.onHidden);
     this.resume();
