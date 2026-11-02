@@ -73,9 +73,6 @@ const real = await fetch(`out/vo/${LANG}/dur.json`).then((r) => (r.ok ? r.json()
 const LINES = Object.fromEntries(script[LANG].map((L) => [L.id, L.text]));
 // Without the build's voice files (a quick local still), lengths are estimated from the text.
 const VO = Object.fromEntries(Object.entries(LINES).map(([id, txt]) => [id, real?.[id] ?? txt.length * (LANG === 'hi' ? 0.085 : 0.062)]));
-// How long a caption must stay up to be read. The captions say exactly what the voice says, so they're read along
-// with it: the film checks them at 18 letters a second plus a pad (readcheck --latin-cps 18 in the workflow).
-const NEED = (txt) => 1.55 + txt.replace(/\s/g, '').length / 18;
 // The film's pace: every scene's own timings (camera, the mascot, cuts) run this much faster than written below.
 const PACE = 1.25;
 
@@ -95,9 +92,10 @@ const SC = [
 ];
 let T = 0;
 for (const s of SC) {
-  const read = s.nocap ? 0 : NEED(LINES[s.vo]);
+  // The voice sets the pace. The captions are subtitles of the voice (shown while it speaks), so they follow it;
+  // only the end card is on-screen text that must be read on its own (readcheck checks the end card).
   s.at /= PACE;
-  s.len = Math.max(s.min / PACE, s.at + VO[s.vo] + s.tail / PACE, s.at + read + 0.9);
+  s.len = Math.max(s.min / PACE, s.at + VO[s.vo] + s.tail / PACE);
   if (s.k === 'end') s.len = Math.max(s.len, 0.4 / PACE + 0.35 + 5.9);   // the end card's own reading time
   s.t0 = T; T += s.len;
   if (s.clip) {
@@ -426,7 +424,7 @@ function drawWipe(t) {
 const CAPS = SC.filter((s) => !s.nocap).map((s, i, arr) => {
   const a = s.t0 + s.at - 0.1, txt = LINES[s.vo];
   const next = arr[i + 1] ? arr[i + 1].t0 + arr[i + 1].at - 0.1 : s.t0 + s.len;
-  return [a, Math.min(next - 0.15, Math.max(a + VO[s.vo] + 0.65, a + NEED(txt) + 0.45)), txt];
+  return [a, Math.min(next - 0.15, Math.max(a + VO[s.vo] + 0.6, a + 1.6)), txt];
 });
 const END0 = at('end', 0.4);
 document.getElementById('endline').textContent = LANG === 'hi' ? 'एंड्रॉयड और वेब पर, बिल्कुल फ़्री' : 'Free on Android & the web';
@@ -492,8 +490,7 @@ window.render = async (t) => {
 
 window.TEXTS = (t) => {
   const out = [];
-  const cap = CAPS.find(([a, b]) => t >= a + 0.22 && t < b - 0.22);
-  if (cap) out.push({ id: 'cap' + CAPS.indexOf(cap), text: cap[2], ...(V ? { x0: 70, y0: 1660, x1: 1010, y1: 1856 } : { x0: 160, y0: 950, x1: 1760, y1: 1040 }) });
+  // the captions are subtitles of the voice (timed by it, like the .srt), so readcheck only checks the end card
   if (t >= END0 + 0.35) out.push({ id: 'end', text: 'TAG TEAM LUDO ' + document.getElementById('endline').textContent + ' jutebags.github.io/Tag-Team-Ludo', ...(V ? { x0: 120, y0: 1560, x1: 960, y1: 1850 } : { x0: 560, y0: 820, x1: 1360, y1: 1040 }) });
   return out;
 };

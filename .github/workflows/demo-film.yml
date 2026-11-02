@@ -69,7 +69,7 @@ jobs:
       - name: Checks
         run: |
           D=$GITHUB_WORKSPACE/marketing/demo-film
-          if [ "$LANG_FILM" = en ]; then "$LIB/.venv/bin/python" "$LIB/core/tts/asr_check.py" "$D/out/vo/en/lines.json" "$D/out/vo/en" --lang en | tail -4 || true; fi
+          if [ "$LANG_FILM" = en ]; then "$LIB/.venv/bin/python" "$LIB/core/tts/asr_check.py" "$D/out/vo/en/lines.json" "$D/out/vo/en" --lang en || true; fi
           for F in "$D/out/tag-team-ludo-demo-$LANG_FILM.mp4" "$D/out/tag-team-ludo-demo-$LANG_FILM-vertical.mp4"; do
             echo "--- $(basename "$F")"
             ffprobe -v error -select_streams v -show_entries stream=width,height -show_entries format=duration -of csv=p=0 "$F"
