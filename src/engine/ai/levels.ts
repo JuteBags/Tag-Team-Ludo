@@ -12,7 +12,6 @@ import { HARD_RULES } from './hard-rules';
 import { LinearRules } from './linear';
 import { Net } from './net';
 import { decodeNet } from './netbin';
-import netUrl from './extreme-net.bin?url';
 import { chooseExtreme, chooseGreedy } from './search';
 
 const hard = new LinearRules(HARD_RULES);
@@ -21,7 +20,8 @@ let extreme: Net | null = null;
 /** Loads Extreme's net (once). Until it is loaded, Extreme plays like Hard. */
 export async function loadExtreme(): Promise<void> {
   // extreme-net.bin, the same file the worker fetches (#98): one copy in the app, no JS parse of the net.
-  if (!extreme) extreme = new Net(decodeNet(await fetch(netUrl).then((r) => r.arrayBuffer())));
+  // new URL(..., import.meta.url), not a ?url import: the AI tools bundle this file with plain rolldown.
+  if (!extreme) extreme = new Net(decodeNet(await fetch(new URL('./extreme-net.bin', import.meta.url)).then((r) => r.arrayBuffer())));
 }
 
 /** The move the current player's bot picks, by its level. */
