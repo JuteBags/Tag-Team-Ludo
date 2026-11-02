@@ -60,6 +60,10 @@ function rolloutWorker(): Worker | null {
 
 /** chooseBotMove, with Extreme's rollouts in the worker (the UI keeps running while it thinks). */
 export async function chooseBotMoveAsync(state: GameState, rng: Rng): Promise<Move> {
+  // One legal move needs no engine (#98). Without this, Extreme's forced moves fell through to loadExtreme()
+  // below and parsed the 560 kB net on the UI thread, although the worker has its own copy. The main-thread
+  // net is now only the fallback for when the worker can't run.
+  if (state.moves.length === 1) return state.moves[0]!;
   const w = state.players[state.current]!.level === 'extreme' && state.moves.length > 1 && typeof Worker !== 'undefined' ? rolloutWorker() : null;
   if (w) {
     const id = nextId++;
