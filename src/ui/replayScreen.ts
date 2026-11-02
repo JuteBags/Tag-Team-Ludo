@@ -16,7 +16,7 @@ import { dieMarkup } from './dice';
 import { framesOf, namesOf, shareLink, type Frame } from './replay';
 import { follow } from './reviewQueue';
 import { peopleOf, type ReviewProgress } from './reviewRun';
-import { KEY_LABELS, LABEL_LOOK, moveText, turningPoint, verdictText } from './reviewText';
+import { KEY_LABELS, LABEL_LOOK, turningPoint, verdictMoves, verdictText } from './reviewText';
 import { SITE } from './shareCard';
 import type { StoredReview } from './store';
 
@@ -245,7 +245,12 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     // The labels' cuts come from review.ts (calibrated per layout), never from the UI.
     const label = i === v.best ? 'best' : labelOf(gap, 0);
     const look = LABEL_LOOK[label];
-    markCaption(label === 'best' ? `★ That's the best move: ${moveText(best)}.` : `Your pick: ${look.sym} −${Math.round(gap)} · Best: ${moveText(best)} (the game: −${Math.round(v.gap)})`);
+    const nameOf = (c: string) => {
+      const o = rec.seats.find((x) => x.color === c)?.owner ?? 0;
+      return isYou(o) ? 'you' : names[o]!;
+    };
+    const [mine, bestText] = verdictMoves(s, s.moves[i]!, best, nameOf);
+    markCaption(label === 'best' ? `★ That's the best move: ${mine}.` : `Your pick (${mine}): ${look.sym} −${Math.round(gap)} · Best: ${bestText} · In the game: −${Math.round(v.gap)}`);
     view.showVerdict({ played: s.moves[i]!, best: label === 'best' ? undefined : best, sym: look.sym, color: look.color });
     const again = document.createElement('button');
     again.className = 'findchip';
