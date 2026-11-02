@@ -38,7 +38,29 @@ export const EXTREME_PLAYOUTS = 128;
 
 let worker: Worker | null | undefined;
 let nextId = 0;
-const pending = new Map<number, (index: number) => void>();
+const pending = new Map<number, { done: (index: number) => void; fail: (e: Error) => void }>();
+
+/** What an Extreme move still being thought about gets when the worker is stopped (stopRolloutWorker). */
+export class RolloutStopped extends Error {
+  constructor() {
+    super('rollout worker stopped');
+  }
+}
+
+/**
+ * Ends the rollout worker (#98), freeing its engine and net: when the game screen goes away and when the app
+ * is hidden. A move still being thought about fails with RolloutStopped (its answer, if any, is dropped); the
+ * next Extreme move starts a new worker. Never during an Extreme game on screen: a bot's turn would then pay
+ * for a new worker right when it moves.
+ */
+export function stopRolloutWorker() {
+  if (!worker) return; // none running, or workers can't run here
+  worker.onmessage = null;
+  worker.terminate();
+  worker = undefined;
+  for (const p of pending.values()) p.fail(new RolloutStopped());
+  pending.clear();
+}
 
 /** The rollout worker, started on first use; null where workers cannot run (tests, old WebViews). */
 function rolloutWorker(): Worker | null {
@@ -49,12 +71,12 @@ function rolloutWorker(): Worker | null {
     return (worker = null);
   }
   worker.onmessage = (e: MessageEvent<{ id: number; index?: number }>) => {
-    pending.get(e.data.id)?.(e.data.index ?? -1);
+    pending.get(e.data.id)?.done(e.data.index ?? -1);
     pending.delete(e.data.id);
   };
   // A worker that fails to load answers every move with the net alone, from then on.
   worker.onerror = () => {
-    for (const done of pending.values()) done(-1);
+    for (const p of pending.values()) p.done(-1);
     pending.clear();
     worker = null;
   };
@@ -71,8 +93,8 @@ export async function chooseBotMoveAsync(state: GameState, rng: Rng): Promise<Mo
   if (w) {
     const id = nextId++;
     const seed = Math.floor(rng() * 4294967296);
-    const index = await new Promise<number>((done) => {
-      pending.set(id, done);
+    const index = await new Promise<number>((done, fail) => {
+      pending.set(id, { done, fail });
       w.postMessage({ id, state, nmax: EXTREME_PLAYOUTS, seed });
     });
     const m = state.moves[index];
