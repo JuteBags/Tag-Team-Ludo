@@ -25,7 +25,7 @@ const HERO: PlayerState[] = [
   { color: 'yellow', owner: 3, bot: true, tokens: [29, -1, -1, -1] },
 ];
 
-export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, onPlay: (mode: Mode) => void, saved: SavedGame | null, onContinue: () => void, onStore: () => void, onReplay: (rec: GameRecord) => void): HTMLElement {
+export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, onPlay: (mode: Mode) => void, saved: SavedGame | null, onContinue: () => void, onStore: () => void, onReplay: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void): HTMLElement {
   const el = document.createElement('div');
   el.className = `screen home${saved ? ' has-save' : ''}`;
   const dots = (n: number) => COLORS.slice(0, n).map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
@@ -92,7 +92,7 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
   });
   el.querySelector('[data-act=continue]')?.addEventListener('click', onContinue);
   el.querySelector('[data-act=store]')!.addEventListener('click', onStore);
-  el.querySelector('[data-act=stats]')!.addEventListener('click', () => void statsSheet(el, onReplay));
+  el.querySelector('[data-act=stats]')!.addEventListener('click', () => void statsSheet(el, onReplay, onReview));
   el.querySelector('[data-act=settings]')!.addEventListener('click', () => settingsSheet(el, sync));
   return el;
 }

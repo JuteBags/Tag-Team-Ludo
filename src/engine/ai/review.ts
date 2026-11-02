@@ -52,6 +52,9 @@ export function labelOf(gap: number, se: number): Label {
   return 'blunder';
 }
 
+/** The version of the labels (thresholds and playouts): a cached review from another version is redone. */
+export const REVIEW_VERSION = 2;
+
 /** Playouts per candidate, and the most a decision is topped up to when its gap sits near a label's edge. */
 export const PLAYOUTS = 256;
 export const PLAYOUTS_MAX = 1024;
@@ -74,6 +77,8 @@ export interface MoveReview {
   gap: number;
   se: number;
   label: Label;
+  /** Every move's points below the best (one per state.moves, 1 decimal), for the replay's ghost and "find the better move". */
+  gaps?: number[];
 }
 
 export interface RollLuck {
@@ -82,6 +87,8 @@ export interface RollLuck {
   face: number;
   /** Win chance gained or lost by this face against the average face, in points (-100..100). */
   luck: number;
+  /** The spread (standard deviation, in points) of this roll's luck over the faces it could have been. */
+  sd?: number;
 }
 
 /** A deterministic seed for one decision of one game, so a review never changes when it's run again. */
@@ -91,7 +98,7 @@ const decisionSeed = (rec: GameRecord, s: GameState) => mixSeed(rec.seed ?? 0x5e
  * Reviews the person's decisions (owners in `who`) in a replayed game. Forced moves (one position to reach)
  * are skipped. Calls `onMove` as each decision is done, so the screen can show verdicts as they arrive.
  */
-export async function reviewMoves(rec: GameRecord, states: GameState[], who: number[], reviewer: Reviewer, onMove?: (m: MoveReview, done: number, total: number) => void, base = PLAYOUTS): Promise<MoveReview[]> {
+export async function reviewMoves(rec: GameRecord, states: GameState[], who: number[], reviewer: Reviewer, onMove?: (m: MoveReview, done: number, total: number) => void, base = PLAYOUTS, onSkip?: (at: number) => void): Promise<MoveReview[]> {
   const todo: number[] = [];
   for (let i = 0; i + 1 < states.length; i++) {
     const s = states[i]!;
@@ -107,7 +114,10 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     let n = base;
     let v = await reviewer(s, n, decisionSeed(rec, s));
     const c = v.ofMove[played]!;
-    if (v.mean.length < 2) continue; // every move reaches the same position: nothing to choose
+    if (v.mean.length < 2) {
+      onSkip?.(i); // every move reaches the same position: nothing to choose
+      continue;
+    }
     while (n < PLAYOUTS_MAX && c !== v.best && nearEdge(100 * v.gap[c]!)) {
       n *= 2;
       v = await reviewer(s, n, decisionSeed(rec, s));
@@ -116,7 +126,8 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     const gap = cp === v.best ? 0 : 100 * v.gap[cp]!;
     const se = cp === v.best ? 0 : 100 * v.se[cp]!;
     const best = v.ofMove.indexOf(v.best);
-    const r: MoveReview = { at: i, owner: s.players[s.current]!.owner, played, best, playedChance: v.mean[cp]!, bestChance: v.mean[v.best]!, gap, se, label: labelOf(gap, se) };
+    const gaps = v.ofMove.map((c) => (c === v.best ? 0 : Math.round(1000 * v.gap[c]!) / 10));
+    const r: MoveReview = { at: i, owner: s.players[s.current]!.owner, played, best, playedChance: v.mean[cp]!, bestChance: v.mean[v.best]!, gap, se, label: labelOf(gap, se), gaps };
     out.push(r);
     onMove?.(r, out.length, todo.length);
   }
@@ -151,15 +162,63 @@ export function rollLuck(rec: GameRecord, states: GameState[], net: Evaluator): 
     const p = faceChances(rec, s);
     const v = [1, 2, 3, 4, 5, 6].map((f) => chanceAfter(net, s, f));
     const expect = v.reduce((a, x, k) => a + x * p[k]!, 0);
-    out.push({ at: i, owner: s.players[s.current]!.owner, face, luck: 100 * (v[face - 1]! - expect) });
+    const sd = Math.sqrt(v.reduce((a, x, k) => a + p[k]! * (x - expect) ** 2, 0));
+    out.push({ at: i, owner: s.players[s.current]!.owner, face, luck: 100 * (v[face - 1]! - expect), sd: 100 * sd });
   }
   return out;
+}
+
+/** Every owner's win chance (whole %, from the net) at every state, for the replay's win-chance bar. */
+export function netChances(rec: GameRecord, states: GameState[], net: Evaluator): number[][] {
+  const owners = new Set(rec.seats.map((x) => x.owner)).size;
+  return states.map((s) => [...ownerValues(net, s, owners)].map((v) => Math.round(100 * v)));
 }
 
 /** What each label scores toward accuracy: a blunder costs more than an inaccuracy. */
 export const LABEL_SCORE: Record<Label, number> = { best: 1, good: 0.9, inaccuracy: 0.6, mistake: 0.3, blunder: 0 };
 
-/** Each person's accuracy (the mean label score of their reviewed moves, 0-1) and total luck. */
+/** The standard normal CDF (Abramowitz and Stegun 26.2.17, error under 1e-7). */
+export function normalCdf(z: number): number {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989422804014327 * Math.exp((-z * z) / 2);
+  const q = d * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  return z >= 0 ? 1 - q : q;
+}
+
+/**
+ * How lucky an owner's dice were, as a percentile (0-100, 50 is average): the chance that dice rolled the
+ * same way would have done worse for them. Each roll's luck has mean 0 and spread `sd`, so the total is
+ * close to normal with the summed variance. NaN without rolls (or without spreads, from an older review).
+ */
+export function luckPercent(luck: RollLuck[], owner: number): number {
+  const mine = luck.filter((l) => l.owner === owner);
+  const v = mine.reduce((a, l) => a + (l.sd ?? NaN) ** 2, 0);
+  if (!mine.length || !(v > 0)) return NaN;
+  return 100 * normalCdf(mine.reduce((a, l) => a + l.luck, 0) / Math.sqrt(v));
+}
+
+/** Each person's accuracy (the mean label score of their reviewed moves, 0-1), total luck and luck percentile. */
+/** A decision is meaningful when its best and worst moves are at least this many points apart (#96). */
+export const MEANINGFUL = 3;
+
+/** A decision's spread: its best move minus its worst, in points (NaN for reviews without every move's gap). */
+export const spreadOf = (m: MoveReview) => (m.gaps?.length ? Math.max(...m.gaps) : NaN);
+
+/**
+ * Accuracy (0-1) as agreed for #96: of everything at stake in the meaningful decisions, the share kept,
+ * 1 - Σgap / Σspread, so big decisions weigh more. Reviews from before every move's gap was kept fall back
+ * to the mean label score. NaN with no meaningful decision.
+ */
+export function accuracyOf(mine: MoveReview[]): number {
+  if (mine.length && mine.every((m) => m.gaps?.length)) {
+    const meaningful = mine.filter((m) => spreadOf(m) >= MEANINGFUL);
+    const at = meaningful.reduce((a, m) => a + spreadOf(m), 0);
+    return at > 0 ? 1 - meaningful.reduce((a, m) => a + m.gap, 0) / at : NaN;
+  }
+  return mine.length ? mine.reduce((a, m) => a + LABEL_SCORE[m.label], 0) / mine.length : NaN;
+}
+
+/** Each owner's accuracy, labels, key mistakes (mistakes + blunders), total luck and luck percentile. */
 export function summary(moves: MoveReview[], luck: RollLuck[], owners: number) {
   return Array.from({ length: owners }, (_, o) => {
     const mine = moves.filter((m) => m.owner === o);
@@ -167,9 +226,11 @@ export function summary(moves: MoveReview[], luck: RollLuck[], owners: number) {
     return {
       owner: o,
       moves: mine.length,
-      accuracy: mine.length ? mine.reduce((a, m) => a + LABEL_SCORE[m.label], 0) / mine.length : NaN,
+      accuracy: accuracyOf(mine),
       labels: { best: count('best'), good: count('good'), inaccuracy: count('inaccuracy'), mistake: count('mistake'), blunder: count('blunder') },
+      keyMistakes: count('mistake') + count('blunder'),
       luck: luck.filter((l) => l.owner === o).reduce((a, l) => a + l.luck, 0),
+      luckPct: luckPercent(luck, o),
     };
   });
 }

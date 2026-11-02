@@ -3,6 +3,7 @@
 // web. Every call is guarded: if storage fails, the game simply isn't saved.
 import { Preferences } from '@capacitor/preferences';
 import { COLORS, type BotLevel, type Color, type GameRecord, type GameState } from '../engine';
+import type { MoveReview, RollLuck } from '../engine/ai/review';
 import type { GameConfig } from './setup';
 
 async function read<T>(key: string): Promise<T | null> {
@@ -228,6 +229,26 @@ export interface PastGame {
   at: number;
   mode: 'pvc' | 'pvp';
   place: number;
+  /** The game review so far (#65), at the labels' version: a review from another version is redone. */
+  review?: StoredReview;
+}
+
+export interface StoredReview {
+  v: number;
+  moves: MoveReview[];
+  luck: RollLuck[] | null;
+  /** When it was last worked on (ms since 1970), shown as "Reviewed today". */
+  when?: number;
+  /** Every owner's net win chance (whole %) at every state, for the replay's win-chance bar. */
+  chances?: number[][];
+  /** The owners it covers (people by default, plus any bot whose side was asked for). */
+  who?: number[];
+  /** A review from an older label version, shown (greyed) until this one is finished. */
+  old?: StoredReview;
+  /** Decisions with nothing to choose (every move reaches the same position): counted as done, never asked again. */
+  skip?: number[];
+  /** Set once every decision and the luck are in. */
+  done?: boolean;
 }
 
 const GAMES = 'ludo-games';
@@ -237,4 +258,13 @@ export const loadPastGames = () => read<PastGame[]>(GAMES).then((g) => (Array.is
 /** Adds a finished game, dropping the oldest past KEEP_GAMES. */
 export async function savePastGame(g: PastGame): Promise<void> {
   await write(GAMES, [g, ...(await loadPastGames())].slice(0, KEEP_GAMES));
+}
+
+/** Stores the review of the past game with this record (matched by its events), if it is still kept. */
+export async function saveReview(rec: GameRecord, review: StoredReview): Promise<void> {
+  const games = await loadPastGames();
+  const g = games.find((x) => x.rec.events === rec.events && x.rec.first === rec.first);
+  if (!g) return;
+  g.review = review;
+  await write(GAMES, games);
 }

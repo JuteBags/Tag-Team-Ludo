@@ -15,6 +15,7 @@ import { clearGame, giveUpNote, givingUpLoses, layoutOf, levelOf, loadStats, rec
 import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targets';
 import { award, goldFor, newAchievements, nextStreak, total, type GameFacts } from './rewards';
 import { earn, lockLabel, nextGoal } from './skins';
+import { enqueue, onReviewChange, progressOf, setGame } from './reviewQueue';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
 const DIE = 38;
@@ -37,7 +38,7 @@ const PIPS: Record<number, [number, number][]> = {
 const flatDie = (n: number) =>
   `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#fff" stroke="rgba(0,0,0,.25)"/>${PIPS[n]!.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.4" fill="${n === 6 ? '#d2203c' : '#1b2a4a'}"/>`).join('')}</svg>`;
 
-export type Exit = 'home' | 'again' | 'replay';
+export type Exit = 'home' | 'again' | 'replay' | 'review';
 
 /** The rules in a nutshell, for the pause menu. */
 const HOW_TO_PLAY = (singles: boolean) => `<h2>How to play</h2><ul class="howto">
@@ -717,9 +718,12 @@ export class GameScreen {
     // its last place is played out (a vote to stop, no people left, or you finished vs Computer) ends with
     // STOP_EVENT, so a replay knows its result is the position's ownerRanking, as here.
     const rec = this.record();
+    // The game is over, so reviews may run again; this one is queued once it's saved (#96).
+    setGame('none');
     if (rec) {
       if (this.state.phase !== 'over') rec.events += STOP_EVENT;
-      void savePastGame({ rec, at: Date.now(), mode: this.config.mode, place });
+      const at = Date.now();
+      void savePastGame({ rec, at, mode: this.config.mode, place }).then(() => rec.seats.some((s) => !s.bot) && enqueue(rec, { pvp, at }));
     }
     this.finalRecord = rec;
     const rows = order
@@ -774,11 +778,11 @@ export class GameScreen {
       <div class="rescol"><div class="ribbon">${ribbonSVG()}<span class="disp">${title}</span></div>
         <div class="rank">${rows}</div>${reward}
         <div class="wbtns"><button class="b3 blue disp" data-act="home">HOME</button><button class="b3 green disp" data-act="again">PLAY AGAIN</button></div>
-        <button class="sharebtn disp" data-act="share">${icons.share}SHARE RESULT</button>${rec ? '<button class="replaylink" data-act="replay">Watch the replay</button>' : ''}</div>`;
+        ${rec && rec.seats.some((s) => !s.bot) ? `<div class="sharerow"><button class="sharebtn disp" data-act="share">${icons.share}SHARE</button><button class="revbtn disp" data-act="review">★ REVIEW</button><button class="rplbtn disp" data-act="replay" aria-label="Watch the replay">▶ REPLAY</button></div>` : `<button class="sharebtn disp" data-act="share">${icons.share}SHARE RESULT</button>${rec ? '<button class="replaylink" data-act="replay">Watch the replay</button>' : ''}`}</div>`;
     ov.addEventListener('click', (e) => {
       const btn = (e.target as Element).closest<HTMLButtonElement>('button');
       const act = btn?.dataset.act;
-      if (act === 'home' || act === 'again' || act === 'replay') this.exit(act);
+      if (act === 'home' || act === 'again' || act === 'replay' || act === 'review') this.exit(act);
       if (act === 'share' && !btn!.disabled) {
         btn!.disabled = true;
         const text = pvp ? `${winner} won our game of Tag Team Ludo!` : won ? 'I won at Tag Team Ludo!' : `I came ${PLACES[place]!.toLowerCase()} at Tag Team Ludo!`;
@@ -789,6 +793,19 @@ export class GameScreen {
       }
     });
     this.el.appendChild(ov);
+    // The Review button follows the review running in the queue: "Reviewing 40%", then "Review ready" (#96).
+    const rvb = ov.querySelector<HTMLElement>('[data-act=review]');
+    if (rvb && rec) {
+      const show = () => {
+        if (!rvb.isConnected) return off();
+        const p = progressOf(rec);
+        rvb.textContent = !p || p.finished ? '★ REVIEW' : p.done && p.total ? `REVIEW ${Math.floor((100 * p.done) / p.total)}%` : 'REVIEW…';
+        rvb.setAttribute('aria-label', !p ? 'Review the game' : p.finished ? 'Review ready' : 'Reviewing the game');
+        rvb.classList.toggle('ready', !!p?.finished);
+      };
+      const off = onReviewChange(show);
+      show();
+    }
     // New achievements pop in as small chips, and the next-skin bar catches up with their gold.
     void achievements.then(({ fresh, ended, streak }) => {
       const box = ov.querySelector<HTMLElement>('.achs')!;
