@@ -4,19 +4,22 @@
 // with ask, the net screen or the race of #101).
 // Its luck: { id, kind: 'luck', rec }; out: { id, luck, chances } (review.ts rollLuck and netChances, with the Extreme net).
 import { PLAYOUT_RULES } from './playout-rules';
-import { Net, type NetJSON } from './net';
+import { Net } from './net';
+import { decodeNet } from './netbin';
 import { replay, type GameRecord } from '../record';
 import { netChances, rollLuck, type ReviewAsk } from './review';
 import { RolloutEngine } from './rollout';
 import wasmUrl from './ludo_wasm.wasm?url';
+import netUrl from './extreme-net.bin?url';
 import type { GameState } from '../types';
 
 let engine: Promise<RolloutEngine> | null = null;
+// The net's bytes (extreme-net.bin, #98), fetched once for both the engine and the luck net.
+let netBytes: Promise<Uint8Array> | null = null;
+const loadNet = () => (netBytes ??= fetch(netUrl).then(async (r) => new Uint8Array(await r.arrayBuffer())));
 
 function load(): Promise<RolloutEngine> {
-  engine ??= Promise.all([fetch(wasmUrl).then((r) => r.arrayBuffer()), import('./extreme-net.json')]).then(([wasm, net]) =>
-    RolloutEngine.create(wasm, net.default as unknown as NetJSON, PLAYOUT_RULES),
-  );
+  engine ??= Promise.all([fetch(wasmUrl).then((r) => r.arrayBuffer()), loadNet()]).then(([wasm, net]) => RolloutEngine.create(wasm, net, PLAYOUT_RULES));
   return engine;
 }
 
@@ -26,7 +29,7 @@ self.onmessage = async (e: MessageEvent<{ id: number; kind?: 'review' | 'luck'; 
   const { id, kind, state, nmax, n, seed, ask } = e.data;
   try {
     if (kind === 'luck') {
-      luckNet ??= new Net((await import('./extreme-net.json')).default as unknown as NetJSON);
+      luckNet ??= new Net(decodeNet(await loadNet()));
       const r = replay(e.data.rec);
       self.postMessage({ id, luck: rollLuck(e.data.rec, r.states, luckNet), chances: netChances(e.data.rec, r.states, luckNet) });
       return;
