@@ -46,11 +46,16 @@ function game(seed: number): GameRecord {
   return { v: 1, seats: SEATS, first: 'blue', seed, events };
 }
 const flush = () => new Promise((r) => setTimeout(r, 5));
-/** Lets the decision in progress finish. */
+/** Waits (up to 2 s) until `ok()` holds, instead of guessing how long the queue's awaits take. */
+const until = async (ok: () => boolean) => {
+  for (let t = 0; t < 400 && !ok(); t++) await flush();
+};
+/** Lets the decision in progress finish (once there is one), and the queue move on to the next. */
 const step = async () => {
-  await flush();
+  await until(() => release.length > 0);
+  const n = calls.length;
   release.shift()?.();
-  await flush();
+  await until(() => calls.length > n || release.length > 0);
 };
 
 beforeEach(() => {
@@ -87,7 +92,8 @@ describe('review queue', () => {
     const a = game(3);
     Q.setGame('extreme');
     Q.enqueue(a, { keep: false });
-    await step();
+    await flush();
+    await flush();
     expect(calls.length).toBe(0);
     Q.setGame('light');
     await step();
@@ -101,6 +107,17 @@ describe('review queue', () => {
     const queued = gs.filter((g) => Q.isQueued(g));
     expect(queued.length).toBe(Q.AUTO_QUEUE);
     expect(queued).toEqual(gs.slice(-Q.AUTO_QUEUE));
+  });
+
+  it('finishes a review even when a screen following it throws', async () => {
+    const a = game(10);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    Q.follow(a, () => {
+      throw new Error('broken screen');
+    }, { keep: false, open: true });
+    for (let i = 0; i < 400 && !Q.progressOf(a)?.finished; i++) await step();
+    expect(Q.progressOf(a)?.finished).toBe(true);
+    err.mockRestore();
   });
 
   it('ends the worker once there is nothing left to review', async () => {

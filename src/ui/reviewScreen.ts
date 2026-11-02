@@ -186,7 +186,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
         ${[0, 50, 100].map(tick).join('')}
         <line x1="${GL}" y1="${even}" x2="${GW}" y2="${even}" class="even"/><text x="${GL + 4}" y="${even - 4}">even</text>
         <polyline points="${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')}"/>
-        ${pts.map(([x, y], i) => (mine[i]!.label === 'best' || mine[i]!.label === 'good' ? '' : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${LABEL_LOOK[mine[i]!.label].color}"/>`)).join('')}
+        ${pts.slice(0, mine.length).map(([x, y], i) => (mine[i]!.label === 'best' || mine[i]!.label === 'good' ? '' : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${LABEL_LOOK[mine[i]!.label].color}"/>`)).join('')}
         ${star}
         <text x="${end[0] + 6}" y="${Math.max(8, Math.min(GH, end[1] + 4))}" class="final">${Math.round(100 * (result[0] ?? mine.at(-1)!.playedChance))}%</text>
         <rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/></svg>`;

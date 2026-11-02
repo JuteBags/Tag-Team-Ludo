@@ -45,9 +45,17 @@ let hidden = typeof document !== 'undefined' && document.hidden;
 const fewCores = () => (typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4) <= 2;
 const paused = () => hidden || game === 'extreme' || (game === 'light' && fewCores());
 
+/** Tells the screens; one that throws never stops the review (or the others). */
 const emit = (job: Job) => {
-  if (job.last) for (const w of watchers.get(job.key) ?? []) w(job.last);
-  for (const c of changes) c();
+  const safe = (f: () => void) => {
+    try {
+      f();
+    } catch (e) {
+      console.error('review screen update failed', e);
+    }
+  };
+  if (job.last) for (const w of watchers.get(job.key) ?? []) safe(() => w(job.last!));
+  for (const c of changes) safe(c);
 };
 
 function next(): Job | undefined {

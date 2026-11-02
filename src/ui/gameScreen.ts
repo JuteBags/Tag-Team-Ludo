@@ -796,9 +796,10 @@ export class GameScreen {
     // The Review button follows the review running in the queue: "Reviewing 40%", then "Review ready" (#96).
     const rvb = ov.querySelector<HTMLElement>('[data-act=review]');
     if (rvb && rec) {
+      // It keeps following while the review screen is open (the card is off-screen then) and stops once done.
       const show = () => {
-        if (!rvb.isConnected) return off();
         const p = progressOf(rec);
+        if (p?.finished) off();
         rvb.textContent = !p || p.finished ? '★ REVIEW' : p.done && p.total ? `REVIEW ${Math.floor((100 * p.done) / p.total)}%` : 'REVIEW…';
         rvb.setAttribute('aria-label', !p ? 'Review the game' : p.finished ? 'Review ready' : 'Reviewing the game');
         rvb.classList.toggle('ready', !!p?.finished);
