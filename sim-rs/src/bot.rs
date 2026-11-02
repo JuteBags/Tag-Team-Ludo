@@ -242,7 +242,15 @@ fn load_eval(path: &str) -> std::sync::Arc<crate::eval::Evaluator> {
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     let mut c = cache.lock().unwrap();
     c.entry(path.to_string())
-        .or_insert_with(|| Arc::new(crate::eval::Evaluator::from_json_text(&std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}")))))
+        .or_insert_with(|| {
+            // A .bin is the app's shipped net (extreme-net.bin, #98); anything else is a JSON weights file.
+            let ev = if path.ends_with(".bin") {
+                crate::eval::Evaluator::from_bin(&std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}")))
+            } else {
+                crate::eval::Evaluator::from_json_text(&std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}")))
+            };
+            Arc::new(ev)
+        })
         .clone()
 }
 

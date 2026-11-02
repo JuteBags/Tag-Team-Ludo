@@ -1,13 +1,23 @@
-# Would a Float32 net do (#98)? Measures the Extreme net rounded to Float32 against the shipped Float64 one,
-# with no change to the app (tools/ai/net_f32.ts):
-#   sizes     the .bin as Float64 and as Float32, raw and gzip;
-#   strength  Extreme vs Hard in all 10 modes (tools/ai/levels_check.py, fair dice), once per net, same seeds;
-#   review    the REVIEW_CALIB games reviewed with each net: labels unchanged (all and key), and Extreme's choice.
-# Every table goes in the run summary. By hand, or by pushing an f32/* branch (a workflow that isn't on main
-# yet can't be started by hand).
+# The shipped Float32 net (src/engine/ai/extreme-net.bin) against the Float64 training net (extreme-net.json)
+# (#98). The app ships Float32 because this measured no change in any game, review label or Extreme choice. It
+# runs on every PR that changes the net, so a retrained net is checked at both precisions the same way:
+#   sizes     the .bin is the JSON encoded, byte for byte; both sizes, raw and gzip;
+#   strength  Extreme vs Hard in all 10 modes, fair dice, the same seeds with each net (levels_check.py
+#             --compare-net): fails if any mode's win rate differs by more than noise;
+#   review    the REVIEW_CALIB games reviewed from each net: labels unchanged (all and key), accuracy change
+#             per game, and Extreme's own choice (tools/ai/net_f32.ts).
+# Every table goes in the run summary.
 name: Float32 net
 
 on:
+  pull_request:
+    paths:
+      - 'src/engine/ai/extreme-net.json'
+      - 'src/engine/ai/extreme-net.bin'
+      - 'src/engine/ai/netbin.ts'
+      - 'sim-rs/src/eval.rs'
+      - 'tools/ai/net_f32.ts'
+      - '.github/workflows/net-f32.yml'
   push:
     branches: ['f32/**']
   workflow_dispatch:
@@ -38,30 +48,26 @@ jobs:
       - run: node tools/ai/dist/net_f32.mjs make
 
   strength:
-    name: strength ${{ matrix.net }}
+    name: strength
     # A push whose commit message says [review-only] skips this (slow) job.
     if: ${{ !contains(github.event.head_commit.message, '[review-only]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
-    strategy:
-      fail-fast: false
-      matrix:
-        net: [f64, f32]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
       - run: npm ci --no-audit --no-fund
-      - name: The app's rules and the nets for the Rust engine
-        run: bash tools/ai/build.sh && node tools/ai/dist/levels-json.mjs && node tools/ai/dist/net_f32.mjs make > /dev/null
+      - name: The app's rules for the Rust engine
+        run: bash tools/ai/build.sh && node tools/ai/dist/levels-json.mjs
       - name: Build the Rust engine
         run: cargo build --release --bin ludo-arena --manifest-path sim-rs/Cargo.toml
-      - name: Extreme vs Hard
+      - name: Extreme vs Hard, shipped .bin against the JSON
         run: >
           python3 tools/ai/levels_check.py --arena sim-rs/target/release/ludo-arena --only-extreme
-          --extreme-seeds ${{ inputs.extreme_seeds || '50' }} --dice fair
-          --net ${{ matrix.net == 'f32' && 'tools/ai/dist/extreme-net-f32.json' || 'src/engine/ai/extreme-net.json' }}
+          --extreme-seeds ${{ inputs.extreme_seeds || '50' }}
+          --net src/engine/ai/extreme-net.bin --compare-net src/engine/ai/extreme-net.json
 
   review:
     name: review ${{ matrix.layout }} ${{ matrix.mover }}

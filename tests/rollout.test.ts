@@ -6,13 +6,14 @@ import { PLAYOUT_RULES } from '../src/engine/ai/playout-rules';
 import { chooseBotMove } from '../src/engine/ai/levels';
 import type { NetJSON } from '../src/engine/ai/net';
 import { RolloutEngine } from '../src/engine/ai/rollout';
+import { roundNet } from '../src/engine/ai/netbin';
 // @ts-expect-error: the project has no @types/node; Vitest runs on Node.
 import { readFileSync } from 'node:fs';
 
 async function engine(): Promise<RolloutEngine> {
   const wasm = readFileSync(new URL('../src/engine/ai/ludo_wasm.wasm', import.meta.url));
-  const net = JSON.parse(readFileSync(new URL('../src/engine/ai/extreme-net.json', import.meta.url), 'utf8')) as NetJSON;
-  return RolloutEngine.create(wasm, net, PLAYOUT_RULES);
+  // What ships: extreme-net.bin (#98).
+  return RolloutEngine.create(wasm, new Uint8Array(readFileSync(new URL('../src/engine/ai/extreme-net.bin', import.meta.url))), PLAYOUT_RULES);
 }
 
 describe('rollout Extreme (wasm)', () => {
@@ -185,13 +186,14 @@ describe('rollout Extreme (wasm)', () => {
   });
 });
 
-// #98: the engine loaded from extreme-net.bin is the engine loaded from the JSON, choice for choice and value
-// for value (the .bin holds exactly the JSON's doubles; sim-rs parses JSON with float_roundtrip).
+// #98: the engine loaded from extreme-net.bin is the engine loaded from the JSON rounded to Float32, choice for
+// choice and value for value (the .bin holds exactly those values; sim-rs parses JSON with float_roundtrip).
 describe('rollout engine from extreme-net.bin', () => {
-  it('chooses and reviews exactly as from the JSON', { timeout: 300_000 }, async () => {
+  it('chooses and reviews exactly as from the JSON rounded to Float32', { timeout: 300_000 }, async () => {
     const wasm = readFileSync(new URL('../src/engine/ai/ludo_wasm.wasm', import.meta.url));
     const bin = new Uint8Array(readFileSync(new URL('../src/engine/ai/extreme-net.bin', import.meta.url)));
-    const fromJson = await engine();
+    const net = JSON.parse(readFileSync(new URL('../src/engine/ai/extreme-net.json', import.meta.url), 'utf8')) as NetJSON;
+    const fromJson = await RolloutEngine.create(wasm, roundNet(net), PLAYOUT_RULES);
     const fromBin = await RolloutEngine.create(wasm, bin, PLAYOUT_RULES);
     let compared = 0;
     for (const players of [2, 4] as const) {

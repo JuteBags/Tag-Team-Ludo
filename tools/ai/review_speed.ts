@@ -24,7 +24,6 @@ import { appendFileSync, readdirSync, readFileSync, statSync, writeFileSync } fr
 import { join } from 'node:path';
 import { createGame, move, roll, seededDie, seeded, type BotLevel, type GameRecord, type GameState, type Seat } from '../../src/engine';
 import { chooseBotMove } from '../../src/engine/ai/levels';
-import type { NetJSON } from '../../src/engine/ai/net';
 import { PLAYOUT_RULES } from '../../src/engine/ai/playout-rules';
 import { accuracyOf, MEANINGFUL, reviewMoves, SKIP_BELOW, spreadOf, type Label, type ReviewOptions, type Reviewer } from '../../src/engine/ai/review';
 import { RolloutEngine } from '../../src/engine/ai/rollout';
@@ -143,7 +142,8 @@ if (task === 'report') {
   const skip = Number(a.skip ?? (SKIP_BELOW || 1));
   const root = new URL('../../../', import.meta.url);
   const wasm = readFileSync(new URL('src/engine/ai/ludo_wasm.wasm', root));
-  const net = JSON.parse(readFileSync(new URL('src/engine/ai/extreme-net.json', root), 'utf8')) as NetJSON;
+  // The net the app ships (#98): extreme-net.bin, Float32.
+  const net = new Uint8Array(readFileSync(new URL('src/engine/ai/extreme-net.bin', root)));
   const engine = await RolloutEngine.create(wasm, net, PLAYOUT_RULES);
   if (!engine.hasFast) throw new Error('this ludo_wasm.wasm has no review_fast: build it with wasm.yml');
   const ARMS: Record<string, { base: number; opts: ReviewOptions }> = {

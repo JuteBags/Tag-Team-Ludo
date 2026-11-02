@@ -98,7 +98,9 @@ export function labelOf(gap: number, se: number, layout = '2p'): Label {
 
 /**
  * The version of the labels (thresholds, playouts and SKIP_BELOW): a cached review from another version is
- * redone. 3: a base of 128 playouts, the race and the net screen (#101).
+ * redone. 3: a base of 128 playouts, the race and the net screen (#101). Not bumped for the Float32 net (#98):
+ * on CI it changed no label (7,368/7,368) and accuracy by at most 5e-7 points. A net change that does change
+ * labels must still bump it.
  */
 export const REVIEW_VERSION = 3;
 

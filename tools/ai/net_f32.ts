@@ -1,22 +1,20 @@
-// Would a Float32 net do (#98)? Measures the Extreme net rounded to Float32 against the shipped Float64 one.
-// No app change: .github/workflows/net-f32.yml runs it.
+// The shipped Float32 net (extreme-net.bin) against the Float64 training net (extreme-net.json) (#98): the app
+// ships Float32 since this measured the same games, labels and choices. .github/workflows/net-f32.yml runs it
+// on every change to the net, so a retrained net is checked at both precisions the same way.
 //   node tools/ai/dist/net_f32.mjs make
-//       writes tools/ai/dist/extreme-net-f32.json (every weight Math.fround'ed: the values a Float32 .bin
-//       decodes to) for the Rust arena's strength check, and prints the .bin sizes (Float64 and Float32, raw
-//       and gzip).
+//       prints the net file's size as Float64 and as Float32 (shipped), raw and gzip, and the largest
+//       relative change of a weight.
 //   node tools/ai/dist/net_f32.mjs review --layout 2p --mover hard [--games 10] [--from 1]
 //       reviews the REVIEW_CALIB games (review_calib's generator and seeds) with the app's engine and review
-//       twice, once per net, and prints the label agreement (all decisions, and key ones: either side
-//       inaccuracy or worse), the accuracy change per game (points), and how often Extreme's own choice
-//       (choose, 128 playouts) differs.
-// Both engines load through init_bin; the f32 one from the rounded weights stored as Float64, which is
-// exactly what a Float32 .bin would decode to.
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
+//       twice, from the JSON (Float64) and from the shipped .bin (Float32), and prints the label agreement
+//       (all decisions, and key ones: either side inaccuracy or worse), the accuracy change per game
+//       (points), and how often Extreme's own choice (choose, 128 playouts) differs.
+import { readFileSync, appendFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { createGame, move, roll, seededDie, seeded, type BotLevel, type GameRecord, type GameState, type Seat } from '../../src/engine';
 import { chooseBotMove } from '../../src/engine/ai/levels';
 import type { NetJSON } from '../../src/engine/ai/net';
-import { encodeNet } from '../../src/engine/ai/netbin';
+import { encodeNet, roundNet } from '../../src/engine/ai/netbin';
 import { PLAYOUT_RULES } from '../../src/engine/ai/playout-rules';
 import { accuracyOf, reviewMoves, type Label, type Reviewer } from '../../src/engine/ai/review';
 import { RolloutEngine } from '../../src/engine/ai/rollout';
@@ -28,27 +26,22 @@ const task = argv[0];
 const a = flags(argv.slice(1));
 const root = new URL('../../../', import.meta.url);
 const json = JSON.parse(readFileSync(new URL('src/engine/ai/extreme-net.json', root), 'utf8')) as NetJSON;
+const bin = new Uint8Array(readFileSync(new URL('src/engine/ai/extreme-net.bin', root)));
 const summary = process.env.GITHUB_STEP_SUMMARY;
 const md = (line: string) => {
   console.log(line);
   if (summary) appendFileSync(summary, line + '\n');
 };
 
-/** The net with every weight rounded to Float32 (inputs, being indices, stay as they are). */
-function rounded(n: NetJSON): NetJSON {
-  const r = (l: { W: number[][]; b: number[] }) => ({ W: l.W.map((row) => row.map(Math.fround)), b: l.b.map(Math.fround) });
-  return { inputs: n.inputs, trunk: n.trunk.map(r), pool: r(n.pool), out: r(n.out) };
-}
-
-/** A Float32 .bin's bytes: netbin.ts encodeNet's layout, with each weight as 4 bytes instead of 8. */
-function encode32(net: NetJSON): Uint8Array {
+/** The net file as Float64 (version 1 of netbin.ts's layout): what shipped before the Float32 switch. */
+function encode64(net: NetJSON): Uint8Array {
   const layers = [...net.trunk, net.pool, net.out];
   let size = 4 * (4 + net.inputs.length);
-  for (const l of layers) size += 8 + 4 * (l.b.length * l.W[0]!.length + l.b.length);
+  for (const l of layers) size += 8 + 8 * (l.b.length * l.W[0]!.length + l.b.length);
   const v = new DataView(new ArrayBuffer(size));
   let o = 0;
   const u32 = (x: number) => (v.setUint32(o, x, true), (o += 4));
-  const f32 = (x: number) => (v.setFloat32(o, x, true), (o += 4));
+  const f64 = (x: number) => (v.setFloat64(o, x, true), (o += 8));
   u32(0x54454e4c);
   u32(1);
   u32(net.inputs.length);
@@ -57,30 +50,27 @@ function encode32(net: NetJSON): Uint8Array {
   for (const l of layers) {
     u32(l.b.length);
     u32(l.W[0]!.length);
-    for (const row of l.W) row.forEach(f32);
-    l.b.forEach(f32);
+    for (const row of l.W) row.forEach(f64);
+    l.b.forEach(f64);
   }
   return new Uint8Array(v.buffer);
 }
 
-const f32 = rounded(json);
-
 if (task === 'make') {
-  mkdirSync(new URL('tools/ai/dist/', root), { recursive: true });
-  writeFileSync(new URL('tools/ai/dist/extreme-net-f32.json', root), JSON.stringify(f32));
-  const b64 = encodeNet(json);
-  const real32 = encode32(json);
+  if (Buffer.compare(Buffer.from(bin), Buffer.from(encodeNet(json))) !== 0) throw new Error('extreme-net.bin is not extreme-net.json encoded: UPDATE_NET_BIN=1 npx vitest run tests/netBin.test.ts');
+  const b64 = encode64(json);
+  const r = roundNet(json);
   let maxRel = 0;
   [...json.trunk, json.pool, json.out].forEach((l, k) => {
-    const g = [...f32.trunk, f32.pool, f32.out][k]!;
-    l.W.flat().forEach((w, i) => (maxRel = w ? Math.max(maxRel, Math.abs(g.W.flat()[i]! - w) / Math.abs(w)) : maxRel));
+    const g = [...r.trunk, r.pool, r.out][k]!.W.flat();
+    l.W.flat().forEach((w, i) => (maxRel = w ? Math.max(maxRel, Math.abs(g[i]! - w) / Math.abs(w)) : maxRel));
   });
-  md('### Net file: Float64 (shipped) vs Float32');
+  md('### Net file: Float64 vs Float32 (shipped)');
   md('');
   md('| | raw | gzip |');
   md('|---|---:|---:|');
-  md(`| extreme-net.bin, Float64 | ${(b64.length / 1024).toFixed(1)} kB | ${(gzipSync(b64, { level: 9 }).length / 1024).toFixed(1)} kB |`);
-  md(`| extreme-net.bin, Float32 | ${(real32.length / 1024).toFixed(1)} kB | ${(gzipSync(real32, { level: 9 }).length / 1024).toFixed(1)} kB |`);
+  md(`| Float64 (the JSON's values) | ${(b64.length / 1024).toFixed(1)} kB | ${(gzipSync(b64, { level: 9 }).length / 1024).toFixed(1)} kB |`);
+  md(`| Float32, extreme-net.bin | ${(bin.length / 1024).toFixed(1)} kB | ${(gzipSync(bin, { level: 9 }).length / 1024).toFixed(1)} kB |`);
   md('');
   md(`Largest relative change of a weight: ${maxRel.toExponential(2)}.`);
   md('');
@@ -90,8 +80,9 @@ if (task === 'make') {
   const games = Number(a.games ?? 10);
   const from = Number(a.from ?? 1);
   const wasm = readFileSync(new URL('src/engine/ai/ludo_wasm.wasm', root));
-  const e64 = await RolloutEngine.create(wasm, encodeNet(json), PLAYOUT_RULES);
-  const e32 = await RolloutEngine.create(wasm, encodeNet(f32), PLAYOUT_RULES);
+  // Float64: the training JSON through init (sim-rs parses it exactly); Float32: the shipped .bin through init_bin.
+  const e64 = await RolloutEngine.create(wasm, json, PLAYOUT_RULES);
+  const e32 = await RolloutEngine.create(wasm, bin, PLAYOUT_RULES);
   const reviewer = (e: RolloutEngine): Reviewer => async (s, n, seed, ask) => e.reviewFast(s, n, seed, ask);
 
   /** review_calib's game: seat 0's person at `mover` ("first": always the first legal move), everyone else Hard, the app's dice. */
@@ -145,7 +136,7 @@ if (task === 'make') {
   const meanD = dAcc.length ? dAcc.reduce((s, x) => s + x, 0) / dAcc.length : NaN;
   const maxD = dAcc.length ? Math.max(...dAcc) : NaN;
   console.log('F32 ' + JSON.stringify({ layout, mover, games, decisions: n, same, keyN, keySame, choices, choiceSame, meanAbsDAcc: meanD, maxAbsDAcc: maxD }));
-  md(`### Review with a Float32 net: ${layout} ${mover}, REVIEW_CALIB seeds ${from}..${from + games - 1}`);
+  md(`### Review, Float32 (shipped) vs Float64: ${layout} ${mover}, REVIEW_CALIB seeds ${from}..${from + games - 1}`);
   md('');
   md(`| decisions | labels unchanged | key labels unchanged | Extreme's choice unchanged | mean / max abs Δ accuracy per game (pts) |`);
   md('|---:|---:|---:|---:|---:|');

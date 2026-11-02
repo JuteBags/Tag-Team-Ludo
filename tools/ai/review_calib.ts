@@ -12,7 +12,6 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import { createGame, move, roll, seededDie, seeded, type BotLevel, type GameRecord, type Seat } from '../../src/engine';
 import { chooseBotMove } from '../../src/engine/ai/levels';
-import type { NetJSON } from '../../src/engine/ai/net';
 import { PLAYOUT_RULES } from '../../src/engine/ai/playout-rules';
 import { LABEL_SCORE, labelOf, reviewMoves, type Label } from '../../src/engine/ai/review';
 import { RolloutEngine } from '../../src/engine/ai/rollout';
@@ -30,7 +29,8 @@ const dump = a.dump as string | undefined;
 // Run as tools/ai/dist/review_calib.mjs: the repo root is three folders up.
 const root = new URL('../../../', import.meta.url);
 const wasm = readFileSync(new URL('src/engine/ai/ludo_wasm.wasm', root));
-const net = JSON.parse(readFileSync(new URL('src/engine/ai/extreme-net.json', root), 'utf8')) as NetJSON;
+// The net the app ships (#98): extreme-net.bin, Float32.
+const net = new Uint8Array(readFileSync(new URL('src/engine/ai/extreme-net.bin', root)));
 const engine = await RolloutEngine.create(wasm, net, PLAYOUT_RULES);
 // Each decision's spread (best minus worst candidate, in points), from its last (largest) review.
 const spreads = new Map<object, number>();
