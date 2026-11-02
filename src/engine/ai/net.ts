@@ -43,6 +43,29 @@ function dense(l: Layer, a: Float64Array, z: Float64Array, tanh: boolean) {
   }
 }
 
+/**
+ * z = tanh(W a + b) reading only a's non-zero entries (`nz`, the first `n` of them, in order), for the first
+ * trunk layer: a colour has 25-45 non-zero inputs of 182 (#125). Bit-identical to dense(): a skipped term
+ * w * 0 is ±0, and adding ±0 changes a sum only when the sum is -0. Starting from the bias, a sum can only
+ * be -0 if the bias is, so a row with a -0 bias sums densely.
+ */
+function sparseTanh(l: Layer, a: Float64Array, nz: Int32Array, n: number, z: Float64Array) {
+  for (let r = 0; r < l.out; r++) {
+    let s = l.b[r]!;
+    const row = r * l.inn;
+    if (Object.is(s, -0)) for (let c = 0; c < l.inn; c++) s += l.W[row + c]! * a[c]!;
+    else
+      for (let k = 0; k < n; k++) {
+        const c = nz[k]!;
+        s += l.W[row + c]! * a[c]!;
+      }
+    z[r] = Math.tanh(s);
+  }
+}
+
+/** How many trunk vectors (and as many scores) the memo keeps before it starts over: about 3 MB. */
+const MEMO_MAX = 1024;
+
 export class Net implements Evaluator {
   private readonly inputs: Int32Array;
   private readonly trunk: Layer[];
@@ -57,6 +80,15 @@ export class Net implements Evaluator {
   private readonly pooled: Float64Array;
   private readonly z: Float64Array;
   private readonly one = new Float64Array(1);
+  // Each colour's gathered inputs and their non-zero positions, for one call (up to 4 colours).
+  private readonly gathered: Float64Array;
+  private readonly nz: Int32Array;
+  private readonly nzCount = new Int32Array(4);
+  private readonly keys: string[] = ['', '', '', ''];
+  private readonly ready = new Int32Array(4);
+  // The memo (remember()): trunk vectors by a colour's exact inputs, and scores by a person's colours' inputs.
+  private trunkMemo: Map<string, Float64Array> | null = null;
+  private scoreMemo: Map<string, number> | null = null;
 
   /** From the training JSON, or from extreme-net.bin decoded (netbin.ts decodeNet: the same values, no JSON). */
   constructor(net: NetJSON | BinNet) {
@@ -80,18 +112,70 @@ export class Net implements Evaluator {
     this.hs = new Float64Array(4 * this.hidden);
     this.pooled = new Float64Array(3 * this.hidden);
     this.z = new Float64Array(this.pool.out);
+    this.gathered = new Float64Array(4 * this.inputs.length);
+    this.nz = new Int32Array(4 * this.inputs.length);
   }
 
-  /** The trunk vector of the colour whose inputs start at `o` in `x`, written to `dst` at `at`. */
-  private colour(x: Float64Array, o: number, dst: Float64Array, at: number) {
+  /**
+   * Keeps every trunk vector and score by its exact inputs, so a colour or person seen again costs a lookup
+   * (#125: in the luck pass half the colours recur within a roll's six faces). Exact: the same inputs give
+   * the same doubles. Bounded (MEMO_MAX); forget() between games. Off by default.
+   */
+  remember(on = true) {
+    this.trunkMemo = on ? new Map() : null;
+    this.scoreMemo = on ? new Map() : null;
+  }
+
+  /** Empties the memo (a new game). */
+  forget() {
+    this.trunkMemo?.clear();
+    this.scoreMemo?.clear();
+  }
+
+  /** Gathers colour i's inputs (starting at `o` in `x`) and lists the non-zero ones; with the memo on, its key. */
+  private gather(x: Float64Array, o: number, i: number) {
+    const m = this.inputs.length;
+    const a = this.gathered;
+    let n = 0;
+    for (let k = 0; k < m; k++) {
+      const v = x[o + this.inputs[k]!]!;
+      a[i * m + k] = v;
+      if (v !== 0) this.nz[i * m + n++] = k;
+    }
+    this.nzCount[i] = n;
+    if (this.trunkMemo) {
+      let key = '';
+      for (let j = 0; j < n; j++) {
+        const k = this.nz[i * m + j]!;
+        key += k + ':' + a[i * m + k] + ',';
+      }
+      this.keys[i] = key;
+    }
+  }
+
+  /** Colour i's trunk vector (gathered first), written to hs at i * hidden. */
+  private colour(i: number) {
+    const H = this.hidden;
+    const hit = this.trunkMemo?.get(this.keys[i]!);
+    if (hit) {
+      this.hs.set(hit, i * H);
+      return;
+    }
+    const m = this.inputs.length;
     let a = this.bufA;
     let z = this.bufB;
-    for (let k = 0; k < this.inputs.length; k++) a[k] = x[o + this.inputs[k]!]!;
-    for (const l of this.trunk) {
-      dense(l, a, z, true);
+    a.set(this.gathered.subarray(i * m, (i + 1) * m));
+    sparseTanh(this.trunk[0]!, a, this.nz.subarray(i * m), this.nzCount[i]!, z);
+    [a, z] = [z, a];
+    for (let l = 1; l < this.trunk.length; l++) {
+      dense(this.trunk[l]!, a, z, true);
       [a, z] = [z, a];
     }
-    for (let k = 0; k < this.hidden; k++) dst[at + k] = a[k]!;
+    for (let k = 0; k < H; k++) this.hs[i * H + k] = a[k]!;
+    if (this.trunkMemo) {
+      if (this.trunkMemo.size >= MEMO_MAX) this.trunkMemo.clear();
+      this.trunkMemo.set(this.keys[i]!, this.hs.slice(i * H, (i + 1) * H));
+    }
   }
 
   /**
@@ -101,12 +185,29 @@ export class Net implements Evaluator {
   ownerScores(x: Float64Array, base: number, owners: ArrayLike<number>, people: number): Float64Array {
     const H = this.hidden;
     const n = owners.length;
-    for (let i = 0; i < n; i++) this.colour(x, base + i * D, this.hs, i * H);
+    for (let i = 0; i < n; i++) {
+      this.gather(x, base + i * D, i);
+      this.ready[i] = 0;
+    }
     const s = new Float64Array(people).fill(NaN);
     for (let o = 0; o < people; o++) {
+      // With the memo on, a person whose colours' inputs were all seen before has a known score.
+      let key = '';
+      if (this.scoreMemo) {
+        for (let i = 0; i < n; i++) if (owners[i] === o) key += this.keys[i] + '|';
+        const hit = this.scoreMemo.get(key);
+        if (hit !== undefined) {
+          s[o] = hit;
+          continue;
+        }
+      }
       let count = 0;
       for (let i = 0; i < n; i++) {
         if (owners[i] !== o) continue;
+        if (!this.ready[i]) {
+          this.colour(i);
+          this.ready[i] = 1;
+        }
         for (let k = 0; k < H; k++) {
           const v = this.hs[i * H + k]!;
           if (count === 0) {
@@ -125,6 +226,10 @@ export class Net implements Evaluator {
       dense(this.pool, this.pooled, this.z, true);
       dense(this.out, this.z, this.one, false);
       s[o] = this.one[0]!;
+      if (this.scoreMemo) {
+        if (this.scoreMemo.size >= MEMO_MAX) this.scoreMemo.clear();
+        this.scoreMemo.set(key, s[o]!);
+      }
     }
     return s;
   }
