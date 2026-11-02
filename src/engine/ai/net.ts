@@ -8,6 +8,7 @@ import { isDone } from '../rules';
 import type { GameState } from '../types';
 import { D, encodeState } from './encode';
 import type { Evaluator } from './linear';
+import type { BinNet } from './netbin';
 
 interface Dense {
   W: number[][];
@@ -57,11 +58,21 @@ export class Net implements Evaluator {
   private readonly z: Float64Array;
   private readonly one = new Float64Array(1);
 
-  constructor(json: NetJSON) {
-    this.inputs = Int32Array.from(json.inputs);
-    this.trunk = json.trunk.map(layer);
-    this.pool = layer(json.pool);
-    this.out = layer(json.out);
+  /** From the training JSON, or from extreme-net.bin decoded (netbin.ts decodeNet: the same values, no JSON). */
+  constructor(net: NetJSON | BinNet) {
+    if (net.inputs instanceof Int32Array) {
+      const bin = net as BinNet;
+      this.inputs = bin.inputs;
+      this.trunk = bin.trunk;
+      this.pool = bin.pool;
+      this.out = bin.out;
+    } else {
+      const json = net as NetJSON;
+      this.inputs = Int32Array.from(json.inputs);
+      this.trunk = json.trunk.map(layer);
+      this.pool = layer(json.pool);
+      this.out = layer(json.out);
+    }
     this.hidden = this.trunk[this.trunk.length - 1]!.out;
     const widest = Math.max(this.inputs.length, ...this.trunk.map((l) => l.out));
     this.bufA = new Float64Array(widest);

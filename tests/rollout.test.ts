@@ -185,3 +185,32 @@ describe('rollout Extreme (wasm)', () => {
   });
 });
 
+// #98: the engine loaded from extreme-net.bin is the engine loaded from the JSON, choice for choice and value
+// for value (the .bin holds exactly the JSON's doubles; sim-rs parses JSON with float_roundtrip).
+describe('rollout engine from extreme-net.bin', () => {
+  it('chooses and reviews exactly as from the JSON', { timeout: 300_000 }, async () => {
+    const wasm = readFileSync(new URL('../src/engine/ai/ludo_wasm.wasm', import.meta.url));
+    const bin = new Uint8Array(readFileSync(new URL('../src/engine/ai/extreme-net.bin', import.meta.url)));
+    const fromJson = await engine();
+    const fromBin = await RolloutEngine.create(wasm, bin, PLAYOUT_RULES);
+    let compared = 0;
+    for (const players of [2, 4] as const) {
+      const rng = seeded(400 + players);
+      let here = 0;
+      let s: GameState = createGame(SEATS[players].map((color, owner) => ({ color, owner, bot: true, level: 'hard' })));
+      for (let i = 0; i < 20000 && s.phase !== 'over' && here < 30; i++) {
+        if (s.phase === 'roll') s = roll(s, rng);
+        else {
+          if (s.moves.length > 1 && i % 3 === 0) {
+            expect(fromBin.choose(s, 32, 11 + i)).toEqual(fromJson.choose(s, 32, 11 + i));
+            expect(fromBin.review(s, 32, 11 + i)).toEqual(fromJson.review(s, 32, 11 + i));
+            here++;
+            compared++;
+          }
+          s = move(s, chooseBotMove(s, rng));
+        }
+      }
+    }
+    expect(compared).toBe(60);
+  });
+});

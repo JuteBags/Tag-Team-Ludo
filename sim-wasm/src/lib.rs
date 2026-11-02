@@ -1,7 +1,8 @@
 //! The rollout Extreme for the app (src/engine/ai/rollout-worker.ts runs it in a Web Worker): sim-rs's
 //! adaptive rollout player, race:<nmax>:12:<net>:<hard rules, chance 1>, behind a C ABI so the module
 //! needs no bindings generator. The host copies bytes in through `alloc`, then:
-//!   init(net json, rules json)  once, the leaf net and Hard's rules (both as the app ships them)
+//!   init(net json, rules json)  once, the leaf net and Hard's rules (both as JSON text)
+//!   init_bin(net bytes, rules json)  the same, with the net as extreme-net.bin (#98: no JSON parse)
 //!   choose(state, nmax, seed)   the index into state.moves of the move to play
 //!   review(state, n, seed)      the game review's values for one decision (#65), as f64s at the returned
 //!                               pointer: moves, candidates, best, then each move's candidate, then per
@@ -56,6 +57,18 @@ pub unsafe extern "C" fn init(net: *mut u8, net_len: usize, rules: *mut u8, rule
     let opts = SearchOptions { depth: 1, chance: 1, their_k: 3, race: false, cut: 0.0 };
     let base = Policy::Search { eval: Arc::new(Evaluator::from_json_text(&rules)), opts, temperature: 0.0 };
     ENGINE.with(|e| *e.borrow_mut() = Some(Engine { net: Evaluator::from_json_text(&net), base }));
+    1
+}
+
+/// init() with the leaf net as extreme-net.bin's bytes (src/engine/ai/netbin.ts; the same weights as the
+/// JSON, so every value is the same) and Hard's rules as JSON text. Returns 1.
+#[no_mangle]
+pub unsafe extern "C" fn init_bin(net: *mut u8, net_len: usize, rules: *mut u8, rules_len: usize) -> i32 {
+    let net = take(net, net_len);
+    let rules = String::from_utf8(take(rules, rules_len)).unwrap();
+    let opts = SearchOptions { depth: 1, chance: 1, their_k: 3, race: false, cut: 0.0 };
+    let base = Policy::Search { eval: Arc::new(Evaluator::from_json_text(&rules)), opts, temperature: 0.0 };
+    ENGINE.with(|e| *e.borrow_mut() = Some(Engine { net: Evaluator::from_bin(&net), base }));
     1
 }
 

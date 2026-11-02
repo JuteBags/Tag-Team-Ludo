@@ -157,6 +157,18 @@ impl Dense {
         }
     }
 
+    /// A layer from W row by row (out x in) and b: the same Dense as from_json makes (W stored transposed).
+    fn from_rows(w: &[f64], b: Vec<f64>, out: usize, inn: usize) -> Dense {
+        assert!(inn <= MAXW && out <= MAXW, "layer wider than {MAXW}");
+        let mut wt = vec![0.0; inn * out];
+        for r in 0..out {
+            for c in 0..inn {
+                wt[c * out + r] = w[r * inn + c];
+            }
+        }
+        Dense { wt, out, inn, b }
+    }
+
     fn from_json(v: &Value) -> Dense {
         let rows: Vec<Vec<f64>> = v["W"].as_array().unwrap().iter().map(|r| r.as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect()).collect();
         let b: Vec<f64> = v["b"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
@@ -217,6 +229,40 @@ impl Evaluator {
             out: Dense::from_json(&v["out"]),
             hidden,
         })
+    }
+
+    /// A value net from extreme-net.bin's bytes (#98; src/engine/ai/netbin.ts has the layout): the same
+    /// weights as the JSON gives, read as f64, with no JSON parse.
+    pub fn from_bin(bytes: &[u8]) -> Evaluator {
+        fn u32_at(bytes: &[u8], o: &mut usize) -> usize {
+            let v = u32::from_le_bytes(bytes[*o..*o + 4].try_into().unwrap());
+            *o += 4;
+            v as usize
+        }
+        fn f64s_at(bytes: &[u8], o: &mut usize, n: usize) -> Vec<f64> {
+            let v = (0..n).map(|i| f64::from_le_bytes(bytes[*o + 8 * i..*o + 8 * i + 8].try_into().unwrap())).collect();
+            *o += 8 * n;
+            v
+        }
+        let mut o = 0usize;
+        assert_eq!(u32_at(bytes, &mut o), 0x5445_4e4c, "not a net file");
+        assert_eq!(u32_at(bytes, &mut o), 1, "net file version");
+        let ni = u32_at(bytes, &mut o);
+        let inputs: Vec<usize> = (0..ni).map(|_| u32_at(bytes, &mut o)).collect();
+        let nt = u32_at(bytes, &mut o);
+        let mut layers = Vec::with_capacity(nt + 2);
+        for _ in 0..nt + 2 {
+            let out = u32_at(bytes, &mut o);
+            let inn = u32_at(bytes, &mut o);
+            let w = f64s_at(bytes, &mut o, out * inn);
+            let b = f64s_at(bytes, &mut o, out);
+            layers.push(Dense::from_rows(&w, b, out, inn));
+        }
+        assert_eq!(o, bytes.len(), "net file has trailing bytes");
+        let out = layers.pop().unwrap();
+        let pool = layers.pop().unwrap();
+        let hidden = layers.last().unwrap().out;
+        Evaluator::Net(Net { inputs, trunk: layers, pool, out, hidden })
     }
 
     pub fn linear(weights: [f64; F], turn: [f64; 7]) -> Evaluator {

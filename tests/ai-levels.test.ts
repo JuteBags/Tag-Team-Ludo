@@ -1,7 +1,13 @@
 // App bot levels (src/engine/ai/levels.ts): Hard plans whole turns with readable rules, Extreme with the net.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+// @ts-expect-error: the project has no @types/node; Vitest runs on Node.
+import { readFileSync } from 'node:fs';
 import { SEATS, createGame, move, roll, seeded, type BotLevel, type GameState } from '../src/engine';
 import { chooseBotMove, loadExtreme } from '../src/engine/ai/levels';
+
+// loadExtreme() fetches extreme-net.bin (#98); Node's fetch can't read files, so serve it from disk.
+const netBytes = readFileSync(new URL('../src/engine/ai/extreme-net.bin', import.meta.url));
+vi.stubGlobal('fetch', async () => new Response(netBytes));
 
 function play(levels: BotLevel[], seed: number): GameState {
   const rng = seeded(seed);

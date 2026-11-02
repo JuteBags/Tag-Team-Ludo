@@ -2,12 +2,17 @@
 // through the app's own bot path (chooseBotMoveAsync). Every real choice goes to the worker, and the UI
 // thread never imports the net (before #98 it did, at the first forced move of each session).
 import { describe, expect, it, vi } from 'vitest';
+// @ts-expect-error: the project has no @types/node; Vitest runs on Node.
+import { readFileSync } from 'node:fs';
 import { createGame, move, roll, seeded, type GameState, type Seat } from '../src/engine';
 
+// The net is extreme-net.bin, fetched (#98): count the fetches, and serve the file from disk.
 let imported = 0;
-vi.mock('../src/engine/ai/extreme-net.json', async (load) => {
+const netBytes = readFileSync(new URL('../src/engine/ai/extreme-net.bin', import.meta.url));
+vi.stubGlobal('fetch', async (url: string | URL) => {
+  if (!String(url).includes('extreme-net')) throw new Error(`unexpected fetch ${url}`);
   imported++;
-  return load();
+  return new Response(netBytes);
 });
 
 /** A fake rollout worker: answers each move request with the first move, as a real one answers with its pick. */

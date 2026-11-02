@@ -13,6 +13,8 @@ interface Exports {
   memory: WebAssembly.Memory;
   alloc(len: number): number;
   init(net: number, netLen: number, rules: number, rulesLen: number): number;
+  /** init() with the net as extreme-net.bin's bytes (#98); missing in modules built before it. */
+  init_bin?(net: number, netLen: number, rules: number, rulesLen: number): number;
   choose(state: number, len: number, nmax: number, seed: number): number;
   moves_len(state: number, len: number): number;
   /** The game review's values for one decision (sim-wasm review); missing in modules built before #65. */
@@ -50,12 +52,22 @@ export class RolloutEngine {
   private constructor(private readonly x: Exports) {}
 
   /** Instantiates the module and loads the leaf net and Hard's rules into it. */
-  static async create(wasm: BufferSource, net: NetJSON, rules: LinearJSON): Promise<RolloutEngine> {
+  /**
+   * Instantiates the module and loads the leaf net and Hard's rules into it. The net is the training JSON,
+   * or extreme-net.bin's bytes (#98: the same weights, with no JSON parse or re-stringify on the way in).
+   */
+  static async create(wasm: BufferSource, net: NetJSON | Uint8Array, rules: LinearJSON): Promise<RolloutEngine> {
     const { instance } = await WebAssembly.instantiate(wasm, {});
     const e = new RolloutEngine(instance.exports as unknown as Exports);
-    const [n, nl] = e.put(new TextEncoder().encode(JSON.stringify(net)));
     const [r, rl] = e.put(new TextEncoder().encode(JSON.stringify(rules)));
-    e.x.init(n, nl, r, rl);
+    if (net instanceof Uint8Array) {
+      if (!e.x.init_bin) throw new Error('this rollout engine has no init_bin');
+      const [n, nl] = e.put(net);
+      e.x.init_bin(n, nl, r, rl);
+    } else {
+      const [n, nl] = e.put(new TextEncoder().encode(JSON.stringify(net)));
+      e.x.init(n, nl, r, rl);
+    }
     return e;
   }
 
