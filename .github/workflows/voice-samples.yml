@@ -1,0 +1,64 @@
+# Voice auditions for the demo film's voice-over: the script (marketing/demo-film/voice/script.json) read by
+# several English and Hindi voices, one MP3 each, so the owner can listen and pick. Kokoro (offline, Apache 2.0)
+# always; Chatterbox (MIT, more natural, can take a reference voice later) as a best-effort second job.
+# Manual only: Actions -> Voice samples -> Run workflow, or: gh workflow run voice-samples.yml --ref <branch>
+name: Voice samples
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kokoro:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      LIB: ${{ github.workspace }}/lemo-opuscar
+      LEMO_OPUSCAR_HOME: ${{ github.workspace }}/lemo-opuscar
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: astral-sh/setup-uv@v6
+      - name: Library and its voice tier
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+          git clone --quiet --depth 1 --filter=blob:none --sparse https://github.com/lemomo-ai/lemo-opuscar.git "$LIB"
+          git -C "$LIB" sparse-checkout set --no-cone '/*' '!/styles/*/demo/' '!/styleboard/' '!/docs/'
+          git -C "$LIB" config lemo.managed true
+          sh "$LIB/plugin/skills/lemo-opuscar/scripts/setup.sh" deps voice
+      - name: Read the script in every voice
+        run: $LIB/.venv/bin/python marketing/demo-film/voice/samples.py
+      - name: Check the English reads word for word (Whisper)
+        continue-on-error: true
+        run: |
+          cd marketing/demo-film/voice/out/lines
+          for d in en-*; do echo "== $d"; $LIB/.venv/bin/python $LIB/core/tts/asr_check.py $d/lines.json $d --lang en | tail -3; done
+      - uses: actions/upload-artifact@v5
+        with:
+          name: voice-samples-kokoro
+          path: marketing/demo-film/voice/out/samples/
+
+  chatterbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Chatterbox on CPU
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+          pip install -q torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install -q chatterbox-tts
+      - name: Read the script (English, Hindi)
+        run: python marketing/demo-film/voice/chatterbox_samples.py
+      - uses: actions/upload-artifact@v5
+        with:
+          name: voice-samples-chatterbox
+          path: marketing/demo-film/voice/out/samples/
