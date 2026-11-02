@@ -196,13 +196,15 @@ describe('rollout engine from extreme-net.bin', () => {
     let compared = 0;
     for (const players of [2, 4] as const) {
       const rng = seeded(400 + players);
+      let here = 0;
       let s: GameState = createGame(SEATS[players].map((color, owner) => ({ color, owner, bot: true, level: 'hard' })));
-      for (let i = 0; i < 20000 && s.phase !== 'over' && compared < 20 * (players / 2); i++) {
+      for (let i = 0; i < 20000 && s.phase !== 'over' && here < 30; i++) {
         if (s.phase === 'roll') s = roll(s, rng);
         else {
           if (s.moves.length > 1 && i % 3 === 0) {
             expect(fromBin.choose(s, 32, 11 + i)).toEqual(fromJson.choose(s, 32, 11 + i));
             expect(fromBin.review(s, 32, 11 + i)).toEqual(fromJson.review(s, 32, 11 + i));
+            here++;
             compared++;
           }
           s = move(s, chooseBotMove(s, rng));
