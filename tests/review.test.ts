@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { HARD_RULES } from '../src/engine/ai/hard-rules';
 import { LinearRules } from '../src/engine/ai/linear';
-import { faceChances, labelOf, MEANINGFUL, PLAYOUTS, reviewMoves, rollLuck, SKIP_BELOW, SPREAD_EXACT, summary, type DecisionValues, type Label, type Reviewer, type ReviewAsk } from '../src/engine/ai/review';
+import { cutsFor, faceChances, labelOf, layoutKey, MEANINGFUL, PLAYOUTS, reviewMoves, rollLuck, SKIP_BELOW, SPREAD_EXACT, summary, THRESHOLDS_BY_LAYOUT, type DecisionValues, type Label, type Reviewer, type ReviewAsk } from '../src/engine/ai/review';
 
 const SEATS: Seat[] = [
   { color: 'blue', owner: 0, bot: false },
@@ -43,10 +43,31 @@ describe('labels', () => {
     expect(labelOf(0, 0)).toBe('best');
     expect(labelOf(1.4, 0.2)).toBe('best');
     expect(labelOf(2.5, 3)).toBe('best');
-    expect(labelOf(2.5, 0.5)).toBe('good');
-    expect(labelOf(5, 0.5)).toBe('inaccuracy');
-    expect(labelOf(10, 1)).toBe('mistake');
-    expect(labelOf(15, 1)).toBe('blunder');
+    expect(labelOf(1.8, 0.5)).toBe('good');
+    expect(labelOf(2.5, 0.5)).toBe('inaccuracy');
+    expect(labelOf(5, 0.5)).toBe('mistake');
+    expect(labelOf(10, 1)).toBe('blunder');
+  });
+
+  it("scales the cuts by the layout, never under a point", () => {
+    // 4p: every cut times THRESHOLDS_BY_LAYOUT['4p'].
+    const f = THRESHOLDS_BY_LAYOUT['4p']!;
+    expect(cutsFor('4p').best).toBeCloseTo(Math.max(1, 1.5 * f), 9);
+    expect(labelOf(4.4, 0, '4p')).toBe(4.4 < 5 * f ? 'inaccuracy' : 'mistake');
+    expect(labelOf(4.4, 0, '2p')).toBe('inaccuracy');
+    // A layout not in the table uses the 2p cuts.
+    expect(cutsFor('9p')).toEqual(cutsFor('2p'));
+    expect(Math.min(cutsFor('2h-side').best, ...cutsFor('2h-side').tops.map(([, t]) => t))).toBeGreaterThanOrEqual(1);
+  });
+
+  it('names the layout of a game', () => {
+    const seats = (owners: number[]): Seat[] => (['blue', 'green', 'red', 'yellow'] as const).slice(0, owners.length).map((color, i) => ({ color, owner: owners[i]!, bot: true }));
+    expect(layoutKey(createGame(seats([0, 1])))).toBe('2p');
+    expect(layoutKey(createGame(seats([0, 1, 2])))).toBe('3p');
+    expect(layoutKey(createGame(seats([0, 1, 2, 3])))).toBe('4p');
+    // blue + red (two apart) face each other; blue + green sit side by side.
+    expect(layoutKey(createGame(seats([0, 1, 0, 1])))).toBe('2h-opposite');
+    expect(layoutKey(createGame(seats([0, 0, 1, 1])))).toBe('2h-side');
   });
 });
 
@@ -55,11 +76,11 @@ describe('move review', () => {
     const rec = game(3);
     const { states } = replay(rec) as { states: GameState[] };
     const calls: number[] = [];
-    // A fake engine: the first move is best, every other one 6.5 points worse (near the 7-point edge).
+    // A fake engine: the first move is best, every other one 4 points worse (near the 5-point edge in 2p).
     const fake = async (s: GameState, n: number): Promise<DecisionValues> => {
       calls.push(n);
       const k = s.moves.length;
-      return { ofMove: s.moves.map((_, i) => i), mean: Array.from({ length: k }, (_, i) => (i ? 0.435 : 0.5)), gap: Array.from({ length: k }, (_, i) => (i ? 0.065 : 0)), se: new Array(k).fill(0.01), best: 0 };
+      return { ofMove: s.moves.map((_, i) => i), mean: Array.from({ length: k }, (_, i) => (i ? 0.46 : 0.5)), gap: Array.from({ length: k }, (_, i) => (i ? 0.04 : 0)), se: new Array(k).fill(0.01), best: 0 };
     };
     const seen: number[] = [];
     const out = await reviewMoves(rec, states, [0], fake, (_, done) => seen.push(done));
@@ -71,7 +92,7 @@ describe('move review', () => {
       expect(s.moves.length).toBeGreaterThan(1);
       expect(m.label).toBe(m.played === 0 ? 'best' : 'inaccuracy');
     }
-    // A played move off the best, 6.5 points down, sits within 2 of the 7 edge: it gets up to 1024 playouts.
+    // A played move off the best, 4 points down, sits within 2 of the 5 edge: it gets up to 1024 playouts.
     expect(calls).toContain(PLAYOUTS * 4);
     expect(calls.filter((n) => n === PLAYOUTS).length).toBe(out.length);
   });
@@ -120,7 +141,7 @@ describe('fast review (#101)', () => {
     for (const m of out) {
       const kd = kinds[m.at % 3]!;
       const mine = asks.filter((a) => a.at === m.at);
-      expect(mine[0]!.ask).toEqual({ mode: 'race', played: m.played, skip: SKIP_BELOW });
+      expect(mine[0]!.ask).toEqual({ mode: 'race', played: m.played, best: cutsFor(layoutKey(states[0]!)).best, skip: SKIP_BELOW });
       expect(mine[0]!.n).toBe(PLAYOUTS);
       if (kd === 'net') {
         expect(m).toMatchObject({ label: 'best', gap: 0, approx: 'net' });
@@ -133,7 +154,7 @@ describe('fast review (#101)', () => {
         expect(mine.length).toBe(1);
       } else {
         expect(m.approx).toBeUndefined();
-        expect(m.label).toBe(m.played === 0 ? 'best' : 'inaccuracy');
+        expect(m.label).toBe(m.played === 0 ? 'best' : labelOf(6.5, 1, layoutKey(states[0]!)));
         // Top-ups are plain full reviews (no ask), as before.
         if (m.played !== 0) expect(mine.slice(1).map((a) => [a.n, a.ask])).toEqual([[PLAYOUTS * 2, undefined], [PLAYOUTS * 4, undefined], [PLAYOUTS * 8, undefined]]);
       }

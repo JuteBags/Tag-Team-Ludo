@@ -8,6 +8,7 @@
 //    (rebuilt from the game's seed; dice.ts). The chance after a face is the best play of the dice it
 //    completes (a depth-1 search), or the net's value while the tray is still being rolled. Its mean is 0
 //    for any value function, so it can be summed per person: the result minus the luck is the skill.
+import { COLORS } from '../board';
 import { diceWeights } from '../dice';
 import { roll } from '../game';
 import type { GameRecord } from '../record';
@@ -39,9 +40,10 @@ export interface DecisionValues {
 /**
  * What to ask the engine for instead of the full review (#101): the net screen, or the race for the move
  * played (an index into state.moves), which first skips the playouts when the net's spread is under `skip`
- * points, and settles Best at `z` standard errors (0 or missing: the engine's schedule, rollout.rs best_z).
+ * points, and settles Best within `best` points (the layout's Best cut; BEST_WITHIN when missing) at `z`
+ * standard errors (0 or missing: the engine's schedule, rollout.rs best_z).
  */
-export type ReviewAsk = { mode: 'screen' } | { mode: 'race'; played: number; skip?: number; z?: number };
+export type ReviewAsk = { mode: 'screen' } | { mode: 'race'; played: number; best?: number; skip?: number; z?: number };
 
 /** One decision's values: the full review of `n` paired playouts per candidate, or with `ask` a fast one (an engine without it answers with the full review). */
 export type Reviewer = (state: GameState, n: number, seed: number, ask?: ReviewAsk) => Promise<DecisionValues>;
@@ -49,22 +51,48 @@ export type Reviewer = (state: GameState, n: number, seed: number, ask?: ReviewA
 export type Label = 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder';
 
 /**
- * Win chance given up (points, 0-100) at the top of each label. Starting values (#65): to be calibrated on
- * reviewed games so that strong play reads mostly best/good and Normal's visibly worse.
+ * The label cuts in 2p (points of win chance given up, 0-100), calibrated in tools/ai/REVIEW_CALIB.md: "best"
+ * up to BEST_WITHIN (or within one standard error: a coin flip isn't a mistake), then the top of each label.
  */
+export const BEST_WITHIN = 1.5;
 export const THRESHOLDS: [Label, number][] = [
-  ['good', 3],
-  ['inaccuracy', 7],
-  ['mistake', 15],
+  ['good', 2],
+  ['inaccuracy', 5],
+  ['mistake', 10],
 ];
 
-/** "Best" within this many points of the top, or within one standard error of it (a coin flip isn't a mistake). */
-export const BEST_WITHIN = 1.5;
+/**
+ * Each layout's scale on the 2p cuts (REVIEW_CALIB.md): with more players a move's gaps are smaller, so the
+ * same cut would be harsher. The p95 ratio of Normal's gaps on meaningful decisions, against 2p. 2h-side
+ * uses 2h-opposite's; doubles-off games use their layout's. 3p, 4p and the 2h rows are provisional (wide
+ * bootstrap intervals): see tools/ai/REVIEW_CALIB.md.
+ */
+export const THRESHOLDS_BY_LAYOUT: Record<string, number> = { '2p': 1, '3p': 0.85, '4p': 0.85, '2h-opposite': 0.7, '2h-side': 0.7 };
 
-/** The label for a move that gave up `gap` points (± `se`). */
-export function labelOf(gap: number, se: number): Label {
-  if (gap <= BEST_WITHIN || gap <= se) return 'best';
-  for (const [label, top] of THRESHOLDS) if (gap < top) return label;
+/** No scaled cut goes under this many points. */
+const CUT_FLOOR = 1;
+
+/** A game's layout, as the calibration names it: "2p", "3p", "4p", "2h-opposite" or "2h-side" (two houses each). */
+export function layoutKey(s: GameState): string {
+  const owners = new Set(s.players.map((p) => p.owner)).size;
+  if (s.players.length === owners) return `${owners}p`;
+  // Colours two apart in COLORS face each other across the board (as store.ts layoutOf).
+  const mine = s.players.filter((p) => p.owner === s.players[0]!.owner).map((p) => COLORS.indexOf(p.color));
+  return Math.abs(mine[0]! - mine[1]!) === 2 ? '2h-opposite' : '2h-side';
+}
+
+/** The cuts for a layout: the 2p ones scaled by THRESHOLDS_BY_LAYOUT (1 for a layout not in it), none under CUT_FLOOR. */
+export function cutsFor(layout = '2p'): { best: number; tops: [Label, number][] } {
+  const f = THRESHOLDS_BY_LAYOUT[layout] ?? 1;
+  const cut = (x: number) => Math.max(CUT_FLOOR, x * f);
+  return { best: cut(BEST_WITHIN), tops: THRESHOLDS.map(([l, t]) => [l, cut(t)]) };
+}
+
+/** The label for a move that gave up `gap` points (± `se`) in a game of `layout` (layoutKey). */
+export function labelOf(gap: number, se: number, layout = '2p'): Label {
+  const c = cutsFor(layout);
+  if (gap <= c.best || gap <= se) return 'best';
+  for (const [label, top] of c.tops) if (gap < top) return label;
   return 'blunder';
 }
 
@@ -83,22 +111,16 @@ export const REVIEW_VERSION = 3;
  */
 export const SKIP_BELOW = 0;
 
-/**
- * A decision the race settled as Best whose spread (by the race) falls in this range (points) is reviewed in
- * full after all (#101): accuracy counts only decisions with a spread of MEANINGFUL or more, and near that
- * line the race's fewer playouts would move decisions in and out of it (review-speed run 2: |Δ accuracy| per
- * 4p game 0.67 against the full review, 0.25 with this). The engine keeps the race's playouts, so the full
- * review only adds the rest, and its values are the full review's exactly.
- */
-export const SPREAD_EXACT: [number, number] = [2, 5];
-
 /** Playouts per candidate, and the most a decision is topped up to when its gap sits near a label's edge. */
 export const PLAYOUTS = 128;
 export const PLAYOUTS_MAX = 1024;
 /** How near (points) a label's edge a gap must be to get more playouts. */
 const EDGE = 2;
 
-const nearEdge = (gap: number) => [BEST_WITHIN, ...THRESHOLDS.map(([, t]) => t)].some((t) => Math.abs(gap - t) < EDGE);
+const nearEdge = (gap: number, layout = '2p') => {
+  const c = cutsFor(layout);
+  return [c.best, ...c.tops.map(([, t]) => t)].some((t) => Math.abs(gap - t) < EDGE);
+};
 
 export interface MoveReview {
   /** Index into the replay's states of the position the move was made in. */
@@ -164,6 +186,9 @@ const decisionSeed = (rec: GameRecord, s: GameState) => mixSeed(rec.seed ?? 0x5e
 export async function reviewMoves(rec: GameRecord, states: GameState[], who: number[], reviewer: Reviewer, onMove?: (m: MoveReview, done: number, total: number) => void, base = PLAYOUTS, onSkip?: (at: number) => void, opts: ReviewOptions = {}): Promise<MoveReview[]> {
   const fast = opts.fast !== false;
   const skipBelow = opts.skipBelow ?? SKIP_BELOW;
+  const layout = states[0] ? layoutKey(states[0]) : '2p';
+  // The race settles Best within the layout's own Best cut (labelOf's), so it never calls Best what the cuts call Good.
+  const bestCut = cutsFor(layout).best;
   const todo: number[] = [];
   for (let i = 0; i + 1 < states.length; i++) {
     const s = states[i]!;
@@ -210,7 +235,7 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
       continue;
     }
     let n = base;
-    let v = await reviewer(s, n, decisionSeed(rec, s), fast ? { mode: 'race', played, skip: sv ? 0 : skipBelow, ...(opts.raceZ ? { z: opts.raceZ } : {}) } : undefined);
+    let v = await reviewer(s, n, decisionSeed(rec, s), fast ? { mode: 'race', played, best: bestCut, skip: sv ? 0 : skipBelow, ...(opts.raceZ ? { z: opts.raceZ } : {}) } : undefined);
     const c = v.ofMove[played]!;
     if (v.mean.length < 2) {
       onSkip?.(i); // every move reaches the same position: nothing to choose
@@ -230,7 +255,7 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
       }
     }
     // Not settled as Best: the full review's values (the race filled up to n), topped up near an edge as always.
-    while (!settledBest && n < PLAYOUTS_MAX && c !== v.best && nearEdge(100 * v.gap[c]!)) {
+    while (!settledBest && n < PLAYOUTS_MAX && c !== v.best && nearEdge(100 * v.gap[c]!, layout)) {
       n *= 2;
       v = await reviewer(s, n, decisionSeed(rec, s));
     }
@@ -239,8 +264,8 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     const se = cp === v.best ? 0 : 100 * v.se[cp]!;
     const best = v.ofMove.indexOf(v.best);
     const gaps = v.ofMove.map((c) => (c === v.best ? 0 : Math.round(1000 * v.gap[c]!) / 10));
-    // The race settles Best only when every rival is, even at +2 se, under BEST_WITHIN better: labelOf agrees.
-    const label = settledBest ? 'best' : labelOf(gap, se);
+    // The race settles Best only when every rival is, even at +z se, under the layout's Best cut better: labelOf agrees.
+    const label = settledBest ? 'best' : labelOf(gap, se, layout);
     const r: MoveReview = { at: i, owner, played, best, playedChance: v.mean[cp]!, bestChance: v.mean[v.best]!, gap, se, label, gaps };
     if (settledBest) r.approx = 'race';
     out.push(r);
@@ -316,19 +341,30 @@ export function luckPercent(luck: RollLuck[], owner: number): number {
 /** A decision is meaningful when its best and worst moves are at least this many points apart (#96). */
 export const MEANINGFUL = 3;
 
+/**
+ * A decision the race settled as Best whose spread (by the race) falls in this range (points) is reviewed in
+ * full after all (#101): accuracy counts only decisions with a spread of MEANINGFUL or more, and near that
+ * line the race's fewer playouts would move decisions in and out of it (review-speed run 2: |Δ accuracy| per
+ * 4p game 0.67 against the full review, 0.25 with this). Set around MEANINGFUL, so it moves with it. The engine
+ * keeps the race's playouts, so the full review only adds the rest, and its values are the full review's
+ * exactly. It changes labels and values, so changing it means bumping REVIEW_VERSION.
+ */
+export const SPREAD_EXACT: [number, number] = [MEANINGFUL - 1, MEANINGFUL + 2];
+
 /** A decision's spread: its best move minus its worst, in points (NaN for reviews without every move's gap). */
 export const spreadOf = (m: MoveReview) => (m.gaps?.length ? Math.max(...m.gaps) : NaN);
 
 /**
  * Accuracy (0-1) as agreed for #96: of everything at stake in the meaningful decisions, the share kept,
- * 1 - Σgap / Σspread, so big decisions weigh more. Reviews from before every move's gap was kept fall back
+ * 1 - Σgap / Σspread, so big decisions weigh more; a Best move's gap counts as 0 (it's noise). Reviews from before every move's gap was kept fall back
  * to the mean label score. NaN with no meaningful decision.
  */
 export function accuracyOf(mine: MoveReview[]): number {
   if (mine.length && mine.every((m) => m.gaps?.length)) {
     const meaningful = mine.filter((m) => spreadOf(m) >= MEANINGFUL);
     const at = meaningful.reduce((a, m) => a + spreadOf(m), 0);
-    return at > 0 ? 1 - meaningful.reduce((a, m) => a + m.gap, 0) / at : NaN;
+    // A move labelled Best gave up nothing: its gap is within noise, and the number agrees with the label.
+    return at > 0 ? 1 - meaningful.reduce((a, m) => a + (m.label === 'best' ? 0 : m.gap), 0) / at : NaN;
   }
   return mine.length ? mine.reduce((a, m) => a + LABEL_SCORE[m.label], 0) / mine.length : NaN;
 }

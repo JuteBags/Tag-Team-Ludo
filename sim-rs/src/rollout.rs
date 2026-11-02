@@ -228,8 +228,9 @@ pub fn review_cached(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Eval
     review_stats(of_move, &first)
 }
 
-/// "Best" within this many points (as a fraction) of the top: review.ts BEST_WITHIN.
-const BEST_WITHIN: f64 = 0.015;
+/// "Best" within this many points (as a fraction) of the top: review.ts BEST_WITHIN, the 2p cut (the race
+/// takes the layout's own cut, review.ts cutsFor, as `best`).
+pub const BEST_WITHIN: f64 = 0.015;
 
 /// The race settles a Best no earlier than this many playouts.
 const SETTLE_MIN: usize = 48;
@@ -267,14 +268,15 @@ pub struct FastReview {
 /// Best decision is measured as fairly as the rest (a candidate dropped on a bad run reads too low). It
 /// stops when:
 ///  - the played move settles as Best: from SETTLE_MIN playouts on, every other candidate still in is, even
-///    at +z se, less than BEST_WITHIN better than it (stricter than review.ts labelOf's Best, so a borderline
+///    at +z se, less than `best` (a fraction; BEST_WITHIN when 0) better than it (stricter than review.ts labelOf's Best, so a borderline
 ///    case goes on to the full review instead). The check is made after every round, so z is above a single
 ///    test's 2: `z` > 0 for that z at every look, or 0 for best_z's schedule. The values are the race's;
 ///    dropped candidates' gaps are over their fewer playouts, paired with the leader's;
-///  - the played move settles as not Best: its paired deficit to the leader minus 2 se exceeds BEST_WITHIN.
+///  - the played move settles as not Best: its paired deficit to the leader minus 2 se exceeds `best`.
 ///    Every candidate is then filled up to n playouts, so the result is review(n) exactly;
 ///  - n playouts: filled up to n as well, so again review(n) exactly.
-pub fn review_race(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy, played: usize, z: f64) -> FastReview {
+pub fn review_race(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evaluator>, base: &Policy, played: usize, z: f64, best: f64) -> FastReview {
+    let best_within = if best > 0.0 { best } else { BEST_WITHIN };
     let me = g.b.p[g.current].owner;
     let (of_move, cands) = review_cands(g);
     let nc = cands.len();
@@ -302,7 +304,7 @@ pub fn review_race(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evalua
         let lead = lead_of(&active, &res);
         if lead != p {
             let (mu, se) = paired(&res[lead], &res[p]);
-            if mu - 2.0 * se > BEST_WITHIN {
+            if mu - 2.0 * se > best_within {
                 stop = STOP_WORSE;
                 break;
             }
@@ -313,7 +315,7 @@ pub fn review_race(g: &Game, seed: i64, n: usize, cut: u32, eval: Option<&Evalua
                 return true;
             }
             let (mu, se) = paired(&res[c], &res[p]);
-            mu + zk * se < BEST_WITHIN
+            mu + zk * se < best_within
         });
         if settled {
             stop = STOP_BEST;

@@ -95,6 +95,8 @@ describe('luck %, headline and turning point', () => {
     expect(headline({ won: false, accuracy: 0.92, luckPct: 12, name: 'You' })).toBe('You played well (92%), but the dice went against you (luck 12%).');
     expect(headline({ won: true, accuracy: 0.95, luckPct: 50, name: 'You' })).toBe('Won on great play: 95% accuracy.');
     expect(headline({ won: false, accuracy: 0.7, luckPct: 50, name: 'Aarav' })).toBe('Lost on mistakes: the key moves show where.');
+    expect(headline({ won: false, accuracy: 0.6, luckPct: 98, name: 'You', keyMistakes: 0, inaccuracies: 7 })).toBe('No big mistakes, but small slips added up in close decisions.');
+    expect(headline({ won: false, accuracy: 0.8, luckPct: 98, name: 'You', keyMistakes: 0, inaccuracies: 3 })).toBe('The dice were kind (luck 98%), but 3 small slips added up.');
     const blunder = { at: 9, owner: 0, played: 0, best: 1, playedChance: 0.1, bestChance: 0.4, gap: 32, se: 1, label: 'blunder' } as MoveReview;
     expect(headline({ won: false, accuracy: 0.92, luckPct: 70, name: 'You', decider: blunder })).toBe('One blunder decided it: a single move cost 32 points of winning chance.');
   });
@@ -133,10 +135,10 @@ describe('review runner', () => {
   it('picks up a stored review and skips the moves already done; another version starts over', async () => {
     const rec = game(9);
     let calls = 0;
-    // Every other move 10 points down: away from every label's edge, so one call per decision.
+    // Every other move 7.5 points down: away from every label's edge, so one call per decision.
     const fake = async (s: GameState): Promise<DecisionValues> => {
       calls++;
-      return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.4 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.1 : 0)), se: s.moves.map(() => 0.01), best: 0 };
+      return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 };
     };
     const run = (stored?: Parameters<typeof runReview>[1]) =>
       new Promise<MoveReview[]>((done) => runReview(rec, stored, (p) => p.finished && done(p.moves), false, fake));
@@ -169,7 +171,7 @@ describe('review runner', () => {
     const fake = async (s: GameState): Promise<DecisionValues> =>
       k++ % 3 === 0
         ? { ofMove: s.moves.map(() => 0), mean: [0.5], gap: [0], se: [0], best: 0 }
-        : { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.4 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.1 : 0)), se: s.moves.map(() => 0.01), best: 0 };
+        : { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 };
     const end = await new Promise<{ done: number; total: number; moves: MoveReview[] }>((done) => runReview(rec, undefined, (p) => p.finished && done(p), false, fake));
     expect(end.done).toBe(end.total);
     expect(end.moves.length).toBeLessThan(end.total);
@@ -177,7 +179,7 @@ describe('review runner', () => {
 
   it('estimates the time left once a few verdicts are in, and dates the finished review', async () => {
     const rec = game(9);
-    const fake = async (s: GameState): Promise<DecisionValues> => ({ ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.4 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.1 : 0)), se: s.moves.map(() => 0.01), best: 0 });
+    const fake = async (s: GameState): Promise<DecisionValues> => ({ ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 });
     const seen: (number | null)[] = [];
     const end = await new Promise<{ when?: number; eta: number | null }>((done) =>
       runReview(rec, undefined, (p) => (p.finished ? done(p) : seen.push(p.eta)), false, fake),

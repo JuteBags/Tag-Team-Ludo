@@ -20,7 +20,7 @@ vi.mock('../src/engine/ai/review-worker', () => ({
   workerReviewer: () => async (s: GameState): Promise<DecisionValues> => {
     calls.push(s.players.map((p) => p.tokens.join(',')).join('|'));
     await new Promise<void>((r) => release.push(r));
-    return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.4 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.1 : 0)), se: s.moves.map(() => 0.01), best: 0 };
+    return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 };
   },
   workerLuck: () => Promise.resolve({ luck: [], chances: [] }),
   stopReviewWorker: () => stopped(),
@@ -143,10 +143,12 @@ describe('luck percentile', () => {
 });
 
 describe('accuracy', () => {
-  const m = (gap: number, gaps: number[]): MoveReview => ({ at: 0, owner: 0, played: 1, best: 0, playedChance: 0.5, bestChance: 0.5, gap, se: 0.1, label: 'best', gaps });
+  const m = (gap: number, gaps: number[]): MoveReview => ({ at: 0, owner: 0, played: 1, best: 0, playedChance: 0.5, bestChance: 0.5, gap, se: 0.1, label: 'inaccuracy', gaps });
   it('is the share of what was at stake that was kept, over meaningful decisions only', () => {
     // A 30-point decision with a 6-point slip, a 10-point one played perfectly, and a 1-point one ignored.
     expect(accuracyOf([m(6, [0, 30]), m(0, [0, 10]), m(1, [0, 1])])).toBeCloseTo(1 - 6 / 40, 6);
     expect(accuracyOf([m(1, [0, 1])])).toBeNaN();
+    // A Best move's gap is noise: it costs nothing.
+    expect(accuracyOf([{ ...m(1.2, [0, 1.2, 20]), label: 'best' }, m(4, [0, 4, 10])])).toBeCloseTo(1 - 4 / 30, 6);
   });
 });

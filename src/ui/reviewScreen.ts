@@ -112,7 +112,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const ready = d.finished && (d.stale || p.who.includes(pov));
     // The story, once there's something to tell.
     const tp = ready && d.luck ? turningPoint(mine, d.luck, pov, (at) => (p.chances?.[at]?.[pov] !== undefined ? p.chances[at]![pov]! / 100 : undefined)) : null;
-    const story = ready && d.luck && s.moves ? headline({ won: won(pov), accuracy: s.accuracy, luckPct: s.luckPct, name: isYou(pov) ? 'You' : names[pov]!, decider: tp?.kind === 'move' ? tp.move : undefined }) : '';
+    const story = ready && d.luck && s.moves ? headline({ won: won(pov), accuracy: s.accuracy, luckPct: s.luckPct, name: isYou(pov) ? 'You' : names[pov]!, decider: tp?.kind === 'move' ? tp.move : undefined, keyMistakes: s.keyMistakes, inaccuracies: s.labels.inaccuracy }) : '';
     q('.rvhead1').hidden = !story;
     q('.rvhead1').textContent = story;
     // The card: accuracy (only once done: a partial one swings) and luck % side by side.
