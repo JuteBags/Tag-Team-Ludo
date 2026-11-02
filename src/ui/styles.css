@@ -939,11 +939,8 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .replay.rvmode .rpscrub{top:712px}
 .replay.rvmode .rpticks{top:732px}
 .replay.rvmode .rpctl{top:748px;transform:scale(.82);transform-origin:50% 0}
-.replay.rvmode .rpscrub{top:646px}
 .replay .rpticks{position:absolute;top:668px;left:38px;width:calc(100% - 76px);height:10px;z-index:3;pointer-events:none}
 .replay .rpticks[hidden]{display:none}
-.replay.rvmode .rpctl{top:686px}
-.replay.rvmode .rpcount{top:754px}
 .replay .rptext .cap{color:#fca5a5}.replay .rptext .home{color:#ffd65a}
 .replay .rptext{flex:1 1 200px;min-width:0}
 @media (prefers-reduced-motion:reduce){.replay .wcbar i{transition:none}}
