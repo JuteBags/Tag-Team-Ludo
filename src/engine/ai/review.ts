@@ -198,6 +198,27 @@ export function luckPercent(luck: RollLuck[], owner: number): number {
 }
 
 /** Each person's accuracy (the mean label score of their reviewed moves, 0-1), total luck and luck percentile. */
+/** A decision is meaningful when its best and worst moves are at least this many points apart (#96). */
+export const MEANINGFUL = 3;
+
+/** A decision's spread: its best move minus its worst, in points (NaN for reviews without every move's gap). */
+export const spreadOf = (m: MoveReview) => (m.gaps?.length ? Math.max(...m.gaps) : NaN);
+
+/**
+ * Accuracy (0-1) as agreed for #96: of everything at stake in the meaningful decisions, the share kept,
+ * 1 - Σgap / Σspread, so big decisions weigh more. Reviews from before every move's gap was kept fall back
+ * to the mean label score. NaN with no meaningful decision.
+ */
+export function accuracyOf(mine: MoveReview[]): number {
+  if (mine.length && mine.every((m) => m.gaps?.length)) {
+    const meaningful = mine.filter((m) => spreadOf(m) >= MEANINGFUL);
+    const at = meaningful.reduce((a, m) => a + spreadOf(m), 0);
+    return at > 0 ? 1 - meaningful.reduce((a, m) => a + m.gap, 0) / at : NaN;
+  }
+  return mine.length ? mine.reduce((a, m) => a + LABEL_SCORE[m.label], 0) / mine.length : NaN;
+}
+
+/** Each owner's accuracy, labels, key mistakes (mistakes + blunders), total luck and luck percentile. */
 export function summary(moves: MoveReview[], luck: RollLuck[], owners: number) {
   return Array.from({ length: owners }, (_, o) => {
     const mine = moves.filter((m) => m.owner === o);
@@ -205,8 +226,9 @@ export function summary(moves: MoveReview[], luck: RollLuck[], owners: number) {
     return {
       owner: o,
       moves: mine.length,
-      accuracy: mine.length ? mine.reduce((a, m) => a + LABEL_SCORE[m.label], 0) / mine.length : NaN,
+      accuracy: accuracyOf(mine),
       labels: { best: count('best'), good: count('good'), inaccuracy: count('inaccuracy'), mistake: count('mistake'), blunder: count('blunder') },
+      keyMistakes: count('mistake') + count('blunder'),
       luck: luck.filter((l) => l.owner === o).reduce((a, l) => a + l.luck, 0),
       luckPct: luckPercent(luck, o),
     };

@@ -2,7 +2,7 @@
 // cap, and that it ends the worker once empty. Plus the luck percentile (review.ts luckPercent).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
-import { luckPercent, normalCdf, type DecisionValues } from '../src/engine/ai/review';
+import { accuracyOf, luckPercent, normalCdf, type DecisionValues, type MoveReview } from '../src/engine/ai/review';
 
 const mem = new Map<string, string>();
 vi.mock('@capacitor/preferences', () => ({
@@ -122,5 +122,14 @@ describe('luck percentile', () => {
     expect(luckPercent([r(10), r(10)], 0)).toBeGreaterThan(90);
     expect(luckPercent([r(-10), r(-10)], 0)).toBeLessThan(10);
     expect(luckPercent([{ at: 0, owner: 0, face: 3, luck: 4 }], 0)).toBeNaN();
+  });
+});
+
+describe('accuracy', () => {
+  const m = (gap: number, gaps: number[]): MoveReview => ({ at: 0, owner: 0, played: 1, best: 0, playedChance: 0.5, bestChance: 0.5, gap, se: 0.1, label: 'best', gaps });
+  it('is the share of what was at stake that was kept, over meaningful decisions only', () => {
+    // A 30-point decision with a 6-point slip, a 10-point one played perfectly, and a 1-point one ignored.
+    expect(accuracyOf([m(6, [0, 30]), m(0, [0, 10]), m(1, [0, 1])])).toBeCloseTo(1 - 6 / 40, 6);
+    expect(accuracyOf([m(1, [0, 1])])).toBeNaN();
   });
 });

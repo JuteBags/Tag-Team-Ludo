@@ -116,7 +116,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const card = document.createElement('div');
     card.className = 'rvcard';
     card.setAttribute('style', cssVars(colorOf(pov)));
-    const acc = !ready ? '…' : s.moves ? `${Math.round(100 * s.accuracy)}%` : '–';
+    const acc = !ready ? '…' : s.moves && Number.isFinite(s.accuracy) ? `${Math.round(100 * s.accuracy)}%` : '–';
     const band = luckBand(s.luckPct);
     const lpct = d.luck && Number.isFinite(s.luckPct) ? `${Math.round(s.luckPct)}%` : '…';
     const words = d.luck ? luckWords(s.luck, isYou(pov)) : null;
@@ -125,6 +125,13 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       <div class="rvchips">${LABELS.map((l) => `<button data-filter="${l}" style="--c:${LABEL_LOOK[l].color}" aria-label="${LABEL_LOOK[l].name}: ${s.labels[l]}"${filter === l ? ' class="on"' : ''}><i>${LABEL_LOOK[l].sym}</i>${s.labels[l]}</button>`).join('')}</div>
       ${words ? `<div class="rvluck ${band.tone}"><p><b>Luck ${lpct} · ${band.word}:</b> ${words.line}</p></div>` : '<div class="rvluck skel" aria-label="Working out the dice luck"><i></i><i></i></div>'}`;
     card.querySelector('.rvwho b')!.textContent = names[pov]!;
+    // With accuracy: how many moves really cost something (mistakes and blunders).
+    if (ready && s.moves) {
+      const km = document.createElement('small');
+      km.className = 'km';
+      km.textContent = s.keyMistakes ? `${s.keyMistakes} key mistake${s.keyMistakes === 1 ? '' : 's'}` : 'No key mistakes';
+      card.querySelector('.rvwho b')!.append(km);
+    }
     // Everyone else's dice, one line each.
     const others = d.luck
       ? owners

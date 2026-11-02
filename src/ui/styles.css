@@ -867,3 +867,4 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 @media (prefers-reduced-motion:reduce){.replay .wcbar i{transition:none}}
 .replay [data-act=prevkey],.replay [data-act=nextkey]{position:relative}
 .replay [data-act=prevkey]::after,.replay [data-act=nextkey]::after{content:'Mistake';position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:5px;font-size:11px;font-weight:900;color:#fdba74;white-space:nowrap}
+.review .rvwho b .km{display:block;font-size:12px;font-weight:800;color:#fdba74;margin-top:1px}
