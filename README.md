@@ -9,6 +9,10 @@
 - **Download the APK:** https://jutebags.github.io/Tag-Team-Ludo/download/tag-team-ludo.apk (Android 7.0 or newer)
 - **Versioned releases** (APK, AAB and a portable Windows `.exe`): https://github.com/JuteBags/Tag-Team-Ludo/releases
 
+[![Watch the 37-second demo: lose to Extreme, find the one blunder in the game review, win the rematch](marketing/demo-film/poster.jpg)](https://github.com/JuteBags/Tag-Team-Ludo/releases/download/v2.5.0/tag-team-ludo-demo.mp4)
+
+▶ **[Watch the 37-second demo](https://github.com/JuteBags/Tag-Team-Ludo/releases/download/v2.5.0/tag-team-ludo-demo.mp4)** (MP4, 1080p, captioned for sound-off). How it's made: [marketing/demo-film](marketing/demo-film/TREATMENT.md).
+
 ![Design mockups: home screen, a game in progress and the winner screen](docs/assets/design-showcase.png)
 
 ## What's in the game
