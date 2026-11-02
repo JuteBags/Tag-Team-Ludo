@@ -48,7 +48,7 @@
 import { clamp, lerp, seg, eio, eo, ei, back, hash } from '/core/lib.js';
 
 const W = 1920, H = 1080, FPS = 30;
-window.DUR = 35.5;
+window.DUR = 37.5;
 const BEAT = 60 / 112;
 
 // ---------- screens (real app captures, 900×1600) ----------
@@ -74,7 +74,7 @@ const CAM = [
   [12.8, 1.5, 520, 470], [14.6, 1.5, 520, 470], [15.0, 1.2, 450, 420], [16.55, 1.2, 450, 430], [17.1, 1.5, 420, 470],
   [19.0, 1.5, 420, 470], [19.35, 1.6, 420, 640], [22.7, 1.6, 400, 640], [23.3, 1.15, 450, 980], [25.0, 1.2, 450, 900],
   [26.9, 1.2, 450, 920], [27.0, 1.0, 450, 800], [27.6, 1.0, 450, 800], [28.2, 1.42, 450, 1080], [30.9, 1.42, 450, 1070],
-  [31.0, 1.0, 450, 800], [31.5, 1.0, 450, 800], [32.4, 1.18, 450, 520], [35.5, 1.22, 450, 520],
+  [31.0, 1.0, 450, 800], [31.5, 1.0, 450, 800], [32.4, 1.18, 450, 520], [35.5, 1.22, 450, 520], [37.5, 1.24, 450, 520],
 ];
 const WHIPS = [[19.0, 19.35]];
 function camAt(t) {
@@ -146,7 +146,8 @@ const ACT = [
   [28.85, 29.4, 'stand', [790, 816], 'down'],
   [29.4, 31.0, 'cheer', [790, 816]],
   [31.643, 32.143, 'drop', [450, 392]],
-  [32.143, 35.5, 'cheer', [450, 392]],
+  [32.143, 34.5, 'cheer', [450, 392]],
+  [34.5, 37.5, 'stand', [450, 392], 'happy'],
 ];
 const PX = 7;   // sprite pixel in screen pixels
 
@@ -300,15 +301,15 @@ function drawWipe(t) {
 
 // ---------- captions and the chapter pill ----------
 const CAPS = [
-  [1.0, 4.1, 'Ludo with a <em>tag-team</em> twist.'],
+  [0.7, 4.25, 'Ludo with a <em>tag-team</em> twist.'],
   [4.6, 9.4, 'Four bot levels, up to <em>Extreme</em>.'],
   [9.9, 14.6, 'Lost? Your game gets a <em>review</em>.'],
-  [14.9, 18.9, 'It finds the move that <em>cost you the game</em>.'],
-  [19.3, 23.0, 'Then shows the <em>best move</em> on the board.'],
-  [23.3, 26.8, 'Think you’d have found it? <em>Try it.</em>'],
-  [27.4, 31.0, 'Win streaks unlock skins you <em>can’t buy</em>.'],
+  [14.8, 19.0, 'It finds the move that <em>cost you the game</em>.'],
+  [19.25, 23.05, 'Then shows the <em>best move</em>.'],
+  [23.3, 26.9, 'Could you find it? <em>Try it.</em>'],
+  [27.25, 31.4, 'Win streaks unlock skins you <em>can’t buy</em>.'],
 ];
-const END = [31.4, 35.5];
+const END = [31.4, 37.5];
 const capEl = document.getElementById('cap'), chapEl = document.getElementById('chap'), endEl = document.getElementById('endcard');
 function pill(el, t, a, b) {
   const k = Math.min(seg(t, a, a + .22), 1 - seg(t, b - .22, b));

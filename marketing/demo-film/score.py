@@ -76,7 +76,8 @@ ev.append((9.55, 'sus_cymbal', 'hit', None, .45, -.2))
 # glockenspiel on the BEST point and the reveal, and the last chord
 for t, notes in [(21.2, ['C6', 'F6', 'A6']), (25.0, ['A5', 'C6', 'F6'])]:
     for i, p in enumerate(notes): ev.append((t + i * .07, 'glockenspiel', p, 1.2, .55, .3))
-for p in ['F3', 'A3', 'C4', 'E4', 'A4']: ev.append((bt(60), 'vibraphone', p, 3.2, .6, .2))
+for p in ['F3', 'A3', 'C4', 'E4', 'A4']: ev.append((bt(60), 'vibraphone', p, 5.0, .6, .2))
+for p in ['F4', 'A4', 'C5', 'G5']: ev.append((bt(64), 'vibraphone', p, 3.0, .28, .3))   # soft re-strike under the end card
 ev.append((bt(60), 'jazz_bass', 'F1', 3.0, .8, -.1))
 ev.append((bt(60), 'sus_cymbal', 'hit', None, .5, .2))
 

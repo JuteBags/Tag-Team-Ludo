@@ -1,7 +1,7 @@
 # Tag Team Ludo, "The One Move": treatment
 
 **Style:** Living Screencast (`styles/living-screencast/STYLE.md`).
-**Length:** 34 s.
+**Length:** 37.5 s (a 6 s end card, long enough to read the URL).
 **Format:** 1920×1080 at 30 fps (the style's rate). A vertical 1080×1920 cut for ads can be rendered from the same timeline later.
 **Language:** English.
 **Brief (defaults chosen, no questions asked):**
@@ -24,7 +24,7 @@
 A player loses to the Extreme bot; a pixel pawn that lives inside the app digs through the game, finds the one blunder, shows the better move, and the rematch ends in a win streak.
 - **Setup (0–9 s):** the app, the levels, Extreme.
 - **Turn (9–27 s):** the loss, the review, the blunder, the best move.
-- **Ending (27–34 s):** the win, the streak reward, the name.
+- **Ending (27–37.5 s):** the win, the streak reward, the name.
 
 ## Benchmark
 - **Screen Studio launch recordings**
@@ -54,7 +54,7 @@ A pawn of big square pixels (12×14 grid) in magenta (#c43cff), a hue the board 
 | 8 | 19.0–23.0 | Replay | Whip-pan in (with blur), push in on the BEST ghost (z 1.6); the mascot runs the dashed trail | Cause → effect: the blunder, then the better move |
 | 9 | 23.0–27.0 | Find the better move | Touch on "Find the better move?", slide, touch a marker, the reveal; slow drift | The player tries it themselves |
 | 10 | 27.0–31.0 | Win | Pixel wipe (chapter 03); push in on the streak chips; the mascot hops chip to chip to "unlocks Inferno dice" | The payoff, echoing shot 5's result screen |
-| 11 | 31.0–34.0 | Home | Pull back to the full phone; the mascot lands on the LUDO logo on the downbeat; end caption with the URL | A diegetic title on the first screen: the bookend |
+| 11 | 31.0–37.5 | Home | Pull back to the full phone; the mascot lands on the LUDO logo on the downbeat; end caption with the URL | A diegetic title on the first screen: the bookend |
 
 At least four moves are used: push, pull, drift, whip, follow and the spotlight freeze.
 
@@ -90,7 +90,8 @@ At least four moves are used: push, pull, drift, whip, follow and the spotlight 
 - 31.0 Pixel wipe to Home, pull back.
 - 32.1 Landing on LUDO (downbeat).
 - 32.2 End caption.
-- 34.0 End.
+- 34.5 The mascot settles; the end card holds.
+- 37.5 End.
 
 ## Cue map
 - **Tempo:** 112 bpm (beat 0.5357 s), 4/4. Bar 1 starts at 0.0.
@@ -109,7 +110,7 @@ At least four moves are used: push, pull, drift, whip, follow and the spotlight 
 - **19.0–27.0 s, "Best move":**
   - the full band comes back;
   - glockenspiel on the BEST point (21.2) and the reveal (25.0).
-- **27.0–34.0 s, "Win":**
+- **27.0–37.5 s, "Win":**
   - a crash on the wipe;
   - the chiptune lead and the band trade the hook;
   - the final chord on the landing at 32.1;
