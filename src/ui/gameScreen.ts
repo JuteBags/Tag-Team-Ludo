@@ -778,7 +778,7 @@ export class GameScreen {
       <div class="rescol"><div class="ribbon">${ribbonSVG()}<span class="disp">${title}</span></div>
         <div class="rank">${rows}</div>${reward}
         <div class="wbtns"><button class="b3 blue disp" data-act="home">HOME</button><button class="b3 green disp" data-act="again">PLAY AGAIN</button></div>
-        ${rec && rec.seats.some((s) => !s.bot) ? `<div class="sharerow"><button class="sharebtn disp" data-act="share">${icons.share}SHARE</button><button class="revbtn disp" data-act="review">★ REVIEW GAME</button></div>` : `<button class="sharebtn disp" data-act="share">${icons.share}SHARE RESULT</button>`}${rec ? '<button class="replaylink" data-act="replay">Watch the replay</button>' : ''}</div>`;
+        ${rec && rec.seats.some((s) => !s.bot) ? `<div class="sharerow"><button class="sharebtn disp" data-act="share">${icons.share}SHARE</button><button class="revbtn disp" data-act="review">★ REVIEW</button><button class="rplbtn disp" data-act="replay" aria-label="Watch the replay">▶ REPLAY</button></div>` : `<button class="sharebtn disp" data-act="share">${icons.share}SHARE RESULT</button>${rec ? '<button class="replaylink" data-act="replay">Watch the replay</button>' : ''}`}</div>`;
     ov.addEventListener('click', (e) => {
       const btn = (e.target as Element).closest<HTMLButtonElement>('button');
       const act = btn?.dataset.act;
@@ -799,7 +799,8 @@ export class GameScreen {
       const show = () => {
         if (!rvb.isConnected) return off();
         const p = progressOf(rec);
-        rvb.textContent = !p ? '★ REVIEW GAME' : p.finished ? '★ REVIEW READY' : p.done && p.total ? `REVIEWING ${Math.floor((100 * p.done) / p.total)}%` : 'REVIEWING…';
+        rvb.textContent = !p || p.finished ? '★ REVIEW' : p.done && p.total ? `REVIEW ${Math.floor((100 * p.done) / p.total)}%` : 'REVIEW…';
+        rvb.setAttribute('aria-label', !p ? 'Review the game' : p.finished ? 'Review ready' : 'Reviewing the game');
         rvb.classList.toggle('ready', !!p?.finished);
       };
       const off = onReviewChange(show);

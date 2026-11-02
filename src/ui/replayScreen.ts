@@ -168,7 +168,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
       const v = verdictOf(f);
       if (v && KEY_LABELS.includes(v.label)) s += `<rect x="${x(i)}" y="0" width=".9" height="9" fill="${LABEL_LOOK[v.label].color}"/>`;
     });
-    const tp = luck ? turningPoint(moves.filter((m) => m.owner === pov), luck, pov) : null;
+    const tp = luck ? turningPoint(moves.filter((m) => m.owner === pov), luck, pov, (at) => (chances?.[at]?.[pov] !== undefined ? chances[at]![pov]! / 100 : undefined)) : null;
     if (tp) {
       const i = frames.findIndex((f) => f.at > (tp.kind === 'move' ? tp.move.at : tp.roll.at));
       if (i >= 0) s += `<text x="${x(i)}" y="9" font-size="9" text-anchor="middle" fill="#ffd65a">★</text>`;

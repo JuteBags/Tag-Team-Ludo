@@ -73,6 +73,8 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
 
   // Whose game: a chip per player; bots say BOT and are reviewed when picked.
   const chips = q('.rvpov');
+  // Three or more players: the chips not picked show their avatar only, so the row stays one line.
+  chips.classList.toggle('compact', owners.length >= 3);
   for (const o of owners) {
     const b = document.createElement('button');
     b.className = 'rvp';
@@ -81,6 +83,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     b.setAttribute('style', cssVars(colorOf(o)));
     b.innerHTML = `<i>${avatarSVG(colorOf(o))}</i><b></b>${isBot(o) ? '<small>BOT</small>' : ''}`;
     b.querySelector('b')!.textContent = names[o]!;
+    b.setAttribute('aria-label', `${names[o]}${isBot(o) ? ' (bot)' : ''}`);
     chips.appendChild(b);
   }
 
@@ -108,7 +111,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     // This side is reviewed once the review covers it and is finished.
     const ready = d.finished && (d.stale || p.who.includes(pov));
     // The story, once there's something to tell.
-    const tp = ready && d.luck ? turningPoint(mine, d.luck, pov) : null;
+    const tp = ready && d.luck ? turningPoint(mine, d.luck, pov, (at) => (p.chances?.[at]?.[pov] !== undefined ? p.chances[at]![pov]! / 100 : undefined)) : null;
     const story = ready && d.luck && s.moves ? headline({ won: won(pov), accuracy: s.accuracy, luckPct: s.luckPct, name: isYou(pov) ? 'You' : names[pov]!, decider: tp?.kind === 'move' ? tp.move : undefined }) : '';
     q('.rvhead1').hidden = !story;
     q('.rvhead1').textContent = story;
@@ -170,7 +173,9 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       q('.rvgraph').innerHTML = '';
       return;
     }
-    const pts = graphPoints(mine.map((m) => m.playedChance), GW - GL, GH).map(([x, y]) => [x + GL, y] as const);
+    // The line ends where the game ended: 100% for a win, 0% otherwise (only once the review is finished).
+    const result = prog?.finished ? [won(pov) ? 1 : 0] : [];
+    const pts = graphPoints([...mine.map((m) => m.playedChance), ...result], GW - GL, GH).map(([x, y]) => [x + GL, y] as const);
     const even = GH * (1 - evenChance(owners.length) / 100);
     const end = pts.at(-1)!;
     const tick = (v: number) => `<text x="${GL - 5}" y="${GH * (1 - v / 100) + 3.5}" text-anchor="end" class="tick">${v}</text><line x1="${GL}" x2="${GW}" y1="${GH * (1 - v / 100)}" y2="${GH * (1 - v / 100)}" class="grid"/>`;
@@ -183,7 +188,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
         <polyline points="${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')}"/>
         ${pts.map(([x, y], i) => (mine[i]!.label === 'best' || mine[i]!.label === 'good' ? '' : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${LABEL_LOOK[mine[i]!.label].color}"/>`)).join('')}
         ${star}
-        <text x="${end[0] + 6}" y="${Math.max(8, Math.min(GH, end[1] + 4))}" class="final">${Math.round(100 * mine.at(-1)!.playedChance)}%</text>
+        <text x="${end[0] + 6}" y="${Math.max(8, Math.min(GH, end[1] + 4))}" class="final">${Math.round(100 * (result[0] ?? mine.at(-1)!.playedChance))}%</text>
         <rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/></svg>`;
   };
 
@@ -291,7 +296,9 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       // The nearest move to the tap: shown in the full list.
       const box = hit.getBoundingClientRect();
       const x = (e as MouseEvent).clientX - box.left;
-      const i = Math.max(0, Math.min(graphMoves.length - 1, Math.round((x / box.width) * (graphMoves.length - 1))));
+      // The graph may end with the result point after the last move: a tap there picks the last move.
+      const points = graphMoves.length + (prog?.finished ? 1 : 0);
+      const i = Math.max(0, Math.min(graphMoves.length - 1, Math.round((x / box.width) * (points - 1))));
       const at = graphMoves[i]!.at;
       if (!el.querySelector(`.rvrow[data-at="${at}"]`)) {
         view = 'all';

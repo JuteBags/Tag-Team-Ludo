@@ -804,7 +804,12 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 /* The replay's REVIEW button, and the result screen's two links. */
 .replay .rvbtn{height:44px;padding:0 14px;border-radius:14px;border:0;background:linear-gradient(180deg,#ffe27a,#f2a20f);color:#4a2400;font-size:17px;box-shadow:inset 0 2px 0 rgba(255,255,255,.5),0 3px 0 #a35a00}
 .replay .rpcap.verdict{box-shadow:inset 0 0 0 2px #ffd65a}
-.sharerow{display:flex;gap:10px}
+.sharerow{display:flex;gap:8px}
+.sharerow .sharebtn,.sharerow .revbtn,.sharerow .rplbtn{font-size:15px;gap:6px;padding:0 6px;white-space:nowrap}
+.rplbtn{flex:.85;display:flex;align-items:center;justify-content:center;height:52px;margin-top:14px;border-radius:18px;border:0;color:#fff;
+  background:linear-gradient(180deg,#5b8cff,#2f5fd8);box-shadow:inset 0 2px 0 rgba(255,255,255,.4),0 5px 0 #1a3c9a}
+.result:has(.reward) .rplbtn{margin-top:10px;height:46px}
+.revbtn.ready{box-shadow:inset 0 2px 0 rgba(255,255,255,.55),0 5px 0 #a35a00,0 0 0 3px #4ade80}
 .sharerow .sharebtn{flex:1;min-width:0}
 .revbtn{flex:1.25;display:flex;align-items:center;justify-content:center;height:52px;margin-top:14px;border-radius:18px;border:0;font-size:18px;color:#4a2400;
   background:linear-gradient(180deg,#ffe27a,#f2a20f);box-shadow:inset 0 2px 0 rgba(255,255,255,.55),0 5px 0 #a35a00}
@@ -829,7 +834,11 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .vhead text{fill:#1a1300;font-size:12px;font-weight:900}
 
 /* Review (#96): whose side, luck % beside accuracy, the story, an older review while it updates. */
-.review .rvpov{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.review .rvpov{display:flex;flex-wrap:nowrap;gap:6px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none}
+.review .rvpov::-webkit-scrollbar{display:none}
+.review .rvp{flex:none}
+.review .rvpov.compact .rvp:not(.on){padding:3px}
+.review .rvpov.compact .rvp:not(.on) b,.review .rvpov.compact .rvp:not(.on) small{display:none}
 .review .rvp{display:flex;align-items:center;gap:6px;min-height:40px;padding:3px 10px 3px 3px;border-radius:14px;background:rgba(0,0,0,.28);color:#fff;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.15);opacity:.75}
 .review .rvp.on{opacity:1;box-shadow:inset 0 0 0 2px var(--m)}
 .review .rvp i{width:30px;height:30px;border-radius:50%;padding:1.5px;background:var(--m);flex:none}

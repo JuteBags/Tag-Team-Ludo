@@ -164,13 +164,23 @@ export function headline(o: { won: boolean; accuracy: number; luckPct: number; n
   return 'Lost on mistakes: the key moves show where.';
 }
 
+/** A swing only counts as the turning point while the game was still open: the side's chance before it inside this band. */
+export const OPEN_GAME: [number, number] = [0.1, 0.9];
+
 /**
- * The turning point from one owner's side: the biggest swing in their winning chances, either one of their
- * moves (the points it gave up) or anyone's roll (its luck). Null when there's nothing to show.
+ * The turning point from one owner's side: the biggest swing in their winning chances while the outcome was
+ * still open, either one of their moves (the points it gave up) or anyone's roll (its luck). `chanceAt(at)` is
+ * the side's win chance (0-1) at a state, when known. The game's last move and last roll never count (the
+ * final swing is always big and never telling). Null when nothing qualifies.
  */
-export function turningPoint(moves: MoveReview[], luck: RollLuck[], owner: number): { kind: 'move'; move: MoveReview } | { kind: 'roll'; roll: RollLuck } | null {
-  const m = moves.filter((x) => x.owner === owner).sort((a, b) => b.gap - a.gap || a.at - b.at)[0];
-  const r = [...luck].sort((a, b) => Math.abs(b.luck) - Math.abs(a.luck) || a.at - b.at)[0];
+export function turningPoint(moves: MoveReview[], luck: RollLuck[], owner: number, chanceAt?: (at: number) => number | undefined): { kind: 'move'; move: MoveReview } | { kind: 'roll'; roll: RollLuck } | null {
+  const open = (c: number | undefined) => c === undefined || (c >= OPEN_GAME[0] && c <= OPEN_GAME[1]);
+  const lastMove = Math.max(-1, ...moves.map((x) => x.at));
+  const lastRoll = Math.max(-1, ...luck.map((x) => x.at));
+  const m = moves
+    .filter((x) => x.owner === owner && x.at !== lastMove && open(chanceAt?.(x.at) ?? x.bestChance))
+    .sort((a, b) => b.gap - a.gap || a.at - b.at)[0];
+  const r = luck.filter((x) => x.at !== lastRoll && open(chanceAt?.(x.at))).sort((a, b) => Math.abs(b.luck) - Math.abs(a.luck) || a.at - b.at)[0];
   const mv = m && m.gap >= 1 ? m.gap : 0;
   const rv = r ? Math.abs(r.luck) : 0;
   if (!mv && rv < 1) return null;
