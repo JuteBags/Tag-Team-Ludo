@@ -624,6 +624,8 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .store .card em.lock{background:rgba(0,0,0,.55);color:#ffd65a}
 .store .card em.lock svg{width:9px;height:9px}
 .store .card.locked .thp,.store .card.locked .diew,.store .card.locked .tht,.store .card.locked .thb{opacity:.5;filter:saturate(.5)}
+.store .card.locked.earn .thp,.store .card.locked.earn .diew{opacity:1;filter:none}
+.store .use .lk svg{width:18px;height:18px;margin-right:8px;vertical-align:-2px}
 .store .thp{display:flex}.store .thp svg{width:30px;height:36px;margin:0 -3px}
 .store .tht svg{width:44px;height:40px;display:block}
 .store .thb{width:48px;height:36px;border-radius:9px;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.4)}
