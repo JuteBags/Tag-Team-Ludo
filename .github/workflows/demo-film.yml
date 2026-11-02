@@ -1,13 +1,11 @@
 # Renders the marketing demo film (marketing/demo-film) on a runner, not a laptop: every frame in headless
 # Chrome, the score and foley in Python, then mux and loudness to −14 LUFS. The MP4, poster and .srt come out as
-# an artifact. Run by hand, or push a film/** branch.
+# an artifact. Manual only (it takes ~15 min of runner time): Actions → Demo film → Run workflow, or
+#   gh workflow run demo-film.yml --ref <branch>
 name: Demo film
 
 on:
   workflow_dispatch:
-  push:
-    branches: ['film/**']
-    paths: ['marketing/demo-film/**', '.github/workflows/demo-film.yml']
 
 permissions:
   contents: read
