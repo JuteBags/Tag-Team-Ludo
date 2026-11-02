@@ -32,11 +32,11 @@ Run 4, accuracy %, by mover (per-game SD in brackets):
 | 2p | 96.1 (3.4) | 93.7 (8.1) | 80.0 |
 | 3p | 97.7 (2.0) | 92.6 (8.6) | 79.2 |
 | 4p | 97.9 (2.4) | 92.5 (8.8) | 71.8 |
-| 2h-opposite | pending | pending | 80.2 |
+| 2h-opposite | 97.2 (3.8) | 94.5 (4.9) | 80.2 |
 
 **Acceptance (ludo-ed):**
 - Hard > Normal > first in every layout: **holds**.
-- Hard's per-game SD < 6: **holds** (2.0–3.4).
+- Hard's per-game SD < 6: **holds** (2.0–3.8).
 - First-move ≤ ~75: **met in 4p only** (2p, 3p and 2h are at 79–80). This was accepted: the first legal move is often reasonable in Ludo, and the 75 target was arbitrary.
 
 **Rejected variants:**
@@ -45,10 +45,10 @@ Run 4, accuracy %, by mover (per-game SD in brackets):
 
 **MEANINGFUL 3 or 5:** we kept 3. At 5, the meaningful decisions per game drop below the ~15 guard at p10 in every layout, and Hard's SD in 4p rises to 5.3. Meaningful decisions per game, p10:
 
-| | 2p H / N / F | 3p H / N / F | 4p H / N / F | 2h F |
+| | 2p H / N / F | 3p H / N / F | 4p H / N / F | 2h H / N / F |
 |---|---|---|---|---|
-| ≥3 | 19 / 14 / 5 | 19 / 18 / 7 | 15 / 11 / 6 | 17 |
-| ≥5 | 13 / 7 / 2 | 6 / 6 / 2 | 4 / 5 / 0 | 5 |
+| ≥3 | 19 / 14 / 5 | 19 / 18 / 7 | 15 / 11 / 6 | 28 / 17 / 17 |
+| ≥5 | 13 / 7 / 2 | 6 / 6 / 2 | 4 / 5 / 0 | – / – / 5 |
 
 ## Label cuts
 
@@ -72,15 +72,15 @@ The factors come with 1000-fold bootstrap intervals, resampled by game:
 |---|---|---|---|
 | 2p | 1 | (base) | 1 |
 | 3p | 0.84 | 0.61 – 1.27 | **0.85, provisional** |
-| 4p | 0.86 | 0.46 – 1.17 | **0.85, provisional** |
-| 2h-opposite | pending (run 2: 0.68) | pending | **0.7, provisional** |
+| 4p | 0.86 | 0.44 – 1.21 | **0.85, provisional** |
+| 2h-opposite | 0.67 | 0.41 – 0.97 | **0.65, provisional** |
 | 2h-side | not calibrated | | 2h-opposite's |
 
-The tail behind each p95 is only about 45–52 points, so the intervals are wide (±0.35) and every factor is rounded to 0.05 and marked provisional. Both intervals include 1.0. Doubles-off games use their layout's row. The next calibration, on human games, should narrow these.
+The tail behind each p95 is only about 45–61 points, so the intervals are wide (±0.28 to ±0.38) and every factor is rounded to 0.05 and marked provisional. The 3p and 4p intervals include 1.0. Doubles-off games use their layout's row. The next calibration, on human games, should narrow these.
 
 ## Playouts per decision
 
-Reviewing every decision from 128 playouts instead of 256 (with the same top-ups near a label's edge, up to 1024) gives the same label on 99.8–100% of decisions, and on 95.9–100% of those that either side calls a key move (run 4). The review uses 128 (#101).
+Reviewing every decision from 128 playouts instead of 256 (with the same top-ups near a label's edge, up to 1024) gives the same label on 99.8–100% of decisions in every layout, and on 95.9–100% of those that either side calls a key move (run 4). The review uses 128 (#101).
 
 ## Changing these
 
