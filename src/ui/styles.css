@@ -469,6 +469,8 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .prow.first{background:rgba(255,214,90,.16);box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.55)}
 .prow .chip .crown{width:20px;height:15px}
 .porder{margin:-8px 0 10px;text-align:center;font-weight:800;font-size:13px;opacity:.9}
+/* Read out, not shown. */
+.sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .porder b{color:#ffd65a;font-weight:900}
 .wiz h3 .crown{width:30px;height:23px;margin-right:6px;vertical-align:-2px}
 .prow b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -480,7 +482,8 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .pname:active{background:rgba(255,255,255,.1)}
 .pname-in{width:150px;height:40px;padding:0 10px;border-radius:12px;border:2px solid #ffd65a;background:#0c2a74;color:#fff;font:900 17px 'Nunito';outline:none}
 .pname-in::placeholder{color:rgba(255,255,255,.45)}
-.prow .st{margin-left:auto;font-size:12.5px;font-weight:800;opacity:.85;text-align:right}
+.prow .st{margin-left:auto;font-size:12.5px;font-weight:800;opacity:.85;text-align:right;white-space:nowrap}
+.prow .st.long{font-size:11px}
 .prow .dbox{width:52px;height:52px;border-radius:15px;flex:none}
 .houses{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .house{position:relative;height:188px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
@@ -607,7 +610,8 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .store .devnote{position:absolute;top:70px;left:0;right:0;text-align:center;font-size:11.5px;font-weight:900;color:#7af06a}
 .store .shelves{position:absolute;top:92px;left:20px;right:20px}
 .store .shelves button{flex:1}
-.store .stage{position:absolute;top:156px;left:20px;right:20px;height:250px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+/* Not "stage": that is the app root (390 wide), and the panel took its width (#85). */
+.store .showcase{position:absolute;top:156px;left:20px;right:20px;height:250px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
   background:radial-gradient(90% 80% at 50% 35%,rgba(255,255,255,.16),rgba(0,0,0,.25));box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.45)}
 .store .show{height:186px;display:grid;place-items:center}
 .store .show .pawns{display:flex;gap:6px}.store .show .pawns svg{width:62px;height:72px}
@@ -737,13 +741,17 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .pg .pgplay{flex:none;width:48px;border-left:1px solid rgba(255,255,255,.12);background:none;color:#fff;font-size:16px}
 .pg .pgr{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:#ffd65a}
 .pg .pgr.off{color:rgba(255,255,255,.55)}
+.pg .pgr{white-space:nowrap}
+.pg .pgks{display:flex;gap:5px;margin-top:2px}
+.pg .pk{font-style:normal;font-size:11px;font-weight:900;padding:1px 7px;border-radius:8px;background:rgba(0,0,0,.25)}
+.pg .pk.mistake{color:#fb923c}.pg .pk.blunder{color:#f87171}.pg .pk.none{color:rgba(255,255,255,.6);padding:1px 0;background:none}
 .pg .pgr .ring{width:14px;height:14px;border-radius:50%;background:conic-gradient(#ffd65a calc(var(--p)*1%),rgba(255,255,255,.18) 0);flex:none}
 .pg.won{box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.55)}
 .pg .pgc{display:grid;grid-template-columns:repeat(2,10px);gap:3px;flex:none}
 .pg .pgc i{width:10px;height:10px;border-radius:3px}
 .pg .pgt{flex:1;display:flex;flex-direction:column;gap:2px}
 .pg .pgt b{font-size:14px}.pg .pgt small{font-size:12px;font-weight:700;opacity:.8}
-.pg em{font-style:normal;font-size:13px;font-weight:900;color:#ffd65a}
+.pg em{font-style:normal;font-weight:900;color:#ffd65a}
 
 /* ---------- game review (reviewScreen.ts) ---------- */
 .review .rvbody{position:absolute;top:74px;left:0;right:0;bottom:0;overflow-y:auto;padding:8px 20px 24px;
