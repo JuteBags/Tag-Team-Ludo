@@ -1,8 +1,8 @@
 // The game review's words and graph (src/ui/reviewText.ts) and its runner (src/ui/reviewRun.ts).
 import { describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
-import { REVIEW_VERSION, type DecisionValues, type MoveReview } from '../src/engine/ai/review';
-import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken, luckBand, headline, turningPoint } from '../src/ui/reviewText';
+import { REVIEW_VERSION, summary, type DecisionValues, type MoveReview } from '../src/engine/ai/review';
+import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken, luckBand, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS } from '../src/ui/reviewText';
 
 const mem = new Map<string, string>();
 vi.mock('@capacitor/preferences', () => ({
@@ -110,6 +110,30 @@ describe('luck %, headline and turning point', () => {
     // The last roll (the one that ends the game) never counts, nor a swing once the game was decided.
     expect(turningPoint([mv(3, 2), mv(9, 1)], [r(2, 1.5), r(8, 40)], 0)).toMatchObject({ kind: 'move', move: { at: 3 } });
     expect(turningPoint([mv(3, 2), mv(9, 1)], [r(2, 30), r(8, 1)], 0, (at) => (at === 2 ? 0.04 : 0.5))).toMatchObject({ kind: 'move', move: { at: 3 } });
+  });
+});
+
+describe('a game with no meaningful decision', () => {
+  // Every decision's spread under 3 points: small slips in decisions where little was at stake.
+  const mv = (at: number, label: MoveReview['label'], gap: number): MoveReview => ({ at, owner: 0, played: 1, best: 0, playedChance: 0.3, bestChance: 0.32, gap, se: 0.4, label, gaps: [0, gap, 2.5] });
+  const moves = [mv(1, 'best', 0), mv(2, 'inaccuracy', 2.2), mv(3, 'good', 1.6), mv(4, 'inaccuracy', 2)];
+  it('has no accuracy, shown as a dash with the explainer, and never as NaN%', () => {
+    const s = summary(moves, [], 2)[0]!;
+    expect(s.accuracy).toBeNaN();
+    expect(accuracyText(s.accuracy)).toBe('–');
+    expect(FEW_BIG_DECISIONS).toMatch(/^Few big decisions/);
+    expect(accuracyText(0.873)).toBe('87%');
+    // The counts still show.
+    expect(s.labels.inaccuracy).toBe(2);
+    expect(s.keyMistakes).toBe(0);
+  });
+  it('gets a headline that quotes no accuracy', () => {
+    for (const won of [true, false])
+      for (const luckPct of [10, 50, 90]) {
+        const h = headline({ won, accuracy: NaN, luckPct, name: 'You', keyMistakes: 0, inaccuracies: 2 });
+        expect(h).not.toMatch(/NaN/);
+        expect(h).not.toMatch(/played well|great play|\d+% accuracy/);
+      }
   });
 });
 

@@ -134,6 +134,12 @@ export function luckBand(pct: number): { word: string; tone: 'lucky' | 'unlucky'
   return { word: 'lucky', tone: 'lucky' };
 }
 
+/** Accuracy (0-1) as shown: "87%", or "–" when it can't be scored (no meaningful decision, see accuracyOf). */
+export const accuracyText = (acc: number) => (Number.isFinite(acc) ? `${Math.round(100 * acc)}%` : '–');
+
+/** Under the card's "–": why a game has no accuracy (no decision with much at stake). */
+export const FEW_BIG_DECISIONS = 'Few big decisions this game: accuracy needs a few moves where much was at stake.';
+
 /** Below this accuracy (0-1) with no key mistakes, the headline explains the small slips. */
 export const SMALL_SLIPS_BELOW = 0.75;
 
@@ -146,16 +152,18 @@ export const GREAT_PLAY = 0.9;
  */
 export function headline(o: { won: boolean; accuracy: number; luckPct: number; name: string; decider?: MoveReview; keyMistakes?: number; inaccuracies?: number }): string {
   const you = o.name === 'You';
+  // No accuracy (no meaningful decision): nothing here quotes or compares one.
+  const scored = Number.isFinite(o.accuracy);
   // No mistake or blunder but a low accuracy: the losses were small slips in close decisions. Say so, rather
   // than anything that would read against "No key mistakes" on the card.
-  if (o.keyMistakes === 0 && o.accuracy < SMALL_SLIPS_BELOW) return 'No big mistakes, but small slips added up in close decisions.';
+  if (scored && o.keyMistakes === 0 && o.accuracy < SMALL_SLIPS_BELOW) return 'No big mistakes, but small slips added up in close decisions.';
   // A loss turned by one bad move says so, whatever the accuracy.
   if (!o.won && o.decider && (o.decider.label === 'blunder' || o.decider.label === 'mistake'))
     return `One ${o.decider.label} decided it: a single move cost ${Math.round(o.decider.gap)} points of winning chance.`;
   const acc = `${Math.round(100 * o.accuracy)}%`;
   const luck = `luck ${Math.round(o.luckPct)}%`;
   const them = you ? 'you' : 'them';
-  const great = o.accuracy >= GREAT_PLAY;
+  const great = scored && o.accuracy >= GREAT_PLAY;
   const unlucky = o.luckPct < 40;
   const lucky = o.luckPct > 60;
   if (o.won) {
