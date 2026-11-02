@@ -8,14 +8,15 @@
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { replay, type GameRecord, type GameState } from '../engine';
-import type { MoveReview } from '../engine/ai/review';
+import { labelOf, type MoveReview } from '../engine/ai/review';
 import { avatarSVG, cssVars, icons, PALETTE } from './art';
 import { BoardView } from './boardView';
+import { moveTargets } from './targets';
 import { dieMarkup } from './dice';
 import { framesOf, namesOf, shareLink, type Frame } from './replay';
 import { follow } from './reviewQueue';
 import { peopleOf, type ReviewProgress } from './reviewRun';
-import { KEY_LABELS, LABEL_LOOK, turningPoint, verdictText } from './reviewText';
+import { KEY_LABELS, LABEL_LOOK, moveText, turningPoint, verdictText } from './reviewText';
 import { SITE } from './shareCard';
 import type { StoredReview } from './store';
 
@@ -71,7 +72,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     <div class="rpchips" role="tablist" aria-label="Whose side"></div>
     <div class="wcbar" hidden aria-hidden="true"></div>
     <div class="gboard"></div>
-    <div class="rpcap" aria-live="polite"><span class="rpdice"></span><span class="rptext"></span><button class="bestchip" data-act="best" hidden aria-pressed="true">Show best move</button></div>
+    <div class="rpcap" aria-live="polite"><span class="rpdice"></span><span class="rptext"></span><button class="findchip" data-act="find" hidden>Find the better move?</button><button class="bestchip" data-act="best" hidden aria-pressed="true">Show best move</button></div>
     <input class="rpscrub" type="range" min="0" max="${Math.max(0, frames.length - 1)}" value="0" aria-label="Move">
     <svg class="rpticks" hidden aria-hidden="true" preserveAspectRatio="none"></svg>
     <div class="rpctl">
@@ -120,6 +121,8 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
   const allStates = replay(rec).states;
   const statesOf = (f: Frame): GameState | undefined => (f.at > 0 ? allStates[f.at - 1] : undefined);
   const reviewOn = () => moves.length > 0;
+  // "Find the better move?" (#96): on one of your mistakes, you pick a move before the reveal.
+  let puzzle: 'pick' | 'shown' | null = null;
 
   const markCaption = (text: string) => {
     // Captures in red and tokens home in gold; the text itself is set as text, never as markup.
@@ -189,6 +192,9 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     q('.rpcount').textContent = frames.length > 1 ? `Step ${at} of ${frames.length - 1}` : '';
     scrub.value = String(at);
     // The board: the move played and the best one, on a reviewed move of the side shown.
+    if (puzzle) return;
+    const find = q<HTMLButtonElement>('.findchip');
+    find.hidden = !v || !KEY_LABELS.includes(v.label) || !v.gaps?.length || !isYou(v.owner);
     const chip = q<HTMLButtonElement>('.bestchip');
     chip.hidden = !v || v.label === 'best';
     chip.setAttribute('aria-pressed', String(showBest));
@@ -217,6 +223,46 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     draw();
   };
 
+  /** The position before this frame's move, with its moves to pick from; the reveal scores the pick. */
+  const startPuzzle = () => {
+    const f = frames[at];
+    const v = verdictOf(f);
+    const s = f && statesOf(f);
+    if (!f || !v || !s || !v.gaps) return;
+    puzzle = 'pick';
+    q<HTMLElement>('.findchip').hidden = q<HTMLElement>('.bestchip').hidden = true;
+    view.showVerdict(null);
+    view.markMoved([]);
+    view.layout(s.players);
+    markCaption('Your turn: tap the move you would play here.');
+    view.showTargets(moveTargets(s.players, s.moves), (t) => reveal(v, s, s.moves.indexOf(t.move)));
+  };
+  const reveal = (v: MoveReview, s: GameState, i: number) => {
+    view.clearMovable();
+    puzzle = 'shown';
+    const gap = v.gaps![i] ?? 0;
+    const best = s.moves[v.best]!;
+    // The labels' cuts come from review.ts (calibrated per layout), never from the UI.
+    const label = i === v.best ? 'best' : labelOf(gap, 0);
+    const look = LABEL_LOOK[label];
+    markCaption(label === 'best' ? `★ That's the best move: ${moveText(best)}.` : `Your pick: ${look.sym} −${Math.round(gap)} · Best: ${moveText(best)} (the game: −${Math.round(v.gap)})`);
+    view.showVerdict({ played: s.moves[i]!, best: label === 'best' ? undefined : best, sym: look.sym, color: look.color });
+    const again = document.createElement('button');
+    again.className = 'findchip';
+    again.dataset.act = 'again';
+    again.textContent = 'Back to the game';
+    q('.rpcap').appendChild(again);
+  };
+  const endPuzzle = () => {
+    puzzle = null;
+    view.clearMovable();
+    q('.rpcap [data-act=again]')?.remove();
+    const f = frames[at]!;
+    view.layout(f.state.players);
+    ring(f);
+    draw();
+  };
+
   /** The frame of the previous / next key move of the side shown. */
   const keyFrame = (dir: 1 | -1) => {
     for (let i = at + dir; i >= 0 && i < frames.length; i += dir) {
@@ -228,6 +274,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
 
   /** Shows frame `to`: one step forward animates the move, anything else snaps there. */
   const go = async (to: number) => {
+    if (puzzle) endPuzzle();
     to = Math.max(0, Math.min(frames.length - 1, to));
     if (busy || to === at) return;
     const f = frames[to]!;
@@ -287,6 +334,11 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     } else if (act === 'back') {
       leave();
       onClose();
+    } else if (act === 'find') {
+      stop();
+      startPuzzle();
+    } else if (act === 'again') {
+      endPuzzle();
     } else if (act === 'best') {
       showBest = !showBest;
       try {

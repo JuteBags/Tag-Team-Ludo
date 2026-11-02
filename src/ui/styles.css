@@ -868,3 +868,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .replay [data-act=prevkey],.replay [data-act=nextkey]{position:relative}
 .replay [data-act=prevkey]::after,.replay [data-act=nextkey]::after{content:'Mistake';position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:5px;font-size:11px;font-weight:900;color:#fdba74;white-space:nowrap}
 .review .rvwho b .km{display:block;font-size:12px;font-weight:800;color:#fdba74;margin-top:1px}
+.replay .findchip{flex:0 0 auto;align-self:center;min-height:36px;padding:0 10px;border-radius:12px;border:0;background:linear-gradient(180deg,#ffe27a,#f2a20f);color:#4a2400;font-size:12px;font-weight:900}
+.replay .findchip[hidden]{display:none}
+.replay .rpcap .findchip{margin-left:auto}
+.replay .rpcap .findchip:not([hidden])+.bestchip{margin-left:8px}
