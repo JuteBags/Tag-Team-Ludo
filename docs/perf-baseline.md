@@ -33,6 +33,7 @@ What stands out:
 - **No code splitting.** One 259 kB chunk carries every screen: home, setup, game, result, store, replay, review, the bench page, the palace cutscenes and the check-in. Strings from each are in `index-*.js` ("SHARE GAME", "Find the better move", "Ember Keep", `#bench`, "This link is broken"). The issue's estimate of 190 kB is now 259 kB, after the review screens landed.
 - **The Extreme net ships twice.** It's the same `extreme-net.json`, bundled once for the main thread (`src/engine/ai/levels.ts:21`) and once inside the worker (`rollout-worker.ts:17`, `:29`): 2 × 560 kB raw in the APK. Each is a JS array literal, so it's parsed as JS: one copy in the UI thread's heap, one in the worker's.
 - **The main-thread net loads in almost every Extreme game.** `chooseBotMoveAsync` (`levels.ts:62`) sends only multi-move decisions to the worker. For a forced move (one legal move) it falls through to `await loadExtreme()` (`levels.ts:73`), which imports and parses the 560 kB net on the UI thread to "choose" the only move. The net then stays in memory for the rest of the session.
+  - **After #108** (measured in tests, fake worker: `tests/extremeWorker.test.ts`): over 3 seeded 4-player Extreme games (769 real choices, 360 forced moves), the UI thread imported the net **once before, 0 times after**. The worker got all 769 real choices both times, so Extreme plays the same. One import keeps **1.4 MB** of heap alive (the JSON module alone, measured in Node 24 on the CI chunk), plus the parse of 560 kB of JS mid-game. Device check: pending (#98).
 - **Fonts are latin-only already** (3 files, 44 kB in all), and `@dicebear` isn't in the runtime bundle (it's build-time only: no match in `index-*.js`).
 - **The WASM (295 kB) and the rollout worker load only on demand**, as they should.
 
@@ -67,7 +68,7 @@ Per-screen listeners are attached to the screen's own elements and go with them.
 | I5 | game, waiting to roll | the dice box and roll button pulse (`transform: scale`) | `styles.css:238`, `:247` (`nudge`) | HTML transform: compositor-only, cheap. Listed so the device trace can confirm. |
 | I6 | review, until the luck arrives | the skeleton shimmers (`background-position`) | `styles.css:769-771` (`shimmer`), `reviewScreen.ts:129` | Repaints every frame, but only until the luck job answers. |
 | I7 | replay and review, best-move ghost shown | the ghost's ring pulses (transform and opacity on an SVG circle) | `styles.css:834-835` (`gpulse`), `boardView.ts:177` | SVG again: likely repainted every frame while the ghost is up. |
-| I8 | Extreme games | the 560 kB net is parsed on the UI thread for forced moves | `levels.ts:62-73` (see §1) | Memory and a parse stall mid-game. |
+| I8 | Extreme games | the 560 kB net is parsed on the UI thread for forced moves | `levels.ts:62-73` (see §1) | Memory and a parse stall mid-game. | **Fixed in #108:** forced moves skip the engine.
 
 **Home screen idle:** no timer, no rAF, no infinite animation. It should paint nothing once settled (to confirm on the device).
 
