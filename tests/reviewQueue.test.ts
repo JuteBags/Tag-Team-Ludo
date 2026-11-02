@@ -160,7 +160,9 @@ describe('accuracy', () => {
   it('is the share of what was at stake that was kept, over meaningful decisions only', () => {
     // A 30-point decision with a 6-point slip, a 10-point one played perfectly, and a 1-point one ignored.
     expect(accuracyOf([m(6, [0, 30]), m(0, [0, 10]), m(1, [0, 1])])).toBeCloseTo(1 - 6 / 40, 6);
-    expect(accuracyOf([m(1, [0, 1])])).toBeNaN();
+    // No meaningful decision: every decision with something at stake counts instead.
+    expect(accuracyOf([m(1, [0, 1]), m(0.5, [0, 2])])).toBeCloseTo(1 - 1.5 / 3, 6);
+    expect(accuracyOf([m(0, [0, 0])])).toBeNaN();
     // A Best move's gap is noise: it costs nothing.
     expect(accuracyOf([{ ...m(1.2, [0, 1.2, 20]), label: 'best' }, m(4, [0, 4, 10])])).toBeCloseTo(1 - 4 / 30, 6);
   });
