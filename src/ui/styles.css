@@ -457,7 +457,8 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 /* The team-game box is a button: a solid border, a chevron and a press, not a dashed hint. */
 .q.teams{width:100%;text-align:left;border-radius:14px;padding:10px 40px 10px 12px;position:relative;background:rgba(255,214,90,.12);border:1.5px solid rgba(255,214,90,.6);color:#fff}
 .q.teams .lbl{color:#ffd65a}
-.q.teams .chev{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-style:normal;font-size:28px;line-height:1;color:#ffd65a}
+.q.teams .chev{position:absolute;right:12px;top:50%;width:22px;height:22px;margin-top:-11px;color:#ffd65a}
+.q.teams .chev svg{display:block;width:100%;height:100%}
 .q.teams:active{transform:translateY(2px)}
 .pvh.empty .pw{visibility:hidden}
 .sp{border-radius:22px;padding:16px;background:linear-gradient(180deg,rgba(14,38,104,.92),rgba(7,21,64,.92));border:1.5px solid rgba(255,214,90,.45)}
