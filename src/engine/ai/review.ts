@@ -206,14 +206,15 @@ export const spreadOf = (m: MoveReview) => (m.gaps?.length ? Math.max(...m.gaps)
 
 /**
  * Accuracy (0-1) as agreed for #96: of everything at stake in the meaningful decisions, the share kept,
- * 1 - Σgap / Σspread, so big decisions weigh more. Reviews from before every move's gap was kept fall back
+ * 1 - Σgap / Σspread, so big decisions weigh more; a Best move's gap counts as 0 (it's noise). Reviews from before every move's gap was kept fall back
  * to the mean label score. NaN with no meaningful decision.
  */
 export function accuracyOf(mine: MoveReview[]): number {
   if (mine.length && mine.every((m) => m.gaps?.length)) {
     const meaningful = mine.filter((m) => spreadOf(m) >= MEANINGFUL);
     const at = meaningful.reduce((a, m) => a + spreadOf(m), 0);
-    return at > 0 ? 1 - meaningful.reduce((a, m) => a + m.gap, 0) / at : NaN;
+    // A move labelled Best gave up nothing: its gap is within noise, and the number agrees with the label.
+    return at > 0 ? 1 - meaningful.reduce((a, m) => a + (m.label === 'best' ? 0 : m.gap), 0) / at : NaN;
   }
   return mine.length ? mine.reduce((a, m) => a + LABEL_SCORE[m.label], 0) / mine.length : NaN;
 }
