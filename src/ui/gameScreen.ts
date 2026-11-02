@@ -750,7 +750,7 @@ export class GameScreen {
         award(fresh.map((a) => a.id));
         earn(fresh.reduce((a, x) => a + x.gold, 0));
       }
-      return { fresh, ended: s.xEnded, streak: level === 'extreme' && won && !pvp ? { now: s.xStreak, next: nextStreak(s, settings.achieved) } : null };
+      return { fresh, ended: s.xEnded, best: s.xBestStreak, streak: level === 'extreme' && won && !pvp ? { now: s.xStreak, next: nextStreak(s, settings.achieved) } : null };
     });
     // Gold for this game, then how close it brings you to the next skin.
     const mineHome = colorsOf(human).reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
@@ -809,13 +809,13 @@ export class GameScreen {
       show();
     }
     // New achievements pop in as small chips, and the next-skin bar catches up with their gold.
-    void achievements.then(({ fresh, ended, streak }) => {
+    void achievements.then(({ fresh, ended, best, streak }) => {
       const box = ov.querySelector<HTMLElement>('.achs')!;
       // A live Extreme streak and what the next win in a row would bring, or the streak this game ended.
       if (streak) {
         const next = streak.next ? ` · ${streak.next.name} at ${streak.now + streak.next.more} <em>+${streak.next.gold}</em>` : '';
         box.insertAdjacentHTML('beforeend', `<span class="ach xs">🔥 Extreme streak ${streak.now}${next}</span>`);
-      } else if (ended) box.insertAdjacentHTML('beforeend', `<span class="ach xend">Extreme streak ended at ${ended}</span>`);
+      } else if (ended) box.insertAdjacentHTML('beforeend', `<span class="ach xend">Extreme streak ended at ${ended}${best > ended ? ` · Best ${best}` : ''}</span>`);
       // The biggest reward first, and its gold joins the headline and the breakdown.
       const sorted = [...fresh].sort((x, y) => y.gold - x.gold);
       const extra = sorted.reduce((a, x) => a + x.gold, 0);

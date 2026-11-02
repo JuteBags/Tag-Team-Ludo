@@ -49,6 +49,20 @@ interface Person {
  * `teams`: vs Computer with 4 players, a way to switch to you and one bot with two colours each (the
  * 2-player game with two houses each), so it can be found from 4 Players too.
  */
+/** A player's order rolls, ties re-rolled: "5", "5, then 3". */
+export const rolledText = (rolls: number[]) => rolls.join(', then ');
+
+/** A status wraps to two lines; one that needs more (a tie re-rolled more than once) steps down one font size, measured. */
+function fit(st: HTMLElement) {
+  st.classList.remove('long');
+  requestAnimationFrame(() => {
+    // Measured at the base size every time: two fits in one tick (refreshRoll, then finishRoll) agree.
+    st.classList.remove('long');
+    const line = parseFloat(getComputedStyle(st).lineHeight) || 16;
+    st.classList.toggle('long', st.scrollHeight > line * 2 + 2);
+  });
+}
+
 export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameConfig) => void, onBack: () => void, houses: 1 | 2 = 1, teams?: () => void): HTMLElement {
   const rules: PickRules = { houses, pairing: 'opposite' };
   /** With friends: bots added to houses nobody plays. */
@@ -118,7 +132,7 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
     </section>` : ''}
     <section class="wiz" data-step="roll">
       <h3 class="disp">Roll for order</h3><p class="sub">Highest roll picks first and plays first. Tap a name to change it</p>
-      <p class="porder" hidden></p>
+      <p class="porder sr" hidden aria-live="polite"></p>
       <div class="sp people"></div>
       <button class="b3 blue disp go" data-act="roll-all">ROLL FOR EVERYONE</button>
       <button class="b3 green disp go" data-act="to-pick" hidden>PICK HOUSES</button>
@@ -263,7 +277,8 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       const waiting = now.includes(i);
       row.classList.toggle('due', waiting);
       row.classList.toggle('tie', waiting && mine.length > 0);
-      row.querySelector('.st')!.textContent = waiting && mine.length ? 'Tie! Roll again' : mine.length ? `rolled ${mine.join(' · ')}` : people[i]!.bot ? '' : 'Tap the dice';
+      row.querySelector('.st')!.textContent = waiting && mine.length ? 'Tie! Roll again' : mine.length ? `rolled ${rolledText(mine)}` : people[i]!.bot ? '' : 'Tap the dice';
+      fit(row.querySelector<HTMLElement>('.st')!);
       row.querySelector('.dbox')!.classList.toggle('can-roll', waiting && !people[i]!.bot);
     });
     if (!deciding()) return finishRoll();
@@ -359,7 +374,8 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
       const i = Number(row.dataset.p);
       const place = order.indexOf(i);
       row.querySelector('.chip')!.innerHTML = place === 0 ? CROWN : String(place + 1);
-      row.querySelector('.st')!.textContent = `${PLACE[place]} · rolled ${rolls[i]!.join(' · ')}`;
+      row.querySelector('.st')!.textContent = `${PLACE[place]} · rolled ${rolledText(rolls[i]!)}`;
+      fit(row.querySelector<HTMLElement>('.st')!);
       row.classList.add('ranked');
       row.classList.toggle('first', place === 0);
       row.classList.remove('tie');
@@ -373,8 +389,9 @@ export function setupScreen(mode: Mode, count: 2 | 3 | 4, onStart: (cfg: GameCon
         row.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 420, delay: 60 * Number(row.style.order), easing: 'cubic-bezier(.16,1,.3,1)', fill: 'backwards' });
       }
     }
+    // The sorted rows (rank, crown) show the order; the line is kept for screen readers only.
     const po = q('.porder');
-    po.innerHTML = `Play order: ${order.map((i) => `<b>${people[i]!.name}</b>`).join(' → ')}`;
+    po.textContent = `Play order: ${order.map((i) => people[i]!.name).join(', then ')}`;
     po.hidden = false;
     q('[data-act=to-pick]').hidden = false;
     // A short sting for whoever plays first: the crown drops onto their row with a bright chord.

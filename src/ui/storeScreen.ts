@@ -36,7 +36,7 @@ export function storeScreen(onBack: () => void): HTMLElement {
       <div class="mode"><small>SKINS</small><b>STORE</b></div><span class="goldpill"><i class="coin"></i><b></b></span></div>
     ${UNLOCK_ALL ? '<p class="devnote">Test build: every skin is unlocked</p>' : ''}
     <div class="tg shelves">${SHELVES.map((s) => `<button data-s="${s.id}">${s.name}</button>`).join('')}</div>
-    <div class="stage"><div class="show"></div><div class="info"><b class="disp"></b><small></small></div></div>
+    <div class="showcase"><div class="show"></div><div class="info"><b class="disp"></b><small></small></div></div>
     <div class="grid"></div>
     <button class="b3 green disp use" data-act="use"></button>`;
   const q = <T extends HTMLElement = HTMLElement>(s: string) => el.querySelector<T>(s)!;
