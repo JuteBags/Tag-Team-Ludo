@@ -2,12 +2,18 @@
 // { id, state, nmax, seed }; out: { id, index } with index into state.moves, or { id, error }.
 // The game review (#65): { id, kind: 'review', state, n, seed, ask? }; out: { id, values } (DecisionValues;
 // with ask, the net screen or the race of #101).
-// Its luck: { id, kind: 'luck', rec }; out: { id, luck, chances } (review.ts rollLuck and netChances, with the Extreme net).
+// Its luck (#125), a chunk at a time so a review can stop (or a verdict go first) between chunks:
+//   { id, kind: 'luck-begin', rec }            out: { id, run, states }  (a new pass; any older one ends)
+//   { id, kind: 'luck-chunk', run, from, to }  out: { id, luck, chances } for states[from, to)
+//   { id, kind: 'luck-end', run }              out: { id, memory }  (frees the pass; a stale run is a no-op)
+// or the whole game at once: { id, kind: 'luck', rec }; out: { id, luck, chances, memory }. The values come from
+// the WebAssembly engine (luck.ts wasmLuck), or from the net in JS (netLuck) where the module can't run.
 import { PLAYOUT_RULES } from './playout-rules';
 import { Net } from './net';
 import { decodeNet } from './netbin';
 import { replay, type GameRecord } from '../record';
-import { netChances, rollLuck, type ReviewAsk } from './review';
+import { LUCK_CHUNK, luckChunk, luckPass, netLuck, wasmLuck, type LuckSource } from './luck';
+import type { ReviewAsk } from './review';
 import { RolloutEngine } from './rollout';
 import wasmUrl from './ludo_wasm.wasm?url';
 import netUrl from './extreme-net.bin?url';
@@ -25,19 +31,56 @@ function load(): Promise<RolloutEngine> {
 
 let luckNet: Net | null = null;
 
-self.onmessage = async (e: MessageEvent<{ id: number; kind?: 'review' | 'luck'; state: GameState; nmax: number; n: number; seed: number; ask?: ReviewAsk; rec: GameRecord }>) => {
+/** Where this worker's luck values come from: the engine when it loads and has the luck pass, else the JS net. */
+async function luckSource(): Promise<{ src: LuckSource; engine: RolloutEngine | null }> {
+  const e = await load().catch(() => null);
+  if (e?.hasLuck) return { src: wasmLuck(e), engine: e };
+  if (!luckNet) {
+    luckNet = new Net(decodeNet(await loadNet()));
+    // Exact memo (#127): half the colours recur within a roll's six faces; emptied per game.
+    luckNet.remember();
+  }
+  return { src: netLuck(luckNet), engine: null };
+}
+
+/** The game whose luck pass is under way (one at a time: the module has one leaf cache). */
+let pass: { run: number; rec: GameRecord; states: GameState[]; src: LuckSource; engine: RolloutEngine | null } | null = null;
+let runs = 0;
+const endPass = () => {
+  pass?.src.end();
+  pass = null;
+};
+
+type Msg = { id: number; kind?: 'review' | 'luck' | 'luck-begin' | 'luck-chunk' | 'luck-end'; state: GameState; nmax: number; n: number; seed: number; ask?: ReviewAsk; rec: GameRecord; run: number; from: number; to: number };
+
+self.onmessage = async (e: MessageEvent<Msg>) => {
   const { id, kind, state, nmax, n, seed, ask } = e.data;
   try {
+    if (kind === 'luck-begin') {
+      const { src, engine: eng } = await luckSource();
+      endPass();
+      const states = replay(e.data.rec).states as GameState[];
+      src.begin();
+      pass = { run: ++runs, rec: e.data.rec, states, src, engine: eng };
+      self.postMessage({ id, run: pass.run, states: states.length });
+      return;
+    }
+    if (kind === 'luck-chunk') {
+      if (pass?.run !== e.data.run) throw new Error('this luck pass has ended');
+      self.postMessage({ id, ...luckChunk(pass.src, pass.rec, pass.states, e.data.from, Math.min(e.data.to, pass.states.length)) });
+      return;
+    }
+    if (kind === 'luck-end') {
+      const memory = pass?.engine?.luckMemory;
+      if (pass?.run === e.data.run) endPass();
+      self.postMessage({ id, memory });
+      return;
+    }
     if (kind === 'luck') {
-      if (!luckNet) {
-        luckNet = new Net(decodeNet(await loadNet()));
-        // Exact memo (#125): half the colours recur within a roll's six faces. Per game: a luck call is one game.
-        luckNet.remember();
-      }
-      luckNet.forget();
-      const r = replay(e.data.rec);
-      self.postMessage({ id, luck: rollLuck(e.data.rec, r.states, luckNet), chances: netChances(e.data.rec, r.states, luckNet) });
-      luckNet.forget();
+      const { src, engine: eng } = await luckSource();
+      endPass();
+      const r = luckPass(src, e.data.rec, replay(e.data.rec).states as GameState[], LUCK_CHUNK);
+      self.postMessage({ id, ...r, memory: eng?.luckMemory });
       return;
     }
     if (kind === 'review') {

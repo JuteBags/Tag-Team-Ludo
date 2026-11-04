@@ -1,5 +1,6 @@
-# Times the review's luck pass (#125) on the bench page's review games, the net before #125 against the
-# app's (tools/ai/luck_speed.ts), on a quiet runner, and checks every luck value is the same double. A table
+# Times the review's luck pass (#125) on the bench page's review games: the net before #125, the TS fallback
+# and the WebAssembly engine (tools/ai/luck_speed.ts), on a quiet runner, and checks every luck value is the
+# same double. Also the module's memory. A table
 # in the run summary. On every PR that touches the net or the luck pass, and by hand.
 name: Luck pass speed
 
@@ -10,6 +11,10 @@ on:
       - 'src/engine/ai/encode.ts'
       - 'src/engine/ai/review.ts'
       - 'src/engine/ai/search.ts'
+      - 'src/engine/ai/luck.ts'
+      - 'src/engine/ai/ludo_wasm.wasm'
+      - 'sim-rs/src/**'
+      - 'sim-wasm/src/**'
       - 'tools/ai/luck_speed.ts'
       - 'tools/ai/dense-net.ts'
       - '.github/workflows/luck-speed.yml'

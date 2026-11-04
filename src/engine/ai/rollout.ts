@@ -21,6 +21,12 @@ interface Exports {
   review?(state: number, len: number, n: number, seed: number): number;
   /** The review's net screen (mode 1) and race (mode 2) (#101); missing in modules built before it. */
   review_fast?(state: number, len: number, n: number, seed: number, played: number, mode: number, skip: number, z: number, best: number): number;
+  /** The review's luck pass (#125): a leaf cache per game, values a chunk of states at a time. Missing before it. */
+  luck_begin?(): number;
+  luck_chunk?(states: number, len: number, count: number, kind: number): number;
+  luck_end?(): void;
+  luck_size?(): number;
+  luck_peak?(): number;
 }
 
 const PHASES = { roll: 0, move: 1, over: 2 } as const;
@@ -137,5 +143,48 @@ export class RolloutEngine {
   movesLen(state: GameState): number {
     const [p, l] = this.put(encodeState(state));
     return this.x.moves_len(p, l);
+  }
+
+  /** Whether this module has the luck pass (#125). */
+  get hasLuck(): boolean {
+    return !!this.x.luck_chunk;
+  }
+
+  /** Starts a game's luck pass: an empty leaf cache in the module (sim-wasm luck_begin). */
+  luckBegin() {
+    if (!this.x.luck_begin) throw new Error('this rollout engine has no luck pass');
+    this.x.luck_begin();
+  }
+
+  /**
+   * Values for a chunk of a game's states (sim-wasm luck_chunk), between luckBegin and luckEnd. kind 0: per
+   * state (a roll state), the roller's chance after each face 1..6 (review.ts faceValues), 6 numbers; kind 1:
+   * per state, everyone's chance by owner (ownerValues), 4 numbers.
+   */
+  luckChunk(states: GameState[], kind: 0 | 1): Float64Array {
+    if (!this.x.luck_chunk) throw new Error('this rollout engine has no luck pass');
+    const parts = states.map(encodeState);
+    const buf = new Uint8Array(parts.reduce((n, b) => n + 2 + b.length, 0));
+    let o = 0;
+    for (const b of parts) {
+      buf[o] = b.length & 0xff;
+      buf[o + 1] = b.length >> 8;
+      buf.set(b, o + 2);
+      o += 2 + b.length;
+    }
+    const [p, l] = this.put(buf);
+    const at = this.x.luck_chunk(p, l, states.length, kind);
+    if (!at) throw new Error('the luck pass was not started (luckBegin) or the engine not initialised');
+    return new Float64Array(this.x.memory.buffer, at, states.length * (kind === 0 ? 6 : 4)).slice();
+  }
+
+  /** Ends a game's luck pass: the module frees its cache. */
+  luckEnd() {
+    this.x.luck_end?.();
+  }
+
+  /** The luck cache's size now and its largest since the module loaded (positions), and the module's memory (bytes). */
+  get luckMemory(): { size: number; peak: number; bytes: number } {
+    return { size: this.x.luck_size?.() ?? 0, peak: this.x.luck_peak?.() ?? 0, bytes: this.x.memory.buffer.byteLength };
   }
 }
