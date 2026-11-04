@@ -87,6 +87,7 @@ describe('luck %, headline and turning point', () => {
     expect(headline({ won: true, accuracy: 0.95, name: 'You' })).toBe('Won on great play.');
     expect(headline({ won: true, accuracy: 0.8, name: 'You' })).toBe('Won, with a few slips to learn from.');
     expect(headline({ won: false, accuracy: 0.7, name: 'Aarav' })).toBe('Lost on mistakes: the key moves show where.');
+    expect(headline({ won: false, accuracy: NaN, name: 'Aarav', keyMistakes: 0, inaccuracies: 0 })).toBe('Aarav made no mistakes: the turning point decided it.');
     expect(headline({ won: false, accuracy: 0.6, name: 'You', keyMistakes: 0, inaccuracies: 7 })).toBe('No big mistakes, but small slips added up in close decisions.');
     expect(headline({ won: false, accuracy: 0.8, name: 'You', keyMistakes: 0, inaccuracies: 3 })).toBe('Lost on 3 small slips: the key moves show where.');
     const blunder = { at: 9, owner: 0, played: 0, best: 1, playedChance: 0.1, bestChance: 0.4, gap: 32, se: 1, label: 'blunder' } as MoveReview;
