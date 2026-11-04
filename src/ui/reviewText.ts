@@ -251,21 +251,28 @@ export function verdictText(m: MoveReview, s: GameState, who: string, nameOf?: (
 
 // ---------- the review's accuracy and luck graphs, and the Stats trends (#134) ----------
 
-/** The accuracy line starts at this many counted decisions: before that a running accuracy is noise (100 to 40). */
+/** The accuracy line is solid from this many counted decisions; before that it's drawn faded (a running accuracy is noisy early). */
 export const ACCURACY_LINE_FROM = 5;
 
 /**
  * Accuracy so far after each of a side's reviewed moves (in game order), 0-1: the accuracy of the moves up to
- * there, as accuracyOf counts it. null until ACCURACY_LINE_FROM counted decisions; the last value is the game's.
+ * there, as accuracyOf counts it, from the first counted decision (null before it). `solidFrom` is the index of
+ * the ACCURACY_LINE_FROM-th counted decision: the line is faded before it and solid from it (all faded, and
+ * `solidFrom` = the moves' length, with fewer). The last value is the game's accuracy.
  */
-export function runningAccuracy(mine: MoveReview[], from = ACCURACY_LINE_FROM): (number | null)[] {
+export function runningAccuracy(mine: MoveReview[], from = ACCURACY_LINE_FROM): { values: (number | null)[]; solidFrom: number } {
   let counted = 0;
-  return mine.map((m, i) => {
-    if (!m.gaps?.length || countsForAccuracy(m)) counted++;
-    if (counted < from) return null;
+  let solidFrom = mine.length;
+  const values = mine.map((m, i) => {
+    if (!m.gaps?.length || countsForAccuracy(m)) {
+      counted++;
+      if (counted === from) solidFrom = i;
+    }
+    if (!counted) return null;
     const a = accuracyOf(mine.slice(0, i + 1));
     return Number.isFinite(a) ? a : null;
   });
+  return { values, solidFrom };
 }
 
 /** Luck so far after each of `owner`'s rolls: the luck percentile of the rolls up to there (0-100), at each roll's position. */

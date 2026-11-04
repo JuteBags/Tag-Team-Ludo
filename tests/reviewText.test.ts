@@ -372,14 +372,21 @@ describe('plain verdicts (#124)', () => {
 
 describe('accuracy and luck graphs (#134)', () => {
   const mv = (at: number, label: MoveReview['label'], gap: number, spread: number): MoveReview => ({ at, owner: 0, played: 1, best: 0, playedChance: 0.5, bestChance: 0.5, gap, se: 0.2, label, gaps: [0, gap, spread] });
-  it("running accuracy starts at the 5th counted decision and ends at the game's accuracy", () => {
-    const mine = [mv(1, 'best', 0, 8), mv(2, 'good', 1, 1.5), mv(3, 'mistake', 7, 9), mv(4, 'best', 0, 6), mv(5, 'best', 0, 12), mv(6, 'inaccuracy', 3, 4), mv(7, 'best', 0, 5)];
-    const line = runningAccuracy(mine);
-    // Counted: 1 (spread 8), 3 (mistake), 4, 5, 6 (inaccuracy), 7; the Good one in a 1.5-point decision doesn't count.
-    expect(line.slice(0, 5).every((x) => x === null)).toBe(true);
-    expect(line[5]).not.toBeNull();
-    expect(line.at(-1)).toBeCloseTo(accuracyOf(mine), 12);
+  it("running accuracy: from the first counted decision, solid from the 5th (the split index), ending at the game's accuracy", () => {
+    const mine = [mv(1, 'good', 1, 1.5), mv(2, 'best', 0, 8), mv(3, 'mistake', 7, 9), mv(4, 'best', 0, 6), mv(5, 'best', 0, 12), mv(6, 'inaccuracy', 3, 4), mv(7, 'best', 0, 5)];
+    const { values, solidFrom } = runningAccuracy(mine);
+    // The Good move in a 1.5-point decision doesn't count: no value there. Counted: moves at index 1, 2, 3, 4, 5, 6.
+    expect(values[0]).toBeNull();
+    expect(values.slice(1).every((x) => x !== null)).toBe(true);
+    expect(solidFrom).toBe(5); // the 5th counted decision
+    expect(values.at(-1)).toBeCloseTo(accuracyOf(mine), 12);
     expect(ACCURACY_LINE_FROM).toBe(5);
+  });
+  it('running accuracy with fewer than 5 counted decisions: all faded, still ending at the card figure', () => {
+    const mine = [mv(1, 'best', 0, 8), mv(2, 'mistake', 7, 9), mv(3, 'good', 1, 1.2)];
+    const { values, solidFrom } = runningAccuracy(mine);
+    expect(solidFrom).toBe(mine.length);
+    expect(values.at(-1)).toBeCloseTo(accuracyOf(mine), 12);
   });
   it("running luck ends at the card's luck, one point per roll that has a luck, never NaN", () => {
     const r = (at: number, owner: number, luck: number, sd?: number) => ({ at, owner, face: 3, luck, ...(sd === undefined ? {} : { sd }) });

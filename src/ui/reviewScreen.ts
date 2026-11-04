@@ -13,7 +13,7 @@ import { dieMarkup } from './dice';
 import { framesOf, namesOf } from './replay';
 import { follow } from './reviewQueue';
 import { decisionsToReview, peopleOf, type ReviewProgress } from './reviewRun';
-import { ACCURACY_LINE_FROM, accuracyText, bigRolls, runningAccuracy, runningLuck, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, luckBand, luckWords, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
+import { accuracyText, bigRolls, runningAccuracy, runningLuck, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, luckBand, luckWords, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
 import type { StoredReview } from './store';
 
 const GW = 330;
@@ -245,30 +245,35 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const y = (v: number) => GH * (1 - v / 100);
     const tick = (v: number) => `<text x="${GL - 5}" y="${y(v) + 3.5}" text-anchor="end" class="tick">${v}</text><line x1="${GL}" x2="${GW}" y1="${y(v)}" y2="${y(v)}" class="grid"/>`;
     let pts: [number, number][] = [];
+    let faded: [number, number][] = [];
     let label = '';
-    let note = '';
     if (graphTab === 'accuracy') {
-      const line = runningAccuracy(mine);
+      // From the first counted decision: faded and thinner until the 5th (an early running accuracy is noisy), then solid.
+      const { values, solidFrom } = runningAccuracy(mine);
       const n = Math.max(1, mine.length - 1);
-      pts = line.flatMap((a, i) => (a === null ? [] : [[GL + (i / n) * (GW - GL), y(100 * a)] as [number, number]]));
-      label = pts.length ? `Accuracy ${Math.round(100 * line.at(-1)!)}%` : '';
-      if (!pts.length) note = `The line starts after ${ACCURACY_LINE_FROM} decisions that count.`;
+      const at = (i: number) => [GL + (i / n) * (GW - GL), y(100 * values[i]!)] as [number, number];
+      const idx = values.flatMap((v, i) => (v === null ? [] : [i]));
+      faded = idx.filter((i) => i <= solidFrom).map(at);
+      pts = idx.filter((i) => i >= solidFrom).map(at);
+      const lastV = values.at(-1);
+      label = idx.length && lastV !== null && lastV !== undefined ? `Accuracy ${Math.round(100 * lastV)}%` : '';
+      if (!pts.length) pts = [];
     } else {
       const last = Math.max(1, states.length - 1);
       const luck = runningLuck(graphLuck, pov);
       pts = luck.map((l) => [GL + (l.at / last) * (GW - GL), y(l.pct)] as [number, number]);
       label = luck.length ? `Luck ${Math.round(luck.at(-1)!.pct)}%` : '';
     }
-    const end = pts.at(-1);
+    const end = pts.at(-1) ?? faded.at(-1);
+    const poly = (ps: [number, number][], cls: string) => (ps.length > 1 ? `<polyline class="${cls}" points="${ps.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ')}"/>` : '');
     const mid = graphTab === 'luck' ? `<line x1="${GL}" y1="${y(50)}" x2="${GW}" y2="${y(50)}" class="even"/><text x="${GW - 4}" y="${y(50) + 12}" text-anchor="end">average luck</text>` : '';
     q('.rvgraph').innerHTML = `<small></small>${graphTabs()}<svg viewBox="-6 -8 ${GW + 40} ${GH + 16}" aria-hidden="true">
         ${[0, 50, 100].map(tick).join('')}${mid}
-        ${pts.length ? `<polyline class="${graphTab}" points="${pts.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ')}"/>` : ''}
+        ${poly(faded, `${graphTab} early`)}${poly(pts, graphTab)}
         ${end ? `<circle class="${graphTab}" cx="${end[0].toFixed(1)}" cy="${end[1].toFixed(1)}" r="3.5"/>${endLabel(end, label, `final ${graphTab}`)}` : ''}
-        ${graphTab === 'accuracy' ? `<rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/>` : ''}</svg>${note ? `<p class="rvgnote"></p>` : ''}`;
+        ${graphTab === 'accuracy' ? `<rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/>` : ''}</svg>`;
     const who = isYou(pov) ? 'Your' : `${names[pov]}'s`;
     q('.rvgraph small').textContent = `${who} ${graphTab === 'accuracy' ? 'accuracy' : 'luck'} so far`;
-    if (note) q('.rvgraph .rvgnote').textContent = note;
   };
 
   const moveRow = (m: MoveReview, turning = false) => {
