@@ -1,0 +1,44 @@
+# A deep review of one crafted position (tools/ai/positions/*.json, #97): every legal move by the full review
+# at --deep playouts (4,096 by default) and at the shipped 128, and the app's own label for the played move,
+# over several seeds (tools/ai/review_position.ts). Too heavy for a laptop. By hand, or by pushing a deep/*
+# branch (a workflow that isn't on main yet can't be started by hand).
+name: Review a position
+
+on:
+  push:
+    branches: ['deep/**']
+  workflow_dispatch:
+    inputs:
+      position:
+        description: 'The position file'
+        required: true
+        default: 'tools/ai/positions/move87.json'
+      deep:
+        description: 'Paired playouts per move for the deep review'
+        required: true
+        default: '4096'
+      seeds:
+        description: 'Seeds for the shipped 128 reviews'
+        required: true
+        default: '20'
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: review ${{ inputs.position || 'tools/ai/positions/move87.json' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - run: node tools/ai/dist/review_position.mjs ${{ inputs.position || 'tools/ai/positions/move87.json' }} --deep ${{ inputs.deep || '4096' }} --seeds ${{ inputs.seeds || '20' }} | tee position.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: review-position
+          path: position.txt
