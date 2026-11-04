@@ -162,13 +162,8 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       few.textContent = FEW_BIG_DECISIONS;
       card.querySelector('.rvwho')!.after(few);
     }
-    // With accuracy: how many moves really cost something (mistakes and blunders).
-    if (ready && s.moves) {
-      const km = document.createElement('small');
-      km.className = 'km';
-      km.textContent = s.keyMistakes ? `${s.keyMistakes} key mistake${s.keyMistakes === 1 ? '' : 's'}` : 'No key mistakes';
-      card.querySelector('.rvwho b')!.append(km);
-    }
+    // No "N key mistakes" line under the name: the tiles below already count every label, and its "key"
+    // (mistakes and blunders) read against the Key moves list, which has inaccuracies too (#158 review).
     // Everyone else's dice, one line each.
     const others = d.luck
       ? owners
