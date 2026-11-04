@@ -78,7 +78,9 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
     <div class="set"><span>Which face of the die counts?</span>${tg('face', [['top', `${faceIcon(true)}The top`, settings.diceFace === 'top'], ['front', `${faceIcon(false)}The front`, settings.diceFace === 'front']])}</div>
     <div class="set">${sw('sound', 'Sound', !sfx.muted)}</div>
     <div class="set"><span>Kill animations</span>${tg('killfx', [['full', 'Full', settings.killFx === 'full'], ['short', 'Short', settings.killFx === 'short'], ['off', 'Off', settings.killFx === 'off']])}</div>
-    <div class="set">${sw('fast', 'Fast bots', settings.fastBots)}<small class="qh">Bots roll and move twice as fast</small></div>`,
+    <div class="set">${sw('fast', 'Fast bots', settings.fastBots)}<small class="qh">Bots roll and move twice as fast</small></div>
+    <div class="set"><span>Undos per game</span>${tg('undos', [['0', 'Off', settings.undos === 0], ['1', '1', settings.undos === 1], ['2', '2', (settings.undos ?? 2) === 2]])}</div>
+    <div class="set">${sw('undowait', 'Wait for Undo when my turn ends', settings.undoWait !== false)}<small class="qh">A moment to take back a mis-touch before the next player rolls</small></div>`,
   );
   ov.querySelector('.themes')!.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLButtonElement>('.th');
@@ -98,6 +100,8 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
   switchRow(ov, 'sound', (on) => sfx.setMuted(!on));
   switchRow(ov, 'fast', (on) => saveSetting('fastBots', on));
   toggle(ov, 'killfx', (v) => saveSetting('killFx', v as 'full' | 'short' | 'off'));
+  toggle(ov, 'undos', (v) => saveSetting('undos', Number(v) as 0 | 1 | 2));
+  switchRow(ov, 'undowait', (on) => saveSetting('undoWait', on));
 }
 
 export async function statsSheet(host: HTMLElement, onReplay?: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void) {
@@ -120,7 +124,7 @@ export async function statsSheet(host: HTMLElement, onReplay?: (rec: GameRecord)
     ? `<div class="empty"><b class="disp">No games yet</b><p class="sub">Play a game vs Computer and your wins, kills and best place show up here.</p></div>`
     : `<p class="sub">vs Computer, on this device</p>
     <div class="stats">${cell(s.played, 'Games')}${cell(s.wins, 'Wins')}${cell(rate, 'Win rate')}${cell(best, 'Best place')}${cell(s.streak, 'Win streak')}${cell(s.bestStreak, 'Best streak')}${cell(s.kills, 'Kills')}${cell(s.sixes, 'Sixes')}${cell(s.xStreak, s.xBestStreak ? `Extreme (best ${s.xBestStreak})` : 'Extreme streak')}</div>
-    <p class="sub">With friends: ${s.friends} game${s.friends === 1 ? '' : 's'}</p>
+    <p class="sub">With friends: ${s.friends} game${s.friends === 1 ? '' : 's'}${s.undos ? ` · Undos used: ${s.undos}` : ''}</p>
     ${onReplay ? `<button class="pastrow" data-act="past"><span><b>Games &amp; reviews</b><small>${past.length ? `Your last ${past.length}: replays and reviews` : 'Finished games show up here'}</small></span><em>›</em></button>` : ''}
     <button class="reset" data-act="reset">Reset stats</button>`;
   const achPane = `<div class="achscroll">${GROUPS.map((g) => `<h4 class="achg">${g}</h4><div class="achlist">${ACHIEVEMENTS.filter((a) => a.group === g).map((a) => {
