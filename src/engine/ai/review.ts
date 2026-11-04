@@ -40,7 +40,7 @@ export interface DecisionValues {
 /**
  * What to ask the engine for instead of the full review (#101): the net screen, or the race for the move
  * played (an index into state.moves), which first skips the playouts when the net's spread is under `skip`
- * points, and settles Best within `best` points (the layout's Best cut; BEST_WITHIN when missing) at `z`
+ * points, and settles Best within `best` points (the layout's Best cut; rollout.rs BEST_WITHIN when missing) at `z`
  * standard errors (0 or missing: the engine's schedule, rollout.rs best_z).
  */
 export type ReviewAsk = { mode: 'screen' } | { mode: 'race'; played: number; best?: number; skip?: number; z?: number };
@@ -51,15 +51,53 @@ export type Reviewer = (state: GameState, n: number, seed: number, ask?: ReviewA
 export type Label = 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder';
 
 /**
- * The label cuts in 2p (points of win chance given up, 0-100), calibrated in tools/ai/REVIEW_CALIB.md: "best"
- * up to BEST_WITHIN (or within one standard error: a coin flip isn't a mistake), then the top of each label.
+ * A label cut set, in points of win probability given up (0-100), for 2p; other layouts are scaled by
+ * THRESHOLDS_BY_LAYOUT, none under `floor`. "Best" up to `best` (or within one standard error: a coin flip
+ * isn't a mistake), then the top of each label (tools/ai/REVIEW_CALIB.md, #138).
  */
-export const BEST_WITHIN = 1.5;
-export const THRESHOLDS: [Label, number][] = [
-  ['good', 2],
-  ['inaccuracy', 5],
-  ['mistake', 10],
-];
+export interface Cuts {
+  /** Best: within this many points of the top (or within one standard error). */
+  best: number;
+  /** Each label's upper end, in order; above the last, Blunder. */
+  tops: [Label, number][];
+  floor: number;
+}
+
+/** The cuts (#138, set B, the owner's pick): Mistake from 3 points, Blunder from 6. No floor. */
+export const CUTS: Cuts = {
+  best: 1,
+  tops: [
+    ['good', 1.5],
+    ['inaccuracy', 3],
+    ['mistake', 6],
+  ],
+  floor: 0,
+};
+/** Review version 3's cuts (#65), for measuring against: Best 1.5, Good 2, Inaccuracy 5, Mistake 10, a 1-point floor. */
+export const CUTS_V3: Cuts = {
+  best: 1.5,
+  tops: [
+    ['good', 2],
+    ['inaccuracy', 5],
+    ['mistake', 10],
+  ],
+  floor: 1,
+};
+
+/** How labels are given: the cuts, and the rules on top of them. */
+export interface LabelRules {
+  cuts: Cuts;
+  /** The harsher label only when the gap clears its cut by one standard error (#138). */
+  se: boolean;
+  /** One label harsher when the best move kept you at 50% or more and yours put you under (#138, the owner's). */
+  turningPoint: boolean;
+  /** How near a cut (points, after the se rule) a gap must be to get more playouts. */
+  edge: number;
+}
+/** The review's rules (version 4). */
+export const RULES: LabelRules = { cuts: CUTS, se: true, turningPoint: true, edge: 2 };
+/** Review version 3's, for measuring against. */
+export const RULES_V3: LabelRules = { cuts: CUTS_V3, se: false, turningPoint: false, edge: 2 };
 
 /**
  * Each layout's scale on the 2p cuts (REVIEW_CALIB.md): with more players a move's gaps are smaller, so the
@@ -68,9 +106,6 @@ export const THRESHOLDS: [Label, number][] = [
  * bootstrap intervals): see tools/ai/REVIEW_CALIB.md.
  */
 export const THRESHOLDS_BY_LAYOUT: Record<string, number> = { '2p': 1, '3p': 0.85, '4p': 0.85, '2h-opposite': 0.65, '2h-side': 0.65 };
-
-/** No scaled cut goes under this many points. */
-const CUT_FLOOR = 1;
 
 /** A game's layout, as the calibration names it: "2p", "3p", "4p", "2h-opposite" or "2h-side" (two houses each). */
 export function layoutKey(s: GameState): string {
@@ -81,24 +116,38 @@ export function layoutKey(s: GameState): string {
   return Math.abs(mine[0]! - mine[1]!) === 2 ? '2h-opposite' : '2h-side';
 }
 
-/** The cuts for a layout: the 2p ones scaled by THRESHOLDS_BY_LAYOUT (1 for a layout not in it), none under CUT_FLOOR. */
-export function cutsFor(layout = '2p'): { best: number; tops: [Label, number][] } {
+/** The cuts for a layout: the 2p ones scaled by THRESHOLDS_BY_LAYOUT (1 for a layout not in it), none under the floor. */
+export function cutsFor(layout = '2p', cuts: Cuts = CUTS): { best: number; tops: [Label, number][] } {
   const f = THRESHOLDS_BY_LAYOUT[layout] ?? 1;
-  const cut = (x: number) => Math.max(CUT_FLOOR, x * f);
-  return { best: cut(BEST_WITHIN), tops: THRESHOLDS.map(([l, t]) => [l, cut(t)]) };
+  const cut = (x: number) => Math.max(cuts.floor, x * f);
+  return { best: cut(cuts.best), tops: cuts.tops.map(([l, t]) => [l, cut(t)]) };
 }
 
 /**
- * The label for a move that gave up `gap` points (± `se`) in a game of `layout` (layoutKey). A harsher label
- * only when the gap clears its cut by one standard error (#138): a move near a cut gets the milder label, as
- * a coin flip isn't a mistake (move 87 of the 2.5.0 demo: 9.6 ± 0.3 points, a Mistake that 128 playouts
- * called a Blunder 35% of the time).
+ * The label for a move that gave up `gap` points (± `se`) in a game of `layout` (layoutKey). With the se rule,
+ * a harsher label only when the gap clears its cut by one standard error (#138): a move near a cut gets the
+ * milder label, as a coin flip isn't a mistake (move 87 of the 2.5.0 demo: 9.6 ± 0.3 points, which 128
+ * playouts called a Blunder 35% of the time under version 3's cuts).
  */
-export function labelOf(gap: number, se: number, layout = '2p'): Label {
-  const c = cutsFor(layout);
+export function labelOf(gap: number, se: number, layout = '2p', rules: LabelRules = RULES): Label {
+  const c = cutsFor(layout, rules.cuts);
   if (gap <= c.best || gap <= se) return 'best';
-  for (const [label, top] of c.tops) if (gap - se < top) return label;
+  const g = rules.se ? gap - se : gap;
+  for (const [label, top] of c.tops) if (g < top) return label;
   return 'blunder';
+}
+
+/** The labels in order, mildest first, as `cuts` uses them. */
+const ladder = (cuts: Cuts): Label[] => ['best', ...cuts.tops.map(([l]) => l), 'blunder'];
+
+/**
+ * The turning-point rule (#138, the owner's): when the best move kept you at 50% or more and yours put you
+ * under, one label harsher (a Blunder stays a Blunder). Chances are fractions (0-1).
+ */
+export function turned(label: Label, played: number, best: number, rules: LabelRules = RULES): Label {
+  if (!rules.turningPoint || label === 'blunder' || !(best >= 0.5 && played < 0.5)) return label;
+  const l = ladder(rules.cuts);
+  return l[Math.min(l.length - 1, l.indexOf(label) + 1)]!;
 }
 
 /**
@@ -122,12 +171,11 @@ export const SKIP_BELOW = 0;
 /** Playouts per candidate, and the most a decision is topped up to when its gap sits near a label's edge. */
 export const PLAYOUTS = 128;
 export const PLAYOUTS_MAX = 1024;
-/** How near (points) a label's edge a gap must be to get more playouts. */
-const EDGE = 2;
-
-const nearEdge = (gap: number, layout = '2p') => {
-  const c = cutsFor(layout);
-  return [c.best, ...c.tops.map(([, t]) => t)].some((t) => Math.abs(gap - t) < EDGE);
+/** Whether a gap (± se) sits within `rules.edge` points of a cut, where more playouts can change its label. */
+const nearEdge = (gap: number, se: number, layout: string, rules: LabelRules) => {
+  const c = cutsFor(layout, rules.cuts);
+  const g = rules.se ? gap - se : gap;
+  return Math.abs(gap - c.best) < rules.edge || c.tops.some(([, t]) => Math.abs(g - t) < rules.edge);
 };
 
 export interface MoveReview {
@@ -165,6 +213,8 @@ export interface ReviewOptions {
   skipBelow?: number;
   /** The race's bound for settling Best, in standard errors at every look (for measuring); the engine's schedule by default. */
   raceZ?: number;
+  /** The label rules (default RULES): other ones only for measuring (tools/ai/review_edge.ts). */
+  rules?: LabelRules;
   /** Called once with the decisions (state indexes) in the order they'll be reviewed: the stakes order when the
    *  net screened them (#93: the review screen lists them all straight away, "…" until each verdict lands). */
   onOrder?: (order: number[]) => void;
@@ -206,7 +256,8 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
   const skipBelow = opts.skipBelow ?? SKIP_BELOW;
   const layout = states[0] ? layoutKey(states[0]) : '2p';
   // The race settles Best within the layout's own Best cut (labelOf's), so it never calls Best what the cuts call Good.
-  const bestCut = cutsFor(layout).best;
+  const rules = opts.rules ?? RULES;
+  const bestCut = cutsFor(layout, rules.cuts).best;
   const todo: number[] = [];
   for (let i = 0; i + 1 < states.length; i++) {
     const s = states[i]!;
@@ -275,7 +326,7 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
       }
     }
     // Not settled as Best: the full review's values (the race filled up to n), topped up near an edge as always.
-    while (!settledBest && n < PLAYOUTS_MAX && c !== v.best && nearEdge(100 * v.gap[c]!, layout)) {
+    while (!settledBest && n < PLAYOUTS_MAX && c !== v.best && nearEdge(100 * v.gap[c]!, 100 * v.se[c]!, layout, rules)) {
       n *= 2;
       v = await reviewer(s, n, decisionSeed(rec, s));
     }
@@ -285,7 +336,7 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     const best = v.ofMove.indexOf(v.best);
     const gaps = v.ofMove.map((c) => (c === v.best ? 0 : Math.round(1000 * v.gap[c]!) / 10));
     // The race settles Best only when every rival is, even at +z se, under the layout's Best cut better: labelOf agrees.
-    const label = settledBest ? 'best' : labelOf(gap, se, layout);
+    const label = turned(settledBest ? 'best' : labelOf(gap, se, layout, rules), v.mean[cp]!, v.mean[v.best]!, rules);
     const r: MoveReview = { at: i, owner, played, best, playedChance: v.mean[cp]!, bestChance: v.mean[v.best]!, gap, se, label, gaps };
     if (settledBest) r.approx = 'race';
     out.push(r);

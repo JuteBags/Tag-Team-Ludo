@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { HARD_RULES } from '../src/engine/ai/hard-rules';
 import { LinearRules } from '../src/engine/ai/linear';
-import { cutsFor, faceChances, labelOf, layoutKey, MEANINGFUL, PLAYOUTS, reviewMoves, rollLuck, SKIP_BELOW, SPREAD_EXACT, summary, THRESHOLDS_BY_LAYOUT, type DecisionValues, type Label, type Reviewer, type ReviewAsk } from '../src/engine/ai/review';
+import { CUTS, CUTS_V3, cutsFor, faceChances, labelOf, layoutKey, MEANINGFUL, PLAYOUTS, reviewMoves, rollLuck, RULES_V3, SKIP_BELOW, SPREAD_EXACT, summary, THRESHOLDS_BY_LAYOUT, turned, type DecisionValues, type Label, type Reviewer, type ReviewAsk } from '../src/engine/ai/review';
 
 const SEATS: Seat[] = [
   { color: 'blue', owner: 0, bot: false },
@@ -39,36 +39,53 @@ describe('accuracy', () => {
 });
 
 describe('labels', () => {
-  it('calls a move best within 1.5 points or one standard error of the top, then by the points given up', () => {
+  it('calls a move best within 1 point or one standard error of the top, then by the points given up (cuts B, #138)', () => {
     expect(labelOf(0, 0)).toBe('best');
-    expect(labelOf(1.4, 0.2)).toBe('best');
+    expect(labelOf(0.9, 0.2)).toBe('best');
     expect(labelOf(2.5, 3)).toBe('best');
-    expect(labelOf(1.8, 0.5)).toBe('good');
-    expect(labelOf(2.5, 0.5)).toBe('inaccuracy');
-    expect(labelOf(5.6, 0.5)).toBe('mistake');
-    expect(labelOf(11, 1)).toBe('blunder');
+    expect(labelOf(1.3, 0.1)).toBe('good');
+    expect(labelOf(2, 0.2)).toBe('inaccuracy');
+    expect(labelOf(3.5, 0.2)).toBe('mistake');
+    expect(labelOf(7, 0.5)).toBe('blunder');
   });
 
   it('gives the harsher label only when the gap clears its cut by one standard error (#138)', () => {
-    // Move 87 of the 2.5.0 demo: 9.64 ± 0.28 at 4,096 playouts is a Mistake; at 128 the gap read 10.2 ± 1.6.
-    expect(labelOf(9.64, 0.28)).toBe('mistake');
-    expect(labelOf(10.2, 1.6)).toBe('mistake');
-    expect(labelOf(10.2, 0.1)).toBe('blunder');
     // At a cut exactly (gap - se = cut) the harsher label; just under it, the milder one.
-    expect(labelOf(5.5, 0.5)).toBe('mistake');
-    expect(labelOf(5.4, 0.5)).toBe('inaccuracy');
-    expect(labelOf(2.4, 0.5)).toBe('good');
+    expect(labelOf(6.5, 0.5)).toBe('blunder');
+    expect(labelOf(6.4, 0.5)).toBe('mistake');
+    expect(labelOf(3.5, 0.5)).toBe('mistake');
+    expect(labelOf(3.4, 0.5)).toBe('inaccuracy');
+    // Move 87 of the 2.5.0 demo under version 3's cuts: 9.64 ± 0.28 (4,096 playouts) a Mistake, and the
+    // 128-playout reading of 10.2 ± 1.6 too, where without the rule it was a Blunder.
+    const v3se = { ...RULES_V3, se: true };
+    expect(labelOf(9.64, 0.28, '2p', v3se)).toBe('mistake');
+    expect(labelOf(10.2, 1.6, '2p', v3se)).toBe('mistake');
+    expect(labelOf(10.2, 1.6, '2p', RULES_V3)).toBe('blunder');
   });
 
-  it("scales the cuts by the layout, never under a point", () => {
-    // 4p: every cut times THRESHOLDS_BY_LAYOUT['4p'].
-    const f = THRESHOLDS_BY_LAYOUT['4p']!;
-    expect(cutsFor('4p').best).toBeCloseTo(Math.max(1, 1.5 * f), 9);
-    expect(labelOf(4.4, 0, '4p')).toBe(4.4 < 5 * f ? 'inaccuracy' : 'mistake');
-    expect(labelOf(4.4, 0, '2p')).toBe('inaccuracy');
-    // A layout not in the table uses the 2p cuts.
+  it('scales the cuts by the layout, with no floor (#138)', () => {
+    for (const layout of ['2p', '3p', '4p', '2h-opposite', '2h-side']) {
+      const f = THRESHOLDS_BY_LAYOUT[layout]!;
+      expect(cutsFor(layout).best).toBeCloseTo(CUTS.best * f, 9);
+      expect(cutsFor(layout).tops.map(([, t]) => t)).toEqual(CUTS.tops.map(([, t]) => t * f));
+    }
+    expect(cutsFor('2h-side').best).toBeCloseTo(0.65, 9);
+    expect(labelOf(2.8, 0, '4p')).toBe('mistake');
+    expect(labelOf(2.8, 0, '2p')).toBe('inaccuracy');
+    // A layout not in the table uses the 2p cuts; version 3's cuts kept their 1-point floor.
     expect(cutsFor('9p')).toEqual(cutsFor('2p'));
-    expect(Math.min(cutsFor('2h-side').best, ...cutsFor('2h-side').tops.map(([, t]) => t))).toBeGreaterThanOrEqual(1);
+    expect(cutsFor('2h-side', CUTS_V3).best).toBe(1);
+  });
+
+  it('makes a move one label harsher when it turns a favourite into an underdog (#138)', () => {
+    expect(turned('good', 0.49, 0.51)).toBe('inaccuracy');
+    expect(turned('best', 0.499, 0.501)).toBe('good');
+    expect(turned('mistake', 0.3, 0.6)).toBe('blunder');
+    expect(turned('blunder', 0.3, 0.6)).toBe('blunder');
+    // No turn: still a favourite, or never one.
+    expect(turned('good', 0.51, 0.53)).toBe('good');
+    expect(turned('good', 0.4, 0.49)).toBe('good');
+    expect(turned('good', 0.49, 0.51, RULES_V3)).toBe('good');
   });
 
   it('names the layout of a game', () => {
@@ -87,11 +104,11 @@ describe('move review', () => {
     const rec = game(3);
     const { states } = replay(rec) as { states: GameState[] };
     const calls: number[] = [];
-    // A fake engine: the first move is best, every other one 4 points worse (near the 5-point edge in 2p).
+    // A fake engine: the first move is best, every other one 4 points worse (gap - se = 3, at the Mistake cut).
     const fake = async (s: GameState, n: number): Promise<DecisionValues> => {
       calls.push(n);
       const k = s.moves.length;
-      return { ofMove: s.moves.map((_, i) => i), mean: Array.from({ length: k }, (_, i) => (i ? 0.46 : 0.5)), gap: Array.from({ length: k }, (_, i) => (i ? 0.04 : 0)), se: new Array(k).fill(0.01), best: 0 };
+      return { ofMove: s.moves.map((_, i) => i), mean: Array.from({ length: k }, (_, i) => (i ? 0.66 : 0.7)), gap: Array.from({ length: k }, (_, i) => (i ? 0.04 : 0)), se: new Array(k).fill(0.01), best: 0 };
     };
     const seen: number[] = [];
     const out = await reviewMoves(rec, states, [0], fake, (_, done) => seen.push(done));
@@ -101,9 +118,9 @@ describe('move review', () => {
       const s = states[m.at]!;
       expect(s.players[s.current]!.owner).toBe(0);
       expect(s.moves.length).toBeGreaterThan(1);
-      expect(m.label).toBe(m.played === 0 ? 'best' : 'inaccuracy');
+      expect(m.label).toBe(m.played === 0 ? 'best' : 'mistake');
     }
-    // A played move off the best, 4 points down, sits within 2 of the 5 edge: it gets up to 1024 playouts.
+    // A played move off the best, 4 points down, sits within 2 of the 3-point cut: it gets up to 1024 playouts.
     expect(calls).toContain(PLAYOUTS * 4);
     expect(calls.filter((n) => n === PLAYOUTS).length).toBe(out.length);
   });
@@ -134,10 +151,10 @@ describe('fast review (#101)', () => {
       if (ask?.mode === 'screen') return { ofMove, mean: ofMove.map((i) => (i ? 0.5 - spread(at) : 0.5)), gap: ofMove.map((i) => (i ? spread(at) : 0)), se: ofMove.map(() => 0), best: 0, kind: 'screen' };
       const kd = ask ? kind(at) : 'full';
       if (kd === 'net') return { ofMove, mean: ofMove.map(() => 0.5), gap: ofMove.map(() => 0.004), se: ofMove.map(() => 0), best: 0, kind: 'net' };
-      // Move 0 is best (the played one when the race settled it as Best); the others 6.5 points worse (near
-      // the 7-point edge, so a full review tops them up).
+      // Move 0 is best (the played one when the race settled it as Best); the others 6.5 points worse (gap - se
+      // 5.5, near the 6-point cut, so a full review tops them up). Chances stay over 50% (no turning point).
       const top = kd === 'best' && ask?.mode === 'race' ? ask.played : 0;
-      return { ofMove, mean: ofMove.map((i) => (i !== top ? 0.435 : 0.5)), gap: ofMove.map((i) => (i !== top ? 0.065 : 0)), se: new Array(k).fill(0.01), best: top, kind: kd, complete: kd !== 'best' };
+      return { ofMove, mean: ofMove.map((i) => (i !== top ? 0.635 : 0.7)), gap: ofMove.map((i) => (i !== top ? 0.065 : 0)), se: new Array(k).fill(0.01), best: top, kind: kd, complete: kd !== 'best' };
     };
     return { reviewer, asks };
   }
