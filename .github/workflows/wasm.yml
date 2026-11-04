@@ -73,6 +73,22 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Test the app against the build
         run: npx vitest run tests/rollout.test.ts tests/review.test.ts
+      - name: Build with SIMD (#151)
+        working-directory: sim-wasm
+        run: RUSTFLAGS="-C target-feature=+simd128" cargo build --release --target wasm32-unknown-unknown --target-dir target-simd
+      - name: Test the app against the SIMD build (every value the same double as the TS engine and the JS net)
+        run: |
+          simd=sim-wasm/target-simd/wasm32-unknown-unknown/release/ludo_wasm.wasm
+          cp "$simd" wasm-out/ludo_wasm_simd.wasm
+          echo "- SIMD build: $(stat -c %s "$simd") bytes, sha256 \`$(sha256sum "$simd" | cut -d' ' -f1)\`" >> "$GITHUB_STEP_SUMMARY"
+          cp src/engine/ai/ludo_wasm.wasm "$RUNNER_TEMP/plain.wasm"
+          cp "$simd" src/engine/ai/ludo_wasm.wasm
+          npx vitest run tests/rollout.test.ts tests/review.test.ts tests/luckWasm.test.ts tests/reviewPool.test.ts
+          cp "$RUNNER_TEMP/plain.wasm" src/engine/ai/ludo_wasm.wasm
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ludo_wasm_simd
+          path: wasm-out/ludo_wasm_simd.wasm
       - name: The committed module is the build
         run: |
           if [ "$NEW" != "$OLD" ]; then

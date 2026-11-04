@@ -33,6 +33,61 @@ fn dense_batch_scalar<const NB: usize>(wt: &[f64], b: &[f64], out: usize, cols: 
     }
 }
 
+/// dense_batch_scalar with wasm SIMD (#151, a build with `-C target-feature=+simd128`): two output rows per
+/// f64x2 lane pair, each lane accumulating its row's sum in exactly the scalar order over the inputs. wasm's
+/// f64x2.mul and f64x2.add are IEEE operations rounded like the scalar ones and never fused, so every value
+/// is bit-identical to the scalar path (as dense_batch_avx2 is natively).
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+unsafe fn dense_batch_simd128<const NB: usize>(wt: &[f64], b: &[f64], out: usize, cols: &[usize], a: &[[f64; MAXW]], z: &mut [[f64; MAXW]]) {
+    use core::arch::wasm32::*;
+    let wp = wt.as_ptr();
+    let bp = b.as_ptr();
+    let mut r0 = 0;
+    // 8 rows x NB vectors per pass: 4 lane pairs per vector, independent add chains.
+    while r0 + 8 <= out {
+        let bb = [v128_load(bp.add(r0) as *const v128), v128_load(bp.add(r0 + 2) as *const v128), v128_load(bp.add(r0 + 4) as *const v128), v128_load(bp.add(r0 + 6) as *const v128)];
+        let mut acc = [bb; NB];
+        for &c in cols {
+            let p = wp.add(c * out + r0);
+            let w = [v128_load(p as *const v128), v128_load(p.add(2) as *const v128), v128_load(p.add(4) as *const v128), v128_load(p.add(6) as *const v128)];
+            for j in 0..NB {
+                let av = f64x2_splat(*a.get_unchecked(j).get_unchecked(c));
+                for q in 0..4 {
+                    acc[j][q] = f64x2_add(acc[j][q], f64x2_mul(w[q], av));
+                }
+            }
+        }
+        for j in 0..NB {
+            for q in 0..4 {
+                v128_store(z[j].as_mut_ptr().add(r0 + 2 * q) as *mut v128, acc[j][q]);
+            }
+        }
+        r0 += 8;
+    }
+    while r0 + 2 <= out {
+        let mut acc = [v128_load(bp.add(r0) as *const v128); NB];
+        for &c in cols {
+            let w = v128_load(wp.add(c * out + r0) as *const v128);
+            for j in 0..NB {
+                acc[j] = f64x2_add(acc[j], f64x2_mul(w, f64x2_splat(*a.get_unchecked(j).get_unchecked(c))));
+            }
+        }
+        for j in 0..NB {
+            v128_store(z[j].as_mut_ptr().add(r0) as *mut v128, acc[j]);
+        }
+        r0 += 2;
+    }
+    for r in r0..out {
+        for j in 0..NB {
+            let mut s = b[r];
+            for &c in cols {
+                s += wt[c * out + r] * a[j][c];
+            }
+            z[j][r] = s;
+        }
+    }
+}
+
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 unsafe fn dense_batch_avx2<const NB: usize>(wt: &[f64], b: &[f64], out: usize, cols: &[usize], a: &[[f64; MAXW]], z: &mut [[f64; MAXW]]) {
@@ -122,7 +177,11 @@ impl Dense {
                         dense_batch_scalar::<$nb>(&self.wt, &self.b, self.out, cols, a, z)
                     }
                 }
-                #[cfg(not(target_arch = "x86_64"))]
+                #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+                unsafe {
+                    dense_batch_simd128::<$nb>(&self.wt, &self.b, self.out, cols, a, z)
+                }
+                #[cfg(not(any(target_arch = "x86_64", all(target_arch = "wasm32", target_feature = "simd128"))))]
                 dense_batch_scalar::<$nb>(&self.wt, &self.b, self.out, cols, a, z)
             }};
         }
