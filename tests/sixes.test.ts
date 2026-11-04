@@ -11,6 +11,7 @@ import { decodeNet } from '../src/engine/ai/netbin';
 import { faceValues, rollLuck } from '../src/engine/ai/review';
 import { ownerValues } from '../src/engine/ai/search';
 import { moveEvent, rollEvent } from '../src/engine/record';
+import { framesOf } from '../src/ui/replay';
 import { bigRolls, rollEvents, rollText, sixRuns } from '../src/ui/reviewText';
 
 const net = new Net(decodeNet(new Uint8Array(readFileSync(new URL('../src/engine/ai/extreme-net.bin', import.meta.url)))));
@@ -87,6 +88,11 @@ describe('a run of three 6s (#135)', () => {
     }
     // Only runs are marked; every luck number is as it was.
     expect(luck.filter((l) => l.inRun).length).toBe(2 * runs.length);
+    // The replay's caption for the cancelling roll says what was rolled, not "the turn is lost": dice kept from
+    // before the run still play (rule 13).
+    const caps = framesOf(rec!).frames.filter((f) => f.dice?.length === 3 && f.dice.every((d) => d === 6) && states[f.at]!.event?.type === 'three-sixes').map((f) => f.caption);
+    expect(caps.length).toBeGreaterThan(0);
+    for (const c of caps) expect(c).toMatch(/^.+ rolled 6, 6, 6$/);
   }, 120_000);
 
   it('shows a cancelled run as one event worth its total', () => {

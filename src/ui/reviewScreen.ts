@@ -461,7 +461,8 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     if (row.dataset.roll !== undefined) {
       const r = d.luck?.find((x) => x.at === Number(row.dataset.roll));
       const step = r ? frameAfter(r.at) : -1;
-      onReplayAt(Number(row.dataset.roll), r ? `${rollText(r, names[r.owner]!, isYou(r.owner))}${frames[step] ? ` · ${frames[step]!.caption}` : ''}` : '', pov);
+      // A cancelled run's caption is the event alone: the fanned dice already show the roll (#142 UI review).
+      onReplayAt(Number(row.dataset.roll), r ? `${rollText(r, names[r.owner]!, isYou(r.owner))}${frames[step] && r.run === undefined ? ` · ${frames[step]!.caption}` : ''}` : '', pov);
     } else {
       // No caption of its own: the replay says the verdict in its plain words (#124).
       onReplayAt(Number(row.dataset.at), '', pov);

@@ -80,7 +80,8 @@ export function framesOf(rec: GameRecord): { frames: Frame[]; error?: string; st
     if (!ev || ev.type === 'rolled') continue;
     if (ev.type === 'moved') frames.push({ at: i, state: s, move: ev.move, caption: describe(ev.move, ownerName(ev.move.color), ownerName), dice: before.rolls });
     else if (ev.type === 'no-move') frames.push({ at: i, state: s, caption: `${ownerName(ev.color)} rolled ${[...before.rolls, ev.dice].join(' · ')}: no move`, dice: [...before.rolls, ev.dice] });
-    else if (ev.type === 'three-sixes') frames.push({ at: i, state: s, caption: `${ownerName(ev.color)} rolled three 6s: the turn is lost`, dice: [6, 6, 6] });
+    // Not "the turn is lost": dice kept from before the run still play (RULES.md rule 13).
+    else if (ev.type === 'three-sixes') frames.push({ at: i, state: s, caption: `${ownerName(ev.color)} rolled 6, 6, 6`, dice: [6, 6, 6] });
   }
   const last = states.at(-1)!;
   if (r.ok && (last.phase === 'over' || r.stopped)) {
