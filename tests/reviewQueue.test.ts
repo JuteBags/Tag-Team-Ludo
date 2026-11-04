@@ -22,7 +22,7 @@ vi.mock('../src/engine/ai/review-worker', () => ({
     if (ask?.mode === 'screen') return { ofMove: s.moves.map((_, i) => i), mean: [], gap: [], se: [], best: 0 };
     calls.push(s.players.map((p) => p.tokens.join(',')).join('|'));
     await new Promise<void>((r) => release.push(r));
-    return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 };
+    return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.595 : 0.7)), gap: s.moves.map((_, i) => (i ? 0.105 : 0)), se: s.moves.map(() => 0.01), best: 0 };
   },
   workerLuck: () => Promise.resolve({ luck: [], chances: [] }),
   stopReviewWorker: () => stopped(),

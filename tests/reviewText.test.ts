@@ -156,11 +156,11 @@ describe('review runner', () => {
   it('picks up a stored review and skips the moves already done; another version starts over', async () => {
     const rec = game(9);
     let calls = 0;
-    // Every other move 7.5 points down: away from every label's edge, so one call per decision (the
+    // Every other move 10.5 points down: away from every label's edge, so one call per decision (the
     // stakes order's net screen, which this fake doesn't do, isn't counted).
     const fake = async (s: GameState, _n: number, _seed: number, ask?: ReviewAsk): Promise<DecisionValues> => {
       if (ask?.mode !== 'screen') calls++;
-      return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 };
+      return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.595 : 0.7)), gap: s.moves.map((_, i) => (i ? 0.105 : 0)), se: s.moves.map(() => 0.01), best: 0 };
     };
     const run = (stored?: Parameters<typeof runReview>[1]) =>
       new Promise<MoveReview[]>((done) => runReview(rec, stored, (p) => p.finished && done(p.moves), false, fake));
