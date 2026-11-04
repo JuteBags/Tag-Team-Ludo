@@ -51,6 +51,20 @@ captions are Information.
 9. **Options before big changes.** A visible change to the board, a screen layout or a default theme goes to the
    owner as 2–3 options with images. The owner picks.
 
+## The UI/UX gate (owner rule, 2026-11-04)
+
+The UI/UX session signs off on every SD or JD feature with a visible change: a screen, row, text, button, chart,
+animation, sound or theme.
+
+1. **Before building:** the dev sends the UI part of the design (a mock-up or a written layout). The UI/UX session
+   replies on the issue with approval or changes, judged against this file and the owner's rules.
+2. **Before the PR is marked ready:** the dev posts frames at 360 dp, plus tall and tilted where layout changes, in
+   the PR body. The UI/UX session comments "UI/UX: approved" or lists the changes.
+3. **The PM doesn't approve** a PR with a visible change until that approval comment is on it.
+4. **Exempt:** dev-only pages (`#bench`, harnesses) and pure logic.
+
+Reviews check only what the PR adds. Older problems found along the way go to their own issue.
+
 ## Where the skills disagree, and the ruling
 
 | Conflict | Painter | tasteskill | Lemo | Ruling |
