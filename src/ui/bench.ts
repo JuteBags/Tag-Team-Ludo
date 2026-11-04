@@ -330,14 +330,15 @@ async function movesBench(worker: Worker, say: (l: string) => void, hidden: () =
 
 /**
  * The game review test (#105, #151): per game, the first key verdict, the whole review and the luck pass, on
- * a pool of 1, 2 and 3 workers (and 4 and 6 on a computer: MAX_POOL_DESKTOP), and each worker's wasm memory.
+ * a pool of 1, 2, 3 and 4 workers (and 6 on a computer: MAX_POOL_DESKTOP), and each worker's wasm memory.
  * The app uses poolSize().
  */
 async function reviewBench(_worker: Worker, say: (l: string) => void, hidden: () => boolean, onStop: (stop: () => void) => void) {
   const nav = navigator as Navigator & { deviceMemory?: number };
   say(`pool: the app uses ${poolSize()} review worker${poolSize() > 1 ? 's' : ''} here (cores ${nav.hardwareConcurrency ?? '?'}, memory ${nav.deviceMemory ?? '?'} GB)`);
   const games = REVIEW_GAMES.map((g) => ({ ...g, rec: reviewRecord(g) }));
-  const sizes = isMobile(nav) ? [1, 2, 3] : [1, 2, 3, 4, MAX_POOL_DESKTOP];
+  // A phone tries 4 too (1+3 and 2+2 big cores): the app keeps MAX_POOL there until a phone's run says otherwise.
+  const sizes = isMobile(nav) ? [1, 2, 3, 4] : [1, 2, 3, 4, MAX_POOL_DESKTOP];
   for (const size of sizes) {
     if (hidden()) return;
     const pool = new ReviewPool(size);
