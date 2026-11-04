@@ -240,7 +240,8 @@ pub unsafe extern "C" fn review(state: *mut u8, len: usize, n: u32, seed: u32) -
 // The review's luck pass (#125): the net and search values behind review.ts rollLuck and netChances, so the
 // worker needn't run the net in JS. Only the values come from here; the luck arithmetic (the faces' chances,
 // the expectation, the sd, the rounding) stays in review.ts. A game's pass is
-//   luck_begin()   once: an empty leaf cache (positions valued in this game, by search.rs leaf_key)
+//   luck_begin()   once: an empty leaf cache (positions valued in this game, by search.rs leaf_key; emptied
+//                  before each roll's six faces, where nearly all its repeats are, and capped)
 //   luck_chunk(states, len, count, kind)   any number of times, ~64 states each, so the worker can stop
 //                  between chunks; `states` is `count` state byte strings (the module doc's layout), each
 //                  after its length as a u16 LE. kind 0: per state, the roller's chance after each face 1..6
@@ -252,8 +253,10 @@ pub unsafe extern "C" fn review(state: *mut u8, len: usize, n: u32, seed: u32) -
 // Every value is the evaluator's own (eval.rs: net.ts's sums, V8's tanh and exp), and a cached value is the
 // one computed before for that position, so the values are exactly the TS net's.
 
-/// Most positions the luck cache holds before it starts over (about 1.6 MB of wasm memory at most).
-const LUCK_MAX: usize = 8192;
+/// Most positions the luck cache holds before it starts over. It is also emptied before each roll's six
+/// faces (#125: 50.1% of the leaf values repeat within one roll's faces, 53.5% across the whole game, so the
+/// small cache keeps nearly every repeat and the module's memory stays small).
+const LUCK_MAX: usize = 2048;
 
 thread_local! {
     static LUCK: RefCell<Option<ludo_sim::search::Map<[f64; 4]>>> = const { RefCell::new(None) };
@@ -325,6 +328,7 @@ pub unsafe extern "C" fn luck_chunk(states: *mut u8, len: usize, count: u32, kin
                     let g = decode(&buf[o + 2..o + 2 + n]);
                     o += 2 + n;
                     if kind == 0 {
+                        leaves.clear();
                         for f in 1..=6u8 {
                             if leaves.len() >= LUCK_MAX {
                                 leaves.clear();
