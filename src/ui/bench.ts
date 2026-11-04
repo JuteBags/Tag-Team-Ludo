@@ -347,7 +347,7 @@ async function reviewBench(_worker: Worker, say: (l: string) => void, hidden: ()
   const sizes = isMobile(nav) ? [1, 2, 3, 4] : [1, 2, 3, 4, MAX_POOL_DESKTOP];
   for (const size of sizes) {
     if (hidden()) return;
-    const pool = new ReviewPool(size);
+    const pool = new ReviewPool(size, plain ? FORCE_PLAIN : '');
     try {
       // Untimed first: every worker loads its engine, the net and the luck net (as after a first review).
       const warm = games[0]!.rec;

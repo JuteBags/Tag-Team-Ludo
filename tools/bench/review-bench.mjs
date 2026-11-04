@@ -15,6 +15,9 @@ const md = (line) => {
 try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   page.on('pageerror', (e) => console.log('PAGEERROR', String(e)));
+  // Which engine build the page and its workers fetched (#151: simd, or plain where SIMD is missing or ?wasm=plain).
+  const fetched = new Set();
+  page.on('request', (r) => { const f = r.url().split('/').pop(); if (f.endsWith('.wasm')) fetched.add(f.replace(/-[\w-]{8}\.wasm$/, '.wasm')); });
   await page.goto(url + '#bench', { waitUntil: 'networkidle' });
   await page.click('[data-act=review]');
   await page.waitForFunction(() => /\bdone\b|failed|interrupted/.test(document.querySelector('.benchout')?.textContent ?? ''), null, { timeout: 40 * 60 * 1000 });
