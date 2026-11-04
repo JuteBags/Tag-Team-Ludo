@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { positionKey } from '../src/engine/rng';
 import { REVIEW_VERSION, accuracyOf, luckPercent, summary, type DecisionValues, type MoveReview, type ReviewAsk, type Reviewer } from '../src/engine/ai/review';
-import { verdictText, bigRolls, etaText, evenChance, graphPoints, keyMoves, moveText, reviewedText, rollText, verdictMoves, whichToken, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS, plainVerdict, BETTER_COLOR, LABEL_LOOK, type VerdictPart, runningAccuracy, runningLuck, trendOf, ACCURACY_LINE_FROM, TREND_GAMES } from '../src/ui/reviewText';
+import { betterText, verdictText, bigRolls, etaText, evenChance, graphPoints, keyMoves, moveText, reviewedText, rollText, verdictMoves, whichToken, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS, plainVerdict, BETTER_COLOR, LABEL_LOOK, type VerdictPart, runningAccuracy, runningLuck, trendOf, ACCURACY_LINE_FROM, TREND_GAMES } from '../src/ui/reviewText';
 import type { Move } from '../src/engine';
 
 const mem = new Map<string, string>();
@@ -64,6 +64,9 @@ describe('which token', () => {
     // The same die, one capturing: still both named, and who is captured.
     const cap = { ...(mv([1], 4) as object), captures: [{ color: 'red', token: 0 }] } as never;
     expect(verdictMoves(s, mv([2], 4), cap, () => 'Aarav')).toEqual(['moved the back token 4', 'moved the front token 4, capturing Aarav']);
+    // The key rows' short line (#167): the better move without "moved the".
+    expect(betterText(s, mv([2], 4), mv([1], 4))).toBe('front token 4');
+    expect(betterText(s, mv([2], 4), mv([1], 2))).toBe('moved 2');
   });
 });
 

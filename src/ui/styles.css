@@ -1032,7 +1032,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvrow b{font-size:16px;font-weight:800}
 .review .rvrow small{font-size:13px;color:#b8c4e6;opacity:1}
 .review .rvrow .rvswing{font-family:'Lilita One';font-size:20px;font-weight:400}
-.review .rvrow .rvswing.neg{color:#ff6f3c}.review .rvrow .rvswing.pos{color:#3ccf9e}
+.review .rvrow .rvswing.neg{color:#ff6f3c}
 .review .rvrow.turning{box-shadow:inset 0 0 0 2px #ffd23f}
 .review .rvrow.pending>i{box-shadow:none}
 .review .rvstrip{display:flex;flex-wrap:wrap;gap:3px;padding:10px;border-radius:14px;background:rgba(4,14,48,.45);cursor:pointer}

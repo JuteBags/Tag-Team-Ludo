@@ -13,7 +13,7 @@ import { dieMarkup } from './dice';
 import { framesOf, namesOf } from './replay';
 import { follow } from './reviewQueue';
 import { decisionsToReview, peopleOf, type ReviewProgress } from './reviewRun';
-import { accuracyText, bigRolls, runningAccuracy, runningLuck, sixRuns, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
+import { accuracyText, betterText, bigRolls, runningAccuracy, runningLuck, sixRuns, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
 import type { StoredReview } from './store';
 
 const GW = 330;
@@ -263,6 +263,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
         ${graphTab === 'accuracy' ? `<rect class="hit" x="${GL}" y="-12" width="${GW - GL}" height="${GH + 22}" fill="transparent"/>` : ''}</svg>`;
   };
 
+  const KEY = new Set<Label>(['inaccuracy', 'mistake', 'blunder']);
   /** A moment's swing, in the review's one unit: "−5%" (of win probability). */
   const swing = (x: number) => `${x >= 0 ? '+' : '−'}${Math.max(1, Math.round(Math.abs(x)))}%`;
   const moveRow = (m: MoveReview, turning = false) => {
@@ -275,7 +276,10 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const cost = m.label !== 'best' && m.gap >= 1;
     b.innerHTML = `<i style="--c:${turning ? '#ffd23f' : look.color}">${turning ? '★' : look.sym}</i><span><b></b><small></small></span>${cost ? `<strong class="rvswing neg">${swing(-m.gap)}</strong>` : ''}`;
     b.querySelector('b')!.textContent = turning ? 'Turning point' : look.name;
-    b.querySelector('small')!.textContent = `Move ${v.step > 0 ? v.step : '?'}`;
+    // What was better, for the moves that cost something: the only place it shows before the replay (#174 review).
+    const st = states[m.at]!;
+    const better = KEY.has(m.label) && m.played !== m.best ? ` · Better: ${betterText(st, st.moves[m.played]!, st.moves[m.best]!, ownerName)}` : '';
+    b.querySelector('small')!.textContent = `Move ${v.step > 0 ? v.step : '?'}${better}`;
     b.setAttribute('aria-label', `${turning ? 'Turning point: ' : ''}${v.head}. Move ${v.step}. ${v.line}`);
     return b;
   };
@@ -286,9 +290,10 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     b.setAttribute('role', 'listitem');
     const step = frameAfter(r.at);
     const x = r.run ?? r.luck;
-    // The swing is the roller's: on another side's review it's named and left neutral, never judged as this side's.
+    // Dice are never judged (the owner: no green or red on luck): the swing is neutral and its sign says which way.
+    // On another side's review the roll is named, since the swing is the roller's.
     const theirs = r.owner !== pov;
-    b.innerHTML = `<i class="die">${dieMarkup(r.face, 24)}</i><span><b></b><small></small></span><strong class="rvswing ${theirs ? 'other' : x >= 0 ? 'pos' : 'neg'}">${swing(x)}</strong>`;
+    b.innerHTML = `<i class="die">${dieMarkup(r.face, 24)}</i><span><b></b><small></small></span><strong class="rvswing other">${swing(x)}</strong>`;
     const what = r.run !== undefined ? 'Three 6s cancelled' : theirs ? `${isYou(r.owner) ? 'Your' : `${names[r.owner]}'s`} dice` : 'Dice';
     b.querySelector('b')!.textContent = turning ? 'Turning point' : what;
     b.querySelector('small')!.textContent = `Move ${step > 0 ? step : '?'}${turning && (theirs || r.run !== undefined) ? ` · ${what}` : ''}`;
