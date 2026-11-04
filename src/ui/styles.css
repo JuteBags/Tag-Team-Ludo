@@ -823,14 +823,8 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvchips button.on{box-shadow:inset 0 0 0 2px var(--c)}
 .review .rvchips button i{font-style:normal;font-size:13px;color:var(--c)}
 @keyframes shimmer{from{background-position:100% 0}to{background-position:-100% 0}}
-.review .rvbotluck{display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:13px;font-weight:800}
-.review .rvbotluck i{width:22px;height:22px;border-radius:50%;padding:1.5px;background:var(--m);flex:none}
-.review .rvbotluck i svg{width:100%;height:100%;border-radius:50%;display:block}
-.review .rvbotluck span{flex:1;opacity:.85}
-.review .rvbotluck b{color:#cbd5e1}
 .review .rvgraph{margin-top:8px}
 .review .rvgraph:empty{display:none}
-.review .rvgraph small{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
 .review .rvgraph svg{display:block;width:100%;height:auto;margin-top:4px;border-radius:12px;background:rgba(0,0,0,.25)}
 .review .rvgraph polyline{fill:none;stroke:#ffd65a;stroke-width:2.2;stroke-linejoin:round}
 .review .rvgraph .even{stroke:rgba(255,255,255,.45);stroke-width:1.2;stroke-dasharray:5 4}
@@ -854,13 +848,9 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 /* Labels read over any line: a dark halo drawn under the text. */
 .review .rvgraph text{paint-order:stroke;stroke:rgba(6,18,60,.92);stroke-width:3px;stroke-linejoin:round}
 .review .rvleave{margin:-4px 0 10px;font-size:12px;font-weight:700;opacity:.75}
-.review .rvtabs{display:flex;gap:4px;padding:4px;margin:4px 0 10px;border-radius:14px;background:rgba(0,0,0,.25)}
-.review .rvtabs button{flex:1;min-height:40px;border-radius:11px;background:none;color:#fff;font-size:14px;font-weight:900;opacity:.75}
-.review .rvtabs button.on{background:#2f66df;opacity:1;box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
 .review .rvfilter{display:flex;align-items:center;justify-content:space-between;margin:-4px 0 8px;font-size:13px;font-weight:800}
 .review .rvfilter[hidden]{display:none}
 .review .rvfilter button{min-width:44px;min-height:36px;background:none;color:#fff;font-size:16px}
-.review .rvhead{margin:12px 0 2px;font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
 .review .rvnote{padding:12px;border-radius:14px;background:rgba(0,0,0,.2);font-size:14px;font-weight:800;text-align:center}
 .review .rvrow>i.die{width:30px;display:grid;place-items:center}
 .review .rvprog{display:flex;align-items:center;gap:10px;margin:12px 0 8px;font-size:13px;font-weight:800}
@@ -1001,3 +991,59 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .trend .tavg .acc{color:#56B4E9}.trend .tavg .luck{color:#E69F00}
 .trend .tnote{margin:0;font-size:12px;font-weight:800;opacity:.8}
 
+/* ---------- #167: the review as a scorecard (the owner's pick A). Quiet Information register (DESIGN.md):
+   the number first, sentence case, colour only on data; later rules here override the older review rules. */
+.review .rvtop{justify-content:flex-start;gap:12px}
+.review .rvtitle{flex:1;min-width:0;font-size:22px;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.review .rvbody{top:70px;padding:4px 16px 28px}
+.review .rvpov{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;padding:4px;margin:0 0 12px;border-radius:16px;background:rgba(4,14,48,.45)}
+.review .rvp{justify-content:center;min-height:44px;padding:4px 8px;border-radius:12px;background:none;box-shadow:none;opacity:.7}
+.review .rvp.on{opacity:1;background:rgba(255,255,255,.14);box-shadow:inset 0 0 0 1.5px var(--m)}
+.review .rvp i{width:28px;height:28px}
+.review .rvp b{font-size:14px;max-width:none}
+.review .rvpov.compact .rvp{padding:4px}
+.review .rvpov.compact .rvp:not(.on) b{display:block}
+.review .rvpov.compact .rvp b{font-size:12.5px;max-width:52px}
+.review .rvhead1{margin:2px 0 6px;padding:0;background:none;box-shadow:none;font-size:21px;font-weight:800;line-height:1.25;text-wrap:balance}
+.review .rvcard{padding:0;background:none;box-shadow:none;margin-bottom:4px}
+.review .rvwho{gap:28px;margin:6px 0 14px}
+.review .rvwho em{text-align:left;font-size:40px;letter-spacing:.3px}
+.review .rvwho em.ac{color:#56B4E9}.review .rvwho em.lk{color:#E69F00}
+.review .rvwho em small{margin-top:4px;font-size:13px;color:#b8c4e6;opacity:1}
+.review .rvchips{display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin:0;border-radius:14px;overflow:hidden;background:rgba(4,14,48,.45)}
+.review .rvchips button{min-height:52px;border-radius:0;background:none;font-family:'Lilita One';font-size:20px;font-weight:400}
+.review .rvchips button+button{box-shadow:inset 1px 0 0 rgba(255,255,255,.07)}
+.review .rvchips button.on{background:rgba(255,255,255,.12);box-shadow:inset 0 -3px 0 var(--c)}
+.review .rvchips button i{font-family:Nunito,sans-serif;font-weight:900}
+.review .rvgraph{margin-top:14px;padding:8px 8px 2px;border-radius:16px;background:rgba(4,14,48,.45)}
+.review .rvgraph svg{background:none;margin-top:2px}
+.review .rvgtabs{margin:0 0 2px;gap:4px}
+.review .rvgtabs button{flex:none;min-height:34px;padding:0 12px;border-radius:999px;background:none;color:#b8c4e6;opacity:1}
+.review .rvgtabs button.on{background:rgba(255,255,255,.14);box-shadow:none;color:#fff}
+.review .rvgraph polyline{stroke:#fff}
+.review .rvgraph .final{fill:#fff}
+.review .rvgraph .pin circle{fill:#0b1f5c;stroke-width:2.2}
+.review .rvgraph .pin text{font-weight:900;paint-order:normal;stroke:none}
+.review .rvprog{margin:10px 0 4px}
+.review .rvsec{margin:22px 0 10px;font-size:15px;font-weight:800;color:#dbe4ff}
+.review .rvsec[hidden]{display:none}
+.review .rvrow{gap:12px;min-height:56px;padding:10px 12px;background:rgba(4,14,48,.45)}
+.review .rvrow>i{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:15px;box-shadow:inset 0 0 0 2.5px var(--c)}
+.review .rvrow>i.die{box-shadow:none}
+.review .rvrow span{flex:1}
+.review .rvrow b{font-size:16px;font-weight:800}
+.review .rvrow small{font-size:13px;color:#b8c4e6;opacity:1}
+.review .rvrow .rvswing{font-family:'Lilita One';font-size:20px;font-weight:400}
+.review .rvrow .rvswing.neg{color:#ff6f3c}
+.review .rvrow.turning{box-shadow:inset 0 0 0 2px #ffd23f}
+.review .rvrow.pending>i{box-shadow:none}
+.review .rvstrip{display:flex;flex-wrap:wrap;gap:3px;padding:10px;border-radius:14px;background:rgba(4,14,48,.45);cursor:pointer}
+.review .rvstrip[hidden]{display:none}
+.review .rvstrip i{width:9px;height:20px;border-radius:3px;background:var(--c)}
+.review .rvstrip i.best,.review .rvstrip i.good{opacity:.38}
+.review .rvstrip i.dim{opacity:.12}
+.review .rvstrip i.todo{background:rgba(255,255,255,.14)}
+.review .rvrow .rvswing.other{color:#b8c4e6}
+.review .rvgraph .dot{stroke:#0b1f5c;stroke-width:1.5}
+.review .rvmore{min-height:44px;border-radius:14px;background:rgba(4,14,48,.3);color:#dbe4ff;font-size:14px;font-weight:800}
+.review .rvfilter{justify-content:flex-end;margin:-42px 0 8px;position:relative}
