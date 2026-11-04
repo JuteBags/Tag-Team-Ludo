@@ -3,9 +3,12 @@
 // Everyone gets the same puzzle on the same calendar day, with no server: the day picks a band by its
 // weekday (Mon–Wed Easy, Thu–Fri Medium, Sat–Sun Hard), and the band's list by how many days of that band
 // have passed since EPOCH. The pool loads on its own (a lazy chunk), only when a puzzle is opened.
-// puzzle-pool.json (v1): puzzles.yml run 41893707591 (games 1-240, 4 shards x 60) and run 41901810812 (a
+// puzzle-pool.json (v2): puzzles.yml run 41893707591 (games 1-240, 4 shards x 60) and run 41901810812 (a
 // Hard top-up: games 241-300, --only normal-4p, 4 x 15), merged by tools/ai/puzzles_merge.ts over all 8
-// shards: 367 puzzles (157 Easy, 105 Medium, 105 Hard: any 365 days in a row), 15.4 kB gzip.
+// shards: 367 puzzles (157 Easy, 105 Medium, 105 Hard: any 365 days in a row), 16.0 kB gzip. v2 prefers
+// positions with 3+ candidates: every Easy and Medium one; Hard 70, and 35 with 2 (Hard is always a move the
+// Normal bot gets wrong, with the other move within 15·f: a trap, not a coin flip).
+// Pool.v changes with every regeneration or re-merge: a cached entry is decoded only against its own version.
 import { FINISHED, SEATS, type Color } from './board';
 import { createGame, move, roll, trayMoves } from './game';
 import { moveEvent } from './record';
@@ -16,7 +19,8 @@ export type Band = 'easy' | 'medium' | 'hard';
 /** One puzzle as stored (puzzles_merge.ts compact): see decodePuzzle. */
 export type PoolEntry = [string, number[], number, number[], number[], number[], number, number, number, string, number, string, number];
 export interface Pool {
-  v: 1;
+  /** Bumped by every regeneration or re-merge (a cache of an entry keys on it). */
+  v: number;
   easy: PoolEntry[];
   medium: PoolEntry[];
   hard: PoolEntry[];
