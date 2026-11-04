@@ -3,7 +3,7 @@
 // web. Every call is guarded: if storage fails, the game simply isn't saved.
 import { Preferences } from '@capacitor/preferences';
 import { COLORS, type BotLevel, type Color, type GameRecord, type GameState } from '../engine';
-import { REVIEW_VERSION, summary, type MoveReview, type RollLuck } from '../engine/ai/review';
+import { ACCURACY_VERSION, REVIEW_VERSION, summary, type MoveReview, type RollLuck } from '../engine/ai/review';
 import type { GameConfig } from './setup';
 
 async function read<T>(key: string): Promise<T | null> {
@@ -307,6 +307,8 @@ export interface ReviewSummary {
   done: boolean;
   /** Per owner: decisions reviewed, accuracy (0-1) and luck percentile (null when there's none), mistakes, blunders. */
   owners: { moves: number; accuracy: number | null; luckPct: number | null; mistake: number; blunder: number }[];
+  /** The accuracy rules it was made under (ACCURACY_VERSION): another is redone from the full review (#133). */
+  acc?: number;
 }
 
 const INDEX = 'ludo-review-index';
@@ -319,6 +321,7 @@ export function summaryOf(rec: GameRecord, r: StoredReview): ReviewSummary {
     v: r.v,
     done: !!r.done,
     owners: summary(r.moves, r.luck ?? [], owners).map((o) => ({ moves: o.moves, accuracy: finite(o.accuracy), luckPct: finite(o.luckPct), mistake: o.labels.mistake, blunder: o.labels.blunder })),
+    acc: ACCURACY_VERSION,
   };
 }
 
@@ -328,7 +331,8 @@ export const loadSummaries = () => read<Record<string, ReviewSummary>>(INDEX).th
 /** The summary of `rec`'s review, if one is stored and it's for this label version (else read the full review). */
 export async function loadSummary(rec: GameRecord, index?: Record<string, ReviewSummary>): Promise<ReviewSummary | undefined> {
   const s = (index ?? (await loadSummaries()))[reviewKey(rec)];
-  return s?.v === REVIEW_VERSION ? s : undefined;
+  // Another label version, or accuracy rules: read the full review, which keeps every gap, and rewrite it.
+  return s?.v === REVIEW_VERSION && s.acc === ACCURACY_VERSION ? s : undefined;
 }
 
 /** Writes `rec`'s summary into the index, unless it's already the same (writes go one at a time). */

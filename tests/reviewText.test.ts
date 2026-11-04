@@ -116,9 +116,9 @@ describe('luck %, headline and turning point', () => {
 });
 
 describe('a game with no meaningful decision', () => {
-  // Every decision's spread under 3 points: small slips in decisions where little was at stake.
+  // Every decision's spread under 3 points, and only Best or Good moves: little at stake, nothing labelled worse.
   const mv = (at: number, label: MoveReview['label'], gap: number): MoveReview => ({ at, owner: 0, played: 1, best: 0, playedChance: 0.3, bestChance: 0.32, gap, se: 0.4, label, gaps: [0, gap, 2.5] });
-  const moves = [mv(1, 'best', 0), mv(2, 'inaccuracy', 2.2), mv(3, 'good', 1.6), mv(4, 'inaccuracy', 2)];
+  const moves = [mv(1, 'best', 0), mv(2, 'good', 1.2), mv(3, 'good', 1.6), mv(4, 'best', 0)];
   it('has no accuracy, shown as a dash with the explainer, and never as NaN%', () => {
     const s = summary(moves, [], 2)[0]!;
     expect(s.accuracy).toBeNaN();
@@ -126,8 +126,14 @@ describe('a game with no meaningful decision', () => {
     expect(FEW_BIG_DECISIONS).toMatch(/^Few big decisions/);
     expect(accuracyText(0.873)).toBe('87%');
     // The counts still show.
-    expect(s.labels.inaccuracy).toBe(2);
+    expect(s.labels.good).toBe(2);
     expect(s.keyMistakes).toBe(0);
+  });
+  it('counts Inaccuracies even in small decisions, so they never leave a dash or a 100% (#133)', () => {
+    const s = summary([mv(1, 'best', 0), mv(2, 'inaccuracy', 2.2), mv(3, 'good', 1.6), mv(4, 'inaccuracy', 2)], [], 2)[0]!;
+    expect(Number.isFinite(s.accuracy)).toBe(true);
+    expect(s.accuracy).toBeLessThan(0.99 + 1e-9);
+    expect(s.labels.inaccuracy).toBe(2);
   });
   it('gets a headline that quotes no accuracy', () => {
     for (const won of [true, false])

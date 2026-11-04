@@ -83,6 +83,23 @@ describe('review summaries', () => {
     await vi.waitFor(async () => expect(await store.loadSummary(rec(2))).toEqual(right));
   });
 
+  it('redoes a summary made under older accuracy rules from the full review, with no label version bump (#133)', async () => {
+    const { store } = await boot();
+    await store.savePastGame({ rec: rec(3), at: 3, mode: 'pvc', place: 1 });
+    await store.saveReview(rec(3), review());
+    const right = await store.loadSummary(rec(3));
+    expect(right?.acc).toBeDefined();
+    // A summary written before #133 has no accuracy tag (and could say 100%): it isn't trusted.
+    const index = JSON.parse(mem.get('ludo-review-index')!);
+    const { acc: _acc, ...old } = right!;
+    index[store.reviewKey(rec(3))] = { ...old, owners: [{ ...old.owners[0], accuracy: 1 }, old.owners[1]] };
+    mem.set('ludo-review-index', JSON.stringify(index));
+    expect(await store.loadSummary(rec(3))).toBeUndefined();
+    // The full review (same REVIEW_VERSION, every gap kept) gives the right numbers and rewrites the summary.
+    expect((await store.loadReview(rec(3)))?.v).toBe(REVIEW_VERSION);
+    await vi.waitFor(async () => expect(await store.loadSummary(rec(3))).toEqual(right));
+  });
+
   it('drops a summary with its game when the game falls out of the kept 20', async () => {
     const { store } = await boot();
     for (let i = 0; i < 21; i++) {
