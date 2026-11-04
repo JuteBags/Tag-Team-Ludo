@@ -404,7 +404,7 @@ export function boardSVG(): string {
   for (const c of COLORS) s += base(c);
   // The turn arrows go over the palace walls, so they always show.
   s += palaceSVG() + turnArrows();
-  return s + `<g class="deco"></g><g class="fx"></g><g class="pieces"></g><g class="marks"></g><g class="badges"></g></svg>`;
+  return s + `<g class="deco"></g><g class="fx"></g><g class="under"></g><g class="pieces"></g><g class="marks"></g><g class="badges"></g></svg>`;
 }
 
 /** The board in a given theme, drawn small (Settings and Store thumbnails). */

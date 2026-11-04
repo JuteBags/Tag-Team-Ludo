@@ -67,6 +67,8 @@ export class BoardView {
   private fx: SVGGElement;
   private marks: SVGGElement;
   private badges: SVGGElement;
+  /** Between the board and the pieces: what happens in the ground (a finisher's pit, its dim). */
+  private under: SVGGElement;
   private pawns = new Map<string, SVGGElement>();
   private placed = new Map<string, Place>();
   private targets: Target[] = [];
@@ -112,6 +114,7 @@ export class BoardView {
     this.fx = q('fx');
     this.marks = q('marks');
     this.badges = q('badges');
+    this.under = q('under');
     for (const p of players) {
       p.tokens.forEach((_, i) => {
         const g = document.createElementNS(NS, 'g');
@@ -465,7 +468,11 @@ export class BoardView {
           const p = this.placed.get(c.color + c.token)!;
           return { art: this.pawns.get(c.color + c.token)!.querySelector<SVGGElement>('.pawn-art')!, at: [p.x, p.y] as Pt, home: spot(c.color, -1, c.token).pt, s: p.s };
         });
-        await playFinisher(this.badges, m.color, [x, y], finisherMs / speed, victims);
+        const hunters = keys.map((k) => {
+          const p = this.placed.get(k)!;
+          return { art: this.pawns.get(k)!.querySelector<SVGGElement>('.pawn-art')!, at: [p.x, p.y] as Pt, s: p.s };
+        });
+        await playFinisher({ under: this.under, top: this.badges }, m.color, [x, y], finisherMs / speed, victims, this.tilted, hunters);
         onHit?.();
       }
       sfx.kill(m.captures.length);
