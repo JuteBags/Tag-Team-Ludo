@@ -1,0 +1,58 @@
+# The game review's time through the app, this commit against an older tag (default v2.5.0), in one job on
+# one runner so the machine is the same (tools/bench/review-versions.mjs): the review test's two games from
+# a share link, timed to "N moves reviewed", with the progress line's time-left estimate at 10/25/50 %.
+# The page reports 2 cores, so this commit's pool is 1 worker (v2.5.0 had 1). By hand, or by pushing a
+# versions/* branch (a workflow that isn't on main yet can't be started by hand).
+name: Review versions
+
+on:
+  push:
+    branches: ['versions/**']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The older version to compare with'
+        required: true
+        default: 'v2.5.0'
+      cores:
+        description: 'Cores the page reports (this commit uses one fewer review workers)'
+        required: true
+        default: '2'
+
+permissions:
+  contents: read
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: now
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || 'v2.5.0' }}
+          path: old
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Build both
+        run: |
+          for d in now old; do (cd $d && npm ci --no-audit --no-fund && npm run build); done
+          (cd now && npm install --no-save --no-audit --no-fund playwright-core@1.63.0)
+      - name: Serve both
+        run: |
+          (cd now && npx vite preview --port 4173 --strictPort > ../now.log 2>&1 &)
+          (cd old && npx vite preview --port 4174 --strictPort > ../old.log 2>&1 &)
+          for p in 4173 4174; do for i in $(seq 60); do curl -sf http://localhost:$p/ > /dev/null && break; sleep 1; done; done
+      - run: echo "this commit ${{ github.sha }} against ${{ inputs.tag || 'v2.5.0' }}, $(nproc) vCPUs, $(google-chrome --version)" | tee -a "$GITHUB_STEP_SUMMARY"
+      # Alternating, so a slow spell on the runner hits both.
+      - name: Time the reviews
+        working-directory: now
+        run: |
+          CH="$(command -v google-chrome || command -v chromium)"
+          for r in 1 2; do
+            node tools/bench/review-versions.mjs http://localhost:4173/ "$CH" --bench src/ui/bench.ts --label "this commit" --cores ${{ inputs.cores || '2' }} --runs 1
+            node tools/bench/review-versions.mjs http://localhost:4174/ "$CH" --bench src/ui/bench.ts --label "${{ inputs.tag || 'v2.5.0' }}" --cores ${{ inputs.cores || '2' }} --runs 1
+          done

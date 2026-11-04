@@ -40,6 +40,22 @@ try {
     md(`| ${r[1]} | ${r[2]} | ${r[3]} s | ${r[4]} s | ${r[5]} s | ${one ? (1 / ratio).toFixed(2) + '×' : ''} | ${serial} |`);
   }
   md('');
+  // The time-left estimate (reviewRun.ts eta) at 10/25/50 % of the decisions, against the real time left.
+  const etas = lines.map((l) => /^eta (\w+) game \d+, (\d) workers?: (.*)$/.exec(l)).filter(Boolean);
+  if (etas.length) {
+    md('| game | workers | at 10 %: shown / real | at 25 % | at 50 % |');
+    md('|---|---:|---|---|---|');
+    for (const e of etas) {
+      const cells = e[3].split('; ').map((c) => {
+        const x = /shows ([\d-]+)(?: s)?, really (\d+) s/.exec(c);
+        if (!x) return c;
+        const ratio = x[1] === '-' || Number(x[2]) === 0 ? '' : ` (${(Number(x[1]) / Number(x[2])).toFixed(1)}×)`;
+        return `${x[1]}${x[1] === '-' ? '' : ' s'} / ${x[2]} s${ratio}`;
+      });
+      md(`| ${e[1]} | ${e[2]} | ${cells.join(' | ')} |`);
+    }
+    md('');
+  }
   for (const m of mem) md(`- ${m}`);
   md('');
 } finally {
