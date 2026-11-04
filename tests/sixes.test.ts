@@ -9,6 +9,7 @@ import { chooseBotMove } from '../src/engine/ai/levels';
 import { Net } from '../src/engine/ai/net';
 import { decodeNet } from '../src/engine/ai/netbin';
 import { faceValues, rollLuck } from '../src/engine/ai/review';
+import { ownerValues } from '../src/engine/ai/search';
 import { moveEvent, rollEvent } from '../src/engine/record';
 import { bigRolls, rollEvents, rollText } from '../src/ui/reviewText';
 
@@ -38,11 +39,14 @@ describe('a run of three 6s (#135)', () => {
     expect(first! + second! + third!).toBeLessThan(-2);
   });
 
-  it('values a 6 that rolls again as the expectation over the next face', () => {
+  it('values a 6 that rolls again one step on: the expectation over the next face, a second 6 at the net', () => {
     const s0 = createGame(TWO, 'blue');
     const after6 = roll(s0, () => 0, 6);
     const next = faceValues(net, after6);
-    expect(faceValues(net, s0)[5]).toBe(next.reduce((t, x) => t + x / 6, 0));
+    // One step: the next face's values, except a second 6, which takes the net's value of that position.
+    const twoSixes = ownerValues(net, roll(after6, () => 0, 6), 2)[0]!;
+    const e = [...next.slice(0, 5), twoSixes].reduce((t, x) => t + x / 6, 0);
+    expect(faceValues(net, s0)[5]).toBe(e);
   });
 
   it("marks a game's cancelled runs: the third 6 carries the run's total, the first two are part of it", () => {

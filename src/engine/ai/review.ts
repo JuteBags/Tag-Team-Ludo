@@ -302,19 +302,21 @@ export function faceChances(rec: GameRecord, s: GameState): number[] {
 }
 
 /**
- * The roller's chance after `face` at `s`: the best play of the dice it completes; after a 6 that rolls again,
- * the expectation over the next face (fair), through a second 6 and the third that cancels (#135: the net reads
- * a tray with 6s in it up to 5 points low against playouts; one step on, the error halves); else (the turn has
- * passed) the net's value. sim-wasm chance_after mirrors this operation for operation.
+ * The roller's chance after `face` at `s`: the best play of the dice it completes; after a 6 that rolls again
+ * (`step`), the expectation over the next face, fair, one step on (#135: the net reads a tray with 6s in it up
+ * to 5 points low against playouts, and one step on the mean error goes from 2.6 to 1.6 points; a 6 inside
+ * that step takes the net's value, as a full recursion through the trays of two and three dice would cost
+ * 4-16x for no measured gain); else (the turn has passed) the net's value. sim-wasm chance_after mirrors this
+ * operation for operation.
  */
-function chanceAfter(net: Evaluator, s: GameState, face: number): number {
+function chanceAfter(net: Evaluator, s: GameState, face: number, step = true): number {
   const owner = s.players[s.current]!.owner;
   const owners = Math.max(...s.players.map((p) => p.owner)) + 1;
   const t = roll(s, () => 0, face);
   if (t.phase === 'move' && t.current === s.current) return Math.max(...searchValues(net, t, { depth: 1, chance: 0 }).map((x) => x.value));
-  if (t.phase === 'roll' && t.current === s.current) {
+  if (step && t.phase === 'roll' && t.current === s.current) {
     let e = 0;
-    for (let f = 1; f <= 6; f++) e += chanceAfter(net, t, f) / 6;
+    for (let f = 1; f <= 6; f++) e += chanceAfter(net, t, f, false) / 6;
     return e;
   }
   return ownerValues(net, t, owners)[owner]!;
