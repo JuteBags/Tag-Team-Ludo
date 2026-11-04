@@ -31,6 +31,8 @@ const a = flags(process.argv.slice(2));
 const games = Number(a.games ?? 20);
 const from = Number(a.from ?? 1);
 const out = (a.out as string | undefined) ?? 'puzzles.json';
+// --only normal-4p: only 4p games with a Normal player (where the Hard band comes from: a top-up).
+const only = a.only as string | undefined;
 const PLAYOUTS = 1024;
 const LINE_SEEDS = 8;
 
@@ -146,7 +148,8 @@ const perCombo = new Map<string, { games: number; decisions: number; puzzles: nu
 
 for (let g = 0; g < games; g++) {
   const seed = from + g;
-  const [layout, mix] = CYCLE[g % CYCLE.length]!;
+  const cycle = only === 'normal-4p' ? CYCLE.filter(([l, m]) => l === '4p' && m !== 'hard-hard') : CYCLE;
+  const [layout, mix] = cycle[g % cycle.length]!;
   const combo = `${layout} ${mix}`;
   const stat = perCombo.get(combo) ?? { games: 0, decisions: 0, puzzles: 0 };
   perCombo.set(combo, stat);
