@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { positionKey } from '../src/engine/rng';
 import { REVIEW_VERSION, accuracyOf, luckPercent, summary, type DecisionValues, type MoveReview, type ReviewAsk, type Reviewer } from '../src/engine/ai/review';
-import { bigRolls, etaText, evenChance, graphPoints, keyMoves, moveText, reviewedText, rollText, verdictMoves, whichToken, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS, plainVerdict, BETTER_COLOR, LABEL_LOOK, type VerdictPart, runningAccuracy, runningLuck, trendOf, ACCURACY_LINE_FROM, TREND_GAMES } from '../src/ui/reviewText';
+import { verdictText, bigRolls, etaText, evenChance, graphPoints, keyMoves, moveText, reviewedText, rollText, verdictMoves, whichToken, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS, plainVerdict, BETTER_COLOR, LABEL_LOOK, type VerdictPart, runningAccuracy, runningLuck, trendOf, ACCURACY_LINE_FROM, TREND_GAMES } from '../src/ui/reviewText';
 import type { Move } from '../src/engine';
 
 const mem = new Map<string, string>();
@@ -322,6 +322,13 @@ describe('plain verdicts (#124)', () => {
   const say = (played: Move, best: Move, label: 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder' = 'mistake', gap = 8, who = 'You') =>
     plainVerdict({ label, played: 0, best: 1, gap }, { moves: [played, best] }, who);
 
+  it('titles a verdict in the one unit the review uses: % to win (#152)', () => {
+    const s = { moves: [mv({})], players: [] } as unknown as GameState;
+    const head = (label: MoveReview['label'], gap: number) => verdictText({ label, played: 0, best: 0, gap } as MoveReview, s, 'You').head;
+    expect(head('mistake', 7.6)).toBe('Mistake: −8% to win');
+    expect(head('inaccuracy', 2.2)).toBe('Inaccuracy: −2% to win');
+    expect(head('best', 0)).toBe('Best');
+  });
   it('names the better move that gets a token home', () => {
     expect(text(say(mv({ steps: 3 }), mv({ tokens: [1], steps: 6, finishes: 1 }), 'blunder', 19).parts)).toBe('You moved [you:this token] 3. Moving [better:that one] 6 gets it home.');
   });

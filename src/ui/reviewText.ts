@@ -227,12 +227,12 @@ export function plainVerdict(m: Pick<MoveReview, 'label' | 'played' | 'best' | '
 }
 
 /**
- * A decision's verdict in words: `head` "Inaccuracy −4" and `line` "You moved 5 · Best: moved a pair 3" (the best
- * only when it differs). `who` is "You" or the player's name.
+ * A decision's verdict in words: `head` "Inaccuracy: −4% to win", in the unit every row of the review uses (#152),
+ * and `line` "You moved 5 · Best: moved a pair 3" (the best only when it differs). `who` is "You" or the player's name.
  */
 export function verdictText(m: MoveReview, s: GameState, who: string, nameOf?: (c: Move['color']) => string): { head: string; line: string } {
   const look = LABEL_LOOK[m.label];
-  const head = `${look.name}${m.label !== 'best' && m.gap >= 1 ? ` −${Math.round(m.gap)}` : ''}`;
+  const head = `${look.name}${m.label !== 'best' && m.gap >= 1 ? `: ${toWin(-m.gap)}` : ''}`;
   const plain = m.played === m.best || m.label === 'best';
   const [played, best] = verdictMoves(s, s.moves[m.played]!, s.moves[m.best]!, nameOf);
   return { head, line: `${who} ${plain ? moveText(s.moves[m.played]!, nameOf) : played}${plain ? '' : ` · Best: ${best}`}` };
