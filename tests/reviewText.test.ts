@@ -347,6 +347,24 @@ describe('review runner', () => {
     expect(etaLeft(10_000, 0.8)!).toBeLessThan(etaLeft(10_000, 0.5)!);
   });
 
+  it('a resumed review estimates from its own share: what this run has settled of what it had left (#179)', async () => {
+    const rec = game(9);
+    const fake = async (s: GameState): Promise<DecisionValues> => ({ ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 });
+    // A whole review, then one that resumes with 40 % of its verdicts stored.
+    const all = await new Promise<MoveReview[]>((done) => runReview(rec, undefined, (p) => p.finished && done(p.moves), false, fake));
+    const stored = all.slice(0, Math.floor(all.length * 0.4));
+    const seen: { done: number; total: number; eta: number | null }[] = [];
+    await new Promise<void>((done) =>
+      runReview(rec, { v: REVIEW_VERSION, moves: stored, luck: null }, (p) => (p.finished ? done() : seen.push({ done: p.done, total: p.total, eta: p.eta })), false, fake),
+    );
+    // The whole game's share is past 25 % from the start; the estimate waits for a quarter of this run's part.
+    expect(seen[0]!.done / seen[0]!.total).toBeGreaterThan(ETA_FROM);
+    const first = seen.find((x) => x.eta !== null)!;
+    const left = first.total - stored.length;
+    expect((first.done - stored.length) / left).toBeGreaterThanOrEqual(ETA_FROM);
+    expect(seen.filter((x) => x.eta === null).every((x) => (x.done - stored.length) / left < ETA_FROM || x.done - stored.length < 6)).toBe(true);
+  });
+
   it('estimates the time left once a few verdicts are in, and dates the finished review', async () => {
     const rec = game(9);
     const fake = async (s: GameState): Promise<DecisionValues> => ({ ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.425 : 0.5)), gap: s.moves.map((_, i) => (i ? 0.075 : 0)), se: s.moves.map(() => 0.01), best: 0 });
