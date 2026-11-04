@@ -128,6 +128,8 @@ const ETA_AT = [0.1, 0.25, 0.5];
 export interface ReviewTiming {
   /** The estimate shown at each ETA_AT share (seconds left; null: none shown yet) and the real time left. */
   etas?: { at: number; shown: number | null; actual: number }[];
+  /** The work's shape over the decisions (#179). */
+  shape?: string;
   /** Since the review started (ms): the first key verdict in, and all done. */
   firstKeyMs: number | null;
   totalMs: number;
@@ -148,8 +150,13 @@ function timeReview(rec: GameRecord, pool: ReviewPool, onStop: (stop: () => void
     let firstKeyMs: number | null = null;
     // The estimate shown at 10, 25 and 50 % of the decisions (seconds left), and when (ms since the start).
     const etas: { at: number; shown: number | null; ms: number }[] = [];
+    // The work's shape (#179): when each tenth of the decisions was settled, and what kind of verdicts they were.
+    const tenths: { ms: number; kinds: Record<string, number> }[] = [];
+    let seenMoves = 0;
+    let luckStart: number | null = null;
     const luck = (r: GameRecord, stopped?: () => boolean, yieldTo?: () => boolean) => {
       const t = performance.now();
+      luckStart = t - t0;
       return pool.luck(r, stopped, yieldTo)!.then((v) => ((luckMs = performance.now() - t), v));
     };
     const stop = runReview(
@@ -159,7 +166,25 @@ function timeReview(rec: GameRecord, pool: ReviewPool, onStop: (stop: () => void
         const now = performance.now() - t0;
         if (firstKeyMs === null && p.moves.some((m) => KEY.has(m.label))) firstKeyMs = now;
         for (const at of ETA_AT) if (p.total && p.done / p.total >= at && !etas.some((e) => e.at === at)) etas.push({ at, shown: p.eta, ms: now });
-        if (p.finished) resolve({ luckMs, firstKeyMs, totalMs: now, decisions: p.total, reviewed: p.done, etas: etas.map((e) => ({ at: e.at, shown: e.shown, actual: (now - e.ms) / 1000 })) });
+        while (p.total && tenths.length < 10 && p.done / p.total >= (tenths.length + 1) / 10) {
+          const fresh = p.moves.slice(seenMoves);
+          const k: Record<string, number> = {};
+          for (const m of fresh) k[m.approx ?? 'full'] = (k[m.approx ?? 'full'] ?? 0) + 1;
+          k.skip = (p.skipped?.length ?? 0) - tenths.reduce((t, x) => t + (x.kinds.skipTotal ?? 0), 0);
+          k.skipTotal = p.skipped?.length ?? 0;
+          seenMoves = p.moves.length;
+          tenths.push({ ms: now, kinds: k });
+        }
+        if (p.finished)
+          resolve({
+            luckMs,
+            firstKeyMs,
+            totalMs: now,
+            decisions: p.total,
+            reviewed: p.done,
+            etas: etas.map((e) => ({ at: e.at, shown: e.shown, actual: (now - e.ms) / 1000 })),
+            shape: `luck from ${luckStart === null ? '-' : Math.round((100 * luckStart) / now) + '%'} of the time; per tenth of the decisions, the time share so far [verdicts]: ${tenths.map((x) => `${Math.round((100 * x.ms) / now)}% [${Object.entries(x.kinds).filter(([n, v]) => n !== 'skipTotal' && v).map(([n, v]) => `${n} ${v}`).join(' ')}]`).join(', ')}`,
+          });
       },
       false,
       pool.reviewer(),
@@ -363,6 +388,7 @@ async function reviewBench(_worker: Worker, say: (l: string) => void, hidden: ()
         if (!r) return;
         const missing = r.reviewed < r.decisions ? `; only ${r.reviewed} of ${r.decisions} reviewed: a worker failed` : '';
         say(`review ${g.layout} game ${g.seed}, ${size} worker${size > 1 ? 's' : ''}: first key verdict ${sec(r.firstKeyMs)}, all ${sec(r.totalMs)} (of which the luck pass ${sec(r.luckMs)}; ${r.decisions} decisions${missing})`);
+        say(`shape ${g.layout} game ${g.seed}, ${size} worker${size > 1 ? 's' : ''}: ${r.shape ?? '-'}`);
         say(`eta ${g.layout} game ${g.seed}, ${size} worker${size > 1 ? 's' : ''}: ${(r.etas ?? []).map((e) => `${Math.round(100 * e.at)}% shows ${e.shown === null ? '-' : `${e.shown.toFixed(0)} s`}, really ${e.actual.toFixed(0)} s`).join('; ')}`);
       }
       const mem = await pool.memory();
