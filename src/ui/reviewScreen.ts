@@ -1,9 +1,9 @@
-// The game review screen (#65, #96). From one player's side (the chips at the top pick whose: you by default;
-// a bot's side is reviewed when its chip is tapped): the story of the game in a sentence, accuracy and luck %
-// side by side, the labels of their moves, a graph of their winning chances with the turning point, and the
-// moves as verdicts come in. It opens on the key moves (the turning point, the moves that lost something
-// worst first, and the rolls that swung the game); "All moves" lists every verdict in game order, and a
-// label's count filters to it. Tapping a move or a roll opens the replay there, from the same side.
+// The game review screen (#65, #96), a scorecard since #167 (the owner's pick A). The title is the result;
+// a "You | Aarav" switch picks whose review (a bot's side is reviewed when picked). Then the story of the game in
+// a sentence, accuracy and luck as big numbers, the labels as one row of counts (a count filters the moments to
+// that label), a graph with the key moments pinned on it, the key moments as short rows (the turning point, the
+// moves that lost most, this side's biggest rolls), and every move as a strip of cells in game order. Tapping a
+// row, the graph or a cell opens the replay there, from the same side.
 // The review runs in the review queue (reviewQueue.ts): leaving this screen doesn't stop it. An older review
 // (another label version) shows greyed until the new one is in.
 import { ownerRanking, replay, type GameRecord, type GameState } from '../engine';
@@ -17,7 +17,7 @@ import { accuracyText, bigRolls, runningAccuracy, runningLuck, sixRuns, etaText,
 import type { StoredReview } from './store';
 
 const GW = 330;
-const GH = 96;
+const GH = 120;
 /** The graph's left margin, for the 0 / 50 / 100 ticks. */
 const GL = 22;
 
@@ -77,32 +77,40 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
   // The replay's frames: a decision's step number, and the move that follows a roll.
   const frames = framesOf(rec).frames;
   const frameAfter = (at: number) => frames.findIndex((f) => f.at > at);
-  const mode = rec.meta?.mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER';
+  // The title is the game's result, from the person's side (with friends: who won).
+  const winner = ownerRanking(last)[0]!;
+  const vs = (o: number) => owners.filter((x) => x !== o).map((x) => names[x]!).join(', ').replace(/, ([^,]*)$/, ' & $1');
+  const title = rec.meta?.mode === 'pvp' ? `${names[winner]} won` : `${won(people[0] ?? 0) ? 'Won' : 'Lost'} vs ${vs(people[0] ?? 0)}`;
   el.innerHTML = `
-    <div class="gtop"><button class="rbtn" data-act="back" aria-label="Back">${icons.back}</button>
-      <div class="mode"><small>GAME REVIEW · ${mode}</small><b>${owners.length} PLAYERS</b></div><span class="rbtn-space"></span></div>
+    <div class="gtop rvtop"><button class="rbtn" data-act="back" aria-label="Back">${icons.back}</button><h1 class="disp rvtitle"></h1></div>
     <div class="rvbody">
-      <div class="rvpov" role="tablist" aria-label="Whose game"></div>
+      <div class="rvpov" role="tablist" aria-label="Whose review"></div>
       <p class="rvstale" hidden>Older review · updating…</p>
       <p class="rvhead1" hidden></p>
       <div class="rvcards"></div>
       <div class="rvgraph"></div>
       <div class="rvprog"><span></span><i class="bar"><i></i></i></div>
       <p class="rvleave">Reviews keep going while the app is open, so you can leave: what's reviewed is kept.</p>
-      <div class="rvtabs" role="tablist"><button role="tab" data-view="key">Key moves</button><button role="tab" data-view="all">All moves</button></div>
-      <div class="rvfilter" hidden><span></span><button data-act="unfilter" aria-label="Show all moves">✕</button></div>
+      <h2 class="rvsec rvkeyh">Key moments</h2>
+      <div class="rvfilter" hidden><span></span><button data-act="unfilter" aria-label="Show the key moments">✕</button></div>
       <div class="rvlist" role="list"></div>
+      <h2 class="rvsec rvstriph" hidden>Every move</h2>
+      <div class="rvstrip" role="img" hidden></div>
     </div>`;
+  el.querySelector('.rvtitle')!.textContent = title;
   const q = <T extends HTMLElement>(s: string) => el.querySelector<T>(s)!;
   let pov = startPov ?? people[0] ?? owners[0]!;
   let view: 'key' | 'all' = 'key';
   let filter: Label | null = null;
+  /** The key moments list shows the five biggest until "Show N more" is tapped (#167). */
+  const KEY_SHOWN = 5;
+  let expanded = false;
   let prog: ReviewProgress | null = null;
   const povTotals = new Map<number, number>();
 
-  // Whose game: a chip per player; bots say BOT and are reviewed when picked.
+  // Whose review: one segment per player, avatar and name (#167: one obvious tap to see Aarav's). A bot's side
+  // is reviewed when picked.
   const chips = q('.rvpov');
-  // Three or more players: the chips not picked show their avatar only, so the row stays one line.
   chips.classList.toggle('compact', owners.length >= 3);
   for (const o of owners) {
     const b = document.createElement('button');
@@ -110,8 +118,8 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     b.dataset.pov = String(o);
     b.setAttribute('role', 'tab');
     b.setAttribute('style', cssVars(colorOf(o)));
-    b.innerHTML = `<i>${avatarSVG(colorOf(o))}</i><b></b>${isBot(o) ? '<small>BOT</small>' : ''}`;
-    b.querySelector('b')!.textContent = names[o]!;
+    b.innerHTML = `<i>${avatarSVG(colorOf(o))}</i><b></b>`;
+    b.querySelector('b')!.textContent = isYou(o) ? 'You' : names[o]!;
     b.setAttribute('aria-label', `${names[o]}${isBot(o) ? ' (bot)' : ''}`);
     chips.appendChild(b);
   }
@@ -150,11 +158,9 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     card.setAttribute('style', cssVars(colorOf(pov)));
     const acc = !ready ? '…' : s.moves ? accuracyText(s.accuracy) : '–';
     const lpct = d.luck && Number.isFinite(s.luckPct) ? `${Math.round(s.luckPct)}%` : '…';
-    card.innerHTML = `<div class="rvwho"><i>${avatarSVG(colorOf(pov))}</i><b></b>
-        <em>${acc}<small>accuracy</small></em><em class="lk">${lpct}<small>luck</small></em></div>
+    card.innerHTML = `<div class="rvwho"><em class="ac">${acc}<small>accuracy</small></em><em class="lk">${lpct}<small>luck</small></em></div>
       <div class="rvchips">${LABELS.map((l) => `<button data-filter="${l}" style="--c:${LABEL_LOOK[l].color}" aria-label="${LABEL_LOOK[l].name}: ${s.labels[l]}"${filter === l ? ' class="on"' : ''}><i>${LABEL_LOOK[l].sym}</i>${s.labels[l]}</button>`).join('')}</div>
 `;
-    card.querySelector('.rvwho b')!.textContent = names[pov]!;
     // No accuracy for a game without a decision where much was at stake: say why under the card's top row.
     if (ready && s.moves && !Number.isFinite(s.accuracy)) {
       const few = document.createElement('p');
@@ -164,19 +170,8 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     }
     // No "N key mistakes" line under the name: the tiles below already count every label, and its "key"
     // (mistakes and blunders) read against the Key moves list, which has inaccuracies too (#158 review).
-    // Everyone else's dice, one line each.
-    const others = d.luck
-      ? owners
-          .filter((o) => o !== pov)
-          .map((o) => {
-            const row = document.createElement('div');
-            row.className = 'rvbotluck';
-            row.innerHTML = `<i style="${cssVars(colorOf(o))}">${avatarSVG(colorOf(o))}</i><span></span><b>${Number.isFinite(sum[o]!.luckPct) ? Math.round(sum[o]!.luckPct) : '–'}%</b>`;
-            row.querySelector('span')!.textContent = isYou(o) ? 'Your dice' : `${names[o]}'s dice`;
-            return row;
-          })
-      : [];
-    q('.rvcards').replaceChildren(card, ...others);
+    // Everyone else's luck is on their own side of the switch (#167): no "Aarav's dice" rows here.
+    q('.rvcards').replaceChildren(card);
     graphLuck = d.luck ?? [];
     drawGraph(mine, tp);
     // Progress: how far, about how long is left, and once done, when.
@@ -191,6 +186,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     q('.rvprog').classList.toggle('done', p.finished);
     q('.rvleave').hidden = p.finished;
     drawList(d, mine, tp);
+    drawStrip(d, mine);
   };
 
   // The graph: this side's winning chances after each of their reviewed moves, on a 0-100 axis with the even
@@ -214,18 +210,19 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const tick = (v: number) => `<text x="${GL - 5}" y="${GH * (1 - v / 100) + 3.5}" text-anchor="end" class="tick">${v}</text><line x1="${GL}" x2="${GW}" y1="${GH * (1 - v / 100)}" y2="${GH * (1 - v / 100)}" class="grid"/>`;
     // The turning point sits on its move, or on the first of this side's moves after its roll.
     const ti = !tp ? -1 : tp.kind === 'move' ? mine.indexOf(tp.move) : mine.findIndex((m) => m.at > tp.roll.at);
-    const star = ti >= 0 ? `<g class="tpstar" transform="translate(${pts[ti]![0].toFixed(1)} ${(pts[ti]![1] - 12).toFixed(1)})"><path d="M0,-7 L2,-2 7,-2 3,1.5 4.5,6.5 0,3.5 -4.5,6.5 -3,1.5 -7,-2 -2,-2Z"/></g>` : '';
-    q('.rvgraph').innerHTML = `<small></small>${graphTabs()}<svg viewBox="-6 -8 ${GW + 40} ${GH + 16}" aria-hidden="true">
+    const star = ti >= 0 ? pin(pts[ti]![0], pts[ti]![1], '#ffd23f', '★', 'tp') : '';
+    q('.rvgraph').innerHTML = `${graphTabs()}<svg viewBox="-6 -12 ${GW + 40} ${GH + 22}" aria-hidden="true">
         ${[0, 50, 100].map(tick).join('')}
-        <line x1="${GL}" y1="${even}" x2="${GW}" y2="${even}" class="even"/><text x="${GL + 4}" y="${even - 4}">even</text>
+        <line x1="${GL}" y1="${even}" x2="${GW}" y2="${even}" class="even"/>
         <polyline points="${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')}"/>
-        ${pts.slice(0, mine.length).map(([x, y], i) => (mine[i]!.label === 'best' || mine[i]!.label === 'good' ? '' : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${LABEL_LOOK[mine[i]!.label].color}"/>`)).join('')}
+        ${pts.slice(0, mine.length).map(([x, y], i) => (mine[i]!.label === 'best' || mine[i]!.label === 'good' || i === ti ? '' : mine[i]!.label === 'inaccuracy' ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.2" class="dot" style="fill:${LABEL_LOOK.inaccuracy.color}"/>` : pin(x, y, LABEL_LOOK[mine[i]!.label].color, LABEL_LOOK[mine[i]!.label].sym))).join('')}
         ${star}
         ${endLabel(end, `${Math.round(100 * (result[0] ?? mine.at(-1)!.playedChance))}%`, 'final')}
-        <rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/></svg>`;
-    // Names go in as text, like everywhere else.
-    q('.rvgraph small').textContent = `${isYou(pov) ? 'Your' : `${names[pov]}'s`} win probability`;
+        <rect class="hit" x="${GL}" y="-12" width="${GW - GL}" height="${GH + 22}" fill="transparent"/></svg>`;
   };
+  /** A moment on the graph: its label's symbol in a ring of its colour. */
+  const pin = (x: number, y: number, c: string, sym: string, cls = '') =>
+    `<g class="pin ${cls}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><circle r="8.5" style="stroke:${c}"/><text y="3.5" text-anchor="middle" style="fill:${c}" font-size="${sym.length > 1 ? 7.5 : 9.5}">${sym}</text></g>`;
   const graphTabs = () =>
     `<div class="rvgtabs" role="tablist">${GRAPH_TABS.map(([k, name]) => `<button data-gtab="${k}" role="tab" aria-selected="${k === graphTab}"${k === graphTab ? ' class="on"' : ''}>${name}</button>`).join('')}</div>`;
   /**
@@ -259,15 +256,15 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const end = pts.at(-1) ?? faded.at(-1);
     const poly = (ps: [number, number][], cls: string) => (ps.length > 1 ? `<polyline class="${cls}" points="${ps.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ')}"/>` : '');
     const mid = graphTab === 'luck' ? `<line x1="${GL}" y1="${y(50)}" x2="${GW}" y2="${y(50)}" class="even"/><text x="${GW - 4}" y="${y(50) + 12}" text-anchor="end">average luck</text>` : '';
-    q('.rvgraph').innerHTML = `<small></small>${graphTabs()}<svg viewBox="-6 -8 ${GW + 40} ${GH + 16}" aria-hidden="true">
+    q('.rvgraph').innerHTML = `${graphTabs()}<svg viewBox="-6 -12 ${GW + 40} ${GH + 22}" aria-hidden="true">
         ${[0, 50, 100].map(tick).join('')}${mid}
         ${poly(faded, `${graphTab} early`)}${poly(pts, graphTab)}
         ${end ? `<circle class="${graphTab}" cx="${end[0].toFixed(1)}" cy="${end[1].toFixed(1)}" r="3.5"/>${endLabel(end, label, `final ${graphTab}`)}` : ''}
-        ${graphTab === 'accuracy' ? `<rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/>` : ''}</svg>`;
-    const who = isYou(pov) ? 'Your' : `${names[pov]}'s`;
-    q('.rvgraph small').textContent = graphTab === 'accuracy' ? `${who} accuracy so far` : `${who} Luck-O-Meter`;
+        ${graphTab === 'accuracy' ? `<rect class="hit" x="${GL}" y="-12" width="${GW - GL}" height="${GH + 22}" fill="transparent"/>` : ''}</svg>`;
   };
 
+  /** A moment's swing, in the review's one unit: "−5%" (of win probability). */
+  const swing = (x: number) => `${x >= 0 ? '+' : '−'}${Math.max(1, Math.round(Math.abs(x)))}%`;
   const moveRow = (m: MoveReview, turning = false) => {
     const look = LABEL_LOOK[m.label];
     const v = verdict(m);
@@ -275,9 +272,11 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     b.className = `rvrow ${m.label}${turning ? ' turning' : ''}`;
     b.dataset.at = String(m.at);
     b.setAttribute('role', 'listitem');
-    b.innerHTML = `<i style="--c:${look.color}">${look.sym}</i><span>${turning ? '<em>★ Turning point</em>' : ''}<b></b><small></small></span>`;
-    b.querySelector('b')!.textContent = v.head;
-    b.querySelector('small')!.textContent = `Move ${v.step > 0 ? v.step : '?'} · ${v.line}`;
+    const cost = m.label !== 'best' && m.gap >= 1;
+    b.innerHTML = `<i style="--c:${turning ? '#ffd23f' : look.color}">${turning ? '★' : look.sym}</i><span><b></b><small></small></span>${cost ? `<strong class="rvswing neg">${swing(-m.gap)}</strong>` : ''}`;
+    b.querySelector('b')!.textContent = turning ? 'Turning point' : look.name;
+    b.querySelector('small')!.textContent = `Move ${v.step > 0 ? v.step : '?'}`;
+    b.setAttribute('aria-label', `${turning ? 'Turning point: ' : ''}${v.head}. Move ${v.step}. ${v.line}`);
     return b;
   };
   const rollRow = (r: RollLuck, turning = false) => {
@@ -286,9 +285,14 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     b.dataset.roll = String(r.at);
     b.setAttribute('role', 'listitem');
     const step = frameAfter(r.at);
-    b.innerHTML = `<i class="die">${dieMarkup(r.face, 24)}</i><span>${turning ? '<em>★ Turning point</em>' : ''}<b></b><small></small></span>`;
-    b.querySelector('b')!.textContent = rollText(r, names[r.owner]!, isYou(r.owner));
-    b.querySelector('small')!.textContent = `Move ${step > 0 ? step : '?'} · ${frames[step]?.caption ?? ''}`;
+    const x = r.run ?? r.luck;
+    // The swing is the roller's: on another side's review it's named and left neutral, never judged as this side's.
+    const theirs = r.owner !== pov;
+    b.innerHTML = `<i class="die">${dieMarkup(r.face, 24)}</i><span><b></b><small></small></span><strong class="rvswing ${theirs ? 'other' : x >= 0 ? 'pos' : 'neg'}">${swing(x)}</strong>`;
+    const what = r.run !== undefined ? 'Three 6s cancelled' : theirs ? `${isYou(r.owner) ? 'Your' : `${names[r.owner]}'s`} dice` : 'Dice';
+    b.querySelector('b')!.textContent = turning ? 'Turning point' : what;
+    b.querySelector('small')!.textContent = `Move ${step > 0 ? step : '?'}${turning && (theirs || r.run !== undefined) ? ` · ${what}` : ''}`;
+    b.setAttribute('aria-label', `${turning ? 'Turning point: ' : ''}${rollText(r, names[r.owner]!, isYou(r.owner))}. Move ${step}. ${frames[step]?.caption ?? ''}`);
     return b;
   };
   /** A decision still to review (#93): where it is in the game, and "…" until its verdict lands. */
@@ -299,7 +303,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const step = frameAfter(at);
     r.innerHTML = `<i aria-hidden="true">…</i><span><b></b><small></small></span>`;
     r.querySelector('b')!.textContent = checking ? 'Checking this move…' : 'Not checked yet';
-    r.querySelector('small')!.textContent = `Move ${step > 0 ? step : '?'} · ${frames[step]?.caption ?? ''}`;
+    r.querySelector('small')!.textContent = `Move ${step > 0 ? step : '?'}`;
     return r;
   };
   /** How many decisions still to check the key view lists before "+N more". */
@@ -342,24 +346,16 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
   };
 
   const drawList = (d: Shown, mine: MoveReview[], tp: ReturnType<typeof turningPoint>) => {
-    el.querySelectorAll<HTMLElement>('.rvtabs button').forEach((b) => {
-      b.classList.toggle('on', b.dataset.view === view);
-      b.setAttribute('aria-selected', String(b.dataset.view === view));
-    });
     const f = q('.rvfilter');
     f.hidden = !filter;
-    if (filter) f.querySelector('span')!.textContent = `Showing ${LABEL_LOOK[filter].sym} ${LABEL_LOOK[filter].name} only`;
+    // The heading names the filter ("Inaccuracy moves"); the bar is just its ✕, on the heading's line (#167).
+    f.querySelector('span')!.textContent = '';
     const list = q('.rvlist');
     list.replaceChildren();
     // While the review runs: every decision straight away, "…" until its verdict lands (#93).
+    q('.rvkeyh').textContent = !d.finished && !d.stale && prog?.order && !filter ? 'Biggest decisions first' : filter ? `${LABEL_LOOK[filter].name} moves` : 'Key moments';
     if (!d.finished && !d.stale && prog?.order) {
-      if (view === 'key') {
-        const h = document.createElement('h3');
-        h.className = 'rvhead';
-        h.textContent = 'Biggest decisions first';
-        list.appendChild(h);
-      }
-      checkingList(list, prog, mine, view === 'all');
+      checkingList(list, prog, mine, false);
       return;
     }
     if (mine.length < SHOW_AFTER && !d.finished) return;
@@ -372,19 +368,36 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     // The turning point first, then the key moves, then the rolls that swung the game.
     if (tp) list.appendChild(tp.kind === 'move' ? moveRow(tp.move, true) : rollRow(tp.roll, true));
     const key = keyMoves(mine).filter((m) => !(tp?.kind === 'move' && tp.move === m));
-    for (const m of key) list.appendChild(moveRow(m));
+    for (const m of expanded ? key : key.slice(0, KEY_SHOWN)) list.appendChild(moveRow(m));
+    if (!expanded && key.length > KEY_SHOWN) {
+      const more = document.createElement('button');
+      more.className = 'rvmore';
+      more.dataset.act = 'more';
+      more.textContent = `Show ${key.length - KEY_SHOWN} more`;
+      list.appendChild(more);
+    }
     if (!key.length && !(tp?.kind === 'move')) list.appendChild(note(d.finished ? 'Clean game: every move was Best or Good.' : 'No mistakes so far.'));
     if (d.luck?.length) {
-      const h = document.createElement('h3');
-      h.className = 'rvhead';
-      h.textContent = 'Big dice moments';
-      list.appendChild(h);
-      const big = bigRolls(d.luck).filter((r) => !(tp?.kind === 'roll' && tp.roll.at === r.at));
+      // This side's own biggest rolls, after its moves (anyone else's are on their side of the switch).
+      const big = bigRolls(d.luck.filter((r) => r.owner === pov)).filter((r) => !(tp?.kind === 'roll' && tp.roll.at === r.at));
       for (const r of big) list.appendChild(rollRow(r));
       // This person's cancelled runs of three 6s (#135) are always listed: one row each, after the big ones.
       const shown = new Set([...big.map((r) => r.at), ...(tp?.kind === 'roll' ? [tp.roll.at] : [])]);
       for (const r of sixRuns(d.luck, pov).filter((r) => !shown.has(r.at))) list.appendChild(rollRow(r));
     }
+  };
+
+  /** Every decision of this side in game order, one cell each: its label's colour, or grey until checked. */
+  const drawStrip = (d: Shown, mine: MoveReview[]) => {
+    const strip = q('.rvstrip');
+    const total = povTotals.get(pov) ?? 0;
+    const cells = mine.length + Math.max(0, d.finished ? 0 : total - mine.length);
+    q('.rvstriph').hidden = strip.hidden = cells < SHOW_AFTER;
+    const n = Object.fromEntries(LABELS.map((l) => [l, mine.filter((m) => m.label === l).length]));
+    strip.setAttribute('aria-label', `Every move: ${LABELS.map((l) => `${n[l]} ${LABEL_LOOK[l].name}`).join(', ')}`);
+    strip.innerHTML =
+      mine.map((m) => `<i data-at="${m.at}" class="${m.label}${filter && m.label !== filter ? ' dim' : ''}" style="--c:${LABEL_LOOK[m.label].color}"></i>`).join('') +
+      '<i class="todo"></i>'.repeat(Math.max(0, cells - mine.length));
   };
 
   let unfollow = () => {};
@@ -400,6 +413,11 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       onBack();
       return;
     }
+    if (t.closest('[data-act=more]')) {
+      expanded = true;
+      if (prog) draw(prog);
+      return;
+    }
     const pv = t.closest<HTMLElement>('[data-pov]')?.dataset.pov;
     if (pv !== undefined) {
       pov = Number(pv);
@@ -409,20 +427,15 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       if (prog) draw(prog);
       return;
     }
-    const tab = t.closest<HTMLElement>('[data-view]')?.dataset.view as 'key' | 'all' | undefined;
-    if (tab) {
-      view = tab;
-      filter = null;
-      if (prog) draw(prog);
-      return;
-    }
+
     const chip = t.closest<HTMLElement>('[data-filter]')?.dataset.filter as Label | undefined;
     if (chip || t.closest('[data-act=unfilter]')) {
       // A count shows just those moves; tapping it again (or ✕) shows them all.
       filter = chip && chip !== filter ? chip : null;
-      view = 'all';
+      expanded = false;
+      view = filter ? 'all' : 'key';
       if (prog) draw(prog);
-      if (filter) q('.rvtabs').scrollIntoView({ block: 'start', behavior: 'smooth' });
+      if (filter) q('.rvkeyh').scrollIntoView({ block: 'start', behavior: 'smooth' });
       return;
     }
     const gt = t.closest<HTMLElement>('[data-gtab]')?.dataset.gtab as GraphTab | undefined;
@@ -440,13 +453,26 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       // The graph may end with the result point after the last move: a tap there picks the last move.
       const points = graphMoves.length + (prog?.finished && graphTab === 'win' ? 1 : 0);
       const i = Math.max(0, Math.min(graphMoves.length - 1, Math.round((x / box.width) * (points - 1))));
-      const at = graphMoves[i]!.at;
-      if (!el.querySelector(`.rvrow[data-at="${at}"]`)) {
-        view = 'all';
-        filter = null;
-        if (prog) draw(prog);
+      // The replay at that move (#167): the graph is a way into the game, like the rows.
+      unfollow();
+      onReplayAt(graphMoves[i]!.at, '', pov);
+      return;
+    }
+    const strip = t.closest<HTMLElement>('.rvstrip');
+    if (strip) {
+      // The nearest checked cell to the tap, as taps on the board go to the nearest pawn.
+      const ev = e as MouseEvent;
+      let best: HTMLElement | null = null;
+      let bd = Infinity;
+      strip.querySelectorAll<HTMLElement>('i[data-at]').forEach((c) => {
+        const r = c.getBoundingClientRect();
+        const dd = Math.hypot(r.left + r.width / 2 - ev.clientX, r.top + r.height / 2 - ev.clientY);
+        if (dd < bd) [bd, best] = [dd, c];
+      });
+      if (best && bd < 40) {
+        unfollow();
+        onReplayAt(Number((best as HTMLElement).dataset.at), '', pov);
       }
-      el.querySelector(`.rvrow[data-at="${at}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
       return;
     }
     const row = t.closest<HTMLElement>('.rvrow');
