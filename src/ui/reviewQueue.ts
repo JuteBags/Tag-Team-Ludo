@@ -2,12 +2,14 @@
 // finished game with a person in it is queued as soon as it's saved (the newest few only, so a long session
 // doesn't leave a battery-eating backlog). The game being looked at goes first, then vs Computer games before
 // With friends ones, newest first. Leaving the review screen doesn't stop it.
-// It pauses while an Extreme game is played (its bots think with the rollout engine), during any game on a
-// phone with two cores or fewer, and while the app is hidden: it runs while the app is open, never in the
-// background in the OS's sense. Once the queue is empty the worker is ended, so no idle worker holds memory.
+// It pauses during any game (the game's own review runs then, liveReview.ts, #176) and while the app is
+// hidden: it runs while the app is open, never in the background in the OS's sense. A game reviewed while it
+// was played comes with what's done (its verdicts and luck chunks), and the full pool finishes the rest.
+// Once the queue is empty the worker is ended, so no idle worker holds memory.
 import type { GameRecord } from '../engine';
 import { REVIEW_VERSION, type Reviewer } from '../engine/ai/review';
-import { stopReviewWorker, workerReviewer } from '../engine/ai/review-worker';
+import { stopReviewWorker, workerLuck, workerReviewer } from '../engine/ai/review-worker';
+import type { LiveHandOff } from './liveReview';
 import { peopleOf, runReview, type ReviewProgress } from './reviewRun';
 import { keyOf, loadPastGames, loadReview, loadSummaries, loadSummary, type StoredReview } from './store';
 
@@ -33,6 +35,8 @@ interface Job {
   who: number[];
   last?: ReviewProgress;
   finished: boolean;
+  /** What the review while the game was played did (#176). */
+  live?: LiveHandOff;
 }
 
 const jobs = new Map<string, Job>();
@@ -42,8 +46,8 @@ let running: { job: Job; stop: () => void } | null = null;
 let starting = false;
 let game: 'none' | 'light' | 'extreme' = 'none';
 let hidden = typeof document !== 'undefined' && document.hidden;
-const fewCores = () => (typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4) <= 2;
-const paused = () => hidden || game === 'extreme' || (game === 'light' && fewCores());
+// During a game the queue gives way to the game's own review (liveReview.ts, #176).
+const paused = () => hidden || game !== 'none';
 
 /** Tells the screens; one that throws never stops the review (or the others). */
 const emit = (job: Job) => {
@@ -89,6 +93,9 @@ async function pump() {
   } catch {
     stored = undefined;
   }
+  // A game reviewed while it was played: its verdicts so far, and its luck chunks for the luck pass (#176).
+  const live = job.live;
+  if (!stored && live && (live.moves.length || live.skip.length)) stored = { v: REVIEW_VERSION, moves: live.moves, luck: null, skip: live.skip.length ? live.skip : undefined };
   starting = false;
   if (running || paused() || job.finished) return void pump();
   const reviewer = politeReviewer();
@@ -110,6 +117,7 @@ async function pump() {
     job.keep,
     reviewer,
     job.who,
+    (r, stopped, yieldTo) => workerLuck(r, stopped, yieldTo, live?.luckHave ?? []),
   );
   // No worker (or nothing left to do): it reported finished, or it can never run.
   if (!reviewer && running === run) {
@@ -136,9 +144,9 @@ function update() {
 }
 
 /** Puts a game in the queue (if it isn't there or done) without moving anything ahead of it. */
-export function enqueue(rec: GameRecord, opts: { keep?: boolean; pvp?: boolean; at?: number } = {}) {
+export function enqueue(rec: GameRecord, opts: { keep?: boolean; pvp?: boolean; at?: number; live?: LiveHandOff } = {}) {
   const key = keyOf(rec);
-  if (!jobs.has(key)) jobs.set(key, { key, rec, keep: opts.keep ?? true, pvp: !!opts.pvp, at: opts.at ?? Date.now(), opened: 0, who: peopleOf(rec), finished: false });
+  if (!jobs.has(key)) jobs.set(key, { key, rec, keep: opts.keep ?? true, pvp: !!opts.pvp, at: opts.at ?? Date.now(), opened: 0, who: peopleOf(rec), finished: false, live: opts.live });
   trim();
   void pump();
 }

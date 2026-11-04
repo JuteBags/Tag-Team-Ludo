@@ -17,6 +17,7 @@ import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targe
 import { award, goldFor, newAchievements, nextStreak, total, type GameFacts } from './rewards';
 import { earn, lockLabel, nextGoal, skinUnlockedBy } from './skins';
 import { enqueue, onReviewChange, progressOf, setGame } from './reviewQueue';
+import { LiveReview } from './liveReview';
 
 /** The screen's own counters that a move changes, restored by Undo. */
 type Counters = { kills: number; pairs: number; sixes: number; lost: number };
@@ -90,8 +91,16 @@ export class GameScreen {
   private undoTap: (() => void) | null = null;
   /** Cancels a pending roll tap (its listeners), when Undo is tapped instead. */
   private cancelRoll: (() => void) | null = null;
+  /** The review while the game is played (#176): each person's move reviewed in the background, ready at the end. */
+  private live: LiveReview | null = null;
+  /** Tells the live review the game's record (after each event; the whole record when a game is continued). */
+  private liveUpdate() {
+    const rec = this.live && this.record();
+    if (rec) this.live!.update(rec);
+  }
   /** Pauses the game and saves it when the app goes to the background. */
   private onHidden = () => {
+    this.live?.hidden(document.visibilityState === 'hidden');
     if (document.visibilityState !== 'hidden' || this.disposed) return;
     // Extreme's worker goes too (#98): Android may end a hidden app anyway, and it frees its engine and net.
     stopRolloutWorker();
@@ -151,6 +160,11 @@ export class GameScreen {
     this.drawTrays();
     keepAwake(true);
     document.addEventListener('visibilitychange', this.onHidden);
+    // A game with a person in it is reviewed as it's played (#176); a continued one is fed its whole record.
+    if (config.seats.some((x) => !x.bot)) {
+      this.live = new LiveReview();
+      this.liveUpdate();
+    }
     void this.run();
   }
 
@@ -247,6 +261,9 @@ export class GameScreen {
     }
     const t0 = performance.now();
     let m;
+    // An Extreme bot thinks with the same engine: the live review sends nothing new meanwhile (#176).
+    const extreme = this.cur.level === 'extreme';
+    if (extreme) this.live?.thinking(true);
     try {
       m = await chooseBotMoveAsync(this.state, this.rngFor('bot'));
     } catch (e) {
@@ -255,6 +272,8 @@ export class GameScreen {
       // turn loop asks again for this same position, so it's the same move (#98).
       if (!this.disposed) await this.sleep(0);
       return;
+    } finally {
+      if (extreme) this.live?.thinking(false);
     }
     if (this.disposed) return;
     // Light up the die the bot plays, so its turn is easy to follow; thinking time counts toward the pause.
@@ -342,6 +361,8 @@ export class GameScreen {
     sfx.tick();
     this.state = f.state;
     if (this.log !== null && f.logLen !== null) this.log = this.log.slice(0, f.logLen);
+    // The live review drops what the undo took back (#176).
+    this.liveUpdate();
     ({ kills: this.kills, pairs: this.pairs, sixes: this.sixes, lost: this.lost } = f.counters);
     this.view.layout(this.state.players);
     this.drawTrays();
@@ -419,6 +440,7 @@ export class GameScreen {
     if (forced !== undefined) this.seedFromStart = false;
     this.state = roll(this.state, this.rngFor('dice'), forced);
     if (this.log !== null) this.log += rollEvent(this.state.dice!);
+    this.liveUpdate();
     const box = this.diceBox(c);
     await rollDie(box, this.state.dice!, DIE, (this.cur.bot || this.state.players.find((p) => p.color === c)!.bot ? BOT_ROLL_MS / (settings.fastBots ? 2 : 1) : ROLL_MS) / this.speed);
     this.lastFace.set(c, this.state.dice!);
@@ -482,6 +504,7 @@ export class GameScreen {
     this.showUndo(null);
     if (this.log !== null) this.log += moveEvent(m);
     this.state = move(this.state, m);
+    this.liveUpdate();
     // The KILL banner and red flash land with the blow, while the victim is still flying home.
     // Kill finishers: the full scene when a person is involved, a short one between bots, or none.
     const people = [m.color, ...m.captures.map((c) => c.color)].some((c) => !this.state.players.find((p) => p.color === c)!.bot);
@@ -846,6 +869,7 @@ export class GameScreen {
 
   dispose() {
     this.disposed = true;
+    this.live?.stop();
     this.calm?.stop();
     stopRolloutWorker();
     keepAwake(false);
@@ -888,7 +912,9 @@ export class GameScreen {
     if (rec) {
       if (this.state.phase !== 'over') rec.events += STOP_EVENT;
       const at = Date.now();
-      void savePastGame({ rec, at, mode: this.config.mode, place }).then(() => rec.seats.some((s) => !s.bot) && enqueue(rec, { pvp, at }));
+      // What the live review did during the game goes with it: the review queue finishes the rest (#176).
+      const live = this.live?.handOff(rec);
+      void savePastGame({ rec, at, mode: this.config.mode, place }).then(() => rec.seats.some((s) => !s.bot) && enqueue(rec, { pvp, at, live }));
     }
     this.finalRecord = rec;
     const rows = order

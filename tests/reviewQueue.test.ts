@@ -14,6 +14,7 @@ vi.mock('@capacitor/preferences', () => ({
 }));
 // A fake worker: each decision waits for a tick we control, so a test can see what's running.
 let calls: string[] = [];
+let luckArgs: unknown[][] = [];
 let release: (() => void)[] = [];
 const stopped = vi.fn();
 vi.mock('../src/engine/ai/review-worker', () => ({
@@ -24,7 +25,7 @@ vi.mock('../src/engine/ai/review-worker', () => ({
     await new Promise<void>((r) => release.push(r));
     return { ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.595 : 0.7)), gap: s.moves.map((_, i) => (i ? 0.105 : 0)), se: s.moves.map(() => 0.01), best: 0 };
   },
-  workerLuck: () => Promise.resolve({ luck: [], chances: [] }),
+  workerLuck: (...args: unknown[]) => (luckArgs.push(args), Promise.resolve({ luck: [], chances: [] })),
   stopReviewWorker: () => stopped(),
 }));
 const Q = await import('../src/ui/reviewQueue');
@@ -63,6 +64,7 @@ const step = async () => {
 beforeEach(() => {
   Q.resetQueue();
   calls = [];
+  luckArgs = [];
   release = [];
   mem.clear();
   stopped.mockClear();
@@ -103,16 +105,38 @@ describe('review queue', { timeout: 60_000 }, () => {
     expect(Q.progressOf(a)?.mine.finished).toBe(true);
   });
 
-  it('pauses during an Extreme game, not during others', async () => {
+  it('pauses during any game (the game is reviewed as it is played, #176), and goes on after it', async () => {
     const a = game(3);
-    Q.setGame('extreme');
-    Q.enqueue(a, { keep: false });
-    await flush();
-    await flush();
-    expect(calls.length).toBe(0);
-    Q.setGame('light');
+    for (const kind of ['extreme', 'light'] as const) {
+      Q.setGame(kind);
+      Q.enqueue(a, { keep: false });
+      await flush();
+      await flush();
+      expect(calls.length).toBe(0);
+    }
+    Q.setGame('none');
     await step();
     expect(calls.length).toBeGreaterThan(0);
+  });
+
+  it("starts from what the game's live review did: only the rest is reviewed, its luck chunks go to the luck pass (#176)", async () => {
+    const a = game(12);
+    // The whole review once, for its verdicts.
+    Q.follow(a, () => {}, { keep: false, open: true });
+    for (let i = 0; i < 400 && !Q.progressOf(a)?.finished; i++) await step();
+    const all = Q.progressOf(a)!.moves;
+    expect(all.length).toBeGreaterThan(2);
+    Q.resetQueue();
+    calls = [];
+    luckArgs = [];
+    // The game hands off all but its last two verdicts, and one luck chunk.
+    const part = { luck: [], chances: [[50, 50]] };
+    Q.enqueue(a, { keep: false, live: { moves: all.slice(0, -2), skip: [], luckHave: [part] } });
+    for (let i = 0; i < 50 && !Q.progressOf(a)?.finished; i++) await step();
+    expect(Q.progressOf(a)?.finished).toBe(true);
+    expect(calls.length).toBe(2);
+    expect(Q.progressOf(a)!.moves.map((m) => m.at)).toEqual(all.map((m) => m.at));
+    expect(luckArgs.at(-1)![3]).toEqual([part]);
   });
 
   it('queues only the newest few games on its own', async () => {
