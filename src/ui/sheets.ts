@@ -9,7 +9,7 @@ import { ACHIEVEMENTS, takeNew, type AchievementGroup } from './rewards';
 import { summary } from '../engine/ai/review';
 import { isComplete, isQueued, onReviewChange, progressOf } from './reviewQueue';
 import { peopleOf } from './reviewRun';
-import { accuracyText, luckBand, trendOf } from './reviewWords';
+import { accuracyText, trendOf } from './reviewWords';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
 
 const GROUPS: AchievementGroup[] = ['Ladder', 'Extreme', 'Milestones', 'Everyday'];
@@ -78,7 +78,9 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
     <div class="set"><span>Which face of the die counts?</span>${tg('face', [['top', `${faceIcon(true)}The top`, settings.diceFace === 'top'], ['front', `${faceIcon(false)}The front`, settings.diceFace === 'front']])}</div>
     <div class="set">${sw('sound', 'Sound', !sfx.muted)}</div>
     <div class="set"><span>Kill animations</span>${tg('killfx', [['full', 'Full', settings.killFx === 'full'], ['short', 'Short', settings.killFx === 'short'], ['off', 'Off', settings.killFx === 'off']])}</div>
-    <div class="set">${sw('fast', 'Fast bots', settings.fastBots)}<small class="qh">Bots roll and move twice as fast</small></div>`,
+    <div class="set">${sw('fast', 'Fast bots', settings.fastBots)}<small class="qh">Bots roll and move twice as fast</small></div>
+    <div class="set"><span>Undos per game</span>${tg('undos', [['0', 'Off', settings.undos === 0], ['1', '1', settings.undos === 1], ['2', '2', (settings.undos ?? 2) === 2]])}</div>
+    <div class="set">${sw('undowait', 'Wait for Undo when my turn ends', settings.undoWait !== false)}<small class="qh">A moment to take back a mis-touch before the next player rolls</small></div>`,
   );
   ov.querySelector('.themes')!.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLButtonElement>('.th');
@@ -98,6 +100,8 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
   switchRow(ov, 'sound', (on) => sfx.setMuted(!on));
   switchRow(ov, 'fast', (on) => saveSetting('fastBots', on));
   toggle(ov, 'killfx', (v) => saveSetting('killFx', v as 'full' | 'short' | 'off'));
+  toggle(ov, 'undos', (v) => saveSetting('undos', Number(v) as 0 | 1 | 2));
+  switchRow(ov, 'undowait', (on) => saveSetting('undoWait', on));
 }
 
 /**
@@ -121,7 +125,7 @@ function trendCard(box: HTMLElement, t: ReturnType<typeof trendOf>) {
   const grid = [0, 50, 100].map((v) => `<line x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 5}" y="${y(v) + 3.5}" text-anchor="end">${v}</text>`).join('');
   const pct = (v: number) => (Number.isFinite(v) ? `${Math.round(v)}%` : '–');
   box.innerHTML = `<h4>Accuracy and luck, your last ${n} games</h4>
-    <p class="tlegend"><span class="acc"><i></i>Accuracy</span><span class="luck"><i></i>Luck</span></p>
+    <p class="tlegend"><span class="acc"><i></i>Accuracy</span><span class="luck"><i></i>Luckometer</span></p>
     <svg viewBox="-4 -6 ${W + 8} ${H + 12}" aria-hidden="true">${grid}${line(t.games.map((g) => 100 * g.accuracy), 'acc')}${line(t.games.map((g) => g.luckPct), 'luck')}</svg>
     <p class="tavg">Average: <b class="acc">accuracy ${pct(100 * t.accuracy)}</b> · <b class="luck">luck ${pct(t.luck)}</b>. Oldest on the left.</p>`;
 }
@@ -147,7 +151,7 @@ export async function statsSheet(host: HTMLElement, onReplay?: (rec: GameRecord)
     : `<p class="sub">vs Computer, on this device</p>
     <div class="trend" hidden></div>
     <div class="stats">${cell(s.played, 'Games')}${cell(s.wins, 'Wins')}${cell(rate, 'Win rate')}${cell(best, 'Best place')}${cell(s.streak, 'Win streak')}${cell(s.bestStreak, 'Best streak')}${cell(s.kills, 'Kills')}${cell(s.sixes, 'Sixes')}${cell(s.xStreak, s.xBestStreak ? `Extreme (best ${s.xBestStreak})` : 'Extreme streak')}</div>
-    <p class="sub">With friends: ${s.friends} game${s.friends === 1 ? '' : 's'}</p>
+    <p class="sub">With friends: ${s.friends} game${s.friends === 1 ? '' : 's'}${s.undos ? ` · Undos used: ${s.undos}` : ''}</p>
     ${onReplay ? `<button class="pastrow" data-act="past"><span><b>Games &amp; reviews</b><small>${past.length ? `Your last ${past.length}: replays and reviews` : 'Finished games show up here'}</small></span><em>›</em></button>` : ''}
     <button class="reset" data-act="reset">Reset stats</button>`;
   const achPane = `<div class="achscroll">${GROUPS.map((g) => `<h4 class="achg">${g}</h4><div class="achlist">${ACHIEVEMENTS.filter((a) => a.group === g).map((a) => {

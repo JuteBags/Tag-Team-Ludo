@@ -75,6 +75,14 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole
 45. A token landing on a normal square captures **every** enemy token there, two or more included. Teammates (a person's two houses) are never captured.
 46. Everything else is as above: 6s and extra rolls, stars, the home column, the exact roll to finish, two houses each, the keep-playing vote.
 
+## J. Undo
+
+47. Each person may take back a move up to **2 times per game** (Settings: 0, 1 or 2). It's for mis-touches, so it's never shown as a mistake. Bots never undo.
+48. An undo takes back your **last move this turn**: the token goes back, any token it captured comes back, and the die returns to your tray. You can undo again in the same turn, each time costing one.
+49. **Only until new dice appear.** Once anyone rolls (your own extra roll after a capture or a token home, or the next player's roll), the moves before it stand.
+50. When your move ends your turn (or the game, or your last token home), there's a short moment (1.5 s) to undo before anyone rolls. Settings can turn that wait off.
+51. The game's record keeps only the moves that stood, so the replay and the review judge the moves you finally played.
+
 ## Known risks (accepted for v1, revisit after playtests)
 
 - A pair parked on a normal square holds back enemy singles until they land on it exactly, and a locked pair can sit stuck through a run of odd rolls.

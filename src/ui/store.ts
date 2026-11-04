@@ -50,6 +50,8 @@ export interface SavedGame {
   counted?: boolean;
   /** The game so far as record events (engine/record.ts); missing in saves from before records. */
   log?: string;
+  /** Undos each person used this game (#143), so a continued game keeps its count. */
+  undos?: Record<number, number>;
 }
 
 const GAME = 'ludo-save';
@@ -105,6 +107,8 @@ export interface Stats {
   friends: number;
   /** Sixes you rolled, and wins in a row (now and best). */
   sixes: number;
+  /** Moves taken back with Undo (#143), every game on this device; a quiet count, like kills and sixes. */
+  undos: number;
   streak: number;
   bestStreak: number;
   /** Wins by bot level (a game's level is its lowest bot's, `levelOf`). */
@@ -120,7 +124,7 @@ export interface Stats {
 
 const STATS = 'ludo-stats';
 export const emptyStats = (): Stats => ({
-  played: 0, wins: 0, best: 0, kills: 0, pairs: 0, friends: 0, sixes: 0, streak: 0, bestStreak: 0,
+  played: 0, wins: 0, best: 0, kills: 0, pairs: 0, friends: 0, sixes: 0, undos: 0, streak: 0, bestStreak: 0,
   levelWins: { easy: 0, normal: 0, hard: 0, extreme: 0 }, xStreak: 0, xBestStreak: 0, xModes: [], checkinBest: 0,
 });
 export const EMPTY_STATS: Readonly<Stats> = emptyStats();
@@ -138,10 +142,12 @@ export const resetStats = () => drop(STATS);
  * `level` is the game's level (`levelOf`), `layout` its layout (`layoutOf`). `xEnded` is the Extreme streak
  * this game ended, if any.
  */
-export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; pairs: number; sixes?: number; quit?: boolean; level?: BotLevel; layout?: string }): Promise<Stats & { xEnded: number }> {
+export async function recordGame(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; pairs: number; sixes?: number; undos?: number; quit?: boolean; level?: BotLevel; layout?: string }): Promise<Stats & { xEnded: number }> {
   const s = await loadStats();
   const before = s.xStreak;
   const won = !g.quit && g.place === 1;
+  // Undos count in every mode (#143): a quiet tally, never shown as a mistake.
+  s.undos = (s.undos ?? 0) + (g.undos ?? 0);
   if (g.mode === 'pvp') s.friends++;
   else {
     s.played++;

@@ -248,6 +248,23 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
   text-shadow:0 2px 0 rgba(0,0,0,.3);animation:nudge .9s ease-in-out infinite}
 .rollbtn svg{width:26px;height:26px}
 .rollbtn svg path{fill:#fff;stroke:#fff}
+/* Undo (#143): a round icon beside the tray, the undos left ("2/2") under it; in the turn-ends window its ring
+   drains. 48px to tap; the caption counts seconds instead under reduced motion. */
+.undobtn{flex:none;width:56px;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;margin-left:auto;color:#fff;background:none;border:0;padding:0}
+.undobtn[hidden]{display:none}
+.undobtn svg{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.16);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.35)}
+.undobtn svg path{stroke:#fff}
+.undobtn small{font:900 12px 'Nunito';opacity:.85;line-height:1}
+.undobtn .ur-bg,.undobtn .ur{fill:none;stroke-width:3;transform:rotate(-90deg);transform-origin:50% 50%}
+.undobtn .ur-bg{stroke:transparent}
+.undobtn .ur{stroke:transparent;stroke-dasharray:107;stroke-dashoffset:0;stroke-linecap:round}
+.undobtn.window .ur-bg,.undobtn.still .ur-bg{stroke:rgba(255,255,255,.2)}
+.undobtn.window .ur{stroke:#ffd65a;animation:undodrain var(--undo-ms,1500ms) linear forwards}
+.undobtn.still .ur{stroke:#ffd65a;stroke-dashoffset:40;animation:none}
+@keyframes undodrain{to{stroke-dashoffset:107}}
+.undobtn.none{opacity:.45}
+.undobtn:active:not(:disabled) svg{transform:translateY(2px)}
+@media (prefers-reduced-motion: reduce){.undobtn.window .ur{animation:none}}
 .rollbtn:active{transform:translateY(3px);box-shadow:inset 0 2px 0 rgba(255,255,255,.45),0 2px 0 var(--d)}
 .tdie{width:52px;height:52px;padding:0;border-radius:12px;transition:transform .15s,opacity .2s,box-shadow .15s;animation:tdIn .3s cubic-bezier(.16,1,.3,1)}
 .tdie svg{display:block;width:100%;height:100%;filter:drop-shadow(0 2px 0 rgba(0,0,0,.3))}
@@ -803,21 +820,12 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvchips button{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;min-height:44px;padding:5px 0;border-radius:10px;background:rgba(0,0,0,.25);color:#fff;font-size:15px;font-weight:900}
 .review .rvchips button.on{box-shadow:inset 0 0 0 2px var(--c)}
 .review .rvchips button i{font-style:normal;font-size:13px;color:var(--c)}
-.review .rvluck{margin-top:10px;font-size:15px}
-.review .rvluck b{font-family:'Lilita One';font-weight:400;font-size:18px}
-.review .rvluck.lucky b{color:#4ade80}.review .rvluck.unlucky b{color:#f87171}.review .rvluck.average b{color:#cbd5e1}
-.review .rvluck small{font-size:13px;font-weight:800;opacity:.85}
-.review .rvluck p{font-size:13px;font-weight:700;margin-top:2px;line-height:1.4}
-.review .rvluck p b{font-family:Nunito,sans-serif;font-weight:900;font-size:14px}
-.review .rvluck.skel{display:flex;flex-direction:column;gap:6px}
-.review .rvluck.skel i{display:block;height:11px;border-radius:6px;background:linear-gradient(90deg,rgba(255,255,255,.08) 25%,rgba(255,255,255,.2) 50%,rgba(255,255,255,.08) 75%);background-size:200% 100%;animation:shimmer 1.3s linear infinite}
-.review .rvluck.skel i+i{width:70%}
 @keyframes shimmer{from{background-position:100% 0}to{background-position:-100% 0}}
 .review .rvbotluck{display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:13px;font-weight:800}
 .review .rvbotluck i{width:22px;height:22px;border-radius:50%;padding:1.5px;background:var(--m);flex:none}
 .review .rvbotluck i svg{width:100%;height:100%;border-radius:50%;display:block}
 .review .rvbotluck span{flex:1;opacity:.85}
-.review .rvbotluck b.lucky{color:#4ade80}.review .rvbotluck b.unlucky{color:#f87171}.review .rvbotluck b.average{color:#cbd5e1}
+.review .rvbotluck b{color:#cbd5e1}
 .review .rvgraph{margin-top:8px}
 .review .rvgraph:empty{display:none}
 .review .rvgraph small{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
@@ -841,6 +849,8 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvgraph circle.accuracy{fill:#56B4E9}.review .rvgraph circle.luck{fill:#E69F00}
 .review .rvgraph .final.accuracy{fill:#56B4E9}.review .rvgraph .final.luck{fill:#E69F00}
 .review .rvgnote{margin:6px 0 0;font-size:12px;font-weight:800;opacity:.75}
+/* Labels read over any line: a dark halo drawn under the text. */
+.review .rvgraph text{paint-order:stroke;stroke:rgba(6,18,60,.92);stroke-width:3px;stroke-linejoin:round}
 .review .rvleave{margin:-4px 0 10px;font-size:12px;font-weight:700;opacity:.75}
 .review .rvtabs{display:flex;gap:4px;padding:4px;margin:4px 0 10px;border-radius:14px;background:rgba(0,0,0,.25)}
 .review .rvtabs button{flex:1;min-height:40px;border-radius:11px;background:none;color:#fff;font-size:14px;font-weight:900;opacity:.75}
@@ -851,8 +861,6 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvhead{margin:12px 0 2px;font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
 .review .rvnote{padding:12px;border-radius:14px;background:rgba(0,0,0,.2);font-size:14px;font-weight:800;text-align:center}
 .review .rvrow>i.die{width:30px;display:grid;place-items:center}
-.review .rvrow.roll.lucky{box-shadow:inset 0 0 0 1.5px rgba(74,222,128,.4)}
-.review .rvrow.roll.unlucky{box-shadow:inset 0 0 0 1.5px rgba(248,113,113,.4)}
 .review .rvprog{display:flex;align-items:center;gap:10px;margin:12px 0 8px;font-size:13px;font-weight:800}
 .review .rvprog .bar{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden}
 .review .rvprog .bar i{display:block;height:100%;background:#ffd65a;transition:width .3s}
@@ -884,7 +892,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .revbtn{flex:1.25;display:flex;align-items:center;justify-content:center;height:52px;margin-top:14px;border-radius:18px;border:0;font-size:18px;color:#4a2400;
   background:linear-gradient(180deg,#ffe27a,#f2a20f);box-shadow:inset 0 2px 0 rgba(255,255,255,.55),0 5px 0 #a35a00}
 .result:has(.reward) .revbtn{margin-top:10px;height:46px}
-@media (prefers-reduced-motion:reduce){.review .rvluck.skel i{animation:none}}
+
 
 /* The review's verdict on the board (replay in review mode): played = solid trail + symbol, best = dashed trail + dashed ghost. */
 /* The replay's verdict on the board (#124): a white "You" path and a thicker green "Better" path with a ring
@@ -918,7 +926,6 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvp small{font-size:9.5px;font-weight:900;letter-spacing:.06em;opacity:.7}
 .review .rvwho em+em{margin-left:14px}
 .review .rvwho em.lk{color:#cbd5e1}
-.review .rvwho em.lk.lucky{color:#4ade80}.review .rvwho em.lk.unlucky{color:#f87171}
 .review .rvhead1{margin:0 0 10px;padding:10px 14px;border-radius:14px;background:rgba(255,214,90,.12);box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.4);font-size:15px;font-weight:900;line-height:1.35}
 .review .rvstale{margin:0 0 8px;font-size:12px;font-weight:900;color:#ffd65a}
 .review.stale .rvcards,.review.stale .rvgraph,.review.stale .rvlist{opacity:.5}
