@@ -1,0 +1,39 @@
+# The review's speed on a pool of 1, 2 and 3 workers (#151): the hidden bench page's GAME REVIEW test
+# (src/ui/bench.ts) in headless Chrome on the runner, against a production build. The table goes in the run
+# summary. On PRs that touch the review's workers or the bench, and by hand.
+name: Review bench
+
+on:
+  pull_request:
+    paths:
+      - 'src/engine/ai/review-worker.ts'
+      - 'src/engine/ai/rollout-worker.ts'
+      - 'src/engine/ai/review.ts'
+      - 'src/ui/reviewRun.ts'
+      - 'src/ui/bench.ts'
+      - 'tools/bench/review-bench.mjs'
+      - '.github/workflows/review-bench.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: review bench
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.63.0
+      - name: Serve the build
+        run: |
+          npx vite preview --port 4173 --strictPort > preview.log 2>&1 &
+          for i in $(seq 60); do curl -sf http://localhost:4173/ > /dev/null && break; sleep 1; done
+      - run: nproc
+      - run: node tools/bench/review-bench.mjs http://localhost:4173/ "$(command -v google-chrome || command -v chromium)"

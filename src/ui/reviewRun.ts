@@ -121,7 +121,8 @@ export function runReview(
   const keep = () => {
     if (!changed || !newest()) return Promise.resolve();
     when = Date.now();
-    const review: StoredReview = { v: REVIEW_VERSION, moves: moves.map(compactMove), luck: luck && luck.map(compactRoll), chances: chances ?? undefined, who: covered, skip: skipped.size ? [...skipped] : undefined, when, old: done() ? undefined : old, done: done() || undefined };
+    // Sorted by position (#151): with a pool of workers, verdicts arrive out of order.
+    const review: StoredReview = { v: REVIEW_VERSION, moves: [...moves].sort((a, b) => a.at - b.at).map(compactMove), luck: luck && luck.map(compactRoll), chances: chances ?? undefined, who: covered, skip: skipped.size ? [...skipped] : undefined, when, old: done() ? undefined : old, done: done() || undefined };
     return store ? saveReview(rec, review, newest) : Promise.resolve();
   };
   report(done());
@@ -174,7 +175,7 @@ export function runReview(
         skipped.add(at);
         changed = true;
         report(false);
-      }, { order: 'stakes', onOrder: (o) => {
+      }, { order: 'stakes', parallel: (reviewer as { parallel?: number } | null)?.parallel ?? 1, onOrder: (o) => {
         if (stopped) return;
         order = o;
         report(false);

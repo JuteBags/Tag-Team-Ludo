@@ -6,6 +6,7 @@
 //   { id, kind: 'luck-begin', rec }            out: { id, run, states }  (a new pass; any older one ends)
 //   { id, kind: 'luck-chunk', run, from, to }  out: { id, luck, chances } for states[from, to)
 //   { id, kind: 'luck-end', run }              out: { id, memory }  (frees the pass; a stale run is a no-op)
+// Its memory (#151, the bench): { id, kind: 'memory' }; out: { id, bytes } (the wasm memory; 0 before the engine loads).
 // or the whole game at once: { id, kind: 'luck', rec }; out: { id, luck, chances, memory }. The values come from
 // the WebAssembly engine (luck.ts wasmLuck), or from the net in JS (netLuck) where the module can't run.
 import { PLAYOUT_RULES } from './playout-rules';
@@ -51,7 +52,7 @@ const endPass = () => {
   pass = null;
 };
 
-type Msg = { id: number; kind?: 'review' | 'luck' | 'luck-begin' | 'luck-chunk' | 'luck-end'; state: GameState; nmax: number; n: number; seed: number; ask?: ReviewAsk; rec: GameRecord; run: number; from: number; to: number };
+type Msg = { id: number; kind?: 'review' | 'luck' | 'luck-begin' | 'luck-chunk' | 'luck-end' | 'memory'; state: GameState; nmax: number; n: number; seed: number; ask?: ReviewAsk; rec: GameRecord; run: number; from: number; to: number };
 
 self.onmessage = async (e: MessageEvent<Msg>) => {
   const { id, kind, state, nmax, n, seed, ask } = e.data;
@@ -68,6 +69,12 @@ self.onmessage = async (e: MessageEvent<Msg>) => {
     if (kind === 'luck-chunk') {
       if (pass?.run !== e.data.run) throw new Error('this luck pass has ended');
       self.postMessage({ id, ...luckChunk(pass.src, pass.rec, pass.states, e.data.from, Math.min(e.data.to, pass.states.length)) });
+      return;
+    }
+    if (kind === 'memory') {
+      // The bench's memory line (#151): this worker's wasm memory, if its engine is loaded.
+      const e2 = engine ? await engine.catch(() => null) : null;
+      self.postMessage({ id, bytes: e2?.luckMemory.bytes ?? 0 });
       return;
     }
     if (kind === 'luck-end') {

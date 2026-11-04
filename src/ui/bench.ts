@@ -3,15 +3,17 @@
 // paste into chat or an issue.
 //   Extreme moves (#62): the same fixed decisions on every device (positions from seeded bot games) through
 //     the real rollout worker, at 128 and 256 playouts, in 2- and 4-player games: p50 / p90 / max per move.
-//   Game review (#105): two fixed games (review-speed.yml's, so a phone compares with the CI runner) reviewed
-//     exactly as the app reviews a game (reviewRun.ts: the biggest decisions first, the luck pass after the
-//     first few), in a worker of the bench's own: when the first key verdict and the whole review are in, and
-//     the luck pass's own time.
+//   Game review (#105, #151): two fixed games (review-speed.yml's, so a phone compares with the CI runner)
+//     reviewed exactly as the app reviews a game (reviewRun.ts: the biggest decisions first, the luck pass
+//     after the first few) on a pool of 1, 2 and 3 workers of the bench's own (review-worker.ts ReviewPool):
+//     when the first key verdict and the whole review are in, the luck pass's own time, and each worker's
+//     memory, with the pool size the app would use on this device.
 // The review queue waits while a test runs, so a past game's review doesn't share the phone's time.
 import { SEATS as TABLE, chooseMove, createGame, move, roll, seeded, seededDie, type Color, type GameRecord, type GameState, type Seat } from '../engine';
-import type { DecisionValues, Label, Reviewer, RollLuck } from '../engine/ai/review';
+import type { Label } from '../engine/ai/review';
 import { setGame } from './reviewQueue';
 import { runReview } from './reviewRun';
+import { MAX_POOL, poolSize, ReviewPool } from '../engine/ai/review-worker';
 
 const PER_ARM = 50;
 const ARMS: { layout: '2p' | '4p'; nmax: number }[] = [
@@ -120,31 +122,6 @@ export function reviewRecord(g: { layout: '2p' | '4p'; seed: number; events: str
 
 const KEY = new Set<Label>(['inaccuracy', 'mistake', 'blunder']);
 
-/** The review's calls to the bench's own worker (rollout-worker.ts's 'review' and 'luck' messages). */
-function reviewClient(worker: Worker) {
-  let next = 0;
-  const pending = new Map<number, { done: (d: Record<string, unknown>) => void; fail: (e: Error) => void }>();
-  worker.onmessage = (e: MessageEvent<{ id: number; error?: string }>) => {
-    const p = pending.get(e.data.id);
-    pending.delete(e.data.id);
-    if (e.data.error) p?.fail(new Error(e.data.error));
-    else p?.done(e.data);
-  };
-  worker.onerror = () => {
-    for (const p of pending.values()) p.fail(new Error('the worker failed to load'));
-    pending.clear();
-  };
-  const call = (msg: object) =>
-    new Promise<Record<string, unknown>>((done, fail) => {
-      const id = next++;
-      pending.set(id, { done, fail });
-      worker.postMessage({ id, ...msg });
-    });
-  const reviewer: Reviewer = (state, n, seed, ask) => call({ kind: 'review', state, n, seed, ask }).then((d) => d.values as DecisionValues);
-  const luck = (rec: GameRecord) => call({ kind: 'luck', rec }).then((d) => ({ luck: d.luck as RollLuck[], chances: (d.chances ?? []) as number[][] }));
-  return { reviewer, luck };
-}
-
 export interface ReviewTiming {
   /** Since the review started (ms): the first key verdict in, and all done. */
   firstKeyMs: number | null;
@@ -156,17 +133,17 @@ export interface ReviewTiming {
 }
 
 /**
- * Reviews seat 0's decisions in `rec` through runReview, as the app does, with nothing stored, and times what
- * a person waits for. `onStop` is handed a function that stops it (the result is then null).
+ * Reviews seat 0's decisions in `rec` through runReview, as the app does, on `pool`, with nothing stored, and
+ * times what a person waits for. `onStop` is handed a function that stops it (the result is then null).
  */
-function timeReview(rec: GameRecord, client: ReturnType<typeof reviewClient>, onStop: (stop: () => void) => void): Promise<ReviewTiming | null> {
+function timeReview(rec: GameRecord, pool: ReviewPool, onStop: (stop: () => void) => void): Promise<ReviewTiming | null> {
   return new Promise((resolve) => {
     const t0 = performance.now();
     let luckMs: number | null = null;
     let firstKeyMs: number | null = null;
-    const luck = (r: GameRecord) => {
+    const luck = (r: GameRecord, stopped?: () => boolean) => {
       const t = performance.now();
-      return client.luck(r).then((v) => ((luckMs = performance.now() - t), v));
+      return pool.luck(r, stopped)!.then((v) => ((luckMs = performance.now() - t), v));
     };
     const stop = runReview(
       rec,
@@ -177,12 +154,13 @@ function timeReview(rec: GameRecord, client: ReturnType<typeof reviewClient>, on
         if (p.finished) resolve({ luckMs, firstKeyMs, totalMs: now, decisions: p.total, reviewed: p.done });
       },
       false,
-      client.reviewer,
+      pool.reviewer(),
       [0],
       luck,
     );
     onStop(() => {
       stop();
+      pool.stop();
       resolve(null);
     });
   });
@@ -350,21 +328,35 @@ async function movesBench(worker: Worker, say: (l: string) => void, hidden: () =
   }
 }
 
-/** The game review test (#105): per game, the first key verdict, the whole review, and the luck pass. */
-async function reviewBench(worker: Worker, say: (l: string) => void, hidden: () => boolean, onStop: (stop: () => void) => void) {
-  const client = reviewClient(worker);
+/**
+ * The game review test (#105, #151): per game, the first key verdict, the whole review and the luck pass, on
+ * a pool of 1, 2 and 3 workers (the app uses poolSize()), and each worker's wasm memory.
+ */
+async function reviewBench(_worker: Worker, say: (l: string) => void, hidden: () => boolean, onStop: (stop: () => void) => void) {
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  say(`pool: the app uses ${poolSize()} review worker${poolSize() > 1 ? 's' : ''} here (cores ${nav.hardwareConcurrency ?? '?'}, memory ${nav.deviceMemory ?? '?'} GB)`);
   const games = REVIEW_GAMES.map((g) => ({ ...g, rec: reviewRecord(g) }));
-  // Untimed first: loading the engine, the net and the luck net isn't a review's cost (a phone that has
-  // reviewed a game since the app opened has them loaded too).
-  const warm = games[0]!.rec;
-  await client.luck({ ...warm, events: '' });
-  await client.reviewer(benchDecisions('2p', 1)[0]!, 16, 1);
-  for (const g of games) {
+  for (let size = 1; size <= MAX_POOL; size++) {
     if (hidden()) return;
-    say(`reviewing the ${g.layout} game…`);
-    const r = await timeReview(g.rec, client, onStop);
-    if (!r) return;
-    const missing = r.reviewed < r.decisions ? `; only ${r.reviewed} of ${r.decisions} reviewed: the worker failed` : '';
-    say(`review ${g.layout} game ${g.seed}: first key verdict ${sec(r.firstKeyMs)}, all ${sec(r.totalMs)} (of which the luck pass ${sec(r.luckMs)}; ${r.decisions} decisions${missing})`);
+    const pool = new ReviewPool(size);
+    try {
+      // Untimed first: every worker loads its engine, the net and the luck net (as after a first review).
+      const warm = games[0]!.rec;
+      await pool.luck({ ...warm, events: '' });
+      const rv = pool.reviewer()!;
+      await Promise.all(Array.from({ length: size }, (_, k) => rv(benchDecisions('2p', 1)[0]!, 16, k + 1)));
+      for (const g of games) {
+        if (hidden()) return;
+        say(`reviewing the ${g.layout} game on ${size} worker${size > 1 ? 's' : ''}…`);
+        const r = await timeReview(g.rec, pool, onStop);
+        if (!r) return;
+        const missing = r.reviewed < r.decisions ? `; only ${r.reviewed} of ${r.decisions} reviewed: a worker failed` : '';
+        say(`review ${g.layout} game ${g.seed}, ${size} worker${size > 1 ? 's' : ''}: first key verdict ${sec(r.firstKeyMs)}, all ${sec(r.totalMs)} (of which the luck pass ${sec(r.luckMs)}; ${r.decisions} decisions${missing})`);
+      }
+      const mem = await pool.memory();
+      say(`memory, ${size} worker${size > 1 ? 's' : ''}: wasm ${mem.map((b) => `${(b / 1048576).toFixed(1)} MB`).join(' + ')}`);
+    } finally {
+      pool.stop();
+    }
   }
 }
