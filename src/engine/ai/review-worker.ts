@@ -58,6 +58,12 @@ interface Slot {
 /** The pool's Reviewer, and how many decisions it can take at once (review.ts ReviewOptions.parallel). */
 export type PoolReviewer = Reviewer & { parallel: number };
 
+/** One chunk of a game's luck pass: states [c·LUCK_CHUNK, (c+1)·LUCK_CHUNK). */
+export interface LuckPart {
+  luck: RollLuck[];
+  chances: number[][];
+}
+
 /**
  * A pool of review workers, made when first asked for and ended by stop(). Calls for one decision (its race,
  * then any full review and top-ups, all with the decision's own seed) go to the worker that took it, where
@@ -152,15 +158,20 @@ export class ReviewPool {
    * before each chunk) lands within one chunk per worker; it resolves null then. Null where workers can't run.
    * While `yieldTo()` is true, a worker takes its next chunk only once it has no decision in flight: the
    * review's decisions go first (until its first key verdict, #151), and a chunk never queues ahead of one.
+   * `have[c]`: chunk c already done (#176, while the game was played), not computed again.
    */
-  luck(rec: GameRecord, stopped: () => boolean = () => false, yieldTo: () => boolean = () => false): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
+  luck(rec: GameRecord, stopped: () => boolean = () => false, yieldTo: () => boolean = () => false, have: readonly (LuckPart | undefined)[] = []): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
     const slots = this.make();
     if (!slots) return null;
     return (async () => {
       const passes = await Promise.all(slots.map((s) => this.call<{ run: number; states: number }>(s, { kind: 'luck-begin', rec })));
       const chunks = Math.ceil(passes[0]!.states / LUCK_CHUNK);
-      const parts: { luck: RollLuck[]; chances: number[][] }[] = new Array(chunks);
+      // Chunks already done (#176: reviewed while the game was played) are taken as they are.
+      const parts: LuckPart[] = Array.from({ length: chunks }, (_, c) => have[c]!);
       let next = 0;
+      const skipDone = () => {
+        while (next < chunks && parts[next]) next++;
+      };
       let halted = false;
       try {
         await Promise.all(
@@ -176,6 +187,7 @@ export class ReviewPool {
                 halted = true;
                 return;
               }
+              skipDone();
               if (next >= chunks) return;
               const c = next++;
               parts[c] = await this.call(s, { kind: 'luck-chunk', run: passes[k]!.run, from: c * LUCK_CHUNK, to: (c + 1) * LUCK_CHUNK });
@@ -188,6 +200,35 @@ export class ReviewPool {
         slots.forEach((s, k) => void this.call(s, { kind: 'luck-end', run: passes[k]!.run }).catch(() => {}));
       }
     })();
+  }
+
+  /** Per worker, the luck parts it is working through, one after another (#176). */
+  private luckQueue = new Map<Slot, Promise<unknown>>();
+
+  /**
+   * Chunk `c` of the luck pass of a game whose record `rec` reaches at least one state past the chunk (a
+   * roll's luck reads the face from the next state): the same values as the whole game's pass gives for it
+   * (#176, the review while the game is played). On the least busy worker; a worker's parts run one after
+   * another (one pass at a time: its module has one leaf cache). Null where workers can't run.
+   */
+  luckPart(rec: GameRecord, c: number): Promise<LuckPart> | null {
+    const slots = this.make();
+    if (!slots) return null;
+    const slot = this.pick(slots);
+    const run = async () => {
+      const pass = await this.call<{ run: number; states: number }>(slot, { kind: 'luck-begin', rec });
+      try {
+        return await this.call<LuckPart>(slot, { kind: 'luck-chunk', run: pass.run, from: c * LUCK_CHUNK, to: (c + 1) * LUCK_CHUNK });
+      } finally {
+        void this.call(slot, { kind: 'luck-end', run: pass.run }).catch(() => {});
+      }
+    };
+    const p = (this.luckQueue.get(slot) ?? Promise.resolve()).then(run, run);
+    this.luckQueue.set(
+      slot,
+      p.catch(() => {}),
+    );
+    return p;
   }
 
   /** Each worker's wasm memory in bytes (the bench's memory line); 0 for one whose engine isn't loaded. */
@@ -205,6 +246,7 @@ export class ReviewPool {
     }
     this.slots = undefined;
     this.bySeed.clear();
+    this.luckQueue.clear();
   }
 }
 
@@ -218,8 +260,8 @@ export function workerReviewer(): PoolReviewer | null {
 }
 
 /** The app's luck pass in the pool (ReviewPool.luck). Null where workers can't run. */
-export function workerLuck(rec: GameRecord, stopped: () => boolean = () => false, yieldTo: () => boolean = () => false): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
-  return appPool().luck(rec, stopped, yieldTo);
+export function workerLuck(rec: GameRecord, stopped: () => boolean = () => false, yieldTo: () => boolean = () => false, have: readonly (LuckPart | undefined)[] = []): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
+  return appPool().luck(rec, stopped, yieldTo, have);
 }
 
 /** Ends the app's pool (the review queue calls it once it's empty or paused), so no idle worker holds memory. */
