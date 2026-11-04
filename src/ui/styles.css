@@ -934,6 +934,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .replay .rpcap.plain .vp{display:inline-block;padding:0 7px;border-radius:999px;font-weight:900;line-height:1.45}
 .replay .rpcap.plain .vp.you{background:#fff;color:#0c2a74}
 .replay .rpcap.plain .vp.better{background:#34d399;color:#053b2a}
+.replay .rpcap.plain .vwhy{grid-column:1 / -1;font-size:13px;font-weight:700;line-height:1.3;opacity:.88}
 .replay .rpcap.plain .findchip,.replay .rpcap.plain [data-act=again]{grid-column:1 / -1;justify-self:end}
 .replay.rvmode .sharebtn,.replay.rvmode .rpcount{display:none}
 .replay.rvmode .rpscrub{top:712px}
