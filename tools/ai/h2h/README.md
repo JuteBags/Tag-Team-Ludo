@@ -22,7 +22,7 @@ Code: https://github.com/sumit7194/AlphaLudo
 
 ## Their code and model
 Their repository has no licence, so all rights are reserved.
-- **The referee** is their `crates/ludo_core` at commit `5d4e498`. Cargo fetches it when the workflow builds this crate.
+- **The referee** is their `crates/ludo_core` at commit `5d4e498`. The workflow checks out only that crate, into the runner's temp dir, and links it here as `alphaludo/` (git-ignored).
 - **V17** is the ONNX file alphaludo.in serves. The workflow downloads it into the runner's temp dir and checks it against a pinned sha256.
 
 Neither is committed here, cached, uploaded as an artifact or shipped. Only our harness and our results are kept.

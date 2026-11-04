@@ -1,5 +1,5 @@
 # The AlphaLudo head-to-head (#148): our Extreme against AlphaLudo V17 in AlphaLudo's classic one-die rules.
-# Their referee (ludo_core at a pinned commit) is fetched by cargo when the harness builds, and V17 (the ONNX file
+# Their referee (only crates/ludo_core, at a pinned commit) is checked out into the runner's temp dir, and V17 (the ONNX file
 # alphaludo.in serves) is downloaded into the runner's temp dir and checked against a pinned sha256. Neither is
 # committed, cached (no actions/cache), uploaded as an artifact or shipped; only our results are uploaded.
 #   On a PR touching the harness: the classic-mode tests, the lockstep parity check (10k games) and a V17 probe.
@@ -75,7 +75,16 @@ jobs:
       - name: Classic-mode tests (sim-rs)
         if: env.MODE != 'match'
         run: cargo test --release --manifest-path sim-rs/Cargo.toml --test classic
-      - name: Build the harness (fetches their ludo_core at the pinned rev)
+      - name: Their ludo_core at the pinned commit (runner temp only, that crate only)
+        run: |
+          A="$RUNNER_TEMP/alphaludo"; mkdir -p "$A" && cd "$A"
+          git init -q && git remote add origin https://github.com/sumit7194/AlphaLudo
+          git sparse-checkout set --no-cone /crates/ludo_core/
+          git fetch -q --depth 1 --filter=blob:none origin 5d4e498008fb235807a1240688ddbf28b5fb7576
+          git -c advice.detachedHead=false checkout -q FETCH_HEAD
+          git log --oneline -1 && ls crates/ludo_core/src
+          ln -s "$A" "$GITHUB_WORKSPACE/tools/ai/h2h/alphaludo"
+      - name: Build the harness
         run: CARGO_TARGET_DIR="$RUNNER_TEMP/target" cargo build --release --manifest-path tools/ai/h2h/Cargo.toml
       - name: Parity with their engine (10k games, lockstep)
         if: env.MODE == 'parity'
