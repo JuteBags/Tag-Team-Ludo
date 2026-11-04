@@ -85,11 +85,9 @@ jobs:
         if: env.MODE == 'parity'
         run: '"$RUNNER_TEMP/target/release/h2h" parity --games 10000'
       - uses: actions/setup-python@v6
-        if: true
         with:
           python-version: '3.12'
       - name: Fetch V17 (runner temp only)
-        if: true
         env:
           URL: ${{ inputs.model_url || 'https://alphaludo.in/v/94f7d0f0d0/model_v17.onnx' }}
           PIN: ${{ inputs.model_sha256 }}
