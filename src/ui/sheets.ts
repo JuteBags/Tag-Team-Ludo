@@ -9,7 +9,7 @@ import { ACHIEVEMENTS, takeNew, type AchievementGroup } from './rewards';
 import { summary } from '../engine/ai/review';
 import { isComplete, isQueued, onReviewChange, progressOf } from './reviewQueue';
 import { peopleOf } from './reviewRun';
-import { accuracyText, luckBand } from './reviewWords';
+import { accuracyText, luckBand, trendOf } from './reviewWords';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
 
 const GROUPS: AchievementGroup[] = ['Ladder', 'Extreme', 'Milestones', 'Everyday'];
@@ -100,6 +100,32 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
   toggle(ov, 'killfx', (v) => saveSetting('killFx', v as 'full' | 'short' | 'off'));
 }
 
+/**
+ * The accuracy and luck trends (#134): your last reviewed games, oldest on the left; accuracy solid sky blue, luck
+ * dashed orange (safe for colour-blindness, and solid vs dashed besides), a legend row naming both, the averages.
+ */
+function trendCard(box: HTMLElement, t: ReturnType<typeof trendOf>) {
+  box.hidden = false;
+  if (!t) {
+    box.innerHTML = '<p class="tnote">Review 2 games to see your accuracy and luck trend.</p>';
+    return;
+  }
+  const W = 300, H = 90, L = 22;
+  const n = t.games.length;
+  const x = (k: number) => L + (n > 1 ? k / (n - 1) : 0.5) * (W - L);
+  const y = (v: number) => H * (1 - v / 100);
+  const line = (vals: number[], cls: string) => {
+    const pts = vals.flatMap((v, k) => (Number.isFinite(v) ? [`${x(k).toFixed(1)},${y(v).toFixed(1)}`] : []));
+    return pts.length ? `<polyline class="${cls}" points="${pts.join(' ')}"/>${vals.map((v, k) => (Number.isFinite(v) ? `<circle class="${cls}" cx="${x(k).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.6"/>` : '')).join('')}` : '';
+  };
+  const grid = [0, 50, 100].map((v) => `<line x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 5}" y="${y(v) + 3.5}" text-anchor="end">${v}</text>`).join('');
+  const pct = (v: number) => (Number.isFinite(v) ? `${Math.round(v)}%` : '–');
+  box.innerHTML = `<h4>Accuracy and luck, your last ${n} games</h4>
+    <p class="tlegend"><span class="acc"><i></i>Accuracy</span><span class="luck"><i></i>Luck</span></p>
+    <svg viewBox="-4 -6 ${W + 8} ${H + 12}" aria-hidden="true">${grid}${line(t.games.map((g) => 100 * g.accuracy), 'acc')}${line(t.games.map((g) => g.luckPct), 'luck')}</svg>
+    <p class="tavg">Average: <b class="acc">accuracy ${pct(100 * t.accuracy)}</b> · <b class="luck">luck ${pct(t.luck)}</b>. Oldest on the left.</p>`;
+}
+
 export async function statsSheet(host: HTMLElement, onReplay?: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void) {
   const s: Stats = await loadStats().catch(() => emptyStats());
   const past = await loadPastGames().catch(() => [] as PastGame[]);
@@ -119,6 +145,7 @@ export async function statsSheet(host: HTMLElement, onReplay?: (rec: GameRecord)
   const statsPane = empty
     ? `<div class="empty"><b class="disp">No games yet</b><p class="sub">Play a game vs Computer and your wins, kills and best place show up here.</p></div>`
     : `<p class="sub">vs Computer, on this device</p>
+    <div class="trend" hidden></div>
     <div class="stats">${cell(s.played, 'Games')}${cell(s.wins, 'Wins')}${cell(rate, 'Win rate')}${cell(best, 'Best place')}${cell(s.streak, 'Win streak')}${cell(s.bestStreak, 'Best streak')}${cell(s.kills, 'Kills')}${cell(s.sixes, 'Sixes')}${cell(s.xStreak, s.xBestStreak ? `Extreme (best ${s.xBestStreak})` : 'Extreme streak')}</div>
     <p class="sub">With friends: ${s.friends} game${s.friends === 1 ? '' : 's'}</p>
     ${onReplay ? `<button class="pastrow" data-act="past"><span><b>Games &amp; reviews</b><small>${past.length ? `Your last ${past.length}: replays and reviews` : 'Finished games show up here'}</small></span><em>›</em></button>` : ''}
@@ -140,6 +167,20 @@ export async function statsSheet(host: HTMLElement, onReplay?: (rec: GameRecord)
     ov.remove();
     pastGamesSheet(host, past, onReplay!, onReview);
   });
+  // The accuracy and luck trends (#134): from the reviews' summaries (one small read), filled in when ready.
+  void loadSummaries()
+    .catch(() => ({}))
+    .then(async (index) => {
+      const games: { accuracy: number; luckPct: number }[] = [];
+      for (const g of [...past].reverse()) {
+        const me = g.mode === 'pvc' ? peopleOf(g.rec)[0] : undefined;
+        if (me === undefined) continue;
+        const o = (await loadSummary(g.rec, index))?.owners[me];
+        if (o && o.moves) games.push({ accuracy: o.accuracy ?? NaN, luckPct: o.luckPct ?? NaN });
+      }
+      const box = ov.querySelector<HTMLElement>('.trend');
+      if (box && ov.isConnected) trendCard(box, trendOf(games));
+    });
   ov.querySelector('.tabs')!.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLButtonElement>('[data-tab]');
     if (!b) return;

@@ -377,6 +377,8 @@ export const spreadOf = (m: MoveReview) => (m.gaps?.length ? Math.max(...m.gaps)
 
 /** The labels that always put a decision in the accuracy, whatever its spread (#133). */
 const COUNTED_LABELS: ReadonlySet<Label> = new Set<Label>(['inaccuracy', 'mistake', 'blunder']);
+/** Whether a decision counts in the accuracy (#133): a meaningful spread, or labelled Inaccuracy, Mistake or Blunder. */
+export const countsForAccuracy = (m: MoveReview) => spreadOf(m) >= MEANINGFUL || COUNTED_LABELS.has(m.label);
 /** The most accuracy can be when a counted move wasn't Best (#133): it rounds to 99%, never a false 100%. */
 export const NOT_PERFECT = 0.99;
 /**
@@ -396,7 +398,7 @@ export const ACCURACY_VERSION = 2;
 export function accuracyOf(mine: MoveReview[]): number {
   const cap = (acc: number, moves: MoveReview[]) => (moves.every((m) => m.label === 'best') ? acc : Math.min(acc, NOT_PERFECT));
   if (mine.length && mine.every((m) => m.gaps?.length)) {
-    const counted = mine.filter((m) => spreadOf(m) >= MEANINGFUL || COUNTED_LABELS.has(m.label));
+    const counted = mine.filter(countsForAccuracy);
     const at = counted.reduce((a, m) => a + spreadOf(m), 0);
     // A move labelled Best gave up nothing: its gap is within noise, and the number agrees with the label.
     return at > 0 ? cap(1 - counted.reduce((a, m) => a + (m.label === 'best' ? 0 : m.gap), 0) / at, counted) : NaN;
