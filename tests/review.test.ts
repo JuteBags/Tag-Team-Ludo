@@ -45,8 +45,19 @@ describe('labels', () => {
     expect(labelOf(2.5, 3)).toBe('best');
     expect(labelOf(1.8, 0.5)).toBe('good');
     expect(labelOf(2.5, 0.5)).toBe('inaccuracy');
-    expect(labelOf(5, 0.5)).toBe('mistake');
-    expect(labelOf(10, 1)).toBe('blunder');
+    expect(labelOf(5.6, 0.5)).toBe('mistake');
+    expect(labelOf(11, 1)).toBe('blunder');
+  });
+
+  it('gives the harsher label only when the gap clears its cut by one standard error (#138)', () => {
+    // Move 87 of the 2.5.0 demo: 9.64 ± 0.28 at 4,096 playouts is a Mistake; at 128 the gap read 10.2 ± 1.6.
+    expect(labelOf(9.64, 0.28)).toBe('mistake');
+    expect(labelOf(10.2, 1.6)).toBe('mistake');
+    expect(labelOf(10.2, 0.1)).toBe('blunder');
+    // At a cut exactly (gap - se = cut) the harsher label; just under it, the milder one.
+    expect(labelOf(5.5, 0.5)).toBe('mistake');
+    expect(labelOf(5.4, 0.5)).toBe('inaccuracy');
+    expect(labelOf(2.4, 0.5)).toBe('good');
   });
 
   it("scales the cuts by the layout, never under a point", () => {

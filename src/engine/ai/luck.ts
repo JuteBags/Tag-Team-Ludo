@@ -9,7 +9,7 @@
 import type { GameRecord } from '../record';
 import type { GameState } from '../types';
 import type { Net } from './net';
-import { barChances, faceValues, isJudgedRoll, LUCK_CHUNK, luckFrom, peopleIn, type RollLuck } from './review';
+import { barChances, faceValues, isJudgedRoll, LUCK_CHUNK, luckFrom, markSixRuns, peopleIn, type RollLuck } from './review';
 import type { RolloutEngine } from './rollout';
 import { ownerValues } from './search';
 
@@ -71,5 +71,5 @@ export function luckPass(src: LuckSource, rec: GameRecord, states: GameState[], 
   } finally {
     src.end();
   }
-  return { luck, chances };
+  return { luck: markSixRuns(states, luck), chances };
 }

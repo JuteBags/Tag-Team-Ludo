@@ -90,10 +90,21 @@ export const KEY_LABELS: Label[] = ['inaccuracy', 'mistake', 'blunder'];
 export const keyMoves = (moves: MoveReview[]) => moves.filter((m) => KEY_LABELS.includes(m.label)).sort((a, b) => b.gap - a.gap || a.at - b.at);
 
 /** The `n` rolls that swung the game most, for anyone, biggest first (ties in game order). */
-export const bigRolls = (luck: RollLuck[], n = 3) => [...luck].sort((a, b) => Math.abs(b.luck) - Math.abs(a.luck) || a.at - b.at).slice(0, n);
+/**
+ * The rolls as the review shows them (#135): a cancelled run of three 6s is one event, on its third 6 and worth
+ * the run's total; the run's first two 6s aren't shown on their own.
+ */
+export const rollEvents = (luck: RollLuck[]): RollLuck[] => luck.filter((r) => !r.inRun).map((r) => (r.run === undefined ? r : { ...r, luck: r.run }));
+
+export const bigRolls = (luck: RollLuck[], n = 3) => rollEvents(luck).sort((a, b) => Math.abs(b.luck) - Math.abs(a.luck) || a.at - b.at).slice(0, n);
 
 /** A big roll in words: "Your lucky 6: +12" or "Aarav's unlucky 1: −9 for them". */
 export function rollText(r: RollLuck, who: string, you: boolean): string {
+  if (r.run !== undefined) {
+    // Three 6s cancel (rule 13): one event for the run, in the "% to win" the verdicts use.
+    const run = `${r.run >= 0 ? '+' : '−'}${Math.round(Math.abs(r.run))}% to win`;
+    return you ? `Three 6s cancelled: ${run}` : `${who}'s three 6s cancelled: ${run} for them`;
+  }
   const pts = `${r.luck >= 0 ? '+' : '−'}${Math.round(Math.abs(r.luck))}`;
   const kind = r.luck >= 0 ? 'lucky' : 'unlucky';
   return you ? `Your ${kind} ${r.face}: ${pts}` : `${who}'s ${kind} ${r.face}: ${pts} for them`;
@@ -187,7 +198,7 @@ export function turningPoint(moves: MoveReview[], luck: RollLuck[], owner: numbe
   const m = moves
     .filter((x) => x.owner === owner && x.at !== lastMove && open(chanceAt?.(x.at) ?? x.bestChance))
     .sort((a, b) => b.gap - a.gap || a.at - b.at)[0];
-  const r = luck.filter((x) => x.at !== lastRoll && open(chanceAt?.(x.at))).sort((a, b) => Math.abs(b.luck) - Math.abs(a.luck) || a.at - b.at)[0];
+  const r = rollEvents(luck).filter((x) => x.at !== lastRoll && open(chanceAt?.(x.at))).sort((a, b) => Math.abs(b.luck) - Math.abs(a.luck) || a.at - b.at)[0];
   const mv = m && m.gap >= 1 ? m.gap : 0;
   const rv = r ? Math.abs(r.luck) : 0;
   if (!mv && rv < 1) return null;

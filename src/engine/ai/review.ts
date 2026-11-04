@@ -88,21 +88,27 @@ export function cutsFor(layout = '2p'): { best: number; tops: [Label, number][] 
   return { best: cut(BEST_WITHIN), tops: THRESHOLDS.map(([l, t]) => [l, cut(t)]) };
 }
 
-/** The label for a move that gave up `gap` points (± `se`) in a game of `layout` (layoutKey). */
+/**
+ * The label for a move that gave up `gap` points (± `se`) in a game of `layout` (layoutKey). A harsher label
+ * only when the gap clears its cut by one standard error (#138): a move near a cut gets the milder label, as
+ * a coin flip isn't a mistake (move 87 of the 2.5.0 demo: 9.6 ± 0.3 points, a Mistake that 128 playouts
+ * called a Blunder 35% of the time).
+ */
 export function labelOf(gap: number, se: number, layout = '2p'): Label {
   const c = cutsFor(layout);
   if (gap <= c.best || gap <= se) return 'best';
-  for (const [label, top] of c.tops) if (gap < top) return label;
+  for (const [label, top] of c.tops) if (gap - se < top) return label;
   return 'blunder';
 }
 
 /**
- * The version of the labels (thresholds, playouts and SKIP_BELOW): a cached review from another version is
- * redone. 3: a base of 128 playouts, the race and the net screen (#101). Not bumped for the Float32 net (#98):
- * on CI it changed no label (7,368/7,368) and accuracy by at most 5e-7 points. A net change that does change
- * labels must still bump it.
+ * The version of the labels and the luck: a cached review from another version is redone. 3: a base of 128
+ * playouts, the race and the net screen (#101). 4 (#135, #138): a harsher label only when the gap clears its
+ * cut by one se; a 6 that rolls again valued one step on; a cancelled run of three 6s shown as one event.
+ * Not bumped for the Float32 net (#98), which changed no label. A change that does change labels or luck
+ * must bump it.
  */
-export const REVIEW_VERSION = 3;
+export const REVIEW_VERSION = 4;
 
 /**
  * The net screen (#101): a decision whose candidates the net values within this many points of each other
@@ -172,6 +178,13 @@ export interface RollLuck {
   luck: number;
   /** The spread (standard deviation, in points) of this roll's luck over the faces it could have been. */
   sd?: number;
+  /**
+   * On a third 6 that cancels the run (RULES.md rule 13, #135): the whole run's luck, the three 6s added up
+   * (points). The review shows the run as this one event; the luck total is the same either way.
+   */
+  run?: number;
+  /** On the first two 6s of a cancelled run: shown as part of the run's event, not on their own. */
+  inRun?: true;
 }
 
 /** A deterministic seed for one decision of one game, so a review never changes when it's run again. */
@@ -288,12 +301,22 @@ export function faceChances(rec: GameRecord, s: GameState): number[] {
   return diceWeights(s.players, color, seeded(mixSeed(rec.seed, 'dice' + positionKey(s))), s.singles);
 }
 
-/** The roller's chance after `face` at `s`: the best play of the dice it completes, or the net's value mid-tray. */
+/**
+ * The roller's chance after `face` at `s`: the best play of the dice it completes; after a 6 that rolls again,
+ * the expectation over the next face (fair), through a second 6 and the third that cancels (#135: the net reads
+ * a tray with 6s in it up to 5 points low against playouts; one step on, the error halves); else (the turn has
+ * passed) the net's value. sim-wasm chance_after mirrors this operation for operation.
+ */
 function chanceAfter(net: Evaluator, s: GameState, face: number): number {
   const owner = s.players[s.current]!.owner;
   const owners = Math.max(...s.players.map((p) => p.owner)) + 1;
   const t = roll(s, () => 0, face);
   if (t.phase === 'move' && t.current === s.current) return Math.max(...searchValues(net, t, { depth: 1, chance: 0 }).map((x) => x.value));
+  if (t.phase === 'roll' && t.current === s.current) {
+    let e = 0;
+    for (let f = 1; f <= 6; f++) e += chanceAfter(net, t, f) / 6;
+    return e;
+  }
   return ownerValues(net, t, owners)[owner]!;
 }
 
@@ -320,6 +343,23 @@ export function luckFrom(rec: GameRecord, states: GameState[], i: number, v: num
 export function rollLuck(rec: GameRecord, states: GameState[], net: Evaluator): RollLuck[] {
   const out: RollLuck[] = [];
   for (let i = 0; i + 1 < states.length; i++) if (isJudgedRoll(states, i)) out.push(luckFrom(rec, states, i, faceValues(net, states[i]!)));
+  return markSixRuns(states, out);
+}
+
+/**
+ * Marks each cancelled run of three 6s (#135) in a game's luck: the third 6 (rolled with two 6s already in this
+ * run) gets the run's total, the two before it `inRun`. Every luck number stays as it is.
+ */
+export function markSixRuns(states: GameState[], luck: RollLuck[]): RollLuck[] {
+  const out = luck.map((l) => ({ ...l }));
+  out.forEach((l, k) => {
+    if (l.face !== 6 || states[l.at]!.sixes !== 2) return;
+    const a = out[k - 2];
+    const b = out[k - 1];
+    if (!a || !b || a.owner !== l.owner || b.owner !== l.owner || a.face !== 6 || b.face !== 6 || states[b.at]!.sixes !== 1 || states[a.at]!.sixes !== 0) return;
+    a.inRun = b.inRun = true;
+    l.run = a.luck + b.luck + l.luck;
+  });
   return out;
 }
 

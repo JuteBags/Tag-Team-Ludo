@@ -2,7 +2,7 @@
 // moves reviewed earlier aren't redone. A review from another label version is redone, but kept to show
 // (greyed, "Older review · updating…") until the new one is finished. reviewQueue.ts decides when it runs.
 import { replay, type GameRecord, type GameState } from '../engine';
-import { REVIEW_VERSION, reviewMoves, type MoveReview, type Reviewer, type RollLuck } from '../engine/ai/review';
+import { markSixRuns, REVIEW_VERSION, reviewMoves, type MoveReview, type Reviewer, type RollLuck } from '../engine/ai/review';
 import { workerLuck, workerReviewer } from '../engine/ai/review-worker';
 import { keyOf, saveReview, type StoredReview } from './store';
 
@@ -61,7 +61,7 @@ let runs = 0;
 const r2 = (x: number) => Math.round(100 * x) / 100;
 const r4 = (x: number) => Math.round(10000 * x) / 10000;
 const compactMove = (m: MoveReview): MoveReview => ({ ...m, playedChance: r4(m.playedChance), bestChance: r4(m.bestChance), gap: r2(m.gap), se: r2(m.se) });
-const compactRoll = (l: RollLuck): RollLuck => ({ ...l, luck: r2(l.luck), ...(l.sd === undefined ? {} : { sd: r2(l.sd) }) });
+const compactRoll = (l: RollLuck): RollLuck => ({ ...l, luck: r2(l.luck), ...(l.sd === undefined ? {} : { sd: r2(l.sd) }), ...(l.run === undefined ? {} : { run: r2(l.run) }) });
 
 /** The review kept from an older version, if `stored` is one (or carries one). */
 const olderOf = (stored: StoredReview | undefined): StoredReview | undefined =>
@@ -137,7 +137,8 @@ export function runReview(
         const r = (await luckOf(rec, () => stopped)?.catch(() => null)) ?? null;
         luckMs += Date.now() - t;
         if (stopped) return;
-        luck = r?.luck ?? null;
+        // A cancelled run of three 6s becomes one event (#135); the worker's chunks can split a run.
+        luck = r?.luck ? markSixRuns(states as GameState[], r.luck) : null;
         chances = r?.chances ?? null;
         changed = true;
         report(false);

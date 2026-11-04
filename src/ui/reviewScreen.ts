@@ -312,7 +312,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       h.className = 'rvhead';
       h.textContent = 'Big dice moments';
       list.appendChild(h);
-      for (const r of bigRolls(d.luck).filter((r) => !(tp?.kind === 'roll' && tp.roll === r))) list.appendChild(rollRow(r));
+      for (const r of bigRolls(d.luck).filter((r) => !(tp?.kind === 'roll' && tp.roll.at === r.at))) list.appendChild(rollRow(r));
     }
   };
 
