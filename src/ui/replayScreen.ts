@@ -17,6 +17,7 @@ import { framesOf, namesOf, shareLink, type Frame } from './replay';
 import { follow } from './reviewQueue';
 import { peopleOf, type ReviewProgress } from './reviewRun';
 import { KEY_LABELS, LABEL_LOOK, plainVerdict, turningPoint, type PlainVerdict } from './reviewText';
+import { whyFacts, whyLine, type WhyFact } from './reviewWhy';
 import { SITE } from './shareCard';
 import type { StoredReview } from './store';
 
@@ -116,7 +117,11 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
   let puzzle: 'pick' | 'shown' | null = null;
 
   /** The verdict in plain words (#124): its label, "+N% to win" and one sentence, all set as text, never markup. */
-  const plainCaption = (pv: PlainVerdict) => {
+  /**
+   * The verdict in plain words, and under it the "why" line (#97) for Inaccuracy, Mistake and Blunder: both
+   * reasons when they fit in two lines, else the better move's alone.
+   */
+  const plainCaption = (pv: PlainVerdict, why?: { facts: WhyFact[]; whose: string }) => {
     const box = q('.rptext');
     box.replaceChildren();
     const tag = document.createElement('span');
@@ -144,6 +149,18 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     }
     box.append(line);
     q('.rpcap').classList.add('plain');
+    if (why && pv.win) {
+      const full = whyLine(why.facts, why.whose);
+      if (full) {
+        const w = document.createElement('span');
+        w.className = 'vwhy';
+        w.textContent = full;
+        box.append(w);
+        // Two lines at most, measured in layout pixels (offsetHeight: the stage's scale transform doesn't apply).
+        const lineH = parseFloat(getComputedStyle(w).lineHeight) || 17;
+        if (w.offsetHeight > lineH * 2 + 2) w.textContent = whyLine(why.facts, why.whose, true) ?? full;
+      }
+    }
   };
   const markCaption = (text: string) => {
     q('.rpcap').classList.remove('plain');
@@ -205,7 +222,10 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     const v = reviewOn() ? verdictOf(f) : undefined;
     const s = v ? statesOf(f) : undefined;
     const note = notes.get(at);
-    if (note === undefined && v && s) plainCaption(plainVerdict(v, s, isYou(v.owner) ? 'You' : names[v.owner]!));
+    if (note === undefined && v && s) {
+      const pv = plainVerdict(v, s, isYou(v.owner) ? 'You' : names[v.owner]!);
+      plainCaption(pv, pv.better ? { facts: whyFacts(s.players, s.moves[v.played]!, s.moves[v.best]!, s.singles), whose: isYou(v.owner) ? 'your' : `${names[v.owner]!}'s` } : undefined);
+    }
     else markCaption(note ?? f.caption);
     q('.rpcap').classList.toggle('verdict', !!v || notes.has(at));
     q('.rpdice').innerHTML = f.dice.map((d) => `<i>${dieMarkup(d, 22)}</i>`).join('');
@@ -260,7 +280,8 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
     // The labels' cuts come from review.ts (calibrated per layout), never from the UI.
     const label = i === v.best ? 'best' : labelOf(gap, 0, layoutKey(allStates[0]!));
     // Your pick, in the same plain words as a verdict: "You moved this token 3. Moving that one 6 gets it home."
-    plainCaption(plainVerdict({ label, played: i, best: v.best, gap }, s, 'You'));
+    const pv = plainVerdict({ label, played: i, best: v.best, gap }, s, 'You');
+    plainCaption(pv, pv.better ? { facts: whyFacts(s.players, s.moves[i]!, best, s.singles), whose: 'your' } : undefined);
     view.showVerdict({ played: s.moves[i]!, best: label === 'best' ? undefined : best });
     const again = document.createElement('button');
     again.className = 'findchip';
