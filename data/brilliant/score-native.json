@@ -1419,6 +1419,417 @@
     }
    }
   },
+  "2p/random": {
+   "decisions": 11285,
+   "player_games": 256,
+   "rules": {
+    "8/0/0": {
+     "per_player_game": 3.4921875,
+     "halves": [
+      3.5625,
+      3.421875
+     ],
+     "share_with_any": 0.92578125,
+     "hits": 894
+    },
+    "8/1/1": {
+     "per_player_game": 1.00390625,
+     "halves": [
+      0.8515625,
+      1.15625
+     ],
+     "share_with_any": 0.5625,
+     "hits": 257
+    },
+    "8/2/2": {
+     "per_player_game": 0.40234375,
+     "halves": [
+      0.3125,
+      0.4921875
+     ],
+     "share_with_any": 0.2890625,
+     "hits": 103
+    },
+    "8/3/2": {
+     "per_player_game": 0.15625,
+     "halves": [
+      0.1328125,
+      0.1796875
+     ],
+     "share_with_any": 0.1328125,
+     "hits": 40
+    },
+    "8/5/2": {
+     "per_player_game": 0.02734375,
+     "halves": [
+      0.015625,
+      0.0390625
+     ],
+     "share_with_any": 0.0234375,
+     "hits": 7
+    },
+    "10/0/0": {
+     "per_player_game": 3.4921875,
+     "halves": [
+      3.5625,
+      3.421875
+     ],
+     "share_with_any": 0.92578125,
+     "hits": 894
+    },
+    "10/1/1": {
+     "per_player_game": 1.00390625,
+     "halves": [
+      0.8515625,
+      1.15625
+     ],
+     "share_with_any": 0.5625,
+     "hits": 257
+    },
+    "10/2/2": {
+     "per_player_game": 0.40234375,
+     "halves": [
+      0.3125,
+      0.4921875
+     ],
+     "share_with_any": 0.2890625,
+     "hits": 103
+    },
+    "10/3/2": {
+     "per_player_game": 0.15625,
+     "halves": [
+      0.1328125,
+      0.1796875
+     ],
+     "share_with_any": 0.1328125,
+     "hits": 40
+    },
+    "10/5/2": {
+     "per_player_game": 0.02734375,
+     "halves": [
+      0.015625,
+      0.0390625
+     ],
+     "share_with_any": 0.0234375,
+     "hits": 7
+    },
+    "16/0/0": {
+     "per_player_game": 3.11328125,
+     "halves": [
+      3.21875,
+      3.0078125
+     ],
+     "share_with_any": 0.9140625,
+     "hits": 797
+    },
+    "16/1/1": {
+     "per_player_game": 0.8515625,
+     "halves": [
+      0.71875,
+      0.984375
+     ],
+     "share_with_any": 0.50390625,
+     "hits": 218
+    },
+    "16/2/2": {
+     "per_player_game": 0.31640625,
+     "halves": [
+      0.25,
+      0.3828125
+     ],
+     "share_with_any": 0.234375,
+     "hits": 81
+    },
+    "16/3/2": {
+     "per_player_game": 0.109375,
+     "halves": [
+      0.09375,
+      0.125
+     ],
+     "share_with_any": 0.09375,
+     "hits": 28
+    },
+    "16/5/2": {
+     "per_player_game": 0.0234375,
+     "halves": [
+      0.015625,
+      0.03125
+     ],
+     "share_with_any": 0.01953125,
+     "hits": 6
+    },
+    "24/0/0": {
+     "per_player_game": 2.4140625,
+     "halves": [
+      2.46875,
+      2.359375
+     ],
+     "share_with_any": 0.86328125,
+     "hits": 618
+    },
+    "24/1/1": {
+     "per_player_game": 0.58203125,
+     "halves": [
+      0.484375,
+      0.6796875
+     ],
+     "share_with_any": 0.3828125,
+     "hits": 149
+    },
+    "24/2/2": {
+     "per_player_game": 0.19140625,
+     "halves": [
+      0.1328125,
+      0.25
+     ],
+     "share_with_any": 0.16015625,
+     "hits": 49
+    },
+    "24/3/2": {
+     "per_player_game": 0.0546875,
+     "halves": [
+      0.046875,
+      0.0625
+     ],
+     "share_with_any": 0.05078125,
+     "hits": 14
+    },
+    "24/5/2": {
+     "per_player_game": 0.01171875,
+     "halves": [
+      0.0078125,
+      0.015625
+     ],
+     "share_with_any": 0.01171875,
+     "hits": 3
+    },
+    "30/0/0": {
+     "per_player_game": 1.9140625,
+     "halves": [
+      1.9921875,
+      1.8359375
+     ],
+     "share_with_any": 0.80078125,
+     "hits": 490
+    },
+    "30/1/1": {
+     "per_player_game": 0.41015625,
+     "halves": [
+      0.328125,
+      0.4921875
+     ],
+     "share_with_any": 0.30078125,
+     "hits": 105
+    },
+    "30/2/2": {
+     "per_player_game": 0.10546875,
+     "halves": [
+      0.0546875,
+      0.15625
+     ],
+     "share_with_any": 0.09375,
+     "hits": 27
+    },
+    "30/3/2": {
+     "per_player_game": 0.01953125,
+     "halves": [
+      0.015625,
+      0.0234375
+     ],
+     "share_with_any": 0.01953125,
+     "hits": 5
+    },
+    "30/5/2": {
+     "per_player_game": 0.00390625,
+     "halves": [
+      0.0078125,
+      0.0
+     ],
+     "share_with_any": 0.00390625,
+     "hits": 1
+    },
+    "32/0/0": {
+     "per_player_game": 1.6328125,
+     "halves": [
+      1.734375,
+      1.53125
+     ],
+     "share_with_any": 0.75,
+     "hits": 418
+    },
+    "32/1/1": {
+     "per_player_game": 0.2890625,
+     "halves": [
+      0.234375,
+      0.34375
+     ],
+     "share_with_any": 0.22265625,
+     "hits": 74
+    },
+    "32/2/2": {
+     "per_player_game": 0.0703125,
+     "halves": [
+      0.03125,
+      0.109375
+     ],
+     "share_with_any": 0.05859375,
+     "hits": 18
+    },
+    "32/3/2": {
+     "per_player_game": 0.01953125,
+     "halves": [
+      0.015625,
+      0.0234375
+     ],
+     "share_with_any": 0.01953125,
+     "hits": 5
+    },
+    "32/5/2": {
+     "per_player_game": 0.00390625,
+     "halves": [
+      0.0078125,
+      0.0
+     ],
+     "share_with_any": 0.00390625,
+     "hits": 1
+    },
+    "48/0/0": {
+     "per_player_game": 1.484375,
+     "halves": [
+      1.6015625,
+      1.3671875
+     ],
+     "share_with_any": 0.71484375,
+     "hits": 380
+    },
+    "48/1/1": {
+     "per_player_game": 0.23046875,
+     "halves": [
+      0.1953125,
+      0.265625
+     ],
+     "share_with_any": 0.1875,
+     "hits": 59
+    },
+    "48/2/2": {
+     "per_player_game": 0.05078125,
+     "halves": [
+      0.0234375,
+      0.078125
+     ],
+     "share_with_any": 0.046875,
+     "hits": 13
+    },
+    "48/3/2": {
+     "per_player_game": 0.0078125,
+     "halves": [
+      0.0078125,
+      0.0078125
+     ],
+     "share_with_any": 0.0078125,
+     "hits": 2
+    },
+    "48/5/2": {
+     "per_player_game": 0.0,
+     "halves": [
+      0.0,
+      0.0
+     ],
+     "share_with_any": 0.0,
+     "hits": 0
+    },
+    "64/0/0": {
+     "per_player_game": 1.0546875,
+     "halves": [
+      1.203125,
+      0.90625
+     ],
+     "share_with_any": 0.60546875,
+     "hits": 270
+    },
+    "64/1/1": {
+     "per_player_game": 0.15625,
+     "halves": [
+      0.1640625,
+      0.1484375
+     ],
+     "share_with_any": 0.140625,
+     "hits": 40
+    },
+    "64/2/2": {
+     "per_player_game": 0.02734375,
+     "halves": [
+      0.015625,
+      0.0390625
+     ],
+     "share_with_any": 0.02734375,
+     "hits": 7
+    },
+    "64/3/2": {
+     "per_player_game": 0.00390625,
+     "halves": [
+      0.0078125,
+      0.0
+     ],
+     "share_with_any": 0.00390625,
+     "hits": 1
+    },
+    "64/5/2": {
+     "per_player_game": 0.0,
+     "halves": [
+      0.0,
+      0.0
+     ],
+     "share_with_any": 0.0,
+     "hits": 0
+    },
+    "96/0/0": {
+     "per_player_game": 0.76171875,
+     "halves": [
+      0.859375,
+      0.6640625
+     ],
+     "share_with_any": 0.515625,
+     "hits": 195
+    },
+    "96/1/1": {
+     "per_player_game": 0.10546875,
+     "halves": [
+      0.1171875,
+      0.09375
+     ],
+     "share_with_any": 0.09765625,
+     "hits": 27
+    },
+    "96/2/2": {
+     "per_player_game": 0.01953125,
+     "halves": [
+      0.015625,
+      0.0234375
+     ],
+     "share_with_any": 0.01953125,
+     "hits": 5
+    },
+    "96/3/2": {
+     "per_player_game": 0.00390625,
+     "halves": [
+      0.0078125,
+      0.0
+     ],
+     "share_with_any": 0.00390625,
+     "hits": 1
+    },
+    "96/5/2": {
+     "per_player_game": 0.0,
+     "halves": [
+      0.0,
+      0.0
+     ],
+     "share_with_any": 0.0,
+     "hits": 0
+    }
+   }
+  },
   "4p/extreme": {
    "decisions": 76143,
    "player_games": 912,
