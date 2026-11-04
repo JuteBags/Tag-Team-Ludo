@@ -269,6 +269,33 @@ pub fn collect_leaves(eval: &Evaluator, state: &Game, opts: SearchOptions) -> Ve
     root_values(eval, state, opts, Map::default(), Some(Vec::new())).1.unwrap()
 }
 
+/// search_values keeping its leaf values in `leaves` for the next call (the review's luck pass, #125: a
+/// position's value depends on the position alone, so it is the same value whichever search finds it).
+/// Exactly search_values's result.
+pub fn search_values_keep(eval: &Evaluator, state: &Game, opts: SearchOptions, leaves: &mut Map<[f64; 4]>) -> Vec<f64> {
+    let owners = state.b.players().iter().map(|p| p.owner).max().unwrap() as usize + 1;
+    let root = state.current;
+    let root_owner = state.b.p[root].owner;
+    let mut ctx = Ctx { eval, opts, owners, root_owner, memo: Map::default(), leaves: std::mem::take(leaves), collect: None };
+    let me = root_owner as usize;
+    let idx: Vec<usize> = (0..state.moves.len()).collect();
+    let vals = ctx.children(state, &idx, root, opts.depth, 0, me).iter().map(|v| v[me]).collect();
+    *leaves = ctx.leaves;
+    vals
+}
+
+/// ownerValues() through the same leaf values as search_values_keep: one-hot once the game is over, else
+/// the evaluator's chances, by owner.
+pub fn owner_values_keep(eval: &Evaluator, state: &Game, leaves: &mut Map<[f64; 4]>) -> [f64; 4] {
+    let owners = state.b.players().iter().map(|p| p.owner).max().unwrap() as usize + 1;
+    let root_owner = state.b.p[state.current].owner;
+    let opts = SearchOptions { depth: 1, chance: 0, their_k: 0, race: false, cut: 0.0 };
+    let mut ctx = Ctx { eval, opts, owners, root_owner, memo: Map::default(), leaves: std::mem::take(leaves), collect: None };
+    let v = ctx.owner_values(state);
+    *leaves = ctx.leaves;
+    v
+}
+
 /// search_values with leaf values already known (pass 2 of the batched search).
 pub fn search_values_with(eval: &Evaluator, state: &Game, opts: SearchOptions, leaves: Map<[f64; 4]>) -> Vec<f64> {
     root_values(eval, state, opts, leaves, None).0

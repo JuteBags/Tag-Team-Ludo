@@ -236,3 +236,114 @@ pub unsafe extern "C" fn review(state: *mut u8, len: usize, n: u32, seed: u32) -
         None => std::ptr::null(),
     })
 }
+
+// The review's luck pass (#125): the net and search values behind review.ts rollLuck and netChances, so the
+// worker needn't run the net in JS. Only the values come from here; the luck arithmetic (the faces' chances,
+// the expectation, the sd, the rounding) stays in review.ts. A game's pass is
+//   luck_begin()   once: an empty leaf cache (positions valued in this game, by search.rs leaf_key)
+//   luck_chunk(states, len, count, kind)   any number of times, ~64 states each, so the worker can stop
+//                  between chunks; `states` is `count` state byte strings (the module doc's layout), each
+//                  after its length as a u16 LE. kind 0: per state, the roller's chance after each face 1..6
+//                  (review.ts chanceAfter: the best of search_values(depth 1, chance 0) while the roller
+//                  still moves, else the evaluator's value), 6 f64s; kind 1: per state, ownerValues, 4 f64s
+//                  (people = max owner + 1 of them used). At the returned pointer until the next call; null
+//                  without init or luck_begin.
+//   luck_end()     frees the cache.
+// Every value is the evaluator's own (eval.rs: net.ts's sums, V8's tanh and exp), and a cached value is the
+// one computed before for that position, so the values are exactly the TS net's.
+
+/// Most positions the luck cache holds before it starts over (about 1.6 MB of wasm memory at most).
+const LUCK_MAX: usize = 8192;
+
+thread_local! {
+    static LUCK: RefCell<Option<ludo_sim::search::Map<[f64; 4]>>> = const { RefCell::new(None) };
+    static LUCK_OUT: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
+    /// The cache's largest size since the module loaded (positions), for the memory report.
+    static LUCK_PEAK: RefCell<usize> = const { RefCell::new(0) };
+}
+
+/// Starts a game's luck pass: an empty leaf cache. Returns 1.
+#[no_mangle]
+pub extern "C" fn luck_begin() -> i32 {
+    LUCK.with(|l| *l.borrow_mut() = Some(Default::default()));
+    1
+}
+
+/// Ends a game's luck pass: the cache and the output buffer are freed.
+#[no_mangle]
+pub extern "C" fn luck_end() {
+    LUCK.with(|l| *l.borrow_mut() = None);
+    LUCK_OUT.with(|o| *o.borrow_mut() = Vec::new());
+}
+
+/// Positions in the luck cache now (0 without luck_begin).
+#[no_mangle]
+pub extern "C" fn luck_size() -> u32 {
+    LUCK.with(|l| l.borrow().as_ref().map_or(0, |m| m.len()) as u32)
+}
+
+/// The luck cache's largest size since the module loaded.
+#[no_mangle]
+pub extern "C" fn luck_peak() -> u32 {
+    LUCK_PEAK.with(|p| *p.borrow() as u32)
+}
+
+/// The roller's chance after `face` at `g` (a roll state): review.ts chanceAfter.
+fn chance_after(net: &Evaluator, g: &Game, face: u8, leaves: &mut ludo_sim::search::Map<[f64; 4]>) -> f64 {
+    let owner = g.b.p[g.current].owner as usize;
+    let mut t = *g;
+    t.roll(face);
+    if t.phase == PHASE_MOVE && t.current == g.current {
+        let opts = SearchOptions { depth: 1, chance: 0, their_k: 3, race: false, cut: 0.0 };
+        // Math.max(...values)
+        let mut best = f64::NEG_INFINITY;
+        for v in ludo_sim::search::search_values_keep(net, &t, opts, leaves) {
+            best = ludo_sim::jsmath::max(best, v);
+        }
+        best
+    } else {
+        ludo_sim::search::owner_values_keep(net, &t, leaves)[owner]
+    }
+}
+
+/// One chunk of a game's luck pass (see above).
+#[no_mangle]
+pub unsafe extern "C" fn luck_chunk(states: *mut u8, len: usize, count: u32, kind: u32) -> *const f64 {
+    let buf = take(states, len);
+    ENGINE.with(|e| {
+        let e = e.borrow();
+        let Some(eng) = e.as_ref() else { return std::ptr::null() };
+        LUCK.with(|l| {
+            let mut l = l.borrow_mut();
+            let Some(leaves) = l.as_mut() else { return std::ptr::null() };
+            LUCK_OUT.with(|out| {
+                let mut out = out.borrow_mut();
+                out.clear();
+                let mut o = 0;
+                for _ in 0..count {
+                    let n = u16::from_le_bytes([buf[o], buf[o + 1]]) as usize;
+                    let g = decode(&buf[o + 2..o + 2 + n]);
+                    o += 2 + n;
+                    if kind == 0 {
+                        for f in 1..=6u8 {
+                            if leaves.len() >= LUCK_MAX {
+                                leaves.clear();
+                            }
+                            out.push(chance_after(&eng.net, &g, f, leaves));
+                        }
+                    } else {
+                        if leaves.len() >= LUCK_MAX {
+                            leaves.clear();
+                        }
+                        out.extend(ludo_sim::search::owner_values_keep(&eng.net, &g, leaves));
+                    }
+                    LUCK_PEAK.with(|p| {
+                        let mut p = p.borrow_mut();
+                        *p = (*p).max(leaves.len());
+                    });
+                }
+                out.as_ptr()
+            })
+        })
+    })
+}
