@@ -87,16 +87,17 @@ export const sixRuns = (luck: RollLuck[], owner: number): RollLuck[] => rollEven
 
 export const bigRolls = (luck: RollLuck[], n = 3) => rollEvents(luck).sort((a, b) => Math.abs(b.luck) - Math.abs(a.luck) || a.at - b.at).slice(0, n);
 
-/** A big roll in words: "Your lucky 6: +12" or "Aarav's unlucky 1: −9 for them". */
+/** A roll's swing in the verdicts' unit, never under 1: "+12% to win" (#152). */
+const toWin = (x: number) => `${x >= 0 ? '+' : '−'}${Math.max(1, Math.round(Math.abs(x)))}% to win`;
+
+/**
+ * A big roll as the win chance it gave: "+12% to win" for you, "Aarav: −9% to win" for anyone else. The die
+ * beside it shows the face, and no word judges it (the owner: show the number, #152).
+ */
 export function rollText(r: RollLuck, who: string, you: boolean): string {
-  if (r.run !== undefined) {
-    // Three 6s cancel (rule 13): one event for the run, in the "% to win" the verdicts use.
-    const run = `${r.run >= 0 ? '+' : '−'}${Math.round(Math.abs(r.run))}% to win`;
-    return you ? `Three 6s cancelled: ${run}` : `${who}'s three 6s cancelled: ${run} for them`;
-  }
-  const pts = `${r.luck >= 0 ? '+' : '−'}${Math.round(Math.abs(r.luck))}`;
-  const kind = r.luck >= 0 ? 'lucky' : 'unlucky';
-  return you ? `Your ${kind} ${r.face}: ${pts}` : `${who}'s ${kind} ${r.face}: ${pts} for them`;
+  // Three 6s cancel (rule 13): one event for the run. "Cancelled" says what the dice alone don't.
+  if (r.run !== undefined) return you ? `Three 6s cancelled: ${toWin(r.run)}` : `${who}'s three 6s cancelled: ${toWin(r.run)}`;
+  return you ? toWin(r.luck) : `${who}: ${toWin(r.luck)}`;
 }
 
 /**
@@ -138,11 +139,11 @@ export const SMALL_SLIPS_BELOW = 0.75;
 export const GREAT_PLAY = 0.9;
 
 /**
- * The story of the game in one sentence, from one player's side: whether they won, how well they played
- * (accuracy 0-1) and how their dice were (luck percentile). `name` is "You" or the player's name.
+ * The story of the game in one sentence, from one player's side: whether they won and how well they played
+ * (accuracy 0-1). It leaves the dice out: the Luckometer shows them as a number, and words like "unlucky" judge
+ * them (the owner, #152). `name` is "You" or the player's name.
  */
-export function headline(o: { won: boolean; accuracy: number; luckPct: number; name: string; decider?: MoveReview; keyMistakes?: number; inaccuracies?: number }): string {
-  const you = o.name === 'You';
+export function headline(o: { won: boolean; accuracy: number; name: string; decider?: MoveReview; keyMistakes?: number; inaccuracies?: number }): string {
   // No accuracy (no meaningful decision): nothing here quotes or compares one.
   const scored = Number.isFinite(o.accuracy);
   // No mistake or blunder but a low accuracy: the losses were small slips in close decisions. Say so, rather
@@ -150,22 +151,12 @@ export function headline(o: { won: boolean; accuracy: number; luckPct: number; n
   if (scored && o.keyMistakes === 0 && o.accuracy < SMALL_SLIPS_BELOW) return 'No big mistakes, but small slips added up in close decisions.';
   // A loss turned by one bad move says so, whatever the accuracy.
   if (!o.won && o.decider && (o.decider.label === 'blunder' || o.decider.label === 'mistake'))
-    return `One ${o.decider.label} decided it: a single move cost ${Math.round(o.decider.gap)} points of win probability.`;
-  const them = you ? 'you' : 'them';
+    return `One ${o.decider.label} decided it: a single move gave up ${Math.max(1, Math.round(o.decider.gap))}% to win.`;
   const great = scored && o.accuracy >= GREAT_PLAY;
-  const unlucky = o.luckPct < 40;
-  const lucky = o.luckPct > 60;
-  if (o.won) {
-    if (great && unlucky) return 'Won against the dice: great play beat unlucky rolls.';
-    if (great) return 'Won on great play.';
-    if (lucky) return `Won, with the dice on ${you ? 'your' : 'their'} side.`;
-    return 'Won, with a few slips to learn from.';
-  }
-  if (great && unlucky) return `${o.name} played well, but the dice went against ${them}.`;
+  if (o.won) return great ? 'Won on great play.' : 'Won, with a few slips to learn from.';
   if (great) return `${o.name} played well: the turning point decided it.`;
   // No key mistakes: it was the small slips that added up, so say that rather than "mistakes".
   const slips = !o.keyMistakes && o.inaccuracies ? `${o.inaccuracies} small slip${o.inaccuracies === 1 ? '' : 's'}` : '';
-  if (lucky) return slips ? `The dice were kind, but ${slips} added up.` : 'The dice were kind, but the mistakes cost the game.';
   return slips ? `Lost on ${slips}: the key moves show where.` : 'Lost on mistakes: the key moves show where.';
 }
 
