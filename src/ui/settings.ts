@@ -33,6 +33,10 @@ interface Settings {
   fastBots: boolean;
   /** Kill finishers (finishers.ts): the full scene, a short one, or none. */
   killFx: 'full' | 'short' | 'off';
+  /** Undos per person per game (#143): 0 turns Undo off. */
+  undos: 0 | 1 | 2;
+  /** Wait a moment for Undo when your turn ends (the turn-ends window). */
+  undoWait: boolean;
   /** Achievements done (rewards.ts), by id. */
   achieved: string[];
 }
@@ -40,7 +44,7 @@ interface Settings {
 export type Theme = 'classic' | 'wood' | 'dark' | 'metal' | 'tron' | 'halloween';
 
 const KEY = 'ludo-settings';
-const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true, friendNames: [], myName: '', myColor: 'blue', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false, killFx: 'full', achieved: [] };
+const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true, friendNames: [], myName: '', myColor: 'blue', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false, killFx: 'full', undos: 2, undoWait: true, achieved: [] };
 
 function load(): Settings {
   try {

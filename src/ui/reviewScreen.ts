@@ -13,13 +13,42 @@ import { dieMarkup } from './dice';
 import { framesOf, namesOf } from './replay';
 import { follow } from './reviewQueue';
 import { decisionsToReview, peopleOf, type ReviewProgress } from './reviewRun';
-import { accuracyText, bigRolls, sixRuns, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, luckBand, luckWords, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
+import { accuracyText, bigRolls, runningAccuracy, runningLuck, sixRuns, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
 import type { StoredReview } from './store';
 
 const GW = 330;
 const GH = 96;
 /** The graph's left margin, for the 0 / 50 / 100 ticks. */
 const GL = 22;
+
+/** The review graph's tabs (#134): "Win %" (the win probability, not "Win rate", which Stats uses for games won). */
+type GraphTab = 'win' | 'accuracy' | 'luck';
+const GRAPH_TABS: [GraphTab, string][] = [['win', 'Win %'], ['accuracy', 'Accuracy'], ['luck', 'Luckometer']];
+const GRAPH_KEY = 'ludo-graph-tab';
+const loadGraphTab = (): GraphTab => {
+  try {
+    const v = localStorage.getItem(GRAPH_KEY);
+    return v === 'accuracy' || v === 'luck' ? v : 'win';
+  } catch {
+    return 'win';
+  }
+};
+/**
+ * A line's end label, always inside the chart (#134): right-aligned to the end point when it ends near the
+ * right edge (they all do), just above it, or below it when the point is near the top.
+ */
+const endLabel = (end: readonly [number, number], text: string, cls: string) => {
+  const [x, y] = end;
+  const ty = y < 14 ? y + 14 : y - 7;
+  return `<text x="${(x - 2).toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="end" class="${cls}">${text}</text>`;
+};
+const saveGraphTab = (t: GraphTab) => {
+  try {
+    localStorage.setItem(GRAPH_KEY, t);
+  } catch {
+    // Storage blocked: the choice lasts for this screen.
+  }
+};
 
 /** What the screen draws: the live review, or the older one while it's being redone. */
 interface Shown {
@@ -120,13 +149,11 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     card.className = 'rvcard';
     card.setAttribute('style', cssVars(colorOf(pov)));
     const acc = !ready ? '…' : s.moves ? accuracyText(s.accuracy) : '–';
-    const band = luckBand(s.luckPct);
     const lpct = d.luck && Number.isFinite(s.luckPct) ? `${Math.round(s.luckPct)}%` : '…';
-    const words = d.luck ? luckWords(s.luck, isYou(pov)) : null;
     card.innerHTML = `<div class="rvwho"><i>${avatarSVG(colorOf(pov))}</i><b></b>
-        <em>${acc}<small>accuracy</small></em><em class="lk ${d.luck ? band.tone : ''}">${lpct}<small>luck</small></em></div>
+        <em>${acc}<small>accuracy</small></em><em class="lk">${lpct}<small>luck</small></em></div>
       <div class="rvchips">${LABELS.map((l) => `<button data-filter="${l}" style="--c:${LABEL_LOOK[l].color}" aria-label="${LABEL_LOOK[l].name}: ${s.labels[l]}"${filter === l ? ' class="on"' : ''}><i>${LABEL_LOOK[l].sym}</i>${s.labels[l]}</button>`).join('')}</div>
-      ${words ? `<div class="rvluck ${band.tone}"><p><b>Luck ${lpct} · ${band.word}:</b> ${words.line}</p></div>` : '<div class="rvluck skel" aria-label="Working out the dice luck"><i></i><i></i></div>'}`;
+`;
     card.querySelector('.rvwho b')!.textContent = names[pov]!;
     // No accuracy for a game without a decision where much was at stake: say why under the card's top row.
     if (ready && s.moves && !Number.isFinite(s.accuracy)) {
@@ -149,13 +176,13 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
           .map((o) => {
             const row = document.createElement('div');
             row.className = 'rvbotluck';
-            const b2 = luckBand(sum[o]!.luckPct);
-            row.innerHTML = `<i style="${cssVars(colorOf(o))}">${avatarSVG(colorOf(o))}</i><span></span><b class="${b2.tone}">Luck ${Number.isFinite(sum[o]!.luckPct) ? Math.round(sum[o]!.luckPct) : '–'}% · ${b2.word}</b>`;
+            row.innerHTML = `<i style="${cssVars(colorOf(o))}">${avatarSVG(colorOf(o))}</i><span></span><b>${Number.isFinite(sum[o]!.luckPct) ? Math.round(sum[o]!.luckPct) : '–'}%</b>`;
             row.querySelector('span')!.textContent = isYou(o) ? 'Your dice' : `${names[o]}'s dice`;
             return row;
           })
       : [];
     q('.rvcards').replaceChildren(card, ...others);
+    graphLuck = d.luck ?? [];
     drawGraph(mine, tp);
     // Progress: how far, about how long is left, and once done, when.
     // Progress for the side shown: its decisions only.
@@ -174,12 +201,16 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
   // The graph: this side's winning chances after each of their reviewed moves, on a 0-100 axis with the even
   // line, the final chance and a ★ at the turning point. A tap anywhere picks the nearest move.
   let graphMoves: MoveReview[] = [];
+  // Which line the graph shows (#134): Win % (the win probability), Accuracy or Luck; remembered.
+  let graphTab: GraphTab = loadGraphTab();
+  let graphLuck: RollLuck[] = [];
   const drawGraph = (mine: MoveReview[], tp: ReturnType<typeof turningPoint>) => {
     graphMoves = mine;
     if (mine.length < SHOW_AFTER) {
       q('.rvgraph').innerHTML = '';
       return;
     }
+    if (graphTab !== 'win') return drawLine(mine);
     // The line ends where the game ended: 100% for a win, 0% otherwise (only once the review is finished).
     const result = prog?.finished ? [won(pov) ? 1 : 0] : [];
     const pts = graphPoints([...mine.map((m) => m.playedChance), ...result], GW - GL, GH).map(([x, y]) => [x + GL, y] as const);
@@ -189,16 +220,57 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     // The turning point sits on its move, or on the first of this side's moves after its roll.
     const ti = !tp ? -1 : tp.kind === 'move' ? mine.indexOf(tp.move) : mine.findIndex((m) => m.at > tp.roll.at);
     const star = ti >= 0 ? `<g class="tpstar" transform="translate(${pts[ti]![0].toFixed(1)} ${(pts[ti]![1] - 12).toFixed(1)})"><path d="M0,-7 L2,-2 7,-2 3,1.5 4.5,6.5 0,3.5 -4.5,6.5 -3,1.5 -7,-2 -2,-2Z"/></g>` : '';
-    q('.rvgraph').innerHTML = `<small></small><svg viewBox="-6 -8 ${GW + 40} ${GH + 16}" aria-hidden="true">
+    q('.rvgraph').innerHTML = `<small></small>${graphTabs()}<svg viewBox="-6 -8 ${GW + 40} ${GH + 16}" aria-hidden="true">
         ${[0, 50, 100].map(tick).join('')}
         <line x1="${GL}" y1="${even}" x2="${GW}" y2="${even}" class="even"/><text x="${GL + 4}" y="${even - 4}">even</text>
         <polyline points="${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')}"/>
         ${pts.slice(0, mine.length).map(([x, y], i) => (mine[i]!.label === 'best' || mine[i]!.label === 'good' ? '' : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${LABEL_LOOK[mine[i]!.label].color}"/>`)).join('')}
         ${star}
-        <text x="${end[0] + 6}" y="${Math.max(8, Math.min(GH, end[1] + 4))}" class="final">${Math.round(100 * (result[0] ?? mine.at(-1)!.playedChance))}%</text>
+        ${endLabel(end, `${Math.round(100 * (result[0] ?? mine.at(-1)!.playedChance))}%`, 'final')}
         <rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/></svg>`;
     // Names go in as text, like everywhere else.
-    q('.rvgraph small').textContent = `${isYou(pov) ? 'Your' : `${names[pov]}'s`} winning chances`;
+    q('.rvgraph small').textContent = `${isYou(pov) ? 'Your' : `${names[pov]}'s`} win probability`;
+  };
+  const graphTabs = () =>
+    `<div class="rvgtabs" role="tablist">${GRAPH_TABS.map(([k, name]) => `<button data-gtab="${k}" role="tab" aria-selected="${k === graphTab}"${k === graphTab ? ' class="on"' : ''}>${name}</button>`).join('')}</div>`;
+  /**
+   * The accuracy graph (accuracy so far after each reviewed move, from the 5th counted decision: solid sky blue)
+   * or the luck graph (the luck percentile so far after each roll, around the 50% of average luck: dashed
+   * orange), each labelled at its end; colours safe for colour-blindness, and solid vs dashed besides (#134).
+   */
+  const drawLine = (mine: MoveReview[]) => {
+    const y = (v: number) => GH * (1 - v / 100);
+    const tick = (v: number) => `<text x="${GL - 5}" y="${y(v) + 3.5}" text-anchor="end" class="tick">${v}</text><line x1="${GL}" x2="${GW}" y1="${y(v)}" y2="${y(v)}" class="grid"/>`;
+    let pts: [number, number][] = [];
+    let faded: [number, number][] = [];
+    let label = '';
+    if (graphTab === 'accuracy') {
+      // From the first counted decision: faded and thinner until the 5th (an early running accuracy is noisy), then solid.
+      const { values, solidFrom } = runningAccuracy(mine);
+      const n = Math.max(1, mine.length - 1);
+      const at = (i: number) => [GL + (i / n) * (GW - GL), y(100 * values[i]!)] as [number, number];
+      const idx = values.flatMap((v, i) => (v === null ? [] : [i]));
+      faded = idx.filter((i) => i <= solidFrom).map(at);
+      pts = idx.filter((i) => i >= solidFrom).map(at);
+      const lastV = values.at(-1);
+      label = idx.length && lastV !== null && lastV !== undefined ? `Accuracy ${Math.round(100 * lastV)}%` : '';
+      if (!pts.length) pts = [];
+    } else {
+      const last = Math.max(1, states.length - 1);
+      const luck = runningLuck(graphLuck, pov);
+      pts = luck.map((l) => [GL + (l.at / last) * (GW - GL), y(l.pct)] as [number, number]);
+      label = luck.length ? `Luck ${Math.round(luck.at(-1)!.pct)}%` : '';
+    }
+    const end = pts.at(-1) ?? faded.at(-1);
+    const poly = (ps: [number, number][], cls: string) => (ps.length > 1 ? `<polyline class="${cls}" points="${ps.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ')}"/>` : '');
+    const mid = graphTab === 'luck' ? `<line x1="${GL}" y1="${y(50)}" x2="${GW}" y2="${y(50)}" class="even"/><text x="${GW - 4}" y="${y(50) + 12}" text-anchor="end">average luck</text>` : '';
+    q('.rvgraph').innerHTML = `<small></small>${graphTabs()}<svg viewBox="-6 -8 ${GW + 40} ${GH + 16}" aria-hidden="true">
+        ${[0, 50, 100].map(tick).join('')}${mid}
+        ${poly(faded, `${graphTab} early`)}${poly(pts, graphTab)}
+        ${end ? `<circle class="${graphTab}" cx="${end[0].toFixed(1)}" cy="${end[1].toFixed(1)}" r="3.5"/>${endLabel(end, label, `final ${graphTab}`)}` : ''}
+        ${graphTab === 'accuracy' ? `<rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/>` : ''}</svg>`;
+    const who = isYou(pov) ? 'Your' : `${names[pov]}'s`;
+    q('.rvgraph small').textContent = graphTab === 'accuracy' ? `${who} accuracy so far` : `${who} Luckometer`;
   };
 
   const moveRow = (m: MoveReview, turning = false) => {
@@ -215,7 +287,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
   };
   const rollRow = (r: RollLuck, turning = false) => {
     const b = document.createElement('button');
-    b.className = `rvrow roll ${r.luck >= 0 ? 'lucky' : 'unlucky'}${turning ? ' turning' : ''}`;
+    b.className = `rvrow roll${turning ? ' turning' : ''}`;
     b.dataset.roll = String(r.at);
     b.setAttribute('role', 'listitem');
     const step = frameAfter(r.at);
@@ -358,13 +430,20 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       if (filter) q('.rvtabs').scrollIntoView({ block: 'start', behavior: 'smooth' });
       return;
     }
+    const gt = t.closest<HTMLElement>('[data-gtab]')?.dataset.gtab as GraphTab | undefined;
+    if (gt) {
+      graphTab = gt;
+      saveGraphTab(gt);
+      if (prog) draw(prog);
+      return;
+    }
     const hit = t.closest('.rvgraph .hit');
     if (hit && graphMoves.length) {
       // The nearest move to the tap: shown in the full list.
       const box = hit.getBoundingClientRect();
       const x = (e as MouseEvent).clientX - box.left;
       // The graph may end with the result point after the last move: a tap there picks the last move.
-      const points = graphMoves.length + (prog?.finished ? 1 : 0);
+      const points = graphMoves.length + (prog?.finished && graphTab === 'win' ? 1 : 0);
       const i = Math.max(0, Math.min(graphMoves.length - 1, Math.round((x / box.width) * (points - 1))));
       const at = graphMoves[i]!.at;
       if (!el.querySelector(`.rvrow[data-at="${at}"]`)) {

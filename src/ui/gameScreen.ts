@@ -8,6 +8,7 @@ import { BoardView } from './boardView';
 import { dieMarkup, rollDie } from './dice';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
+import { UNDO_WINDOW_MS, UndoBook, windowAfter, type UndoFrame } from './undo';
 import type { GameConfig } from './setup';
 import { keepAwake } from './native';
 import { screens } from './lazy';
@@ -16,6 +17,11 @@ import { choiceText, crowded, moveTargets, whyStuck, type Target } from './targe
 import { award, goldFor, newAchievements, nextStreak, total, type GameFacts } from './rewards';
 import { earn, lockLabel, nextGoal, skinUnlockedBy } from './skins';
 import { enqueue, onReviewChange, progressOf, setGame } from './reviewQueue';
+
+/** The screen's own counters that a move changes, restored by Undo. */
+type Counters = { kills: number; pairs: number; sixes: number; lost: number };
+/** The Undo control (#143): a round icon (48 px to tap) with the undos left under it, "2/2". */
+const UNDO_BUTTON = `<button class="undobtn" data-act="undo" hidden aria-label="Undo your last move"><svg viewBox="0 0 40 40" aria-hidden="true"><circle class="ur-bg" cx="20" cy="20" r="17"/><circle class="ur" cx="20" cy="20" r="17"/><path d="M15 13 L10 18 L15 23 M10 18 H24 a6 6 0 0 1 0 12 H19" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><small></small></button>`;
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
 const DIE = 38;
@@ -78,6 +84,12 @@ export class GameScreen {
   private welcomed = new Set<Color>();
   /** While a person picks a move: a tap on a die in their tray. */
   private trayPick: ((roll: number) => void) | null = null;
+  /** Undo (#143): the people's last moves this turn, and how many undos each has left. */
+  private undo: UndoBook<Counters>;
+  /** Resolves the pending tap (a move pick, a roll tap or the turn-ends window) when Undo is tapped. */
+  private undoTap: (() => void) | null = null;
+  /** Cancels a pending roll tap (its listeners), when Undo is tapped instead. */
+  private cancelRoll: (() => void) | null = null;
   /** Pauses the game and saves it when the app goes to the background. */
   private onHidden = () => {
     if (document.visibilityState !== 'hidden' || this.disposed) return;
@@ -111,6 +123,7 @@ export class GameScreen {
     this.seedFromStart = !fixedRng && (!saved || (saved.seed !== undefined && saved.log !== undefined));
     this.kills = saved?.kills ?? 0;
     this.pairs = saved?.pairs ?? 0;
+    this.undo = new UndoBook<Counters>(settings.undos ?? 2, [...new Set(config.seats.filter((x) => !x.bot).map((x) => x.owner))], saved?.undos ?? {});
     for (const [c, f] of saved?.faces ?? []) this.lastFace.set(c, f);
     const people = config.names.length;
     this.el.className = 'screen game';
@@ -121,7 +134,7 @@ export class GameScreen {
       ${this.state.players.map((p) => this.panelHTML(p.color, p.bot)).join('')}
       <div class="gboard"></div>
       <div class="hint"><span class="tw"></span><span><b></b><small></small></span></div>
-      <div class="act"><div class="dicebar" aria-label="Dice this turn"></div><button class="rollbtn disp" data-act="roll" hidden>${icons.play}<span>ROLL</span></button></div>
+      <div class="act"><div class="dicebar" aria-label="Dice this turn"></div><button class="rollbtn disp" data-act="roll" hidden>${icons.play}<span>ROLL</span></button>${UNDO_BUTTON}</div>
       <div class="toasts"></div>`;
     this.view = new BoardView(this.state.players, 370, this.state.players.filter((p) => !p.bot).map((p) => p.color), !!this.state.singles, true);
     this.el.querySelector('.gboard')!.appendChild(this.view.el);
@@ -129,6 +142,9 @@ export class GameScreen {
     this.el.querySelector('.dicebar')!.addEventListener('click', (e) => {
       const b = (e.target as Element).closest<HTMLElement>('.tdie');
       if (b && !this.paused) this.trayPick?.(Number(b.dataset.r));
+    });
+    this.el.querySelector('.undobtn')!.addEventListener('click', () => {
+      if (!this.paused) this.undoTap?.();
     });
     // A continued game shows the dice as they were.
     for (const [c, f] of this.lastFace) this.diceBox(c).innerHTML = dieMarkup(f, DIE);
@@ -145,7 +161,7 @@ export class GameScreen {
 
   /** The game as it would be saved now. */
   private snapshot(): SavedGame {
-    return { v: 1, config: this.config, state: this.state, kills: this.kills, pairs: this.pairs, faces: [...this.lastFace], savedAt: Date.now(), seed: this.seed, ...(this.log !== null ? { log: this.log } : {}) };
+    return { v: 1, config: this.config, state: this.state, kills: this.kills, pairs: this.pairs, faces: [...this.lastFace], savedAt: Date.now(), seed: this.seed, ...(this.log !== null ? { log: this.log } : {}), undos: this.undo.usedCounts() };
   }
 
   /** Saves the game so it can be continued after the app closes. Done at the start of every turn. */
@@ -263,7 +279,13 @@ export class GameScreen {
       }
       if (again) this.setHint(c, 'Roll again', `Your ${this.state.rolls.join(' · ')} wait below. Tap ROLL AGAIN`);
       else this.setHint(c, pvp ? `${this.name(c)}'s turn` : 'Your turn', 'Tap ROLL');
-      await this.waitRollTap(c);
+      // Before the extra roll, the move that earned it can still be undone (no new dice yet).
+      if ((await Promise.race([this.waitRollTap(c).then(() => 'roll' as const), this.waitUndo(this.ownerOf(c))])) === 'undo') {
+        this.cancelRoll?.();
+        this.takeBack(this.ownerOf(c));
+        return;
+      }
+      this.showUndo(null);
       if (!this.disposed) await this.doRoll(c);
       return;
     }
@@ -272,14 +294,126 @@ export class GameScreen {
     if (all.length === 1) {
       this.drawTrays(all[0]!.move.roll);
       await this.sleep(250);
+      this.keepForUndo(c, false);
       if (!this.disposed) await this.doMove(all[0]!.move);
       return;
     }
-    const m = await this.pickMove(c, who);
-    if (!this.disposed) await this.doMove(m);
+    const picked = await Promise.race([this.pickMove(c, who), this.waitUndo(this.ownerOf(c))]);
+    if (picked === 'undo') {
+      this.trayPick = null;
+      this.view.clearMovable();
+      this.setChoices([]);
+      this.takeBack(this.ownerOf(c));
+      return;
+    }
+    this.keepForUndo(c, true);
+    if (!this.disposed) await this.doMove(picked);
+  }
+
+  // ---------- undo (#143) ----------
+  /** Before a person's move: how things were, for Undo. `picked`: they chose it (a move with no choice isn't undone alone). */
+  private keepForUndo(c: Color, picked: boolean) {
+    const owner = this.ownerOf(c);
+    if (!this.undo.owners.includes(owner)) return;
+    this.undo.push({ owner, state: this.state, logLen: this.log?.length ?? null, counters: { kills: this.kills, pairs: this.pairs, sixes: this.sixes, lost: this.lost }, picked });
+  }
+
+  /** Resolves 'undo' when Undo is tapped while `owner` can undo; otherwise never (the other tap wins). */
+  private waitUndo(owner: number): Promise<'undo'> {
+    if (!this.undo.canUndo(owner)) {
+      this.showUndo(this.undo.per && this.undo.owners.includes(owner) && this.undo.left(owner) === 0 ? owner : null);
+      return new Promise(() => {});
+    }
+    this.showUndo(owner);
+    return new Promise((done) => {
+      this.undoTap = () => {
+        this.undoTap = null;
+        done('undo');
+      };
+    });
+  }
+
+  /** Takes back `owner`'s last move: the state, the record and the counters as they were; saved straight away. */
+  private takeBack(owner: number) {
+    const f: UndoFrame<Counters> | null = this.undo.undo(owner);
+    this.undoTap = null;
+    this.showUndo(null);
+    if (!f) return;
+    sfx.tick();
+    this.state = f.state;
+    if (this.log !== null && f.logLen !== null) this.log = this.log.slice(0, f.logLen);
+    ({ kills: this.kills, pairs: this.pairs, sixes: this.sixes, lost: this.lost } = f.counters);
+    this.view.layout(this.state.players);
+    this.drawTrays();
+    this.markActive(this.cur.color);
+    // The save may hold the move just undone (one made before an extra roll): write the state as it is now.
+    if (!this.disposed) void saveGame(this.snapshot());
+  }
+
+  /**
+   * The Undo button beside the tray for `owner` (null hides it): the icon with "left/max" under it, dimmed with
+   * none left. In the turn-ends window its ring drains over `windowMs`.
+   */
+  private showUndo(owner: number | null, windowMs = 0) {
+    const b = this.el.querySelector<HTMLButtonElement>('.undobtn');
+    if (!b) return;
+    const max = this.undo.per;
+    b.classList.remove('window', 'still');
+    if (owner === null || !max) {
+      b.hidden = true;
+      return;
+    }
+    const left = this.undo.left(owner);
+    b.hidden = false;
+    b.disabled = left === 0;
+    b.classList.toggle('none', left === 0);
+    b.setAttribute('aria-label', left ? `Undo your last move, ${left} left` : 'No undos left');
+    b.querySelector('small')!.textContent = `${left}/${max}`;
+    if (windowMs) {
+      void b.offsetWidth; // restart the ring
+      b.style.setProperty('--undo-ms', `${windowMs}ms`);
+      b.classList.add('window');
+    }
+  }
+
+  /**
+   * The turn-ends window (#143): after a person's move hands the turn on (or ends the game, or finishes them),
+   * a short wait with Undo before anyone rolls. True when Undo was tapped. Bots, "pass the phone", the vote and
+   * the result all come after it. Under reduced motion the ring stays still and the caption counts the seconds.
+   */
+  private async undoWindow(owner: number, c: Color, roll: number): Promise<boolean> {
+    if (settings.undoWait === false) return false;
+    this.setHint(c, 'Your turn ends', `Undo takes the ${roll} back`);
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const tap = this.waitUndo(owner);
+    this.showUndo(owner, still ? 0 : UNDO_WINDOW_MS);
+    const b = this.el.querySelector<HTMLElement>('.undobtn');
+    const cap = b?.querySelector('small');
+    let left = UNDO_WINDOW_MS;
+    let tick: ReturnType<typeof setInterval> | null = null;
+    if (still && b && cap) {
+      b.classList.add('still');
+      cap.textContent = `${Math.ceil(left / 1000)} s`;
+      tick = setInterval(() => {
+        left -= 1000;
+        cap.textContent = `${Math.max(1, Math.ceil(left / 1000))} s`;
+      }, 1000);
+    }
+    const r = await Promise.race([tap, this.sleep(UNDO_WINDOW_MS).then(() => 'time' as const)]);
+    if (tick) clearInterval(tick);
+    this.undoTap = null;
+    if (r === 'undo') {
+      this.takeBack(owner);
+      return true;
+    }
+    this.showUndo(null);
+    return false;
   }
 
   private async doRoll(c: Color) {
+    // New dice: nothing before them can be undone any more (#143).
+    this.undo.clear();
+    this.showUndo(null);
     const kept = this.state.rolls;
     const forced = this.forced.shift();
     if (forced !== undefined) this.seedFromStart = false;
@@ -344,6 +478,8 @@ export class GameScreen {
 
   private async doMove(m: Move) {
     const doneBefore = this.doneOwners();
+    const before = this.state;
+    this.showUndo(null);
     if (this.log !== null) this.log += moveEvent(m);
     this.state = move(this.state, m);
     // The KILL banner and red flash land with the blow, while the victim is still flying home.
@@ -372,6 +508,8 @@ export class GameScreen {
     this.drawTrays();
     if (human && this.config.mode === 'pvc') this.count(m);
     if (this.config.mode === 'pvc') this.lost += m.captures.filter((c) => !this.state.players.find((p) => p.color === c.color)!.bot).length;
+    // The turn passes (or the game ends, or this person finished): a short window to undo before anyone rolls.
+    if (human && windowAfter(before, this.state, player.owner, this.undo.canUndo(player.owner)) && (await this.undoWindow(player.owner, m.color, m.roll))) return;
     // Someone just finished: the people still playing decide whether to play on for the next place.
     const fresh = this.doneOwners().filter((o) => !doneBefore.includes(o));
     if (fresh.length && this.state.phase !== 'over' && !this.humanDone()) {
@@ -449,14 +587,19 @@ export class GameScreen {
     btn.querySelector('span')!.textContent = this.state.rolls.length ? 'ROLL AGAIN' : 'ROLL';
     btn.hidden = false;
     return new Promise((done) => {
-      const on = () => {
-        if (this.paused) return;
+      const off = () => {
         box.removeEventListener('click', on);
         btn.removeEventListener('click', on);
         box.classList.remove('can-roll');
         btn.hidden = true;
+        this.cancelRoll = null;
+      };
+      const on = () => {
+        if (this.paused) return;
+        off();
         done();
       };
+      this.cancelRoll = off;
       box.addEventListener('click', on);
       btn.addEventListener('click', on);
     });
@@ -724,7 +867,7 @@ export class GameScreen {
   record(): GameRecord | null {
     if (this.log === null) return null;
     const c = this.config;
-    return { v: 1, seats: c.seats, first: c.first, ...(c.singles ? { singles: true } : {}), ...(this.seedFromStart ? { seed: this.seed } : {}), meta: { mode: c.mode, names: c.names }, events: this.log };
+    return { v: 1, seats: c.seats, first: c.first, ...(c.singles ? { singles: true } : {}), ...(this.seedFromStart ? { seed: this.seed } : {}), meta: { mode: c.mode, names: c.names, ...(Object.keys(this.undo.usedCounts()).length ? { undos: this.undo.usedCounts() } : {}) }, events: this.log };
   }
 
   private showResult() {
@@ -766,7 +909,7 @@ export class GameScreen {
     // Achievements need the new totals, so they join the reward panel when the stats are saved.
     const level = levelOf(this.state), layout = layoutOf(this.state);
     const facts: GameFacts = { mode: this.config.mode, place, lost: this.lost, level, layout, singles: !!this.state.singles };
-    const achievements = recordGame({ mode: this.config.mode, place, kills: this.kills, pairs: this.pairs, sixes: this.sixes, level, layout }).then((s) => {
+    const achievements = recordGame({ mode: this.config.mode, place, kills: this.kills, pairs: this.pairs, sixes: this.sixes, undos: Object.values(this.undo.usedCounts()).reduce((a, n) => a + n, 0), level, layout }).then((s) => {
       const fresh = newAchievements(s, facts, settings.achieved);
       if (fresh.length) {
         award(fresh.map((a) => a.id));

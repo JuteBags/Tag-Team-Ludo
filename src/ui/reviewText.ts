@@ -1,9 +1,9 @@
 // The game review's words, symbols and graph (#65), pure so they're tested; reviewScreen.ts draws them.
 import { FINISHED, type GameState, type Move } from '../engine';
-import type { Label, MoveReview, RollLuck } from '../engine/ai/review';
-import { accuracyText, luckBand } from './reviewWords';
+import { accuracyOf, countsForAccuracy, luckPercent, type Label, type MoveReview, type RollLuck } from '../engine/ai/review';
+import { accuracyText } from './reviewWords';
 // Moved to reviewWords.ts (#98) so the Stats sheet doesn't load this file at startup; still exported from here.
-export { accuracyText, luckBand };
+export { accuracyText };
 
 /** Each label's symbol (so colour isn't the only cue), name and colour. */
 export const LABEL_LOOK: Record<Label, { sym: string; name: string; color: string }> = {
@@ -18,20 +18,6 @@ export const LABELS: Label[] = ['best', 'good', 'inaccuracy', 'mistake', 'blunde
 /** Luck under this many points reads as average dice, so noise isn't called luck. */
 export const AVERAGE_LUCK = 5;
 
-/**
- * A person's dice luck in words first: "Lucky dice", "Unlucky dice" or "Average dice", and a line saying what it
- * means, to follow the word ("Unlucky dice: your rolls cost you 17 points of winning chance compared with
- * average rolls."). Luck is in points of winning chance (an absolute -100..100 scale), so the line says points, not %.
- */
-export function luckWords(luck: number, you: boolean): { word: string; tone: 'lucky' | 'unlucky' | 'average'; line: string } {
-  const pts = Math.round(Math.abs(luck));
-  const whose = you ? 'your rolls' : 'their rolls';
-  const them = you ? 'you' : 'them';
-  if (Math.abs(luck) < AVERAGE_LUCK) return { word: 'Average dice', tone: 'average', line: `${whose} were about as good as average rolls.` };
-  return luck > 0
-    ? { word: 'Lucky dice', tone: 'lucky', line: `${whose} gave ${them} ${pts} ${pts === 1 ? 'point' : 'points'} of winning chance more than average rolls.` }
-    : { word: 'Unlucky dice', tone: 'unlucky', line: `${whose} cost ${them} ${pts} ${pts === 1 ? 'point' : 'points'} of winning chance compared with average rolls.` };
-}
 
 /** What a move does, in a few words: "moved 5", "brought a token out", "moved a pair 3". */
 export function moveText(m: Move, nameOf?: (c: Move['color']) => string): string {
@@ -164,24 +150,22 @@ export function headline(o: { won: boolean; accuracy: number; luckPct: number; n
   if (scored && o.keyMistakes === 0 && o.accuracy < SMALL_SLIPS_BELOW) return 'No big mistakes, but small slips added up in close decisions.';
   // A loss turned by one bad move says so, whatever the accuracy.
   if (!o.won && o.decider && (o.decider.label === 'blunder' || o.decider.label === 'mistake'))
-    return `One ${o.decider.label} decided it: a single move cost ${Math.round(o.decider.gap)} points of winning chance.`;
-  const acc = `${Math.round(100 * o.accuracy)}%`;
-  const luck = `luck ${Math.round(o.luckPct)}%`;
+    return `One ${o.decider.label} decided it: a single move cost ${Math.round(o.decider.gap)} points of win probability.`;
   const them = you ? 'you' : 'them';
   const great = scored && o.accuracy >= GREAT_PLAY;
   const unlucky = o.luckPct < 40;
   const lucky = o.luckPct > 60;
   if (o.won) {
-    if (great && unlucky) return `Won against the dice: great play (${acc}) beat unlucky rolls (${luck}).`;
-    if (great) return `Won on great play: ${acc} accuracy.`;
-    if (lucky) return `Won, with the dice on ${you ? 'your' : 'their'} side (${luck}).`;
+    if (great && unlucky) return 'Won against the dice: great play beat unlucky rolls.';
+    if (great) return 'Won on great play.';
+    if (lucky) return `Won, with the dice on ${you ? 'your' : 'their'} side.`;
     return 'Won, with a few slips to learn from.';
   }
-  if (great && unlucky) return `${o.name} played well (${acc}), but the dice went against ${them} (${luck}).`;
-  if (great) return `${o.name} played well (${acc}): the turning point decided it.`;
+  if (great && unlucky) return `${o.name} played well, but the dice went against ${them}.`;
+  if (great) return `${o.name} played well: the turning point decided it.`;
   // No key mistakes: it was the small slips that added up, so say that rather than "mistakes".
   const slips = !o.keyMistakes && o.inaccuracies ? `${o.inaccuracies} small slip${o.inaccuracies === 1 ? '' : 's'}` : '';
-  if (lucky) return slips ? `The dice were kind (${luck}), but ${slips} added up.` : `The dice were kind (${luck}), but the mistakes cost the game.`;
+  if (lucky) return slips ? `The dice were kind, but ${slips} added up.` : 'The dice were kind, but the mistakes cost the game.';
   return slips ? `Lost on ${slips}: the key moves show where.` : 'Lost on mistakes: the key moves show where.';
 }
 
@@ -262,3 +246,43 @@ export function verdictText(m: MoveReview, s: GameState, who: string, nameOf?: (
   const [played, best] = verdictMoves(s, s.moves[m.played]!, s.moves[m.best]!, nameOf);
   return { head, line: `${who} ${plain ? moveText(s.moves[m.played]!, nameOf) : played}${plain ? '' : ` · Best: ${best}`}` };
 }
+
+// ---------- the review's accuracy and luck graphs, and the Stats trends (#134) ----------
+
+/** The accuracy line is solid from this many counted decisions; before that it's drawn faded (a running accuracy is noisy early). */
+export const ACCURACY_LINE_FROM = 5;
+
+/**
+ * Accuracy so far after each of a side's reviewed moves (in game order), 0-1: the accuracy of the moves up to
+ * there, as accuracyOf counts it, from the first counted decision (null before it). `solidFrom` is the index of
+ * the ACCURACY_LINE_FROM-th counted decision: the line is faded before it and solid from it (all faded, and
+ * `solidFrom` = the moves' length, with fewer). The last value is the game's accuracy.
+ */
+export function runningAccuracy(mine: MoveReview[], from = ACCURACY_LINE_FROM): { values: (number | null)[]; solidFrom: number } {
+  let counted = 0;
+  let solidFrom = mine.length;
+  const values = mine.map((m, i) => {
+    if (!m.gaps?.length || countsForAccuracy(m)) {
+      counted++;
+      if (counted === from) solidFrom = i;
+    }
+    if (!counted) return null;
+    const a = accuracyOf(mine.slice(0, i + 1));
+    return Number.isFinite(a) ? a : null;
+  });
+  return { values, solidFrom };
+}
+
+/** Luck so far after each of `owner`'s rolls: the luck percentile of the rolls up to there (0-100), at each roll's position. */
+export function runningLuck(luck: RollLuck[], owner: number): { at: number; pct: number }[] {
+  const mine = luck.filter((l) => l.owner === owner).sort((a, b) => a.at - b.at);
+  const out: { at: number; pct: number }[] = [];
+  mine.forEach((l, k) => {
+    const p = luckPercent(mine.slice(0, k + 1), owner);
+    if (Number.isFinite(p)) out.push({ at: l.at, pct: p });
+  });
+  return out;
+}
+
+// The Stats trends live with the light words (reviewWords.ts), so the Stats sheet doesn't load this file.
+export { TREND_GAMES, trendOf } from './reviewWords';
