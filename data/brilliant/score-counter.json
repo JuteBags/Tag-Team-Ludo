@@ -1,0 +1,1572 @@
+{
+ "table": {
+  "declines 0": {
+   "rates": {
+    "2p/extreme": 0.0798611111111111,
+    "2p/normal": 0.0078125,
+    "2p/first": 0.044270833333333336,
+    "2p/random": 0.02734375
+   },
+   "halves": [
+    0.07291666666666667,
+    0.08680555555555555
+   ],
+   "passes": false
+  },
+  "declines 1": {
+   "rates": {
+    "2p/extreme": 0.010416666666666666,
+    "2p/normal": 0.0,
+    "2p/first": 0.0,
+    "2p/random": 0.00390625
+   },
+   "halves": [
+    0.010416666666666666,
+    0.010416666666666666
+   ],
+   "passes": false
+  },
+  "declines 2": {
+   "rates": {
+    "2p/extreme": 0.001736111111111111,
+    "2p/normal": 0.0,
+    "2p/first": 0.0,
+    "2p/random": 0.0
+   },
+   "halves": [
+    0.001736111111111111,
+    0.001736111111111111
+   ],
+   "passes": false
+  },
+  "declines 3": {
+   "rates": {
+    "2p/extreme": 0.001736111111111111,
+    "2p/normal": 0.0,
+    "2p/first": 0.0,
+    "2p/random": 0.0
+   },
+   "halves": [
+    0.001736111111111111,
+    0.001736111111111111
+   ],
+   "passes": false
+  },
+  "declines 5": {
+   "rates": {
+    "2p/extreme": 0.0008680555555555555,
+    "2p/normal": 0.0,
+    "2p/first": 0.0,
+    "2p/random": 0.0
+   },
+   "halves": [
+    0.0,
+    0.001736111111111111
+   ],
+   "passes": false
+  },
+  "exposed 0": {
+   "rates": {
+    "2p/extreme": 2.8550347222222223,
+    "2p/normal": 2.79296875,
+    "2p/first": 2.9140625,
+    "2p/random": 0.94921875
+   },
+   "halves": [
+    2.9166666666666665,
+    2.7934027777777777
+   ],
+   "passes": false
+  },
+  "exposed 1": {
+   "rates": {
+    "2p/extreme": 2.107638888888889,
+    "2p/normal": 2.02734375,
+    "2p/first": 1.8854166666666667,
+    "2p/random": 0.4921875
+   },
+   "halves": [
+    2.1319444444444446,
+    2.0833333333333335
+   ],
+   "passes": false
+  },
+  "exposed 2": {
+   "rates": {
+    "2p/extreme": 1.8263888888888888,
+    "2p/normal": 1.796875,
+    "2p/first": 1.5390625,
+    "2p/random": 0.36328125
+   },
+   "halves": [
+    1.8541666666666667,
+    1.7986111111111112
+   ],
+   "passes": false
+  },
+  "exposed 3": {
+   "rates": {
+    "2p/extreme": 1.3541666666666667,
+    "2p/normal": 1.38671875,
+    "2p/first": 1.0729166666666667,
+    "2p/random": 0.24609375
+   },
+   "halves": [
+    1.3836805555555556,
+    1.3246527777777777
+   ],
+   "passes": false
+  },
+  "exposed 5": {
+   "rates": {
+    "2p/extreme": 0.7022569444444444,
+    "2p/normal": 0.7890625,
+    "2p/first": 0.4244791666666667,
+    "2p/random": 0.109375
+   },
+   "halves": [
+    0.71875,
+    0.6857638888888888
+   ],
+   "passes": false
+  },
+  "back 0": {
+   "rates": {
+    "2p/extreme": 8.485243055555555,
+    "2p/normal": 7.60546875,
+    "2p/first": 0.7734375,
+    "2p/random": 3.875
+   },
+   "halves": [
+    8.869791666666666,
+    8.100694444444445
+   ],
+   "passes": false
+  },
+  "back 1": {
+   "rates": {
+    "2p/extreme": 5.925347222222222,
+    "2p/normal": 5.21484375,
+    "2p/first": 0.390625,
+    "2p/random": 1.88671875
+   },
+   "halves": [
+    6.199652777777778,
+    5.651041666666667
+   ],
+   "passes": false
+  },
+  "back 2": {
+   "rates": {
+    "2p/extreme": 4.856770833333333,
+    "2p/normal": 4.3828125,
+    "2p/first": 0.2682291666666667,
+    "2p/random": 1.375
+   },
+   "halves": [
+    5.039930555555555,
+    4.673611111111111
+   ],
+   "passes": false
+  },
+  "back 3": {
+   "rates": {
+    "2p/extreme": 3.6944444444444446,
+    "2p/normal": 3.3125,
+    "2p/first": 0.1640625,
+    "2p/random": 0.85546875
+   },
+   "halves": [
+    3.8177083333333335,
+    3.5711805555555554
+   ],
+   "passes": false
+  },
+  "back 5": {
+   "rates": {
+    "2p/extreme": 2.0190972222222223,
+    "2p/normal": 1.80859375,
+    "2p/first": 0.09375,
+    "2p/random": 0.421875
+   },
+   "halves": [
+    2.048611111111111,
+    1.9895833333333333
+   ],
+   "passes": false
+  },
+  "breaks 0": {
+   "rates": {
+    "2p/extreme": 0.004340277777777778,
+    "2p/normal": 0.01171875,
+    "2p/first": 0.015625,
+    "2p/random": 0.03125
+   },
+   "halves": [
+    0.006944444444444444,
+    0.001736111111111111
+   ],
+   "passes": false
+  },
+  "breaks 1": {
+   "rates": {
+    "2p/extreme": 0.0026041666666666665,
+    "2p/normal": 0.0078125,
+    "2p/first": 0.0078125,
+    "2p/random": 0.015625
+   },
+   "halves": [
+    0.005208333333333333,
+    0.0
+   ],
+   "passes": false
+  },
+  "breaks 2": {
+   "rates": {
+    "2p/extreme": 0.0026041666666666665,
+    "2p/normal": 0.00390625,
+    "2p/first": 0.005208333333333333,
+    "2p/random": 0.01171875
+   },
+   "halves": [
+    0.005208333333333333,
+    0.0
+   ],
+   "passes": false
+  },
+  "breaks 3": {
+   "rates": {
+    "2p/extreme": 0.0026041666666666665,
+    "2p/normal": 0.00390625,
+    "2p/first": 0.0026041666666666665,
+    "2p/random": 0.0078125
+   },
+   "halves": [
+    0.005208333333333333,
+    0.0
+   ],
+   "passes": false
+  },
+  "breaks 5": {
+   "rates": {
+    "2p/extreme": 0.0008680555555555555,
+    "2p/normal": 0.00390625,
+    "2p/first": 0.0026041666666666665,
+    "2p/random": 0.00390625
+   },
+   "halves": [
+    0.001736111111111111,
+    0.0
+   ],
+   "passes": false
+  },
+  "any 0": {
+   "rates": {
+    "2p/extreme": 10.1953125,
+    "2p/normal": 9.19140625,
+    "2p/first": 3.6223958333333335,
+    "2p/random": 4.546875
+   },
+   "halves": [
+    10.605902777777779,
+    9.784722222222221
+   ],
+   "passes": false
+  },
+  "any 1": {
+   "rates": {
+    "2p/extreme": 7.136284722222222,
+    "2p/normal": 6.38671875,
+    "2p/first": 2.2265625,
+    "2p/random": 2.23828125
+   },
+   "halves": [
+    7.435763888888889,
+    6.836805555555555
+   ],
+   "passes": false
+  },
+  "any 2": {
+   "rates": {
+    "2p/extreme": 5.888020833333333,
+    "2p/normal": 5.40234375,
+    "2p/first": 1.7682291666666667,
+    "2p/random": 1.64453125
+   },
+   "halves": [
+    6.100694444444445,
+    5.675347222222222
+   ],
+   "passes": false
+  },
+  "any 3": {
+   "rates": {
+    "2p/extreme": 4.457465277777778,
+    "2p/normal": 4.140625,
+    "2p/first": 1.2135416666666667,
+    "2p/random": 1.0546875
+   },
+   "halves": [
+    4.612847222222222,
+    4.302083333333333
+   ],
+   "passes": false
+  },
+  "any 5": {
+   "rates": {
+    "2p/extreme": 2.4114583333333335,
+    "2p/normal": 2.2734375,
+    "2p/first": 0.5078125,
+    "2p/random": 0.51953125
+   },
+   "halves": [
+    2.4600694444444446,
+    2.3628472222222223
+   ],
+   "passes": false
+  }
+ },
+ "examples": {
+  "back 0": [
+   {
+    "seed": 1,
+    "n": 38,
+    "moves": 2,
+    "win": 49.1,
+    "second_gap": 4.73,
+    "second_se": 0.52,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 52,
+    "moves": 3,
+    "win": 49.2,
+    "second_gap": 1.59,
+    "second_se": 0.56,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 84,
+    "moves": 4,
+    "win": 59.9,
+    "second_gap": 10.85,
+    "second_se": 0.76,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 90,
+    "moves": 4,
+    "win": 61.6,
+    "second_gap": 2.01,
+    "second_se": 0.72,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 94,
+    "moves": 4,
+    "win": 63.1,
+    "second_gap": 5.58,
+    "second_se": 0.83,
+    "tags": [
+     "back"
+    ]
+   }
+  ],
+  "back 1": [
+   {
+    "seed": 1,
+    "n": 38,
+    "moves": 2,
+    "win": 49.1,
+    "second_gap": 4.73,
+    "second_se": 0.52,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 52,
+    "moves": 3,
+    "win": 49.2,
+    "second_gap": 1.59,
+    "second_se": 0.56,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 84,
+    "moves": 4,
+    "win": 59.9,
+    "second_gap": 10.85,
+    "second_se": 0.76,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 90,
+    "moves": 4,
+    "win": 61.6,
+    "second_gap": 2.01,
+    "second_se": 0.72,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 94,
+    "moves": 4,
+    "win": 63.1,
+    "second_gap": 5.58,
+    "second_se": 0.83,
+    "tags": [
+     "back"
+    ]
+   }
+  ],
+  "back 2": [
+   {
+    "seed": 1,
+    "n": 38,
+    "moves": 2,
+    "win": 49.1,
+    "second_gap": 4.73,
+    "second_se": 0.52,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 84,
+    "moves": 4,
+    "win": 59.9,
+    "second_gap": 10.85,
+    "second_se": 0.76,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 90,
+    "moves": 4,
+    "win": 61.6,
+    "second_gap": 2.01,
+    "second_se": 0.72,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 94,
+    "moves": 4,
+    "win": 63.1,
+    "second_gap": 5.58,
+    "second_se": 0.83,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 100,
+    "moves": 2,
+    "win": 35.8,
+    "second_gap": 4.25,
+    "second_se": 0.9,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   }
+  ],
+  "back 3": [
+   {
+    "seed": 1,
+    "n": 38,
+    "moves": 2,
+    "win": 49.1,
+    "second_gap": 4.73,
+    "second_se": 0.52,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 84,
+    "moves": 4,
+    "win": 59.9,
+    "second_gap": 10.85,
+    "second_se": 0.76,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 94,
+    "moves": 4,
+    "win": 63.1,
+    "second_gap": 5.58,
+    "second_se": 0.83,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 100,
+    "moves": 2,
+    "win": 35.8,
+    "second_gap": 4.25,
+    "second_se": 0.9,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 108,
+    "moves": 3,
+    "win": 45.1,
+    "second_gap": 9.89,
+    "second_se": 0.68,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   }
+  ],
+  "any 0": [
+   {
+    "seed": 1,
+    "n": 38,
+    "moves": 2,
+    "win": 49.1,
+    "second_gap": 4.73,
+    "second_se": 0.52,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 52,
+    "moves": 3,
+    "win": 49.2,
+    "second_gap": 1.59,
+    "second_se": 0.56,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 76,
+    "moves": 2,
+    "win": 50.6,
+    "second_gap": 2.18,
+    "second_se": 0.62,
+    "tags": [
+     "exposed"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 84,
+    "moves": 4,
+    "win": 59.9,
+    "second_gap": 10.85,
+    "second_se": 0.76,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 90,
+    "moves": 4,
+    "win": 61.6,
+    "second_gap": 2.01,
+    "second_se": 0.72,
+    "tags": [
+     "back"
+    ]
+   }
+  ],
+  "any 1": [
+   {
+    "seed": 1,
+    "n": 38,
+    "moves": 2,
+    "win": 49.1,
+    "second_gap": 4.73,
+    "second_se": 0.52,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 52,
+    "moves": 3,
+    "win": 49.2,
+    "second_gap": 1.59,
+    "second_se": 0.56,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 76,
+    "moves": 2,
+    "win": 50.6,
+    "second_gap": 2.18,
+    "second_se": 0.62,
+    "tags": [
+     "exposed"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 84,
+    "moves": 4,
+    "win": 59.9,
+    "second_gap": 10.85,
+    "second_se": 0.76,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 90,
+    "moves": 4,
+    "win": 61.6,
+    "second_gap": 2.01,
+    "second_se": 0.72,
+    "tags": [
+     "back"
+    ]
+   }
+  ],
+  "any 2": [
+   {
+    "seed": 1,
+    "n": 38,
+    "moves": 2,
+    "win": 49.1,
+    "second_gap": 4.73,
+    "second_se": 0.52,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 76,
+    "moves": 2,
+    "win": 50.6,
+    "second_gap": 2.18,
+    "second_se": 0.62,
+    "tags": [
+     "exposed"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 84,
+    "moves": 4,
+    "win": 59.9,
+    "second_gap": 10.85,
+    "second_se": 0.76,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 90,
+    "moves": 4,
+    "win": 61.6,
+    "second_gap": 2.01,
+    "second_se": 0.72,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 94,
+    "moves": 4,
+    "win": 63.1,
+    "second_gap": 5.58,
+    "second_se": 0.83,
+    "tags": [
+     "back"
+    ]
+   }
+  ],
+  "any 3": [
+   {
+    "seed": 1,
+    "n": 38,
+    "moves": 2,
+    "win": 49.1,
+    "second_gap": 4.73,
+    "second_se": 0.52,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 84,
+    "moves": 4,
+    "win": 59.9,
+    "second_gap": 10.85,
+    "second_se": 0.76,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 94,
+    "moves": 4,
+    "win": 63.1,
+    "second_gap": 5.58,
+    "second_se": 0.83,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 100,
+    "moves": 2,
+    "win": 35.8,
+    "second_gap": 4.25,
+    "second_se": 0.9,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 108,
+    "moves": 3,
+    "win": 45.1,
+    "second_gap": 9.89,
+    "second_se": 0.68,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   }
+  ],
+  "exposed 0": [
+   {
+    "seed": 1,
+    "n": 52,
+    "moves": 3,
+    "win": 49.2,
+    "second_gap": 1.59,
+    "second_se": 0.56,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 76,
+    "moves": 2,
+    "win": 50.6,
+    "second_gap": 2.18,
+    "second_se": 0.62,
+    "tags": [
+     "exposed"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 100,
+    "moves": 2,
+    "win": 35.8,
+    "second_gap": 4.25,
+    "second_se": 0.9,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 102,
+    "moves": 4,
+    "win": 61.9,
+    "second_gap": 0.5,
+    "second_se": 0.89,
+    "tags": [
+     "exposed"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 106,
+    "moves": 4,
+    "win": 62.2,
+    "second_gap": 2.5,
+    "second_se": 0.81,
+    "tags": [
+     "exposed"
+    ]
+   }
+  ],
+  "exposed 1": [
+   {
+    "seed": 1,
+    "n": 52,
+    "moves": 3,
+    "win": 49.2,
+    "second_gap": 1.59,
+    "second_se": 0.56,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 76,
+    "moves": 2,
+    "win": 50.6,
+    "second_gap": 2.18,
+    "second_se": 0.62,
+    "tags": [
+     "exposed"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 100,
+    "moves": 2,
+    "win": 35.8,
+    "second_gap": 4.25,
+    "second_se": 0.9,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 106,
+    "moves": 4,
+    "win": 62.2,
+    "second_gap": 2.5,
+    "second_se": 0.81,
+    "tags": [
+     "exposed"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 108,
+    "moves": 3,
+    "win": 45.1,
+    "second_gap": 9.89,
+    "second_se": 0.68,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   }
+  ],
+  "exposed 2": [
+   {
+    "seed": 1,
+    "n": 76,
+    "moves": 2,
+    "win": 50.6,
+    "second_gap": 2.18,
+    "second_se": 0.62,
+    "tags": [
+     "exposed"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 100,
+    "moves": 2,
+    "win": 35.8,
+    "second_gap": 4.25,
+    "second_se": 0.9,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 106,
+    "moves": 4,
+    "win": 62.2,
+    "second_gap": 2.5,
+    "second_se": 0.81,
+    "tags": [
+     "exposed"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 108,
+    "moves": 3,
+    "win": 45.1,
+    "second_gap": 9.89,
+    "second_se": 0.68,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 174,
+    "moves": 3,
+    "win": 42.9,
+    "second_gap": 2.85,
+    "second_se": 0.93,
+    "tags": [
+     "exposed"
+    ]
+   }
+  ],
+  "back 5": [
+   {
+    "seed": 1,
+    "n": 84,
+    "moves": 4,
+    "win": 59.9,
+    "second_gap": 10.85,
+    "second_se": 0.76,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 94,
+    "moves": 4,
+    "win": 63.1,
+    "second_gap": 5.58,
+    "second_se": 0.83,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 108,
+    "moves": 3,
+    "win": 45.1,
+    "second_gap": 9.89,
+    "second_se": 0.68,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 218,
+    "moves": 3,
+    "win": 52.1,
+    "second_gap": 7.32,
+    "second_se": 1.2,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 2,
+    "n": 52,
+    "moves": 3,
+    "win": 62.8,
+    "second_gap": 5.22,
+    "second_se": 0.6,
+    "tags": [
+     "back"
+    ]
+   }
+  ],
+  "any 5": [
+   {
+    "seed": 1,
+    "n": 84,
+    "moves": 4,
+    "win": 59.9,
+    "second_gap": 10.85,
+    "second_se": 0.76,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 94,
+    "moves": 4,
+    "win": 63.1,
+    "second_gap": 5.58,
+    "second_se": 0.83,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 108,
+    "moves": 3,
+    "win": 45.1,
+    "second_gap": 9.89,
+    "second_se": 0.68,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 218,
+    "moves": 3,
+    "win": 52.1,
+    "second_gap": 7.32,
+    "second_se": 1.2,
+    "tags": [
+     "back"
+    ]
+   },
+   {
+    "seed": 2,
+    "n": 52,
+    "moves": 3,
+    "win": 62.8,
+    "second_gap": 5.22,
+    "second_se": 0.6,
+    "tags": [
+     "back"
+    ]
+   }
+  ],
+  "exposed 3": [
+   {
+    "seed": 1,
+    "n": 100,
+    "moves": 2,
+    "win": 35.8,
+    "second_gap": 4.25,
+    "second_se": 0.9,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 108,
+    "moves": 3,
+    "win": 45.1,
+    "second_gap": 9.89,
+    "second_se": 0.68,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 1,
+    "n": 206,
+    "moves": 6,
+    "win": 53.9,
+    "second_gap": 3.77,
+    "second_se": 1.21,
+    "tags": [
+     "exposed"
+    ]
+   },
+   {
+    "seed": 2,
+    "n": 96,
+    "moves": 2,
+    "win": 42.9,
+    "second_gap": 3.95,
+    "second_se": 0.53,
+    "tags": [
+     "exposed"
+    ]
+   },
+   {
+    "seed": 2,
+    "n": 136,
+    "moves": 2,
+    "win": 35.7,
+    "second_gap": 3.18,
+    "second_se": 0.8,
+    "tags": [
+     "exposed"
+    ]
+   }
+  ],
+  "exposed 5": [
+   {
+    "seed": 1,
+    "n": 108,
+    "moves": 3,
+    "win": 45.1,
+    "second_gap": 9.89,
+    "second_se": 0.68,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 3,
+    "n": 133,
+    "moves": 4,
+    "win": 45.7,
+    "second_gap": 5.07,
+    "second_se": 0.96,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 3,
+    "n": 197,
+    "moves": 4,
+    "win": 43.5,
+    "second_gap": 8.19,
+    "second_se": 1.18,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 4,
+    "n": 119,
+    "moves": 2,
+    "win": 31.8,
+    "second_gap": 8.59,
+    "second_se": 0.79,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   },
+   {
+    "seed": 5,
+    "n": 155,
+    "moves": 4,
+    "win": 65.5,
+    "second_gap": 7.69,
+    "second_se": 0.78,
+    "tags": [
+     "exposed",
+     "back"
+    ]
+   }
+  ],
+  "declines 0": [
+   {
+    "seed": 6,
+    "n": 153,
+    "moves": 7,
+    "win": 45.6,
+    "second_gap": 0.0,
+    "second_se": 0.0,
+    "tags": [
+     "declines"
+    ]
+   },
+   {
+    "seed": 6,
+    "n": 232,
+    "moves": 6,
+    "win": 70.3,
+    "second_gap": 0.0,
+    "second_se": 0.0,
+    "tags": [
+     "declines"
+    ]
+   },
+   {
+    "seed": 10,
+    "n": 101,
+    "moves": 7,
+    "win": 81.7,
+    "second_gap": 0.11,
+    "second_se": 0.05,
+    "tags": [
+     "declines",
+     "back"
+    ]
+   },
+   {
+    "seed": 10,
+    "n": 105,
+    "moves": 8,
+    "win": 86.1,
+    "second_gap": 0.25,
+    "second_se": 0.15,
+    "tags": [
+     "declines"
+    ]
+   },
+   {
+    "seed": 13,
+    "n": 93,
+    "moves": 3,
+    "win": 48.9,
+    "second_gap": 1.19,
+    "second_se": 0.6,
+    "tags": [
+     "declines",
+     "exposed"
+    ]
+   }
+  ],
+  "breaks 0": [
+   {
+    "seed": 10,
+    "n": 239,
+    "moves": 2,
+    "win": 28.1,
+    "second_gap": 1.44,
+    "second_se": 0.85,
+    "tags": [
+     "breaks"
+    ]
+   },
+   {
+    "seed": 268,
+    "n": 317,
+    "moves": 2,
+    "win": 62.8,
+    "second_gap": 4.15,
+    "second_se": 0.86,
+    "tags": [
+     "breaks"
+    ]
+   },
+   {
+    "seed": 366,
+    "n": 300,
+    "moves": 3,
+    "win": 23.1,
+    "second_gap": 3.15,
+    "second_se": 0.38,
+    "tags": [
+     "back",
+     "breaks"
+    ]
+   },
+   {
+    "seed": 447,
+    "n": 364,
+    "moves": 3,
+    "win": 50.2,
+    "second_gap": 1.07,
+    "second_se": 0.57,
+    "tags": [
+     "breaks"
+    ]
+   },
+   {
+    "seed": 564,
+    "n": 190,
+    "moves": 2,
+    "win": 50.4,
+    "second_gap": 8.07,
+    "second_se": 1.01,
+    "tags": [
+     "breaks"
+    ]
+   }
+  ],
+  "declines 1": [
+   {
+    "seed": 204,
+    "n": 78,
+    "moves": 8,
+    "win": 70.0,
+    "second_gap": 1.76,
+    "second_se": 0.5,
+    "tags": [
+     "declines",
+     "exposed"
+    ]
+   },
+   {
+    "seed": 288,
+    "n": 240,
+    "moves": 7,
+    "win": 30.9,
+    "second_gap": 3.09,
+    "second_se": 0.81,
+    "tags": [
+     "declines",
+     "back"
+    ]
+   },
+   {
+    "seed": 290,
+    "n": 131,
+    "moves": 4,
+    "win": 55.9,
+    "second_gap": 1.51,
+    "second_se": 0.75,
+    "tags": [
+     "declines"
+    ]
+   },
+   {
+    "seed": 343,
+    "n": 307,
+    "moves": 6,
+    "win": 50.6,
+    "second_gap": 1.31,
+    "second_se": 0.6,
+    "tags": [
+     "declines",
+     "back"
+    ]
+   },
+   {
+    "seed": 428,
+    "n": 112,
+    "moves": 8,
+    "win": 85.1,
+    "second_gap": 1.16,
+    "second_se": 0.26,
+    "tags": [
+     "declines"
+    ]
+   }
+  ],
+  "breaks 1": [
+   {
+    "seed": 268,
+    "n": 317,
+    "moves": 2,
+    "win": 62.8,
+    "second_gap": 4.15,
+    "second_se": 0.86,
+    "tags": [
+     "breaks"
+    ]
+   },
+   {
+    "seed": 366,
+    "n": 300,
+    "moves": 3,
+    "win": 23.1,
+    "second_gap": 3.15,
+    "second_se": 0.38,
+    "tags": [
+     "back",
+     "breaks"
+    ]
+   },
+   {
+    "seed": 564,
+    "n": 190,
+    "moves": 2,
+    "win": 50.4,
+    "second_gap": 8.07,
+    "second_se": 1.01,
+    "tags": [
+     "breaks"
+    ]
+   }
+  ],
+  "breaks 2": [
+   {
+    "seed": 268,
+    "n": 317,
+    "moves": 2,
+    "win": 62.8,
+    "second_gap": 4.15,
+    "second_se": 0.86,
+    "tags": [
+     "breaks"
+    ]
+   },
+   {
+    "seed": 366,
+    "n": 300,
+    "moves": 3,
+    "win": 23.1,
+    "second_gap": 3.15,
+    "second_se": 0.38,
+    "tags": [
+     "back",
+     "breaks"
+    ]
+   },
+   {
+    "seed": 564,
+    "n": 190,
+    "moves": 2,
+    "win": 50.4,
+    "second_gap": 8.07,
+    "second_se": 1.01,
+    "tags": [
+     "breaks"
+    ]
+   }
+  ],
+  "breaks 3": [
+   {
+    "seed": 268,
+    "n": 317,
+    "moves": 2,
+    "win": 62.8,
+    "second_gap": 4.15,
+    "second_se": 0.86,
+    "tags": [
+     "breaks"
+    ]
+   },
+   {
+    "seed": 366,
+    "n": 300,
+    "moves": 3,
+    "win": 23.1,
+    "second_gap": 3.15,
+    "second_se": 0.38,
+    "tags": [
+     "back",
+     "breaks"
+    ]
+   },
+   {
+    "seed": 564,
+    "n": 190,
+    "moves": 2,
+    "win": 50.4,
+    "second_gap": 8.07,
+    "second_se": 1.01,
+    "tags": [
+     "breaks"
+    ]
+   }
+  ],
+  "declines 2": [
+   {
+    "seed": 288,
+    "n": 240,
+    "moves": 7,
+    "win": 30.9,
+    "second_gap": 3.09,
+    "second_se": 0.81,
+    "tags": [
+     "declines",
+     "back"
+    ]
+   },
+   {
+    "seed": 433,
+    "n": 124,
+    "moves": 3,
+    "win": 40.5,
+    "second_gap": 6.03,
+    "second_se": 0.75,
+    "tags": [
+     "declines"
+    ]
+   }
+  ],
+  "declines 3": [
+   {
+    "seed": 288,
+    "n": 240,
+    "moves": 7,
+    "win": 30.9,
+    "second_gap": 3.09,
+    "second_se": 0.81,
+    "tags": [
+     "declines",
+     "back"
+    ]
+   },
+   {
+    "seed": 433,
+    "n": 124,
+    "moves": 3,
+    "win": 40.5,
+    "second_gap": 6.03,
+    "second_se": 0.75,
+    "tags": [
+     "declines"
+    ]
+   }
+  ],
+  "declines 5": [
+   {
+    "seed": 433,
+    "n": 124,
+    "moves": 3,
+    "win": 40.5,
+    "second_gap": 6.03,
+    "second_se": 0.75,
+    "tags": [
+     "declines"
+    ]
+   }
+  ],
+  "breaks 5": [
+   {
+    "seed": 564,
+    "n": 190,
+    "moves": 2,
+    "win": 50.4,
+    "second_gap": 8.07,
+    "second_se": 1.01,
+    "tags": [
+     "breaks"
+    ]
+   }
+  ]
+ }
+}
