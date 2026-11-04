@@ -97,7 +97,7 @@ describe('the review on a pool of workers (#151)', () => {
     expect(poolSize({ ...pc, hardwareConcurrency: 4 })).toBe(3);
     expect(poolSize({ ...pc, hardwareConcurrency: 16, deviceMemory: 2 })).toBe(2);
     expect(poolSize({ hardwareConcurrency: 12 }, false)).toBe(6);
-    // A mouse with userAgentData saying mobile (a tablet with a trackpad): the browser wins.
+    // A tablet with a trackpad (a fine pointer) whose browser says mobile: the browser wins.
     expect(poolSize({ ...phone, hardwareConcurrency: 8 }, false)).toBe(3);
   });
 
@@ -117,7 +117,7 @@ describe('the review on a pool of workers (#151)', () => {
   }, 300_000);
 
   it("reviews a game the same on a computer's 6 engines at once as on 1", async () => {
-    const rec = game(4, 11);
+    const rec = game(2, 7);
     const states = (replay(rec).states as GameState[]).slice(0, 160);
     const es = await Promise.all(Array.from({ length: 7 }, () => engine()));
     let r = 3;

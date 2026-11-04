@@ -228,6 +228,34 @@ describe('review runner', () => {
     expect(short.luck).toEqual([]);
   });
 
+  it('lets the decisions go before the luck until the first key verdict is on show (#151)', async () => {
+    const rec = game(9);
+    const fakeWith = (gap: number) => async (s: GameState, _n: number, _seed: number, ask?: ReviewAsk): Promise<DecisionValues> =>
+      ({ ofMove: s.moves.map((_, i) => i), mean: s.moves.map((_, i) => (i ? 0.5 - gap : 0.5)), gap: s.moves.map((_, i) => (i ? gap : 0)), se: s.moves.map(() => 0.01), best: 0, ...(ask?.mode === 'screen' ? { kind: 'screen' as const } : {}) });
+    // What yieldTo() said when the luck pass started, and after the review.
+    const run = (gap: number, stored?: Parameters<typeof runReview>[1]) => {
+      let yieldTo: () => boolean = () => false;
+      let atStart: boolean | undefined;
+      const luckOf = (_r: GameRecord, _stopped?: () => boolean, y?: () => boolean) => {
+        yieldTo = y ?? (() => false);
+        atStart = yieldTo();
+        return Promise.resolve({ luck: [], chances: [] });
+      };
+      return new Promise<{ atStart: boolean | undefined; atEnd: boolean; moves: MoveReview[] }>((done) =>
+        runReview(rec, stored, (p) => p.finished && done({ atStart, atEnd: yieldTo(), moves: p.moves }), false, fakeWith(gap), undefined, luckOf),
+      );
+    };
+    // Key moves: the luck starts after them, so nothing holds it.
+    expect((await run(0.075)).atStart).toBe(false);
+    // None (all Best): the share starts it while no key verdict is on show, so the decisions keep going first.
+    const clean = await run(0);
+    expect(clean.atStart).toBe(true);
+    // A resumed review that already shows a key verdict: nothing holds the luck.
+    const keyed = await run(0.075);
+    const resumed = await run(0, { v: REVIEW_VERSION, moves: keyed.moves.slice(0, 5).map((m) => ({ ...m, label: 'mistake' as const })), luck: null });
+    expect(resumed.atStart).toBe(false);
+  });
+
   it('reports the decision with the most at stake first (the net screen orders them, #101)', async () => {
     const rec = game(9);
     // The net's spread grows with the decision's index, so the last decision has the most at stake. (The

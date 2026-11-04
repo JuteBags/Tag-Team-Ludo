@@ -141,9 +141,9 @@ function timeReview(rec: GameRecord, pool: ReviewPool, onStop: (stop: () => void
     const t0 = performance.now();
     let luckMs: number | null = null;
     let firstKeyMs: number | null = null;
-    const luck = (r: GameRecord, stopped?: () => boolean) => {
+    const luck = (r: GameRecord, stopped?: () => boolean, yieldTo?: () => boolean) => {
       const t = performance.now();
-      return pool.luck(r, stopped)!.then((v) => ((luckMs = performance.now() - t), v));
+      return pool.luck(r, stopped, yieldTo)!.then((v) => ((luckMs = performance.now() - t), v));
     };
     const stop = runReview(
       rec,
