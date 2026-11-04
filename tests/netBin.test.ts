@@ -68,5 +68,6 @@ describe('extreme-net.bin', () => {
       }
     }
     expect(checked).toBeGreaterThan(200);
-  });
+    // About 2 s alone, but past vitest's 5 s default while the whole suite runs in parallel.
+  }, 30_000);
 });
