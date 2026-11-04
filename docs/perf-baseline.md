@@ -194,7 +194,7 @@ The wasm and the nets are not fetched at startup: the cold start fetched 141 kB.
 
 **What it shows:**
 - **Settled screens are quiet.** Home, setup, replay, the finished review and the store all draw 0 frames and use under 2.5 ms/s of main thread. Section 2 predicted this for home; it now holds for those five screens.
-- **The bots' turns are the one busy screen:** 238 ms/s of main thread, almost a quarter of it, with 72 paints/s. Script is only 5 ms/s, because the bots think in the worker. The rest is rendering. Every hop, throw and squash is a rAF `tween` that sets an SVG `<g>`'s `transform` attribute (`boardView.ts:506-546`, `set`). That repaints the board SVG on every frame, and more than once per frame drawn (72 paints for 55 frames).
+- **The bots' turns are the one busy screen:** 238 ms/s of main thread, almost a quarter of it, with 72 paints/s. Script is only 5 ms/s, because the bots think in the worker. The rest is rendering. My first guess was the hops: every hop, throw and squash is a rAF `tween` that sets an SVG `<g>`'s `transform` attribute (`boardView.ts`, `set`). The target-1 probe below shows the hops are only a small part of it.
 - **The game keeps drawing while it waits for the person:**
   - 60 frames/s while waiting for the roll (I5 `nudge`);
   - 44 frames/s while waiting for the move (I2 `bob`).
@@ -215,3 +215,31 @@ Headless Chrome on an x86 runner can't measure these. They need the owner's phon
 Screens: as in §4, plus a game vs Extreme, the result, and the review while it runs (the CI numbers are for the finished review).
 
 The flags in section 2 (I1–I8) and the targets from §4 are what the device traces should confirm first.
+
+### Target 1 probe: where the bots' turns' paints go
+
+These runs use the script's layer and main-thread columns. The saved game is seeded, so every run plays the same bots' turns. All runs are on 4 vCPUs with Chrome 156, throttled 4×, on 2026-11-04.
+
+| variant | commit | paints/s | board (`div.binner`) | root layer (`#document`) | action bar (`div.act`) |
+|---|---|---:|---:|---:|---:|
+| main (the hops a rAF loop on the `transform` attribute) | `927b31e` | 70.7 | 18.0/s | 29.5/s | 9.2/s |
+| B1: a CSS `transform` with `will-change` on the pawns | `b48cc75`, `88eaf14` | 70.7 | 18.0/s | 29.4/s | 9.2/s |
+| B2: the hops, throws and squashes as Web Animations | `fb0ca8a` | 67.2 | 16.6/s | 27.6/s | 9.1/s |
+
+- **The hops are not the cost.**
+  - B1 changes nothing: Chrome doesn't give an SVG child its own layer.
+  - B2 is composited, and saves 5 % of the paints.
+  - The board is a quarter of the paints. The root layer (the HTML around the board: the corners, the hint) and the action bar (the dice tray) are more than half.
+- **Main-thread self time** (`927b31e`; extra trace categories inflate it):
+  - layerization (`PaintArtifactCompositor::Update`) 44 ms/s;
+  - paint 38;
+  - style 16;
+  - hit testing 14 (the mouse rests on the board after the tap; a phone has no hover);
+  - pre-paint 12;
+  - script 11;
+  - layout 10;
+  - commit 10.
+
+  Each move brings many one-off changes, each with its own small cost.
+- **Per frame:** 4–6 ms of main thread at 4×, inside the 16.7 ms budget. The same code measured 208–332 ms/s across runs, so only the counts compare between runs.
+- **Verdict:** target 1 is parked. A real phone's frame pacing during the bots' turns (§5) decides whether it's worth more. If it is, the next step is what repaints the root layer and the action bar on each bot turn, not the hops.
