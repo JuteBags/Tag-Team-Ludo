@@ -79,7 +79,9 @@ describe('labels', () => {
 
   it('makes a move one label harsher when it turns a favourite into an underdog (#138)', () => {
     expect(turned('good', 0.49, 0.51)).toBe('inaccuracy');
-    expect(turned('best', 0.499, 0.501)).toBe('good');
+    // A Best stays Best: within the Best cut, crossing 50% is a coin flip, not a turning point.
+    expect(turned('best', 0.499, 0.501)).toBe('best');
+    expect(turned('best', 0.495, 0.505)).toBe('best');
     expect(turned('mistake', 0.3, 0.6)).toBe('blunder');
     expect(turned('blunder', 0.3, 0.6)).toBe('blunder');
     // No turn: still a favourite, or never one.

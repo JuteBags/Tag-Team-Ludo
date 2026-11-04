@@ -147,10 +147,11 @@ const ladder = (cuts: Cuts): Label[] => ['best', ...cuts.tops.map(([l]) => l), '
 
 /**
  * The turning-point rule (#138, the owner's): when the best move kept you at 50% or more and yours put you
- * under, one label harsher (a Blunder stays a Blunder). Chances are fractions (0-1).
+ * under, one label harsher (a Blunder stays a Blunder). A Best stays Best: a move within the Best cut that
+ * happens to cross 50% is a coin flip, not a turning point (#142 review). Chances are fractions (0-1).
  */
 export function turned(label: Label, played: number, best: number, rules: LabelRules = RULES): Label {
-  if (!rules.turningPoint || label === 'blunder' || !(best >= 0.5 && played < 0.5)) return label;
+  if (!rules.turningPoint || label === 'best' || label === 'blunder' || !(best >= 0.5 && played < 0.5)) return label;
   const l = ladder(rules.cuts);
   return l[Math.min(l.length - 1, l.indexOf(label) + 1)]!;
 }
