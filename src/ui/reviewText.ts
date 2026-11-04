@@ -162,7 +162,7 @@ export function headline(o: { won: boolean; accuracy: number; name: string; deci
   if (o.won) return great ? 'Won on great play.' : o.keyMistakes === 0 && !o.inaccuracies ? 'Won without a slip.' : 'Won, with a few slips to learn from.';
   if (great) return `${o.name} played well: the turning point decided it.`;
   // No key mistakes: it was the small slips that added up, so say that rather than "mistakes".
-  // No mistake of any kind: say so, rather than "lost on mistakes" over a list of Best and Good moves (#167).
+  // No mistake of any kind: say so, rather than "lost on mistakes" over a list of Best and Good moves.
   if (o.keyMistakes === 0 && !o.inaccuracies) return `${o.name} made no mistakes: the turning point decided it.`;
   const slips = !o.keyMistakes && o.inaccuracies ? `${o.inaccuracies} small slip${o.inaccuracies === 1 ? '' : 's'}` : '';
   return slips ? `Lost on ${slips}: the key moves show where.` : 'Lost on mistakes: the key moves show where.';
