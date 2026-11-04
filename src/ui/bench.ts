@@ -418,7 +418,10 @@ async function liveBench(worker: Worker, say: (l: string) => void, hidden: () =>
   if (size < 1) return;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const liveOn = (pool: ReviewPool): LiveEngine => ({ reviewer: pool.reviewer()!, parallel: size, luckPart: (r, c) => pool.luckPart(r, c)!, stop: () => pool.stop() });
-  for (const g of games) {
+  // The review while the game is played reviews the people's moves: seat 0 plays as a person here.
+  const asPlayed = (rec: GameRecord): GameRecord => ({ ...rec, seats: rec.seats.map((x) => (x.owner === 0 ? { color: x.color, owner: 0, bot: false } : x)) });
+  for (const game of games) {
+    const g = { ...game, rec: asPlayed(game.rec) };
     if (hidden()) return;
     say(`playing the ${g.layout} game with its review running…`);
     const pool = new ReviewPool(size);
@@ -443,7 +446,7 @@ async function liveBench(worker: Worker, say: (l: string) => void, hidden: () =>
       runReview(g.rec, { v: REVIEW_VERSION, moves: h.moves, luck: null, skip: h.skip.length ? h.skip : undefined }, (p) => p.finished && done(), false, app.reviewer(), [0], (r, st, y) => app.luck(r, st, y, h.luckHave)),
     );
     app.stop();
-    say(`live ${g.layout} game ${g.seed}: played in ${sec(playMs)} (${states.length - 1} events), at the end ${h.moves.length + h.skip.length} of ${total} decisions and ${h.luckHave.filter(Boolean).length} of ${chunks} luck chunks done; ready ${sec(performance.now() - t1)} after the end (on ${poolSize()} workers)`);
+    say(`live ${g.layout} game ${g.seed}: played in ${sec(playMs)} (${states.length - 1} events), at the end ${h.moves.length + h.skip.length} of ${total} decisions and ${h.luckHave.filter(Boolean).length} of ${chunks} luck chunks in; ready ${sec(performance.now() - t1)} after the end (on ${poolSize()} workers)`);
     say(`memory, live, ${size} worker${size === 1 ? '' : 's'}: wasm ${mem.map((b) => `${(b / 1048576).toFixed(1)} MB`).join(' + ')}`);
   }
   // Extreme's think, alone and with the game's review busy (paused while it thinks).
@@ -458,7 +461,7 @@ async function liveBench(worker: Worker, say: (l: string) => void, hidden: () =>
   const pool = new ReviewPool(size);
   const live = new LiveReview(() => liveOn(pool));
   const busy = games.find((x) => x.layout === '4p') ?? games[0]!;
-  live.update(busy.rec);
+  live.update(asPlayed(busy.rec));
   const alone: number[] = [];
   const withLive: number[] = [];
   for (const [j, d] of decisions.entries()) {
