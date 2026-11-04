@@ -141,7 +141,7 @@ try {
   // 8. The store.
   await page.goto(url, { waitUntil: 'load' });
   await dismiss();
-  await page.click('[data-act=store]');
+  await page.$eval('[data-act=store]', (b) => b.click());
   await measure('store');
 } finally {
   await browser.close();
