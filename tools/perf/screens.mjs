@@ -80,10 +80,13 @@ try {
     rows.push(row);
     console.log('SCREEN ' + JSON.stringify(row));
   }
+  // The check-in card and the update prompt come up a moment after the home screen: wait a little for one,
+  // then close it (Later / Not now).
   const dismiss = async () => {
-    for (const sel of ['.menu-ov [data-act=later]', '[data-act=later]']) {
-      const b = await page.$(sel);
-      if (b && (await b.isVisible())) await b.click().catch(() => {});
+    const b = await page.waitForSelector('.menu-ov [data-act=later]', { state: 'visible', timeout: 3000 }).catch(() => null);
+    if (b) {
+      await b.click().catch(() => {});
+      await page.waitForSelector('.menu-ov', { state: 'detached', timeout: 3000 }).catch(() => {});
     }
   };
 
