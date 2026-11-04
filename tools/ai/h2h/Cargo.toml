@@ -1,0 +1,18 @@
+[package]
+name = "h2h"
+version = "0.1.0"
+edition = "2021"
+description = "Head-to-head harness (#148): our engine against AlphaLudo V17 in their classic rules; built and run on CI only"
+publish = false
+
+# Its own crate, outside sim-rs: our normal builds never fetch the referee. The referee is AlphaLudo's ludo_core
+# (github.com/sumit7194/AlphaLudo, no licence: all rights reserved). The workflow checks out only crates/ludo_core at
+# the pinned commit 5d4e498008fb235807a1240688ddbf28b5fb7576 into the runner's temp dir and links it here as
+# `alphaludo/` (git-ignored; a cargo git dependency can't be used: their repo has a submodule with no URL). It is
+# never committed, cached or shipped, and no binary built from it leaves the runner.
+[dependencies]
+ludo-sim = { path = "../../../sim-rs" }
+ludo_core = { path = "alphaludo/crates/ludo_core" }
+
+[profile.release]
+opt-level = 3
