@@ -1,22 +1,39 @@
 // The review's rollouts in Web Workers (rollout-worker.ts, kind 'review'), so reviewing a game never competes
 // with a bot thinking in a game. A pool of them (#151): one core did a whole review while phones have 4-8, so
-// the review's decisions and its luck pass are spread over up to MAX_POOL workers, each with its own wasm
+// the review's decisions and its luck pass are spread over up to MAX_POOL workers (MAX_POOL_DESKTOP on a computer), each with its own wasm
 // engine. Every decision is seeded by itself and every luck chunk is independent, so a review is the same
 // whatever the pool's size. Null where workers can't run.
 import type { GameState } from '../types';
 import type { GameRecord } from '../record';
 import { LUCK_CHUNK, type DecisionValues, type Reviewer, type ReviewAsk, type RollLuck } from './review';
 
-/** At most this many review workers: big.LITTLE phones have about 4 fast cores, and one is the UI's. */
+/** At most this many review workers on a phone or tablet: big.LITTLE has about 4 fast cores, and one is the UI's. */
 export const MAX_POOL = 3;
+/**
+ * At most this many on a desktop or laptop: its cores are all fast, and many players review on the web build.
+ * The bench's curve (review-bench.yml, #151) set it.
+ */
+export const MAX_POOL_DESKTOP = 6;
+
+/** What poolSize reads of the device (navigator's fields; userAgentData is Chromium's). */
+export interface PoolDevice {
+  hardwareConcurrency?: number;
+  deviceMemory?: number;
+  userAgentData?: { mobile?: boolean };
+}
+
+/** A phone or tablet: the browser says so (Chromium), else its main pointer is a finger (Safari, Firefox). */
+export function isMobile(nav: PoolDevice | undefined, coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches): boolean {
+  return nav?.userAgentData?.mobile ?? coarse;
+}
 
 /**
  * The pool's size on this device: one core fewer than it reports (the UI keeps one), at least 1, at most
- * MAX_POOL, and at most 2 on a phone that reports 2 GB of memory or less.
+ * MAX_POOL on a phone or tablet and MAX_POOL_DESKTOP elsewhere, and at most 2 with 2 GB of memory or less.
  */
-export function poolSize(nav: { hardwareConcurrency?: number; deviceMemory?: number } | undefined = typeof navigator !== 'undefined' ? navigator : undefined): number {
+export function poolSize(nav: PoolDevice | undefined = typeof navigator !== 'undefined' ? navigator : undefined, mobile = isMobile(nav)): number {
   const cores = nav?.hardwareConcurrency ?? 4;
-  let n = Math.max(1, Math.min(cores - 1, MAX_POOL));
+  let n = Math.max(1, Math.min(cores - 1, mobile ? MAX_POOL : MAX_POOL_DESKTOP));
   if (nav?.deviceMemory !== undefined && nav.deviceMemory <= 2) n = Math.min(n, 2);
   return n;
 }
