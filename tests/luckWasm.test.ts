@@ -123,6 +123,32 @@ describe('the luck pass in WebAssembly (#125)', () => {
     }
   }, 300_000);
 
+  it('gives the same values with a 6 at a chunk boundary as in one chunk (#144: the 6-step reuse stays in its chunk)', async () => {
+    const e = await engine();
+    const net = jsNet();
+    const rec = game('4p', 102);
+    const states = (replay(rec).states as GameState[]).slice(0, 600);
+    const at = states.map((_, i) => i).filter((i) => isJudgedRoll(states, i));
+    const rolls = at.map((i) => states[i]!);
+    // Rolls whose face is a 6 that rolls again: the next roll judged is the position the 6-step valued.
+    const sixes = at.flatMap((i, k) => (states[i + 1]!.dice === 6 && k + 1 < at.length && states[at[k + 1]!]!.current === states[i]!.current ? [k] : []));
+    expect(sixes.length).toBeGreaterThan(5);
+    e.luckBegin();
+    try {
+      const whole = Array.from(e.luckChunk(rolls, 0));
+      for (const k of sixes.slice(0, 12)) {
+        // Split right after the 6: the next roll starts a new chunk, without the reuse.
+        const a = Array.from(e.luckChunk(rolls.slice(0, k + 1), 0));
+        const b = Array.from(e.luckChunk(rolls.slice(k + 1), 0));
+        expect(same([...a, ...b], whole)).toBe(true);
+        net.forget();
+        expect(same(b.slice(0, 6), faceValues(net, rolls[k + 1]!))).toBe(true);
+      }
+    } finally {
+      e.luckEnd();
+    }
+  }, 300_000);
+
   it('frees its cache when a pass ends, also one stopped between chunks, and keeps it within its cap', async () => {
     const e = await engine();
     const rec = game('4p', 102);
@@ -130,13 +156,15 @@ describe('the luck pass in WebAssembly (#125)', () => {
     const rolls = states.filter((_, i) => isJudgedRoll(states, i));
     e.luckBegin();
     e.luckChunk(rolls.slice(0, 32), 0);
-    expect(e.luckMemory.size).toBeGreaterThan(0);
+    // The cache is kept across a chunk's rolls and emptied when the chunk ends (#144).
+    expect(e.luckMemory.size).toBe(0);
+    expect(e.luckMemory.peak).toBeGreaterThan(0);
     // Stopped here: the worker ends the pass.
     e.luckEnd();
     expect(e.luckMemory.size).toBe(0);
     expect(() => e.luckChunk(rolls.slice(0, 1), 0)).toThrow(/not started/);
-    // A whole 4p game: emptied before each roll's faces, the cache stays near its cap (2,048 positions; one
-    // roll's searches can pass it before the next check).
+    // A whole 4p game: kept within each chunk, the cache stays near its cap (2,048 positions; one roll's
+    // searches can pass it before the next check).
     luckPass(wasmLuck(e), rec, states);
     expect(e.luckMemory.size).toBe(0);
     expect(e.luckMemory.peak).toBeGreaterThan(10);
