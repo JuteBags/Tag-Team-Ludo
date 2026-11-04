@@ -128,6 +128,7 @@ jobs:
               --out "results/$L-${{ inputs.a }}-${{ inputs.b }}-$FROM.jsonl" > "results/log-$k.txt" 2>&1 &
             pids+=($!)
           done
+          [ ${#pids[@]} -eq 0 ] && { echo "no deals for this shard"; exit 0; }
           rc=0; for p in "${pids[@]}"; do wait "$p" || rc=1; done
           tail -n 3 results/log-*.txt; exit $rc
       - uses: actions/upload-artifact@v7
@@ -135,6 +136,7 @@ jobs:
         with:
           name: h2h-${{ matrix.shard }}
           path: results/*.jsonl
+          if-no-files-found: ignore
 
   report:
     needs: run
