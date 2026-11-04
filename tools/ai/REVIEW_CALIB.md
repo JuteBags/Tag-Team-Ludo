@@ -82,6 +82,41 @@ The tail behind each p95 is only about 45–61 points, so the intervals are wide
 
 Reviewing every decision from 128 playouts instead of 256 (with the same top-ups near a label's edge, up to 1024) gives the same label on 99.8–100% of decisions in every layout, and on 95.9–100% of those that either side calls a key move (run 4). The review uses 128 (#101).
 
+## The fast first pass (#93)
+
+Could the review show the net's own labels (no playouts) within seconds, and the rollouts refine them? Runs
+41450094409 and 41457548502 (the same seeds; the second adds the win-chance error) label every reviewed decision
+from the net screen alone and compare it with the rollout label on the same decision (`CALIB net`):
+
+| Layout | Mover | Decisions | Agree | Key moves | Net finds | **Net hides** | Net's false key | Accuracy drift p90 | Chance error mean | p90 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2p | first | 1556 | 88% | 57 | 53% | **16%** | 3% (35) | 19.5 | 1.74 | 3.83 |
+| 2p | normal | 1855 | 91% | 28 | 25% | **46%** | 0% (7) | 11.5 | 2.26 | 4.78 |
+| 2p | hard | 1872 | 91% | 13 | 0% | **77%** | 33% (3) | 5.6 | 2.16 | 4.73 |
+| 3p | first | 2161 | 89% | 79 | 46% | **30%** | 6% (47) | 16.1 | 2.61 | 5.67 |
+| 3p | normal | 2223 | 91% | 40 | 30% | **38%** | 33% (21) | 9.8 | 3.51 | 7.97 |
+| 3p | hard | 2344 | 94% | 6 | 17% | **67%** | 89% (9) | 4.8 | 3.14 | 5.62 |
+| 4p | first | 2644 | 91% | 45 | 33% | **29%** | 14% (22) | 26.6 | 2.86 | 7.72 |
+| 4p | normal | 2675 | 94% | 24 | 33% | **42%** | 29% (14) | 15.0 | 2.77 | 5.65 |
+| 4p | hard | 2499 | 96% | 6 | 0% | **100%** | 85% (13) | 11.4 | 2.26 | 3.66 |
+| 2h-opposite | first | 3626 | 86% | 128 | 59% | **16%** | 9% (117) | 13.3 | 1.41 | 3.18 |
+| 2h-opposite | normal | 4114 | 92% | 48 | 35% | **48%** | 0% (28) | 5.9 | 1.44 | 3.12 |
+| 2h-opposite | hard | 4264 | 93% | 29 | 17% | **55%** | 33% (9) | 5.0 | 1.42 | 3.06 |
+| 2h-side | first | 3910 | 87% | 115 | 57% | **16%** | 12% (113) | 11.5 | 1.51 | 3.37 |
+| 2h-side | normal | 4483 | 92% | 47 | 36% | **45%** | 14% (29) | 3.0 | 1.43 | 3.17 |
+| 2h-side | hard | 4409 | 95% | 11 | 18% | **27%** | 25% (12) | 3.3 | 1.26 | 2.83 |
+
+- **Net hides**: of the rollouts' key moves (mistakes and blunders), the share the net calls Best or Good. It is
+  16–100% in every layout (the "hard" rows have few key moves, so they are noisy). The agreed bar was about 10%, so
+  **the fast pass shows no provisional verdicts**: the review lists the decisions straight away, biggest first, with
+  "…" until each verdict lands (#123). Agreement looks high only because most moves are Best either way.
+- **Accuracy drift**: per game, |net − rollout| accuracy in points (accuracyOf, as the app). The net overrates it.
+- **Chance error**: |net − rollout| win chance of the played move, in points (what a rough graph would draw). The bar
+  for a rough graph was mean ≤ 2 and p90 ≤ 5 in every layout. It holds in the two-colour layouts but not in 2p
+  (mean 2.2–2.3), 3p (p90 5.6–8.0) or 4p (p90 up to 7.7), so **there is no rough graph**: the graph waits for the
+  rollouts, as before.
+- The net screen takes about 0.3 ms per decision (about 15 ms per game); the rollouts about 0.2–0.4 s per decision on CI.
+
 ## Changing these
 
 Change these values only from a new calibration run. Bump `REVIEW_VERSION` with them: reviews stored under another version are redone, and the old one shows greyed until the new one is in.

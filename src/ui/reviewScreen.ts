@@ -380,9 +380,8 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       const step = r ? frameAfter(r.at) : -1;
       onReplayAt(Number(row.dataset.roll), r ? `${rollText(r, names[r.owner]!, isYou(r.owner))}${frames[step] ? ` · ${frames[step]!.caption}` : ''}` : '', pov);
     } else {
-      const m = d.moves.find((x) => x.at === Number(row.dataset.at));
-      const v = m && verdict(m);
-      onReplayAt(Number(row.dataset.at), m && v ? `${LABEL_LOOK[m.label].sym} ${v.head} · ${v.line}` : '', pov);
+      // No caption of its own: the replay says the verdict in its plain words (#124).
+      onReplayAt(Number(row.dataset.at), '', pov);
     }
   });
   // Until the queue reports, an empty card (the skeleton) rather than a blank screen.

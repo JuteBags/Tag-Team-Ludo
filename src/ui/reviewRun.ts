@@ -34,10 +34,13 @@ export interface ReviewProgress {
 /** Verdicts this run must make before its pace is trusted for an estimate. */
 export const ETA_AFTER = 6;
 /**
- * Verdicts this run makes before the luck pass (#93): luck is one long worker call and the least urgent
- * number on the screen, so the biggest decisions are checked first. A side with fewer decisions gets it at the end.
+ * When the luck pass runs (#93): luck is one long worker call (up to 17-25 s in 4p) and the least urgent number
+ * on the screen, so the key moves come first. It starts after this run's first LUCK_AFTER_KEYS key verdicts
+ * (mistakes and blunders), or after LUCK_AFTER_SHARE of its decisions for a game with few or none, whichever
+ * comes first; a review with nothing left to check gets it at the end.
  */
-export const LUCK_AFTER = 5;
+export const LUCK_AFTER_KEYS = 2;
+export const LUCK_AFTER_SHARE = 1 / 3;
 
 /** The owners whose moves are reviewed by default: the people (bots only when asked for). */
 export const peopleOf = (rec: GameRecord) => [...new Set(rec.seats.filter((s) => !s.bot).map((s) => s.owner))];
@@ -124,7 +127,7 @@ export function runReview(
   report(done());
   if (!reviewer || done()) return () => {};
   void (async () => {
-    // The luck pass (one long worker call): after this run's first LUCK_AFTER verdicts, or at the end (#93). Once.
+    // The luck pass (one long worker call): after the first key verdicts or a share of the decisions, or at the end (#93). Once.
     let luckRun: Promise<void> | undefined;
     const luckPass = () =>
       (luckRun ??= (async () => {
@@ -147,6 +150,10 @@ export function runReview(
       if (stopped) throw new Error('stopped');
       return reviewer(...args);
     };
+    // This run's decisions still to check, and the verdict count after which the luck pass starts regardless.
+    const toCheck = Math.max(0, total - settled());
+    const luckAt = Math.max(1, Math.ceil(toCheck * LUCK_AFTER_SHARE));
+    let keys = 0;
     t0 = Date.now();
     const rest = states.map((s, i) => (have.has(i) ? { ...s, moves: s.moves.slice(0, 1) } : s));
     try {
@@ -159,7 +166,8 @@ export function runReview(
         report(false);
         if (moves.length % 5 === 0) void keep();
         // Queued in the worker behind the call in progress, ahead of the next decision's.
-        if (fresh === LUCK_AFTER) void luckPass();
+        if (m.label === 'mistake' || m.label === 'blunder') keys++;
+        if (keys >= LUCK_AFTER_KEYS || fresh >= luckAt) void luckPass();
       }, undefined, (at) => {
         if (stopped) return;
         skipped.add(at);
@@ -170,7 +178,7 @@ export function runReview(
         order = o;
         report(false);
       } });
-      // Fewer than LUCK_AFTER decisions left (or none): the luck pass runs now.
+      // Not started yet (nothing or little left to check): the luck pass runs now.
       await luckPass();
     } catch {
       // Stopped, or the worker failed: what's done so far is kept.
