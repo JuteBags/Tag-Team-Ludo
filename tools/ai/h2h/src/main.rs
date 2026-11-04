@@ -10,7 +10,7 @@
 //!       Games refereed by their engine with fair dice: one dice stream per seat, seeded by the deal, so a deal is
 //!       played with each side in each seat over the same dice (2p: 2 games per deal, A at seat 0 then seat 2;
 //!       4p: 4 games per deal, the lone A at seat 0, 1, 2, 3 and B in the other three). Players:
-//!         extreme-net    our Extreme: choose_race, 128 playouts, Hard-rule playouts, our net at the 12-turn cut
+//!         extreme-net    our Extreme: choose_race, 128 playouts (--nmax), Hard-rule playouts, our net at the 12-turn cut
 //!         extreme-rules  the same with rule-only playouts to the game's end (no net)
 //!         v17            AlphaLudo V17 as shipped: one forward pass, argmax over the legal cells (no search),
 //!                        run by the --v17 command (v17.py), which answers one request per line pair on stdio
@@ -31,6 +31,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 const HOME: i8 = 99; // ludo_core HOME_POS
+/// Extreme's playouts per candidate (the app's Extreme: 128); `--nmax` changes it for both sides' Extreme.
 const NMAX: usize = 128;
 const CUT: u32 = 12;
 
@@ -249,6 +250,7 @@ fn matches(f: &HashMap<String, String>) {
     let games: i64 = arg(f, "games", "2").parse().unwrap();
     let from: i64 = arg(f, "from", "0").parse().unwrap();
     let to_end = arg(f, "to-end", "0") == "1";
+    let nmax: usize = arg(f, "nmax", &NMAX.to_string()).parse().unwrap();
     let out_path = arg(f, "out", "h2h.jsonl");
     let needs_v17 = a == Kind::V17 || b == Kind::V17;
     let needs_ours = a != Kind::V17 || b != Kind::V17;
@@ -318,7 +320,7 @@ fn matches(f: &HashMap<String, String>) {
                         let g = ours_at_decision(&st);
                         let mut rng = Rng::seeded(game_no * 1_000_003 + rolls as i64 * 7919 + 1);
                         let eval = if k == Kind::ExtremeNet { net.as_ref() } else { None };
-                        let i = ludo_sim::rollout::choose_race(&g, &mut rng, NMAX, CUT, eval, base.as_ref().unwrap(), base.as_ref().unwrap());
+                        let i = ludo_sim::rollout::choose_race(&g, &mut rng, nmax, CUT, eval, base.as_ref().unwrap(), base.as_ref().unwrap());
                         token_for(&st, g.moves.m[i].from)
                     }
                 };
@@ -335,7 +337,7 @@ fn matches(f: &HashMap<String, String>) {
         };
         let winner = places.first().copied();
         let line = format!(
-            "{{\"layout\":\"{layout}\",\"a\":\"{}\",\"b\":\"{}\",\"deal\":{deal},\"rot\":{r},\"a_seat\":{a_seat},\"winner_seat\":{},\"a_won\":{},\"places\":[{}],\"to_end\":{to_end},\"rolls\":{rolls},\"cut_short\":{cut_short},\"dec\":[{},{}],\"ms\":[{:.1},{:.1}],\"game_s\":{:.2}}}",
+            "{{\"layout\":\"{layout}\",\"a\":\"{}\",\"b\":\"{}\",\"deal\":{deal},\"rot\":{r},\"a_seat\":{a_seat},\"winner_seat\":{},\"a_won\":{},\"places\":[{}],\"to_end\":{to_end},\"nmax\":{nmax},\"rolls\":{rolls},\"cut_short\":{cut_short},\"dec\":[{},{}],\"ms\":[{:.1},{:.1}],\"game_s\":{:.2}}}",
             name(a), name(b),
             winner.map_or(-1, |w| w as i64),
             winner == Some(a_seat),
