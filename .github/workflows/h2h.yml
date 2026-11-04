@@ -29,6 +29,9 @@ on:
       shards:
         description: 'Runners (each plays deals/shards deals, split over 4 processes)'
         default: '25'
+      playouts:
+        description: "Extreme's playouts per candidate (the app's Extreme: 128)"
+        default: '128'
       to_end:
         description: '1 = play on after the first player is home, for every place'
         default: '0'
@@ -122,10 +125,10 @@ jobs:
             [ $(( FROM + N )) -gt "$DEALS" ] && N=$(( DEALS - FROM ))
             [ "$N" -le 0 ] && continue
             "$RUNNER_TEMP/target/release/h2h" match --layout "$L" --a ${{ inputs.a }} --b ${{ inputs.b }} \
-              --games $(( N * ROT )) --from "$FROM" --to-end ${{ inputs.to_end }} \
+              --games $(( N * ROT )) --from "$FROM" --to-end ${{ inputs.to_end }} --nmax ${{ inputs.playouts }} \
               --net src/engine/ai/extreme-net.json --playout "$RUNNER_TEMP/rules/playout-rules.json" \
               --v17 "python tools/ai/h2h/v17.py $RUNNER_TEMP/v17/model.onnx" \
-              --out "results/$L-${{ inputs.a }}-${{ inputs.b }}-$FROM.jsonl" > "results/log-$k.txt" 2>&1 &
+              --out "results/$L-${{ inputs.a }}-${{ inputs.b }}-${{ inputs.playouts }}-$FROM.jsonl" > "results/log-$k.txt" 2>&1 &
             pids+=($!)
           done
           [ ${#pids[@]} -eq 0 ] && { echo "no deals for this shard"; exit 0; }

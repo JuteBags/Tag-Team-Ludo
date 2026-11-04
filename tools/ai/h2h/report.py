@@ -20,10 +20,10 @@ def wilson(k, n, z=1.96):
 rows = [json.loads(l) for f in sorted(glob.glob(sys.argv[1] + '/**/*.jsonl', recursive=True)) for l in open(f) if l.strip()]
 groups = collections.defaultdict(list)
 for r in rows:
-    groups[(r['layout'], r['a'], r['b'], r['to_end'])].append(r)
+    groups[(r['layout'], r['a'], r['b'], r['to_end'], r.get('nmax', 128))].append(r)
 print('| match | games | A wins | 95% (Wilson) | 95% (paired by deal) | even | cut | s / game | ms / decision A · B |')
 print('|---|---|---|---|---|---|---|---|---|')
-for (layout, a, b, to_end), rs in sorted(groups.items()):
+for (layout, a, b, to_end, nmax), rs in sorted(groups.items()):
     n = len(rs)
     k = sum(r['a_won'] for r in rs)
     lo, hi = wilson(k, n)
@@ -34,16 +34,16 @@ for (layout, a, b, to_end), rs in sorted(groups.items()):
     m = sum(means) / len(means)
     se = math.sqrt(sum((x - m) ** 2 for x in means) / max(1, len(means) - 1) / len(means))
     even = '50%' if layout == '2p' else '25%'
-    title = f"{layout}: {'1 ' if layout == '4p' else ''}{a} vs {'3 ' if layout == '4p' else ''}{b}" + (' (to the end)' if to_end else '')
+    title = f"{layout}: {'1 ' if layout == '4p' else ''}{a} vs {'3 ' if layout == '4p' else ''}{b}" + (f' ({nmax} playouts)' if nmax != 128 else '') + (' (to the end)' if to_end else '')
     msa = sum(r['ms'][0] for r in rs) / max(1, sum(r['dec'][0] for r in rs))
     msb = sum(r['ms'][1] for r in rs) / max(1, sum(r['dec'][1] for r in rs))
     print(f"| {title} | {n} | {100 * k / n:.1f}% | {100 * lo:.1f}–{100 * hi:.1f}% | {100 * (m - 1.96 * se):.1f}–{100 * (m + 1.96 * se):.1f}% | {even} "
           f"| {sum(r['cut_short'] for r in rs)} | {sum(r['game_s'] for r in rs) / n:.1f} | {msa:.0f} · {msb:.0f} |")
 print("\n**By seat** (A's wins with A in each seat; seat 0 moves first):\n")
-for (layout, a, b, to_end), rs in sorted(groups.items()):
+for (layout, a, b, to_end, nmax), rs in sorted(groups.items()):
     by = collections.defaultdict(lambda: [0, 0])
     for r in rs:
         by[r['a_seat']][0] += r['a_won']
         by[r['a_seat']][1] += 1
-    print(f"- {layout} {a} vs {b}: " + ', '.join(f"seat {s} {w}/{n} ({100 * w / n:.0f}%)" for s, (w, n) in sorted(by.items())))
+    print(f"- {layout} {a} vs {b}{f' ({nmax} playouts)' if nmax != 128 else ''}: " + ', '.join(f"seat {s} {w}/{n} ({100 * w / n:.0f}%)" for s, (w, n) in sorted(by.items())))
 print(f'\nCitation: {CITATION}')
