@@ -130,7 +130,8 @@ export function runReview(
       (luckRun ??= (async () => {
         if (luck || stopped) return;
         const t = Date.now();
-        const r = (await luckOf(rec)?.catch(() => null)) ?? null;
+        // In chunks (#125): verdicts can go between them, and a stop lands within one.
+        const r = (await luckOf(rec, () => stopped)?.catch(() => null)) ?? null;
         luckMs += Date.now() - t;
         if (stopped) return;
         luck = r?.luck ?? null;

@@ -297,28 +297,42 @@ function chanceAfter(net: Evaluator, s: GameState, face: number): number {
   return ownerValues(net, t, owners)[owner]!;
 }
 
+/** The roller's chance after each face 1..6 at a roll state, from `net` (the WebAssembly engine gives the same values, #125). */
+export const faceValues = (net: Evaluator, s: GameState): number[] => [1, 2, 3, 4, 5, 6].map((f) => chanceAfter(net, s, f));
+
+/** States per chunk of the luck pass (luck.ts, #125): a few tens of milliseconds, so a stop lands well within 200 ms. */
+export const LUCK_CHUNK = 64;
+
+/** Whether states[i] is a roll the luck pass judges: a roll state, followed by the roll. */
+export const isJudgedRoll = (states: GameState[], i: number): boolean => states[i]!.phase === 'roll' && i + 1 < states.length && !!states[i + 1]!.dice;
+
+/** The luck of the roll at states[i] (isJudgedRoll), from the roller's chance after each face (`v`, faces 1..6). */
+export function luckFrom(rec: GameRecord, states: GameState[], i: number, v: number[]): RollLuck {
+  const s = states[i]!;
+  const face = states[i + 1]!.dice!;
+  const p = faceChances(rec, s);
+  const expect = v.reduce((a, x, k) => a + x * p[k]!, 0);
+  const sd = Math.sqrt(v.reduce((a, x, k) => a + p[k]! * (x - expect) ** 2, 0));
+  return { at: i, owner: s.players[s.current]!.owner, face, luck: 100 * (v[face - 1]! - expect), sd: 100 * sd };
+}
+
 /** The luck of every roll in the game, for everyone (`states` from replay). */
 export function rollLuck(rec: GameRecord, states: GameState[], net: Evaluator): RollLuck[] {
   const out: RollLuck[] = [];
-  for (let i = 0; i + 1 < states.length; i++) {
-    const s = states[i]!;
-    if (s.phase !== 'roll') continue;
-    const next = states[i + 1]!;
-    const face = next.dice;
-    if (!face) continue;
-    const p = faceChances(rec, s);
-    const v = [1, 2, 3, 4, 5, 6].map((f) => chanceAfter(net, s, f));
-    const expect = v.reduce((a, x, k) => a + x * p[k]!, 0);
-    const sd = Math.sqrt(v.reduce((a, x, k) => a + p[k]! * (x - expect) ** 2, 0));
-    out.push({ at: i, owner: s.players[s.current]!.owner, face, luck: 100 * (v[face - 1]! - expect), sd: 100 * sd });
-  }
+  for (let i = 0; i + 1 < states.length; i++) if (isJudgedRoll(states, i)) out.push(luckFrom(rec, states, i, faceValues(net, states[i]!)));
   return out;
 }
 
+/** How many people a record's win-chance bar shows. */
+export const peopleIn = (rec: GameRecord) => new Set(rec.seats.map((x) => x.owner)).size;
+
+/** A state's win chances as the bar shows them (whole %), from everyone's chance (ownerValues). */
+export const barChances = (v: ArrayLike<number>, people: number): number[] => Array.from(v).slice(0, people).map((x) => Math.round(100 * x));
+
 /** Every owner's win chance (whole %, from the net) at every state, for the replay's win-chance bar. */
 export function netChances(rec: GameRecord, states: GameState[], net: Evaluator): number[][] {
-  const owners = new Set(rec.seats.map((x) => x.owner)).size;
-  return states.map((s) => [...ownerValues(net, s, owners)].map((v) => Math.round(100 * v)));
+  const owners = peopleIn(rec);
+  return states.map((s) => barChances(ownerValues(net, s, owners), owners));
 }
 
 /** What each label scores toward accuracy: a blunder costs more than an inaccuracy. */

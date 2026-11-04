@@ -2,7 +2,7 @@
 // never competes with a bot thinking in a game. Null where workers can't run.
 import type { GameState } from '../types';
 import type { GameRecord } from '../record';
-import type { DecisionValues, Reviewer, ReviewAsk, RollLuck } from './review';
+import { LUCK_CHUNK, type DecisionValues, type Reviewer, type ReviewAsk, type RollLuck } from './review';
 
 let worker: Worker | null | undefined;
 let nextId = 0;
@@ -15,12 +15,11 @@ function reviewWorker(): Worker | null {
   } catch {
     return (worker = null);
   }
-  worker.onmessage = (e: MessageEvent<{ id: number; values?: DecisionValues; luck?: RollLuck[]; chances?: number[][]; error?: string }>) => {
+  worker.onmessage = (e: MessageEvent<{ id: number; values?: DecisionValues; error?: string }>) => {
     const p = pending.get(e.data.id);
     pending.delete(e.data.id);
-    const v = e.data.values ?? (e.data.luck ? { luck: e.data.luck, chances: e.data.chances ?? [] } : undefined);
-    if (v) p?.done(v as never);
-    else p?.fail(new Error(e.data.error ?? 'review failed'));
+    if (e.data.error !== undefined) p?.fail(new Error(e.data.error));
+    else p?.done((e.data.values ?? e.data) as never);
   };
   worker.onerror = () => {
     for (const p of pending.values()) p.fail(new Error('review worker failed'));
@@ -42,15 +41,40 @@ export function workerReviewer(): Reviewer | null {
     });
 }
 
-/** The luck of every roll in `rec` and everyone's net win chance at every state, worked out in the worker. Null where workers can't run. */
-export function workerLuck(rec: GameRecord): Promise<{ luck: RollLuck[]; chances: number[][] }> | null {
-  const w = reviewWorker();
-  if (!w) return null;
-  return new Promise<{ luck: RollLuck[]; chances: number[][] }>((done, fail) => {
+/** One message to the review worker, answered by its reply. */
+function call<T>(w: Worker, msg: object): Promise<T> {
+  return new Promise<T>((done, fail) => {
     const id = nextId++;
     pending.set(id, { done: done as (v: never) => void, fail });
-    w.postMessage({ id, kind: 'luck', rec });
+    w.postMessage({ id, ...msg });
   });
+}
+
+/**
+ * The luck of every roll in `rec` and everyone's net win chance at every state, worked out in the worker a
+ * chunk of states at a time (#125), so a verdict can go between chunks and a stop (`stopped`, checked before
+ * each chunk) lands within one chunk. Resolves null once stopped; the worker then frees the pass. Null where
+ * workers can't run.
+ */
+export function workerLuck(rec: GameRecord, stopped: () => boolean = () => false): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
+  const w = reviewWorker();
+  if (!w) return null;
+  return (async () => {
+    const { run, states } = await call<{ run: number; states: number }>(w, { kind: 'luck-begin', rec });
+    const luck: RollLuck[] = [];
+    const chances: number[][] = [];
+    try {
+      for (let from = 0; from < states; from += LUCK_CHUNK) {
+        if (stopped()) return null;
+        const r = await call<{ luck: RollLuck[]; chances: number[][] }>(w, { kind: 'luck-chunk', run, from, to: from + LUCK_CHUNK });
+        luck.push(...r.luck);
+        chances.push(...r.chances);
+      }
+      return { luck, chances };
+    } finally {
+      void call(w, { kind: 'luck-end', run }).catch(() => {});
+    }
+  })();
 }
 
 /** Ends the worker (the review queue calls it once it's empty), so no idle worker holds memory. */
