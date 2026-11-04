@@ -105,7 +105,7 @@ describe('a run of three 6s (#135)', () => {
     expect(rollEvents(luck).map((r) => [r.at, r.luck])).toEqual([[5, -6], [7, 3]]);
     expect(bigRolls(luck)[0]!.at).toBe(5);
     expect(rollText(luck[2]!, 'Aarav', true)).toBe('Three 6s cancelled: −6% to win');
-    expect(rollText(luck[2]!, 'Aarav', false)).toBe("Aarav's three 6s cancelled: −6% to win for them");
+    expect(rollText(luck[2]!, 'Aarav', false)).toBe("Aarav's three 6s cancelled: −6% to win");
     // Listed for its person whether or not it's a big roll.
     expect(sixRuns(luck, 0).map((r) => [r.at, r.luck])).toEqual([[5, -6]]);
     expect(sixRuns(luck, 1)).toEqual([]);
