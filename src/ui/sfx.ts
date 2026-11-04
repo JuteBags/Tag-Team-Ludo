@@ -3,8 +3,11 @@
 
 let ctx: AudioContext | null = null;
 let muted = false;
+/** The dice sounds alone (#184): the roll, the cup's shake and the landing with its six chime. */
+let diceMuted = false;
 try {
   muted = localStorage.getItem('ludo-muted') === '1';
+  diceMuted = localStorage.getItem('ludo-dice-muted') === '1';
 } catch {
   // Storage can be blocked; sound just defaults to on.
 }
@@ -115,24 +118,39 @@ export const sfx = {
       // Not saved; it still applies for this session.
     }
   },
+  /** The Dice sounds switch (#184): off silences roll, shake and land only. Their buzzes stay (Vibration, #73). */
+  get diceMuted() {
+    return diceMuted;
+  },
+  setDiceMuted(m: boolean) {
+    diceMuted = m;
+    try {
+      localStorage.setItem('ludo-dice-muted', m ? '1' : '0');
+    } catch {
+      // Not saved; it still applies for this session.
+    }
+  },
   /** The die rattling in the hand and tumbling across the table. */
   roll(ms: number) {
+    if (diceMuted) return;
     const n = 7;
     for (let i = 0; i < n; i++) noise(0.045, { vol: 0.16 + Math.random() * 0.1, at: (i / n) * (ms / 1000) * 0.8, freq: 1400 + Math.random() * 1800, q: 2 });
   },
   /** The die rattling inside a closed cup: muffled clacks against the walls. */
   shake(ms: number) {
     const n = 9;
-    for (let i = 0; i < n; i++) noise(0.04, { vol: 0.2 + Math.random() * 0.08, at: ((i + Math.random() * 0.4) / n) * (ms / 1000), freq: 700 + Math.random() * 600, q: 3 });
+    if (!diceMuted) for (let i = 0; i < n; i++) noise(0.04, { vol: 0.2 + Math.random() * 0.08, at: ((i + Math.random() * 0.4) / n) * (ms / 1000), freq: 700 + Math.random() * 600, q: 3 });
     buzz([12, 50, 12, 50, 12]);
   },
   /** The die landing; a six rings out. */
   land(face: number) {
-    noise(0.08, { vol: 0.32, freq: 420, q: 1.2 });
-    tone(150, 0.12, { type: 'triangle', vol: 0.22 });
+    if (!diceMuted) {
+      noise(0.08, { vol: 0.32, freq: 420, q: 1.2 });
+      tone(150, 0.12, { type: 'triangle', vol: 0.22 });
+    }
     buzz(18);
     if (face === 6) {
-      [784, 988, 1319, 1568].forEach((f, i) => tone(f, 0.28, { type: 'triangle', vol: 0.13, at: 0.05 + i * 0.07 }));
+      if (!diceMuted) [784, 988, 1319, 1568].forEach((f, i) => tone(f, 0.28, { type: 'triangle', vol: 0.13, at: 0.05 + i * 0.07 }));
       buzz([20, 40, 30]);
     }
   },

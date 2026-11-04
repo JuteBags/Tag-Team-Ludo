@@ -1047,3 +1047,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvgraph .dot{stroke:#0b1f5c;stroke-width:1.5}
 .review .rvmore{min-height:44px;border-radius:14px;background:rgba(4,14,48,.3);color:#dbe4ff;font-size:14px;font-weight:800}
 .review .rvfilter{justify-content:flex-end;margin:-42px 0 8px;position:relative}
+
+/* #184 Dice sounds: a sub-switch of Sound, indented under it, greyed while Sound is off. */
+.swrow[data-k=dicesound]{min-height:44px;padding-left:26px}
+.swrow.dim{opacity:.45}

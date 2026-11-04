@@ -76,7 +76,7 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
     <div class="set">${sw('doubles', 'Doubles', settings.doubles)}<small class="qh">${DOUBLES_HINT[String(settings.doubles) as 'true' | 'false']}</small></div>
     <div class="set">${sw('sym', `Colour-blind symbols ${symbolRow()}`, settings.symbols)}</div>
     <div class="set"><span>Which face of the die counts?</span>${tg('face', [['top', `${faceIcon(true)}The top`, settings.diceFace === 'top'], ['front', `${faceIcon(false)}The front`, settings.diceFace === 'front']])}</div>
-    <div class="set">${sw('sound', 'Sound', !sfx.muted)}</div>
+    <div class="set">${sw('sound', 'Sound', !sfx.muted)}${sw('dicesound', 'Dice sounds', !sfx.diceMuted)}<small class="qh">Rolling, shaking and landing</small></div>
     <div class="set"><span>Kill animations</span>${tg('killfx', [['full', 'Full', settings.killFx === 'full'], ['short', 'Short', settings.killFx === 'short'], ['off', 'Off', settings.killFx === 'off']])}</div>
     <div class="set">${sw('fast', 'Fast bots', settings.fastBots)}<small class="qh">Bots roll and move twice as fast</small></div>
     <div class="set"><span>Undos per game</span>${tg('undos', [['0', 'Off', settings.undos === 0], ['1', '1', settings.undos === 1], ['2', '2', (settings.undos ?? 2) === 2]])}</div>
@@ -97,7 +97,15 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
     ov.querySelector('.set .qh')!.textContent = DOUBLES_HINT[String(on) as 'true' | 'false'];
   });
   toggle(ov, 'face', (v) => saveSetting('diceFace', v as 'top' | 'front'));
-  switchRow(ov, 'sound', (on) => sfx.setMuted(!on));
+  // Dice sounds sits under Sound and greys out while Sound is off (everything is silent then).
+  const dice = ov.querySelector<HTMLElement>('.swrow[data-k=dicesound]')!;
+  const dim = () => dice.classList.toggle('dim', sfx.muted);
+  dim();
+  switchRow(ov, 'sound', (on) => {
+    sfx.setMuted(!on);
+    dim();
+  });
+  switchRow(ov, 'dicesound', (on) => sfx.setDiceMuted(!on));
   switchRow(ov, 'fast', (on) => saveSetting('fastBots', on));
   toggle(ov, 'killfx', (v) => saveSetting('killFx', v as 'full' | 'short' | 'off'));
   toggle(ov, 'undos', (v) => saveSetting('undos', Number(v) as 0 | 1 | 2));

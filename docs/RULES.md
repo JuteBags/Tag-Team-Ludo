@@ -69,7 +69,7 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole
 
 ## I. Doubles off (classic Ludo)
 
-42. Doubles are on by default. **Settings → Doubles → Off** (on the home screen) plays every new game without them; section E doesn't apply. The choice is saved with each game, so a continued game or Play again keeps its rules.
+42. Doubles are off by default (from 3.5.0; a choice saved before then is kept). **Settings → Doubles → On** (on the home screen) plays every new game with them (section E); with them off, section E doesn't apply. The choice is saved with each game, so a continued game or Play again keeps its rules.
 43. Every token moves alone, with the full roll. There are no pair moves.
 44. Your own tokens can share any square. They never lock and never block anyone, and any token can pass any token.
 45. A token landing on a normal square captures **every** enemy token there, two or more included. Teammates (a person's two houses) are never captured.
