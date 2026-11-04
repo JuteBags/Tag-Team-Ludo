@@ -147,7 +147,7 @@ export function headline(o: { won: boolean; accuracy: number; name: string; deci
   // No accuracy (no meaningful decision): nothing here quotes or compares one.
   const scored = Number.isFinite(o.accuracy);
   // No mistake or blunder but a low accuracy: the losses were small slips in close decisions. Say so, rather
-  // than anything that would read against "No key mistakes" on the card.
+  // than anything that would read against the zero mistake and blunder tiles on the card.
   if (scored && o.keyMistakes === 0 && o.accuracy < SMALL_SLIPS_BELOW) return 'No big mistakes, but small slips added up in close decisions.';
   // A loss turned by one bad move says so, whatever the accuracy.
   if (!o.won && o.decider && (o.decider.label === 'blunder' || o.decider.label === 'mistake'))

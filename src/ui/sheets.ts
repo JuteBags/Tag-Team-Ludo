@@ -247,10 +247,11 @@ export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (r
       : summary(r!.moves, r!.luck ?? [], new Set(g.rec.seats.map((x) => x.owner)).size)[me]!;
     if (!sum.moves) return '<span class="pgr off">Not reviewed yet</span>';
     const luck = Number.isFinite(sum.luckPct) ? ` · Luck ${Math.round(sum.luckPct)}%` : '';
-    // Two lines: accuracy and luck, then the key mistakes as small chips (so nothing wraps at 360dp).
+    // Two lines: accuracy and luck, then the mistakes and blunders as small chips (so nothing wraps at 360dp).
+    // None of either shows no chips, rather than a sentence saying so.
     const chip = (sym: string, n: number, cls: string) => (n ? `<i class="pk ${cls}">${sym} ${n}</i>` : '');
     const keys = chip('?', sum.labels.mistake, 'mistake') + chip('??', sum.labels.blunder, 'blunder');
-    return `<span class="pgr">${accuracyText(sum.accuracy)} accuracy${luck}</span><span class="pgks">${keys || '<i class="pk none">No key mistakes</i>'}</span>`;
+    return `<span class="pgr">${accuracyText(sum.accuracy)} accuracy${luck}</span><span class="pgks">${keys}</span>`;
   };
   const rows = () =>
     past
