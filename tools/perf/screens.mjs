@@ -116,15 +116,17 @@ try {
   await measure('game, waiting for the roll');
 
   // 4. The person rolled: pawns to choose from.
-  await page.click('[data-act=roll]');
+  // It pulses (never "stable" to Playwright), so the click goes straight to it.
+  await page.$eval('[data-act=roll]', (b) => b.click());
   const movable = await page.waitForSelector('.pawn.movable', { timeout: 30000 }).catch(() => null);
   if (movable) await measure('game, waiting for the move');
 
   // 5. The person moves; the bots play their turns (busy, not idle).
   if (movable) {
-    // A landing marker (boardView .mark): a tap on it plays that move.
-    const mark = await page.$('.mark');
-    await (mark ?? movable).click({ force: true }).catch(() => {});
+    // A landing marker (boardView .mark): a tap at its centre plays that move (taps are picked by position on
+    // the board, so it's a real mouse click there, not an event on the element).
+    const box = await ((await page.$('.mark')) ?? movable).boundingBox();
+    if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     await measure("game, the bots' turns", 300);
   }
 
