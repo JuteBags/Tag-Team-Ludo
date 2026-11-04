@@ -1,4 +1,4 @@
-# The review's speed on a pool of 1, 2 and 3 workers (#151): the hidden bench page's GAME REVIEW test
+# The review's speed on a pool of 1, 2, 3, 4 and 6 workers (#151; 4 and 6 are a computer's): the hidden bench page's GAME REVIEW test
 # (src/ui/bench.ts) in headless Chrome on the runner, against a production build. The table goes in the run
 # summary. On PRs that touch the review's workers or the bench, and by hand.
 name: Review bench

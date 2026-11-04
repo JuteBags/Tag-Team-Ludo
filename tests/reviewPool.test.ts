@@ -77,15 +77,28 @@ function enginePool(engines: RolloutEngine[], jitter: () => number): Reviewer {
 }
 
 describe('the review on a pool of workers (#151)', () => {
-  it("sizes the pool by the device: a core for the UI, at most 3, at most 2 with 2 GB or less", () => {
-    expect(poolSize({ hardwareConcurrency: 8, deviceMemory: 8 })).toBe(3);
-    expect(poolSize({ hardwareConcurrency: 4 })).toBe(3);
-    expect(poolSize({ hardwareConcurrency: 3 })).toBe(2);
-    expect(poolSize({ hardwareConcurrency: 2 })).toBe(1);
-    expect(poolSize({ hardwareConcurrency: 1 })).toBe(1);
-    expect(poolSize({ hardwareConcurrency: 8, deviceMemory: 2 })).toBe(2);
-    expect(poolSize({ hardwareConcurrency: 8, deviceMemory: 1 })).toBe(2);
-    expect(poolSize({})).toBe(3);
+  it('sizes the pool by the device: a core for the UI, at most 3 on a phone, 6 on a computer, at most 2 with 2 GB or less', () => {
+    const phone = { userAgentData: { mobile: true } };
+    expect(poolSize({ ...phone, hardwareConcurrency: 8, deviceMemory: 8 })).toBe(3);
+    expect(poolSize({ ...phone, hardwareConcurrency: 4 })).toBe(3);
+    expect(poolSize({ ...phone, hardwareConcurrency: 3 })).toBe(2);
+    expect(poolSize({ ...phone, hardwareConcurrency: 2 })).toBe(1);
+    expect(poolSize({ ...phone, hardwareConcurrency: 1 })).toBe(1);
+    expect(poolSize({ ...phone, hardwareConcurrency: 8, deviceMemory: 2 })).toBe(2);
+    expect(poolSize({ ...phone, hardwareConcurrency: 8, deviceMemory: 1 })).toBe(2);
+    expect(poolSize(phone)).toBe(3);
+    // No userAgentData (Safari, Firefox): a finger as the main pointer is a phone or tablet.
+    expect(poolSize({ hardwareConcurrency: 8 }, true)).toBe(3);
+    // A computer.
+    const pc = { userAgentData: { mobile: false } };
+    expect(poolSize({ ...pc, hardwareConcurrency: 16, deviceMemory: 8 })).toBe(6);
+    expect(poolSize({ ...pc, hardwareConcurrency: 8 })).toBe(6);
+    expect(poolSize({ ...pc, hardwareConcurrency: 6 })).toBe(5);
+    expect(poolSize({ ...pc, hardwareConcurrency: 4 })).toBe(3);
+    expect(poolSize({ ...pc, hardwareConcurrency: 16, deviceMemory: 2 })).toBe(2);
+    expect(poolSize({ hardwareConcurrency: 12 }, false)).toBe(6);
+    // A tablet with a trackpad (a fine pointer) whose browser says mobile: the browser wins.
+    expect(poolSize({ ...phone, hardwareConcurrency: 8 }, false)).toBe(3);
   });
 
   it('reviews a game the same on 1 engine as on 3 at once, or 3 at once on one engine, whatever the order', async () => {
@@ -103,7 +116,19 @@ describe('the review on a pool of workers (#151)', () => {
     expect(identical(shared, one)).toBe(true);
   }, 300_000);
 
-  it('works out the luck the same in chunks over 3 engines as on 1', async () => {
+  it("reviews a game the same on a computer's 6 engines at once as on 1", async () => {
+    const rec = game(2, 7);
+    const states = (replay(rec).states as GameState[]).slice(0, 160);
+    const es = await Promise.all(Array.from({ length: 7 }, () => engine()));
+    let r = 3;
+    const rnd = () => ((r = (r * 1103515245 + 12345) % 2147483648) / 2147483648) * 6;
+    const one = await reviewMoves(rec, states, [0], enginePool([es[0]!], () => 0), undefined, undefined, undefined, { order: 'stakes' });
+    const six = await reviewMoves(rec, states, [0], enginePool(es.slice(1), rnd), undefined, undefined, undefined, { order: 'stakes', parallel: 6 });
+    expect(one.length).toBeGreaterThan(10);
+    expect(identical(six, one)).toBe(true);
+  }, 300_000);
+
+  it('works out the luck the same in chunks over 3 or 6 engines as on 1', async () => {
     const rec = game(4, 102);
     const states = (replay(rec).states as GameState[]).slice(0, 5 * LUCK_CHUNK);
     const [a, b, c, d] = await Promise.all([engine(), engine(), engine(), engine()]);
@@ -119,8 +144,10 @@ describe('the review on a pool of workers (#151)', () => {
     };
     const one = run([a!]);
     const three = run([b!, c!, d!]);
+    const six = run([b!, c!, d!, ...(await Promise.all([engine(), engine(), engine()]))]);
     expect(one.luck.length).toBeGreaterThan(50);
     expect(identical(three, one)).toBe(true);
+    expect(identical(six, one)).toBe(true);
   }, 300_000);
 
   describe('a run through runReview: paused and resumed, and its saves', () => {

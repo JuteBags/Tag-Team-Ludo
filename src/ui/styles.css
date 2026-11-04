@@ -797,7 +797,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .pg .pgr{white-space:nowrap}
 .pg .pgks{display:flex;gap:5px;margin-top:2px}
 .pg .pk{font-style:normal;font-size:11px;font-weight:900;padding:1px 7px;border-radius:8px;background:rgba(0,0,0,.25)}
-.pg .pk.mistake{color:#fb923c}.pg .pk.blunder{color:#f87171}
+.pg .pk.mistake{color:#ff6f3c}.pg .pk.blunder{color:#e58bc0}
 .pg .pgr .ring{width:14px;height:14px;border-radius:50%;background:conic-gradient(#ffd65a calc(var(--p)*1%),rgba(255,255,255,.18) 0);flex:none}
 .pg.won{box-shadow:inset 0 0 0 1.5px rgba(255,214,90,.55)}
 .pg .pgc{display:grid;grid-template-columns:repeat(2,10px);gap:3px;flex:none}
@@ -870,8 +870,8 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvrow>i{font-style:normal;width:30px;font-size:16px;font-weight:900;color:var(--c);text-align:center;flex:none}
 .review .rvrow span{display:flex;flex-direction:column;gap:2px;min-width:0}
 .review .rvrow b{font-size:14px}.review .rvrow small{font-size:12px;font-weight:700;opacity:.85}
-.review .rvrow.blunder{box-shadow:inset 0 0 0 1.5px rgba(248,113,113,.55)}
-.review .rvrow.mistake{box-shadow:inset 0 0 0 1.5px rgba(251,146,60,.45)}
+.review .rvrow.blunder{box-shadow:inset 0 0 0 1.5px rgba(229,139,192,.55)}
+.review .rvrow.mistake{box-shadow:inset 0 0 0 1.5px rgba(255,111,60,.5)}
 /* A decision still to check (#93): greyed, "…" in place of the verdict; the one being checked has a ring. */
 .review .rvrow.pending{opacity:.6;background:rgba(0,0,0,.16)}
 .review .rvrow.pending>i{position:relative;color:#fff;opacity:.8}
@@ -964,7 +964,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .replay .rptext{flex:1 1 200px;min-width:0}
 @media (prefers-reduced-motion:reduce){.replay .wcbar i{transition:none}}
 .replay [data-act=prevkey],.replay [data-act=nextkey]{position:relative}
-.replay [data-act=prevkey]::after,.replay [data-act=nextkey]::after{content:'Mistake';position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:5px;font-size:11px;font-weight:900;color:#fdba74;white-space:nowrap}
+.replay [data-act=prevkey]::after,.replay [data-act=nextkey]::after{content:'Mistake';position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:5px;font-size:11px;font-weight:900;color:#ff6f3c;white-space:nowrap}
 .replay .findchip{flex:0 0 auto;align-self:center;min-height:36px;padding:0 10px;border-radius:12px;border:0;background:linear-gradient(180deg,#ffe27a,#f2a20f);color:#4a2400;font-size:12px;font-weight:900}
 .replay .findchip[hidden]{display:none}
 .replay .rpcap .findchip{margin-left:auto}

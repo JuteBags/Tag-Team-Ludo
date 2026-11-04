@@ -4,6 +4,7 @@
 import { replay, type GameRecord, type GameState } from '../engine';
 import { markSixRuns, REVIEW_VERSION, reviewMoves, type MoveReview, type Reviewer, type RollLuck } from '../engine/ai/review';
 import { workerLuck, workerReviewer } from '../engine/ai/review-worker';
+import { KEY_LABELS } from './reviewText';
 import { keyOf, saveReview, type StoredReview } from './store';
 
 export interface ReviewProgress {
@@ -128,6 +129,8 @@ export function runReview(
   report(done());
   if (!reviewer || done()) return () => {};
   void (async () => {
+    // A key verdict on show (from this run, or a stored one): until then, the decisions go before the luck.
+    let firstKey = moves.some((m) => KEY_LABELS.includes(m.label));
     // The luck pass (one long worker call): after the first key verdicts or a share of the decisions, or at the end (#93). Once.
     let luckRun: Promise<void> | undefined;
     const luckPass = () =>
@@ -135,7 +138,8 @@ export function runReview(
         if (luck || stopped) return;
         const t = Date.now();
         // In chunks (#125): verdicts can go between them, and a stop lands within one.
-        const r = (await luckOf(rec, () => stopped)?.catch(() => null)) ?? null;
+        // Until this run's first key verdict, the decisions go first on every worker (#151).
+        const r = (await luckOf(rec, () => stopped, () => !firstKey && !stopped)?.catch(() => null)) ?? null;
         luckMs += Date.now() - t;
         if (stopped) return;
         // A cancelled run of three 6s becomes one event (#135); the worker's chunks can split a run.
@@ -169,6 +173,7 @@ export function runReview(
         if (moves.length % 5 === 0) void keep();
         // Queued in the worker behind the call in progress, ahead of the next decision's.
         if (m.label === 'mistake' || m.label === 'blunder') keys++;
+        if (KEY_LABELS.includes(m.label)) firstKey = true;
         if (keys >= LUCK_AFTER_KEYS || fresh >= luckAt) void luckPass();
       }, undefined, (at) => {
         if (stopped) return;
