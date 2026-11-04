@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 // @ts-expect-error: the project has no @types/node; Vitest runs on Node.
 import { readFileSync } from 'node:fs';
 import { moveEvent } from '../src/engine';
-import { BAND_OF_WEEKDAY, checkPick, dailyPuzzle, dayNumber, decodePuzzle, lineStates, puzzleOf, type Band, type Pool } from '../src/engine/puzzles';
+import { BAND_OF_WEEKDAY, checkPick, dailyExpert, dailyPuzzle, dayNumber, decodePuzzle, EXPERT_FROM_UNSET, lineStates, puzzleOf, type Band, type Pool } from '../src/engine/puzzles';
 
 const pool = JSON.parse(readFileSync(new URL('../src/engine/puzzle-pool.json', import.meta.url), 'utf8')) as Pool;
 const BANDS: Band[] = ['easy', 'medium', 'hard'];
@@ -45,17 +45,17 @@ describe('the puzzle calendar', () => {
 
 describe('the pool', () => {
   it("has a year's worth per band", () => {
-    expect(pool.v).toBe(2);
+    expect(pool.v).toBe(3);
     expect(pool.easy.length).toBeGreaterThanOrEqual(157);
     // Any 365 days in a row: up to 157 Mon–Wed, 105 Thu–Fri and 105 Sat–Sun days.
     expect(pool.medium.length).toBeGreaterThanOrEqual(105);
     expect(pool.hard.length).toBeGreaterThanOrEqual(105);
   });
 
-  for (const band of BANDS)
+  for (const band of [...BANDS, 'expert' as const])
     it(`${band}: every puzzle decodes to its moves, has one clear best, and both lines replay`, () => {
-      pool[band].forEach((e, i) => {
-        const p = decodePuzzle(e, band);
+      (pool[band] ?? []).forEach((e, i) => {
+        const p = decodePuzzle(e, band === 'expert' ? 'hard' : band);
         const at = `${band} ${i}`;
         expect(p.state.moves.length, at).toBe(p.gaps.length);
         expect(p.chances.length, at).toBe(p.gaps.length);
@@ -77,6 +77,38 @@ describe('the pool', () => {
     expect(pool.easy.every((e) => cands(e) >= 3)).toBe(true);
     expect(pool.medium.every((e) => cands(e) >= 3)).toBe(true);
     expect(pool.hard.filter((e) => cands(e) >= 3).length).toBeGreaterThanOrEqual(70);
+  });
+
+  it('Expert: positions the Hard bot gets wrong too, none of them a daily puzzle', () => {
+    const expert = pool.expert ?? [];
+    expect(expert.length).toBeGreaterThanOrEqual(30);
+    expect(expert.every((e) => e[7] === 1)).toBe(true);
+    const id = (e: (typeof expert)[number]) => JSON.stringify([e[1], e[2], e[3]]);
+    const daily = new Set([...pool.easy, ...pool.medium, ...pool.hard].map(id));
+    expect(expert.some((e) => daily.has(id(e)))).toBe(false);
+    expect(new Set(expert.map(id)).size).toBe(expert.length);
+  });
+
+  it('Expert: one a day from its start day, none before it or once used up', () => {
+    const p = { ...pool, expertFrom: '2027-03-01' };
+    const n = p.expert!.length;
+    expect(dailyExpert('2027-02-28', p)).toBe(null);
+    expect(dailyExpert('2027-03-01', p)!.state).toEqual(decodePuzzle(p.expert![0]!, 'hard').state);
+    expect(dailyExpert('2027-03-02', p)!.state).toEqual(decodePuzzle(p.expert![1]!, 'hard').state);
+    const last = days('2027-03-01', n).at(-1)!;
+    expect(dailyExpert(last, p)!.expert).toBe(true);
+    expect(dailyExpert(days('2027-03-01', n + 1).at(-1)!, p)).toBe(null);
+    // An older pool, without the list: none.
+    expect(dailyExpert('2027-03-01', { ...p, expert: undefined })).toBe(null);
+  });
+
+  it('Expert: the start day is set by the 3.5.0 release (still the placeholder before it)', () => {
+    const version = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
+    const [major, minor] = version.split('.').map(Number);
+    if (major! > 3 || (major === 3 && minor! >= 5)) expect(pool.expertFrom, `set expertFrom in src/engine/puzzle-pool.json to the ${version} release day`).not.toBe(EXPERT_FROM_UNSET);
+    else expect(pool.expertFrom).toBe(EXPERT_FROM_UNSET);
+    // A real day either way.
+    expect(() => dayNumber(pool.expertFrom!)).not.toThrow();
   });
 
   it("judges a pick: the best, the points a pick gives up, and both win chances", () => {
