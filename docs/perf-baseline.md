@@ -199,7 +199,7 @@ The wasm and the nets are not fetched at startup: the cold start fetched 141 kB.
   - 60 frames/s while waiting for the roll (I5 `nudge`);
   - 44 frames/s while waiting for the move (I2 `bob`).
 
-  Both are compositor-only here, with no main-thread paints (0 and 0.2/s). So I2's "SVG repaints" flag does not hold in Chrome 156, and I3's trail was not on show in this run. The cost is GPU and compositor frames for as long as the person thinks, which is battery on a phone. CI can't price that.
+  Both are compositor-only here, with no main-thread paints (0 and 0.2/s). So I2's "SVG repaints" flag does not hold in Chrome 156, and I3's trail was not on show in this run. The bob already stops after 9 s without input (`calm.ts`, `CALM_MS`): the 44/s is about 7.5 s of bobbing in the 10 s window. The roll nudge is left out of the calm on purpose, so it runs for as long as the person waits. That costs GPU and compositor frames, which is battery on a phone, and CI can't price it.
 - **The review is the heaviest screen:** 8.8k DOM nodes against the replay's 5.8k, and a 10.7 MB heap total. The store (3.3k nodes) still has a 9.35 MB heap total right after it, because nothing collected the garbage yet. This is not a leak by itself; a phone run would confirm it.
 
 ## 5. Needs a real ARM phone
