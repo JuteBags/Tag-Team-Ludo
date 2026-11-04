@@ -44,7 +44,7 @@ interface Settings {
 export type Theme = 'classic' | 'wood' | 'dark' | 'metal' | 'tron' | 'halloween';
 
 const KEY = 'ludo-settings';
-const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: true, friendNames: [], myName: '', myColor: 'blue', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false, killFx: 'full', undos: 2, undoWait: true, achieved: [] };
+const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: false, friendNames: [], myName: '', myColor: 'blue', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false, killFx: 'full', undos: 2, undoWait: true, achieved: [] };
 
 function load(): Settings {
   try {
