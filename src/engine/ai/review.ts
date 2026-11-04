@@ -221,6 +221,12 @@ export interface ReviewOptions {
   raceZ?: number;
   /** The label rules (default RULES): other ones only for measuring (tools/ai/review_edge.ts). */
   rules?: LabelRules;
+  /**
+   * How many decisions to review at once (#151): the reviewer spreads them over a pool of workers. Each
+   * decision is seeded by itself (decisionSeed), so the result is the same whatever this is; verdicts just
+   * arrive in a different order, and the list returned is in the review's order as before.
+   */
+  parallel?: number;
   /** Called once with the decisions (state indexes) in the order they'll be reviewed: the stakes order when the
    *  net screened them (#93: the review screen lists them all straight away, "…" until each verdict lands). */
   onOrder?: (order: number[]) => void;
@@ -288,11 +294,11 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
   // Decisions where every move reaches the same position aren't choices: they're skipped, so not listed.
   opts.onOrder?.(todo.filter((i) => !(screens.get(i) && screens.get(i)!.mean.length < 2)));
   const out: MoveReview[] = [];
-  for (const i of todo) {
+  const one = async (i: number) => {
     const s = states[i]!;
     const next = states[i + 1]!;
     const ev = next.event;
-    if (ev?.type !== 'moved') continue;
+    if (ev?.type !== 'moved') return;
     const played = s.moves.findIndex((m) => JSON.stringify(m) === JSON.stringify(ev.move));
     const owner = s.players[s.current]!.owner;
     // Nothing at stake by the net: Best with no playouts (from the stakes pass, or the race's own screen).
@@ -305,22 +311,22 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     const sv = screens.get(i);
     if (sv && sv.mean.length < 2) {
       onSkip?.(i); // every move reaches the same position: nothing to choose
-      continue;
+      return;
     }
     if (sv && skipBelow > 0 && stakes(i) < skipBelow) {
       netBest(sv);
-      continue;
+      return;
     }
     let n = base;
     let v = await reviewer(s, n, decisionSeed(rec, s), fast ? { mode: 'race', played, best: bestCut, skip: sv ? 0 : skipBelow, ...(opts.raceZ ? { z: opts.raceZ } : {}) } : undefined);
     const c = v.ofMove[played]!;
     if (v.mean.length < 2) {
       onSkip?.(i); // every move reaches the same position: nothing to choose
-      continue;
+      return;
     }
     if (v.kind === 'net') {
       netBest(v);
-      continue;
+      return;
     }
     // Settled as Best, unless what's at stake is near the line that puts it in accuracy: then the full review.
     let settledBest = v.kind === 'best';
@@ -347,7 +353,18 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     if (settledBest) r.approx = 'race';
     out.push(r);
     onMove?.(r, out.length, todo.length);
-  }
+  };
+  // Up to `parallel` decisions at once, each runner taking the next in the review's order (#151).
+  let next = 0;
+  const runners = Math.max(1, Math.min(opts.parallel ?? 1, todo.length));
+  await Promise.all(
+    Array.from({ length: runners }, async () => {
+      while (next < todo.length) await one(todo[next++]!);
+    }),
+  );
+  // In the review's order, as one at a time would give them.
+  const pos = new Map(todo.map((i, k) => [i, k]));
+  out.sort((x, y) => pos.get(x.at)! - pos.get(y.at)!);
   return out;
 }
 

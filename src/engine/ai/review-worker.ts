@@ -1,87 +1,189 @@
-// The review's rollouts in their own Web Worker (rollout-worker.ts, kind 'review'), so reviewing a game
-// never competes with a bot thinking in a game. Null where workers can't run.
+// The review's rollouts in Web Workers (rollout-worker.ts, kind 'review'), so reviewing a game never competes
+// with a bot thinking in a game. A pool of them (#151): one core did a whole review while phones have 4-8, so
+// the review's decisions and its luck pass are spread over up to MAX_POOL workers, each with its own wasm
+// engine. Every decision is seeded by itself and every luck chunk is independent, so a review is the same
+// whatever the pool's size. Null where workers can't run.
 import type { GameState } from '../types';
 import type { GameRecord } from '../record';
 import { LUCK_CHUNK, type DecisionValues, type Reviewer, type ReviewAsk, type RollLuck } from './review';
 
-let worker: Worker | null | undefined;
-let nextId = 0;
-const pending = new Map<number, { done: (v: never) => void; fail: (e: Error) => void }>();
-
-function reviewWorker(): Worker | null {
-  if (worker !== undefined) return worker;
-  try {
-    worker = new Worker(new URL('./rollout-worker.ts', import.meta.url), { type: 'module' });
-  } catch {
-    return (worker = null);
-  }
-  worker.onmessage = (e: MessageEvent<{ id: number; values?: DecisionValues; error?: string }>) => {
-    const p = pending.get(e.data.id);
-    pending.delete(e.data.id);
-    if (e.data.error !== undefined) p?.fail(new Error(e.data.error));
-    else p?.done((e.data.values ?? e.data) as never);
-  };
-  worker.onerror = () => {
-    for (const p of pending.values()) p.fail(new Error('review worker failed'));
-    pending.clear();
-    worker = null;
-  };
-  return worker;
-}
-
-/** The app's Reviewer: sim-wasm review in the worker. Null where workers can't run. */
-export function workerReviewer(): Reviewer | null {
-  const w = reviewWorker();
-  if (!w) return null;
-  return (state: GameState, n: number, seed: number, ask?: ReviewAsk) =>
-    new Promise<DecisionValues>((done, fail) => {
-      const id = nextId++;
-      pending.set(id, { done: done as (v: never) => void, fail });
-      w.postMessage({ id, kind: 'review', state, n, seed, ask });
-    });
-}
-
-/** One message to the review worker, answered by its reply. */
-function call<T>(w: Worker, msg: object): Promise<T> {
-  return new Promise<T>((done, fail) => {
-    const id = nextId++;
-    pending.set(id, { done: done as (v: never) => void, fail });
-    w.postMessage({ id, ...msg });
-  });
-}
+/** At most this many review workers: big.LITTLE phones have about 4 fast cores, and one is the UI's. */
+export const MAX_POOL = 3;
 
 /**
- * The luck of every roll in `rec` and everyone's net win chance at every state, worked out in the worker a
- * chunk of states at a time (#125), so a verdict can go between chunks and a stop (`stopped`, checked before
- * each chunk) lands within one chunk. Resolves null once stopped; the worker then frees the pass. Null where
- * workers can't run.
+ * The pool's size on this device: one core fewer than it reports (the UI keeps one), at least 1, at most
+ * MAX_POOL, and at most 2 on a phone that reports 2 GB of memory or less.
  */
-export function workerLuck(rec: GameRecord, stopped: () => boolean = () => false): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
-  const w = reviewWorker();
-  if (!w) return null;
-  return (async () => {
-    const { run, states } = await call<{ run: number; states: number }>(w, { kind: 'luck-begin', rec });
-    const luck: RollLuck[] = [];
-    const chances: number[][] = [];
-    try {
-      for (let from = 0; from < states; from += LUCK_CHUNK) {
-        if (stopped()) return null;
-        const r = await call<{ luck: RollLuck[]; chances: number[][] }>(w, { kind: 'luck-chunk', run, from, to: from + LUCK_CHUNK });
-        luck.push(...r.luck);
-        chances.push(...r.chances);
-      }
-      return { luck, chances };
-    } finally {
-      void call(w, { kind: 'luck-end', run }).catch(() => {});
-    }
-  })();
+export function poolSize(nav: { hardwareConcurrency?: number; deviceMemory?: number } | undefined = typeof navigator !== 'undefined' ? navigator : undefined): number {
+  const cores = nav?.hardwareConcurrency ?? 4;
+  let n = Math.max(1, Math.min(cores - 1, MAX_POOL));
+  if (nav?.deviceMemory !== undefined && nav.deviceMemory <= 2) n = Math.min(n, 2);
+  return n;
 }
 
-/** Ends the worker (the review queue calls it once it's empty), so no idle worker holds memory. */
+interface Pending {
+  done: (v: never) => void;
+  fail: (e: Error) => void;
+}
+interface Slot {
+  w: Worker;
+  /** Calls in flight on this worker. */
+  busy: number;
+  pending: Map<number, Pending>;
+}
+
+/** The pool's Reviewer, and how many decisions it can take at once (review.ts ReviewOptions.parallel). */
+export type PoolReviewer = Reviewer & { parallel: number };
+
+/**
+ * A pool of review workers, made when first asked for and ended by stop(). Calls for one decision (its race,
+ * then any full review and top-ups, all with the decision's own seed) go to the worker that took it, where
+ * the engine keeps that decision's playouts; anything else goes to the least busy worker.
+ */
+export class ReviewPool {
+  private slots: Slot[] | null | undefined;
+  private bySeed = new Map<number, Slot>();
+  private nextId = 0;
+
+  constructor(readonly size: number = poolSize()) {}
+
+  private make(): Slot[] | null {
+    if (this.slots !== undefined) return this.slots;
+    const slots: Slot[] = [];
+    for (let k = 0; k < this.size; k++) {
+      let w: Worker;
+      try {
+        w = new Worker(new URL('./rollout-worker.ts', import.meta.url), { type: 'module' });
+      } catch {
+        break;
+      }
+      const slot: Slot = { w, busy: 0, pending: new Map() };
+      w.onmessage = (e: MessageEvent<{ id: number; values?: DecisionValues; error?: string }>) => {
+        const p = slot.pending.get(e.data.id);
+        slot.pending.delete(e.data.id);
+        slot.busy = slot.pending.size;
+        if (e.data.error !== undefined) p?.fail(new Error(e.data.error));
+        else p?.done((e.data.values ?? e.data) as never);
+      };
+      w.onerror = () => {
+        // This worker is gone: its calls fail, and it leaves the pool (the next call uses another one).
+        for (const p of slot.pending.values()) p.fail(new Error('review worker failed'));
+        slot.pending.clear();
+        w.terminate();
+        this.slots = this.slots?.filter((s) => s !== slot);
+        if (this.slots && !this.slots.length) this.slots = undefined;
+        for (const [seed, s] of this.bySeed) if (s === slot) this.bySeed.delete(seed);
+      };
+      slots.push(slot);
+    }
+    return (this.slots = slots.length ? slots : null);
+  }
+
+  private call<T>(slot: Slot, msg: object): Promise<T> {
+    return new Promise<T>((done, fail) => {
+      const id = this.nextId++;
+      slot.pending.set(id, { done: done as (v: never) => void, fail });
+      slot.busy = slot.pending.size;
+      slot.w.postMessage({ id, ...msg });
+    });
+  }
+
+  /** The worker for a call: the one that has this decision (by its seed), else the least busy. */
+  private pick(slots: Slot[], seed?: number): Slot {
+    const had = seed === undefined ? undefined : this.bySeed.get(seed);
+    if (had && slots.includes(had)) return had;
+    const slot = slots.reduce((a, b) => (b.busy < a.busy ? b : a));
+    if (seed !== undefined) {
+      // Only recent decisions need it: a review keeps at most `size` decisions in flight.
+      if (this.bySeed.size > 256) this.bySeed.clear();
+      this.bySeed.set(seed, slot);
+    }
+    return slot;
+  }
+
+  /** The Reviewer over this pool, or null where workers can't run. */
+  reviewer(): PoolReviewer | null {
+    const slots = this.make();
+    if (!slots) return null;
+    const f = (state: GameState, n: number, seed: number, ask?: ReviewAsk) => {
+      const now = this.make();
+      if (!now) return Promise.reject(new Error('review workers stopped'));
+      // The net screen plays nothing out and has no decision of its own (seed 0): any worker.
+      return this.call<DecisionValues>(this.pick(now, ask?.mode === 'screen' ? undefined : seed), { kind: 'review', state, n, seed, ask });
+    };
+    return Object.assign(f, { parallel: slots.length });
+  }
+
+  /**
+   * The luck of every roll in `rec` and everyone's net win chance at every state, a chunk of states at a time
+   * (#125) spread over every worker (#151). Chunks are independent (the luck cache starts afresh at each
+   * roll), so the values are the same on any worker; they're put back in order. A stop (`stopped`, checked
+   * before each chunk) lands within one chunk per worker; it resolves null then. Null where workers can't run.
+   */
+  luck(rec: GameRecord, stopped: () => boolean = () => false): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
+    const slots = this.make();
+    if (!slots) return null;
+    return (async () => {
+      const passes = await Promise.all(slots.map((s) => this.call<{ run: number; states: number }>(s, { kind: 'luck-begin', rec })));
+      const chunks = Math.ceil(passes[0]!.states / LUCK_CHUNK);
+      const parts: { luck: RollLuck[]; chances: number[][] }[] = new Array(chunks);
+      let next = 0;
+      let halted = false;
+      try {
+        await Promise.all(
+          slots.map(async (s, k) => {
+            while (next < chunks) {
+              if (stopped()) {
+                halted = true;
+                return;
+              }
+              const c = next++;
+              parts[c] = await this.call(s, { kind: 'luck-chunk', run: passes[k]!.run, from: c * LUCK_CHUNK, to: (c + 1) * LUCK_CHUNK });
+            }
+          }),
+        );
+        if (halted) return null;
+        return { luck: parts.flatMap((p) => p.luck), chances: parts.flatMap((p) => p.chances) };
+      } finally {
+        slots.forEach((s, k) => void this.call(s, { kind: 'luck-end', run: passes[k]!.run }).catch(() => {}));
+      }
+    })();
+  }
+
+  /** Each worker's wasm memory in bytes (the bench's memory line); 0 for one whose engine isn't loaded. */
+  async memory(): Promise<number[]> {
+    const slots = this.slots ?? [];
+    return Promise.all(slots.map((s) => this.call<{ bytes?: number }>(s, { kind: 'memory' }).then((m) => m.bytes ?? 0, () => 0)));
+  }
+
+  /** Ends every worker: calls in flight fail, and the memory goes with them. The next call makes a new pool. */
+  stop() {
+    for (const s of this.slots ?? []) {
+      s.w.terminate();
+      for (const p of s.pending.values()) p.fail(new Error('review worker stopped'));
+      s.pending.clear();
+    }
+    this.slots = undefined;
+    this.bySeed.clear();
+  }
+}
+
+/** The app's pool (the review queue's). */
+let app: ReviewPool | undefined;
+const appPool = () => (app ??= new ReviewPool());
+
+/** The app's Reviewer: sim-wasm review in the pool of workers. Null where workers can't run. */
+export function workerReviewer(): PoolReviewer | null {
+  return appPool().reviewer();
+}
+
+/** The app's luck pass in the pool (ReviewPool.luck). Null where workers can't run. */
+export function workerLuck(rec: GameRecord, stopped: () => boolean = () => false): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
+  return appPool().luck(rec, stopped);
+}
+
+/** Ends the app's pool (the review queue calls it once it's empty or paused), so no idle worker holds memory. */
 export function stopReviewWorker() {
-  if (!worker) return;
-  worker.terminate();
-  for (const p of pending.values()) p.fail(new Error('review worker stopped'));
-  pending.clear();
-  worker = undefined;
+  app?.stop();
+  app = undefined;
 }

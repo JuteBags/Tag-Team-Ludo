@@ -179,7 +179,9 @@ export async function statsSheet(host: HTMLElement, onReplay?: (rec: GameRecord)
       for (const g of [...past].reverse()) {
         const me = g.mode === 'pvc' ? peopleOf(g.rec)[0] : undefined;
         if (me === undefined) continue;
-        const o = (await loadSummary(g.rec, index))?.owners[me];
+        // Finished reviews only (#151): a review still under way is only its resume point, never a result.
+        const s = await loadSummary(g.rec, index);
+        const o = s?.done ? s.owners[me] : undefined;
         if (o && o.moves) games.push({ accuracy: o.accuracy ?? NaN, luckPct: o.luckPct ?? NaN });
       }
       const box = ov.querySelector<HTMLElement>('.trend');

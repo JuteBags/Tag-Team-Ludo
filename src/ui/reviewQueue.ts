@@ -63,14 +63,16 @@ function next(): Job | undefined {
 }
 
 /** The reviewer, giving the page a turn between decisions so a game's turn never waits on the review. */
-function politeReviewer(): Reviewer | null {
+function politeReviewer(): (Reviewer & { parallel: number }) | null {
   const base = workerReviewer();
   if (!base) return null;
-  // It forwards every argument the Reviewer type has (#101 adds an optional 4th).
-  return async (...args: Parameters<Reviewer>) => {
+  // It forwards every argument the Reviewer type has (#101 adds an optional 4th), and how many decisions the
+  // pool of workers takes at once (#151).
+  const polite = async (...args: Parameters<Reviewer>) => {
     await new Promise((r) => setTimeout(r, 0));
     return base(...args);
   };
+  return Object.assign(polite, { parallel: base.parallel });
 }
 
 async function pump() {
@@ -120,6 +122,9 @@ async function pump() {
 const memory = new Map<string, StoredReview>();
 
 function pause() {
+  // The pool of workers goes too (#151): during an Extreme game or with the app hidden, no review worker runs
+  // (or holds memory). A decision in flight is redone on resume, from its own seed: the same verdict.
+  stopReviewWorker();
   if (!running) return;
   running.stop();
   running = null;
