@@ -1,0 +1,95 @@
+# Any match between two bot specs on the Rust engine (#166): ludo-arena sharded over runners, the ARENA lines summed
+# into A's win rate with a 95% interval, and with aivat=1 also the luck-corrected (AIVAT) rate. By hand only:
+#   gh workflow run arena.yml -f a=Extreme -f b=Hard -f mode=4p-singles -f seeds=1000 -f shards=20 -f aivat=1
+# a/b: a level name from tools/ai/levels_check.py (Random, Easy, Normal, Hard, Extreme), or a ludo-arena spec where
+# {LV} is the levels' rules dir and {NET} the shipped net, e.g. race:128:0:-:net:{LV}/playout.json:1:3:0:0:1.
+name: Arena
+
+on:
+  workflow_dispatch:
+    inputs:
+      a:
+        description: 'Side A (4p: the lone seat): a level name or a spec'
+        required: true
+        default: 'Extreme'
+      b:
+        description: 'Side B: a level name or a spec'
+        required: true
+        default: 'Hard'
+      mode:
+        description: '2p, 3p, 4p, 2h-opposite, 2h-side, each with -singles for doubles off'
+        default: '4p-singles'
+      seeds:
+        description: 'Seeds in all (each seed plays A in every seat)'
+        default: '1000'
+      shards:
+        description: 'Runners'
+        default: '20'
+      dice:
+        description: 'fair or app'
+        default: 'fair'
+      aivat:
+        description: '1 = also the luck-corrected rate (the net as V)'
+        default: '1'
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.s.outputs.shards }}
+    steps:
+      - id: s
+        run: echo "shards=$(python3 -c "import json; print(json.dumps(list(range(${{ inputs.shards }}))))")" >> "$GITHUB_OUTPUT"
+
+  run:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - name: Write the app's rules for the Rust engine
+        run: bash tools/ai/build.sh && node tools/ai/dist/levels-json.mjs
+      - name: Build the Rust engine
+        run: cargo build --release --bin ludo-arena --manifest-path sim-rs/Cargo.toml
+      - name: Play this shard's seeds
+        env:
+          A: ${{ inputs.a }}
+          B: ${{ inputs.b }}
+        run: |
+          spec() { python3 -c "import sys; sys.path.insert(0, 'tools/ai'); import levels_check as L; s = sys.argv[1]; print(L.LEVELS.get(s, s).format(LV=L.LV, NET=L.NET))" "$1"; }
+          SA=$(spec "$A"); SB=$(spec "$B"); N=${{ inputs.seeds }}; K=${{ inputs.shards }}; S=${{ matrix.shard }}
+          FROM=$(( S * N / K )); TO=$(( (S + 1) * N / K ))
+          echo "A = $SA"; echo "B = $SB"; echo "seeds $FROM..$TO"
+          mkdir -p out
+          [ "$TO" -le "$FROM" ] && { echo "no seeds for this shard"; exit 0; }
+          ARGS=(--a "$SA" --b "$SB" --mode ${{ inputs.mode }} --from "$FROM" --to "$TO" --threads 4)
+          [ "${{ inputs.dice }}" = fair ] && ARGS+=(--dice fair)
+          [ "${{ inputs.aivat }}" = 1 ] && ARGS+=(--aivat src/engine/ai/extreme-net.json)
+          sim-rs/target/release/ludo-arena "${ARGS[@]}" | tee "out/arena-$S.txt"
+          grep -q '^ARENA ' "out/arena-$S.txt"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: arena-${{ matrix.shard }}
+          path: out/*.txt
+          if-no-files-found: ignore
+
+  report:
+    needs: run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          path: results
+      - run: python3 tools/ai/arena_sum.py results | tee -a "$GITHUB_STEP_SUMMARY"
