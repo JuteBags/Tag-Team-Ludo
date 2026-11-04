@@ -18,7 +18,7 @@
 - Roll for order, then pick your house, or tap a house to choose your colour vs Computer. In 2-player games each person can take two colours, opposite or side by side, and from 4 players you can start a team game: you and one bot with two colours each.
 - Classic rules: a 6 brings a token out and rolls again, captures send tokens home, stars are safe, exact roll to finish.
 - Roll your whole turn first: every 6 rolls again and the dice wait in a tray, then you play them in any order on any token. A kill rolls again right away.
-- The pair move: on an even roll a pair moves half the roll each (4 → 2 + 2). Single tokens can't jump an enemy pair (they can stop on it), and only a pair can cut a pair. Prefer classic Ludo? Turn **Doubles** off in Settings.
+- Classic Ludo by default, every token on its own. Turn **Doubles** on in Settings for the pair move: on an even roll a pair moves half the roll each (4 → 2 + 2). Single tokens can't jump an enemy pair (they can stop on it), and only a pair can cut a pair.
 - A board that shows the way: arrows at every turn, a marker where every possible move lands, and big numbered buttons when moves crowd one spot.
 - Keep playing or stop: when someone finishes, the players still in vote on whether to play on for the next place.
 - Continue an unfinished game, even after the app was closed. Closing the app can't undo a bad roll. Giving up vs Computer after the first round counts as a loss, and the game warns you first.

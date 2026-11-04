@@ -39,7 +39,15 @@ const shuffled = (xs: Puzzle[]) =>
     .map((p) => ({ p, k: rng() }))
     .sort((a, b) => a.k - b.k)
     .map((x) => x.p);
-const byBand = Object.fromEntries(BANDS.map((b) => [b, shuffled(unique.filter((p) => p.band === b))])) as Record<(typeof BANDS)[number], Puzzle[]>;
+// Within a band, positions with 3+ candidates first (pool v2, #99: a 2-move puzzle reads like a coin flip);
+// 2-move ones only fill what's left.
+const candidates = (p: Puzzle) => new Set(p.gaps).size;
+const byBand = Object.fromEntries(
+  BANDS.map((b) => {
+    const xs = shuffled(unique.filter((p) => p.band === b));
+    return [b, [...xs.filter((p) => candidates(p) >= 3), ...xs.filter((p) => candidates(p) < 3)]];
+  }),
+) as Record<(typeof BANDS)[number], Puzzle[]>;
 const perGame = new Map<number, number>();
 const pool = Object.fromEntries(BANDS.map((b) => [b, [] as Puzzle[]])) as Record<(typeof BANDS)[number], Puzzle[]>;
 for (const b of BANDS) {
@@ -62,7 +70,9 @@ const compact = (p: Puzzle) => {
   return [p.layout, colors.flatMap((c) => p.tokens[c]!), colors.indexOf(p.current as (typeof colors)[number]), p.tray, p.gaps, p.chances.map((c) => Math.round(c)), p.best, p.hardMisses ? 1 : 0, p.line.seed, p.line.events, p.wrong.move, p.wrong.events, p.singles ? 1 : 0];
 };
 for (const p of [...pool.easy, ...pool.medium, ...pool.hard]) if (p.layout !== '2p' && p.layout !== '4p') throw new Error(`layout ${p.layout}: the pool is 2p and 4p only`);
-const json = JSON.stringify({ v: 1, easy: pool.easy.map(compact), medium: pool.medium.map(compact), hard: pool.hard.map(compact) });
+// The pool's version: every regeneration or re-merge bumps it (a cached entry is only decoded against its own).
+const POOL_VERSION = 2;
+const json = JSON.stringify({ v: POOL_VERSION, easy: pool.easy.map(compact), medium: pool.medium.map(compact), hard: pool.hard.map(compact) });
 writeFileSync(out, json + '\n');
 
 const count = (xs: Puzzle[], k: (p: Puzzle) => string) => JSON.stringify(xs.reduce<Record<string, number>>((t, p) => ((t[k(p)] = (t[k(p)] ?? 0) + 1), t), {}));
@@ -71,9 +81,9 @@ const gz = gzipSync(json, { level: 9 }).length;
 const n = pool.easy.length + pool.medium.length + pool.hard.length;
 md(`### The puzzle pool (#99): ${files.length} shards, ${all.length} clear positions, ${unique.length} distinct`);
 md('');
-md('| band | available | in the pool | needed for a year | by layout | Hard bot misses it too |');
-md('|---|---:|---:|---:|---|---:|');
-for (const b of BANDS) md(`| ${b} | ${byBand[b].length} | ${pool[b].length} | ${NEED[b]} | ${count(pool[b], (p) => p.layout)} | ${pool[b].filter((p) => p.hardMisses).length} |`);
+md('| band | available | in the pool | needed for a year | by layout | 3+ candidates | Hard bot misses it too |');
+md('|---|---:|---:|---:|---|---:|---:|');
+for (const b of BANDS) md(`| ${b} | ${byBand[b].length} | ${pool[b].length} | ${NEED[b]} | ${count(pool[b], (p) => p.layout)} | ${pool[b].filter((p) => candidates(p) >= 3).length} | ${pool[b].filter((p) => p.hardMisses).length} |`);
 md('');
 md(`- Games used: ${perGame.size}, at most ${PER_GAME} each. By pairing: ${count([...pool.easy, ...pool.medium, ...pool.hard], (p) => p.from.mix)}.`);
 md(`- **Size: ${(raw / 1024).toFixed(1)} kB raw, ${(gz / 1024).toFixed(1)} kB gzip** for ${n} puzzles (${(raw / n).toFixed(0)} B and ${(gz / n).toFixed(0)} B each).`);

@@ -45,7 +45,7 @@ describe('the puzzle calendar', () => {
 
 describe('the pool', () => {
   it("has a year's worth per band", () => {
-    expect(pool.v).toBe(1);
+    expect(pool.v).toBe(2);
     expect(pool.easy.length).toBeGreaterThanOrEqual(157);
     // Any 365 days in a row: up to 157 Mon–Wed, 105 Thu–Fri and 105 Sat–Sun days.
     expect(pool.medium.length).toBeGreaterThanOrEqual(105);
@@ -71,6 +71,13 @@ describe('the pool', () => {
         expect(p.wrong.events.slice(0, 2), at).toBe(moveEvent(p.state.moves[p.wrong.move]!));
       });
     });
+
+  it("v2: every Easy and Medium puzzle has 3+ candidates; Hard ones with 2 are the Normal bot's traps", () => {
+    const cands = (e: (typeof pool.easy)[number]) => new Set(e[4]).size;
+    expect(pool.easy.every((e) => cands(e) >= 3)).toBe(true);
+    expect(pool.medium.every((e) => cands(e) >= 3)).toBe(true);
+    expect(pool.hard.filter((e) => cands(e) >= 3).length).toBeGreaterThanOrEqual(70);
+  });
 
   it("judges a pick: the best, the points a pick gives up, and both win chances", () => {
     const p = dailyPuzzle('2026-11-05', pool);
