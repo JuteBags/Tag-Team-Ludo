@@ -39,4 +39,11 @@ for (layout, a, b, to_end), rs in sorted(groups.items()):
     msb = sum(r['ms'][1] for r in rs) / max(1, sum(r['dec'][1] for r in rs))
     print(f"| {title} | {n} | {100 * k / n:.1f}% | {100 * lo:.1f}–{100 * hi:.1f}% | {100 * (m - 1.96 * se):.1f}–{100 * (m + 1.96 * se):.1f}% | {even} "
           f"| {sum(r['cut_short'] for r in rs)} | {sum(r['game_s'] for r in rs) / n:.1f} | {msa:.0f} · {msb:.0f} |")
+print("\n**By seat** (A's wins with A in each seat; seat 0 moves first):\n")
+for (layout, a, b, to_end), rs in sorted(groups.items()):
+    by = collections.defaultdict(lambda: [0, 0])
+    for r in rs:
+        by[r['a_seat']][0] += r['a_won']
+        by[r['a_seat']][1] += 1
+    print(f"- {layout} {a} vs {b}: " + ', '.join(f"seat {s} {w}/{n} ({100 * w / n:.0f}%)" for s, (w, n) in sorted(by.items())))
 print(f'\nCitation: {CITATION}')
