@@ -13,7 +13,7 @@ import { dieMarkup } from './dice';
 import { framesOf, namesOf } from './replay';
 import { follow } from './reviewQueue';
 import { decisionsToReview, peopleOf, type ReviewProgress } from './reviewRun';
-import { accuracyText, bigRolls, runningAccuracy, runningLuck, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, luckBand, luckWords, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
+import { accuracyText, bigRolls, runningAccuracy, runningLuck, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
 import type { StoredReview } from './store';
 
 const GW = 330;
@@ -23,7 +23,7 @@ const GL = 22;
 
 /** The review graph's tabs (#134): "Win %" (the win probability, not "Win rate", which Stats uses for games won). */
 type GraphTab = 'win' | 'accuracy' | 'luck';
-const GRAPH_TABS: [GraphTab, string][] = [['win', 'Win %'], ['accuracy', 'Accuracy'], ['luck', 'Luck']];
+const GRAPH_TABS: [GraphTab, string][] = [['win', 'Win %'], ['accuracy', 'Accuracy'], ['luck', 'Luckometer']];
 const GRAPH_KEY = 'ludo-graph-tab';
 const loadGraphTab = (): GraphTab => {
   try {
@@ -149,13 +149,11 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     card.className = 'rvcard';
     card.setAttribute('style', cssVars(colorOf(pov)));
     const acc = !ready ? '…' : s.moves ? accuracyText(s.accuracy) : '–';
-    const band = luckBand(s.luckPct);
     const lpct = d.luck && Number.isFinite(s.luckPct) ? `${Math.round(s.luckPct)}%` : '…';
-    const words = d.luck ? luckWords(s.luck, isYou(pov)) : null;
     card.innerHTML = `<div class="rvwho"><i>${avatarSVG(colorOf(pov))}</i><b></b>
-        <em>${acc}<small>accuracy</small></em><em class="lk ${d.luck ? band.tone : ''}">${lpct}<small>luck</small></em></div>
+        <em>${acc}<small>accuracy</small></em><em class="lk">${lpct}<small>luck</small></em></div>
       <div class="rvchips">${LABELS.map((l) => `<button data-filter="${l}" style="--c:${LABEL_LOOK[l].color}" aria-label="${LABEL_LOOK[l].name}: ${s.labels[l]}"${filter === l ? ' class="on"' : ''}><i>${LABEL_LOOK[l].sym}</i>${s.labels[l]}</button>`).join('')}</div>
-      ${words ? `<div class="rvluck ${band.tone}"><p><b>Luck ${lpct} · ${band.word}:</b> ${words.line}</p></div>` : '<div class="rvluck skel" aria-label="Working out the dice luck"><i></i><i></i></div>'}`;
+`;
     card.querySelector('.rvwho b')!.textContent = names[pov]!;
     // No accuracy for a game without a decision where much was at stake: say why under the card's top row.
     if (ready && s.moves && !Number.isFinite(s.accuracy)) {
@@ -178,8 +176,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
           .map((o) => {
             const row = document.createElement('div');
             row.className = 'rvbotluck';
-            const b2 = luckBand(sum[o]!.luckPct);
-            row.innerHTML = `<i style="${cssVars(colorOf(o))}">${avatarSVG(colorOf(o))}</i><span></span><b class="${b2.tone}">Luck ${Number.isFinite(sum[o]!.luckPct) ? Math.round(sum[o]!.luckPct) : '–'}% · ${b2.word}</b>`;
+            row.innerHTML = `<i style="${cssVars(colorOf(o))}">${avatarSVG(colorOf(o))}</i><span></span><b>${Number.isFinite(sum[o]!.luckPct) ? Math.round(sum[o]!.luckPct) : '–'}%</b>`;
             row.querySelector('span')!.textContent = isYou(o) ? 'Your dice' : `${names[o]}'s dice`;
             return row;
           })
@@ -273,7 +270,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
         ${end ? `<circle class="${graphTab}" cx="${end[0].toFixed(1)}" cy="${end[1].toFixed(1)}" r="3.5"/>${endLabel(end, label, `final ${graphTab}`)}` : ''}
         ${graphTab === 'accuracy' ? `<rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/>` : ''}</svg>`;
     const who = isYou(pov) ? 'Your' : `${names[pov]}'s`;
-    q('.rvgraph small').textContent = `${who} ${graphTab === 'accuracy' ? 'accuracy' : 'luck'} so far`;
+    q('.rvgraph small').textContent = graphTab === 'accuracy' ? `${who} accuracy so far` : `${who} Luckometer`;
   };
 
   const moveRow = (m: MoveReview, turning = false) => {
@@ -290,7 +287,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
   };
   const rollRow = (r: RollLuck, turning = false) => {
     const b = document.createElement('button');
-    b.className = `rvrow roll ${r.luck >= 0 ? 'lucky' : 'unlucky'}${turning ? ' turning' : ''}`;
+    b.className = `rvrow roll${turning ? ' turning' : ''}`;
     b.dataset.roll = String(r.at);
     b.setAttribute('role', 'listitem');
     const step = frameAfter(r.at);

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { positionKey } from '../src/engine/rng';
 import { REVIEW_VERSION, accuracyOf, luckPercent, summary, type DecisionValues, type MoveReview, type ReviewAsk, type Reviewer } from '../src/engine/ai/review';
-import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken, luckBand, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS, plainVerdict, BETTER_COLOR, LABEL_LOOK, type VerdictPart, runningAccuracy, runningLuck, trendOf, ACCURACY_LINE_FROM, TREND_GAMES } from '../src/ui/reviewText';
+import { bigRolls, etaText, evenChance, graphPoints, keyMoves, moveText, reviewedText, rollText, verdictMoves, whichToken, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS, plainVerdict, BETTER_COLOR, LABEL_LOOK, type VerdictPart, runningAccuracy, runningLuck, trendOf, ACCURACY_LINE_FROM, TREND_GAMES } from '../src/ui/reviewText';
 import type { Move } from '../src/engine';
 
 const mem = new Map<string, string>();
@@ -38,15 +38,6 @@ function game(seed: number): GameRecord {
 }
 
 describe('review words', () => {
-  it('says luck in words first, and calls small luck average', () => {
-    expect(luckWords(12.4, true)).toMatchObject({ word: 'Lucky dice', tone: 'lucky', line: 'your rolls gave you 12 points of win probability more than average rolls.' });
-    expect(luckWords(-17, true).line).toBe('your rolls cost you 17 points of win probability compared with average rolls.');
-    expect(luckWords(-8, true).word).toBe('Unlucky dice');
-    expect(luckWords(4.9, true).tone).toBe('average');
-    expect(luckWords(-30, false).line).toMatch(/^their rolls cost them 30 points/);
-    expect(luckWords(-30, false).line).not.toMatch(/%/);
-  });
-
   it('puts the even line at 100 / people, and the graph on a 0-100 axis', () => {
     expect(evenChance(2)).toBe(50);
     expect(evenChance(4)).toBe(25);
@@ -91,15 +82,12 @@ describe('key moves and big rolls', () => {
 });
 
 describe('luck %, headline and turning point', () => {
-  it('puts a luck percentile into bands', () => {
-    expect([10, 25, 50, 70, 95].map((p) => luckBand(p).word)).toEqual(['unlucky', 'a bit unlucky', 'average', 'a bit lucky', 'lucky']);
-  });
   it('tells the story of the game', () => {
-    expect(headline({ won: false, accuracy: 0.92, luckPct: 12, name: 'You' })).toBe('You played well (92%), but the dice went against you (luck 12%).');
-    expect(headline({ won: true, accuracy: 0.95, luckPct: 50, name: 'You' })).toBe('Won on great play: 95% accuracy.');
+    expect(headline({ won: false, accuracy: 0.92, luckPct: 12, name: 'You' })).toBe('You played well, but the dice went against you.');
+    expect(headline({ won: true, accuracy: 0.95, luckPct: 50, name: 'You' })).toBe('Won on great play.');
     expect(headline({ won: false, accuracy: 0.7, luckPct: 50, name: 'Aarav' })).toBe('Lost on mistakes: the key moves show where.');
     expect(headline({ won: false, accuracy: 0.6, luckPct: 98, name: 'You', keyMistakes: 0, inaccuracies: 7 })).toBe('No big mistakes, but small slips added up in close decisions.');
-    expect(headline({ won: false, accuracy: 0.8, luckPct: 98, name: 'You', keyMistakes: 0, inaccuracies: 3 })).toBe('The dice were kind (luck 98%), but 3 small slips added up.');
+    expect(headline({ won: false, accuracy: 0.8, luckPct: 98, name: 'You', keyMistakes: 0, inaccuracies: 3 })).toBe('The dice were kind, but 3 small slips added up.');
     const blunder = { at: 9, owner: 0, played: 0, best: 1, playedChance: 0.1, bestChance: 0.4, gap: 32, se: 1, label: 'blunder' } as MoveReview;
     expect(headline({ won: false, accuracy: 0.92, luckPct: 70, name: 'You', decider: blunder })).toBe('One blunder decided it: a single move cost 32 points of win probability.');
   });

@@ -1,9 +1,9 @@
 // The game review's words, symbols and graph (#65), pure so they're tested; reviewScreen.ts draws them.
 import { FINISHED, type GameState, type Move } from '../engine';
 import { accuracyOf, countsForAccuracy, luckPercent, type Label, type MoveReview, type RollLuck } from '../engine/ai/review';
-import { accuracyText, luckBand } from './reviewWords';
+import { accuracyText } from './reviewWords';
 // Moved to reviewWords.ts (#98) so the Stats sheet doesn't load this file at startup; still exported from here.
-export { accuracyText, luckBand };
+export { accuracyText };
 
 /** Each label's symbol (so colour isn't the only cue), name and colour. */
 export const LABEL_LOOK: Record<Label, { sym: string; name: string; color: string }> = {
@@ -18,20 +18,6 @@ export const LABELS: Label[] = ['best', 'good', 'inaccuracy', 'mistake', 'blunde
 /** Luck under this many points reads as average dice, so noise isn't called luck. */
 export const AVERAGE_LUCK = 5;
 
-/**
- * A person's dice luck in words first: "Lucky dice", "Unlucky dice" or "Average dice", and a line saying what it
- * means, to follow the word ("Unlucky dice: your rolls cost you 17 points of winning chance compared with
- * average rolls."). Luck is in points of winning chance (an absolute -100..100 scale), so the line says points, not %.
- */
-export function luckWords(luck: number, you: boolean): { word: string; tone: 'lucky' | 'unlucky' | 'average'; line: string } {
-  const pts = Math.round(Math.abs(luck));
-  const whose = you ? 'your rolls' : 'their rolls';
-  const them = you ? 'you' : 'them';
-  if (Math.abs(luck) < AVERAGE_LUCK) return { word: 'Average dice', tone: 'average', line: `${whose} were about as good as average rolls.` };
-  return luck > 0
-    ? { word: 'Lucky dice', tone: 'lucky', line: `${whose} gave ${them} ${pts} ${pts === 1 ? 'point' : 'points'} of win probability more than average rolls.` }
-    : { word: 'Unlucky dice', tone: 'unlucky', line: `${whose} cost ${them} ${pts} ${pts === 1 ? 'point' : 'points'} of win probability compared with average rolls.` };
-}
 
 /** What a move does, in a few words: "moved 5", "brought a token out", "moved a pair 3". */
 export function moveText(m: Move, nameOf?: (c: Move['color']) => string): string {
@@ -151,23 +137,21 @@ export function headline(o: { won: boolean; accuracy: number; luckPct: number; n
   // A loss turned by one bad move says so, whatever the accuracy.
   if (!o.won && o.decider && (o.decider.label === 'blunder' || o.decider.label === 'mistake'))
     return `One ${o.decider.label} decided it: a single move cost ${Math.round(o.decider.gap)} points of win probability.`;
-  const acc = `${Math.round(100 * o.accuracy)}%`;
-  const luck = `luck ${Math.round(o.luckPct)}%`;
   const them = you ? 'you' : 'them';
   const great = scored && o.accuracy >= GREAT_PLAY;
   const unlucky = o.luckPct < 40;
   const lucky = o.luckPct > 60;
   if (o.won) {
-    if (great && unlucky) return `Won against the dice: great play (${acc}) beat unlucky rolls (${luck}).`;
-    if (great) return `Won on great play: ${acc} accuracy.`;
-    if (lucky) return `Won, with the dice on ${you ? 'your' : 'their'} side (${luck}).`;
+    if (great && unlucky) return 'Won against the dice: great play beat unlucky rolls.';
+    if (great) return 'Won on great play.';
+    if (lucky) return `Won, with the dice on ${you ? 'your' : 'their'} side.`;
     return 'Won, with a few slips to learn from.';
   }
-  if (great && unlucky) return `${o.name} played well (${acc}), but the dice went against ${them} (${luck}).`;
-  if (great) return `${o.name} played well (${acc}): the turning point decided it.`;
+  if (great && unlucky) return `${o.name} played well, but the dice went against ${them}.`;
+  if (great) return `${o.name} played well: the turning point decided it.`;
   // No key mistakes: it was the small slips that added up, so say that rather than "mistakes".
   const slips = !o.keyMistakes && o.inaccuracies ? `${o.inaccuracies} small slip${o.inaccuracies === 1 ? '' : 's'}` : '';
-  if (lucky) return slips ? `The dice were kind (${luck}), but ${slips} added up.` : `The dice were kind (${luck}), but the mistakes cost the game.`;
+  if (lucky) return slips ? `The dice were kind, but ${slips} added up.` : 'The dice were kind, but the mistakes cost the game.';
   return slips ? `Lost on ${slips}: the key moves show where.` : 'Lost on mistakes: the key moves show where.';
 }
 
