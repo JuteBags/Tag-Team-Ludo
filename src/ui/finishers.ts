@@ -36,7 +36,7 @@ export type Piece = Omit<Victim, 'home'>;
 
 const local = (v: Piece, dx: number, dy: number) => [dx / v.s, dy / v.s] as const;
 
-/** Shakes the board's inner panel (the frame itself is busy zooming). */
+/** Shakes the board's inner panel. */
 function shake(layer: SVGGElement, px: number, ms: number) {
   layer.ownerSVGElement?.closest<HTMLElement>('.binner')?.animate(
     [{ transform: 'none' }, { transform: `translate(${-px}px,${px * 0.6}px)` }, { transform: `translate(${px * 0.8}px,${-px * 0.7}px)` }, { transform: `translate(${-px * 0.5}px,${px * 0.4}px)` }, { transform: `translate(${px * 0.3}px,0)` }, { transform: 'none' }],
@@ -291,15 +291,13 @@ async function wave(layer: SVGGElement, at: Pt, ms: number, victims: Victim[]) {
 }
 
 /**
- * Yellow: the sky goes dark, three forked bolts strike, and the victim burns to a pile of ash. `big` (a
+ * Yellow: three forked bolts strike, and the victim burns to a pile of ash. `big` (a
  * pair): one huge bolt, bigger and brighter, forking onto each pawn, a bigger flash and a harder shake.
  */
-async function lightning({ under, top: layer }: Layers, at: Pt, ms: number, victims: Victim[], big: boolean) {
+async function lightning({ top: layer }: Layers, at: Pt, ms: number, victims: Victim[], big: boolean) {
   const [x, y] = at;
   const bolt = (dx: number, rot: number, w: number) => `<g transform="translate(${dx} 0) rotate(${rot})"><path class="bolt" d="M-10,-200 L12,-130 -8,-122 16,-56 -6,-50 6,0 M12,-130 L34,-100 26,-96 44,-70 M16,-56 L-14,-30" fill="none" stroke="#fffbd0" stroke-width="${w + 6}" stroke-linejoin="round" stroke-linecap="round" opacity="0"/><path class="bolt" d="M-10,-200 L12,-130 -8,-122 16,-56 -6,-50 6,0 M12,-130 L34,-100 26,-96 44,-70 M16,-56 L-14,-30" fill="none" stroke="#ffd23f" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round" opacity="0"/></g>`;
   const embers = Array.from({ length: 12 }, (_, i) => `<circle class="em" cx="${(i % 6) * 6 - 15}" cy="0" r="${1.4 + (i % 3) * 0.6}" fill="${i % 2 ? '#ff9a1f' : '#ffd23f'}" opacity="0"/>`).join('');
-  // The dark sky falls on the board, under the pieces, so the pawns stay lit by the bolts.
-  const sky = el(under, '<rect width="600" height="600" fill="#0a0820"/>');
   // A pair: forks aimed at each pawn (their offsets from the hit, in this group's units) and a thicker trunk.
   const sc = big ? 2.7 : 2;
   const forks = big ? victims.map((v) => bolt((v.at[0] - x) / sc, v.at[0] > x ? 9 : -9, 4)).join('') : `${bolt(-26, -8, 3)}${bolt(24, 10, 3)}`;
@@ -307,7 +305,6 @@ async function lightning({ under, top: layer }: Layers, at: Pt, ms: number, vict
     <g class="ash" opacity="0"><ellipse cx="0" cy="9" rx="13" ry="4.5" fill="#2a241e"/><ellipse cx="-2" cy="6" rx="8" ry="3.6" fill="#4a4038"/><ellipse cx="2" cy="4" rx="4" ry="2.2" fill="#6a6058"/></g>
     <g class="smoke" opacity="0"><circle cx="-4" cy="-6" r="7" fill="#6a6a72"/><circle cx="5" cy="-14" r="9" fill="#55555e"/><circle cx="-2" cy="-26" r="11" fill="#45454d"/></g>${embers}</g>`);
   const q = (s: string) => g.querySelector(s)!;
-  void run(sky, [{ opacity: 0 }, { opacity: big ? 0.85 : 0.75, offset: 0.2 }, { opacity: big ? 0.85 : 0.75, offset: 0.7 }, { opacity: 0 }], ms, { easing: 'linear' }).then(() => sky.remove());
   await wait(ms * 0.18);
   sfx.flare();
   sfx.bust();
@@ -328,7 +325,6 @@ async function lightning({ under, top: layer }: Layers, at: Pt, ms: number, vict
   g.remove();
 }
 
-let spots = 0;
 let cuts = 0;
 
 /**
@@ -342,41 +338,13 @@ export async function playFinisher(layers: Layers, attacker: Color, at: Pt, ms =
   const layer = layers.top;
   const full = ms >= 1000;
   const double = victims.length > 1 && full;
-  // Each colour's own length (its effect's ms, and how long it runs in all, for the camera and spotlight).
+  // Each colour's own length. The board itself stays as it is: no camera zoom and no dimming (the owner, #147).
   const len = (x: number) => Math.min(2900, x);
   const fxMs =
     attacker === 'green' ? len(ms * (double ? 1.9 : full ? 1.4 : 1))
     : attacker === 'red' ? ms * (double ? 1.3 : 1)
     : attacker === 'blue' ? ms * (double ? 1.15 : 1)
     : len(ms * (double ? 1.85 : 1));
-  const total = len(
-    attacker === 'red' && double ? fxMs * 1.45
-    : attacker === 'blue' && double ? ms * 0.55 + fxMs * 1.01
-    : fxMs,
-  );
-  // A spotlight: the board darkens around the hit for the length of the finisher. It sits under the pieces,
-  // so every pawn stays bright, and it stays light enough that the board still reads (#147).
-  const id = `spot${++spots}`;
-  const dim = el(layers.under, `<defs><radialGradient id="${id}" cx="${at[0]}" cy="${at[1]}" r="230" gradientUnits="userSpaceOnUse"><stop offset=".12" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/></radialGradient></defs><rect width="600" height="600" fill="url(#${id})"/>`);
-  void run(dim, [{ opacity: 0 }, { opacity: 1, offset: (0.15 * ms) / total }, { opacity: 1, offset: 1 - (0.2 * ms) / total }, { opacity: 0 }], total + 160, { easing: 'linear' });
-  // The camera: zooms in on the hit, holds through the finisher (a double's too), then pulls back out.
-  const frame = layer.ownerSVGElement?.closest<HTMLElement>('.bframe');
-  const svg = layer.ownerSVGElement;
-  if (frame && svg) {
-    const k = svg.clientWidth / 600;
-    const dx = (at[0] - 300) * k, dy = (at[1] - 300) * k;
-    const span = total + 420;
-    const ease = Math.min(0.3, (0.22 * (ms + 420)) / span);
-    frame.animate(
-      [
-        { translate: '0 0', scale: '1' },
-        { translate: `${-dx * 0.55}px ${-dy * 0.55}px`, scale: '1.55', offset: ease },
-        { translate: `${-dx * 0.55}px ${-dy * 0.55}px`, scale: '1.62', offset: 1 - ease },
-        { translate: '0 0', scale: '1' },
-      ],
-      { duration: span, easing: 'cubic-bezier(.3,.7,.3,1)' },
-    );
-  }
   const fx =
     attacker === 'green' ? earthquake(layers, at, fxMs, victims, double, tilted, hunters)
     : attacker === 'red' ? guillotine(layer, at, fxMs, victims, double)
@@ -393,5 +361,4 @@ export async function playFinisher(layers: Layers, attacker: Color, at: Pt, ms =
     v.art.style.opacity = '0';
   }
   await wait(200);
-  setTimeout(() => dim.remove(), 180);
 }
