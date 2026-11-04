@@ -3,7 +3,7 @@
 import { BASE, COLORS, FINISHED, SEATS, type Color } from './board';
 import { rollDice } from './dice';
 import { applyMove, isDone, legalMoves } from './rules';
-import type { BotLevel, GameState, Move, Rng } from './types';
+import type { BotLevel, GameState, Move, PlayerState, Rng } from './types';
 
 /** One colour in a game and who plays it. Colours with the same owner are one person's houses. */
 export interface Seat {
@@ -124,16 +124,30 @@ export function move(state: GameState, m: Move): GameState {
   return { ...after, ...passTurn(after), event: { type: 'moved', move: m, extraTurn, lost: isDone(me) ? [] : rolls } };
 }
 
-/** Finishing order first, then anyone still playing by total progress. */
+/**
+ * How a player still playing ranks when the game ends early (RULES.md rules 34 and 41, #140), best first: more
+ * tokens home; then the better board, the most progress of the tokens not yet home; then fewer in base. Ties
+ * after that keep turn order. For a person with two houses, both houses' tokens count together.
+ */
+function unfinishedOrder(a: PlayerState[], b: PlayerState[]): number {
+  const all = (ps: PlayerState[]) => ps.flatMap((p) => p.tokens);
+  const home = (ps: PlayerState[]) => all(ps).filter((t) => t === FINISHED).length;
+  const board = (ps: PlayerState[]) => all(ps).reduce((s, t) => s + (t === FINISHED ? 0 : Math.max(t, 0)), 0);
+  const base = (ps: PlayerState[]) => all(ps).filter((t) => t === BASE).length;
+  return home(b) - home(a) || board(b) - board(a) || base(a) - base(b);
+}
+
+/** Finishing order first, then anyone still playing by unfinishedOrder (turn order on a full tie). */
 export function finalRanking(state: GameState): Color[] {
-  const progress = (c: Color) => state.players.find((p) => p.color === c)!.tokens.reduce((a, t) => a + Math.max(t, 0), 0);
+  const of = (c: Color) => [state.players.find((p) => p.color === c)!];
   const rest = state.players.map((p) => p.color).filter((c) => !state.ranking.includes(c));
-  return [...state.ranking, ...rest.sort((a, b) => progress(b) - progress(a))];
+  return [...state.ranking, ...rest.sort((a, b) => unfinishedOrder(of(a), of(b)))];
 }
 
 /**
  * People in finishing order: a person is done when all their colours are home, so they rank by their
- * last colour to finish. Anyone still playing comes after, by total progress.
+ * last colour to finish. Anyone still playing comes after, by unfinishedOrder over all their colours (turn
+ * order on a full tie: the sort is stable, and people are listed in turn order).
  */
 export function ownerRanking(state: GameState): number[] {
   const owners = [...new Set(state.players.map((p) => p.owner))];
@@ -141,8 +155,7 @@ export function ownerRanking(state: GameState): number[] {
   // Done means every token home (the last person's colours join `ranking` at game end unfinished).
   const done = (o: number) => mine(o).every(isDone);
   const place = (o: number) => Math.max(...mine(o).map((p) => state.ranking.indexOf(p.color)));
-  const progress = (o: number) => mine(o).reduce((a, p) => a + p.tokens.reduce((x, t) => x + Math.max(t, 0), 0), 0);
-  return owners.sort((a, b) => Number(done(b)) - Number(done(a)) || (done(a) ? place(a) - place(b) : progress(b) - progress(a)));
+  return owners.sort((a, b) => Number(done(b)) - Number(done(a)) || (done(a) ? place(a) - place(b) : unfinishedOrder(mine(a), mine(b))));
 }
 
 export const tokensHome = (state: GameState, color: Color) =>
