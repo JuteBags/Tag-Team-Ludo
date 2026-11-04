@@ -1,7 +1,7 @@
 //! game.ts: turn flow (roll the tray, then play it; a 6, a capture or a token home rolls again),
 //! game end and rankings. Mutates in place where the TS returns a new state; the visible state after
 //! each call is the same.
-use crate::rules::{apply_move, is_done, legal_moves, Board, Move, MoveList};
+use crate::rules::{apply_move, is_done, legal_moves, Board, Move, MoveList, BASE, FINISHED};
 
 pub const PHASE_ROLL: u8 = 0;
 pub const PHASE_MOVE: u8 = 1;
@@ -166,8 +166,9 @@ impl Game {
         self.pass_turn();
     }
 
-    /// People in finishing order (game.ts ownerRanking): done people by their last colour's place,
-    /// then everyone else by total progress; ties keep first-seen order (JS sort is stable).
+    /// People in finishing order (game.ts ownerRanking): done people by their last colour's place, then
+    /// everyone else by game.ts unfinishedOrder (#140): more tokens home, then more progress of the tokens not
+    /// home, then fewer in base; ties keep first-seen order (turn order; JS sort is stable).
     pub fn owner_ranking(&self) -> Vec<u8> {
         let mut owners: Vec<u8> = Vec::with_capacity(4);
         for p in self.b.players() {
@@ -186,14 +187,10 @@ impl Game {
                 .max()
                 .unwrap()
         };
-        let progress = |o: u8| -> i32 {
-            self.b
-                .players()
-                .iter()
-                .filter(|p| p.owner == o)
-                .map(|p| p.tokens.iter().map(|&t| (t.max(0)) as i32).sum::<i32>())
-                .sum()
-        };
+        let tokens = |o: u8| self.b.players().iter().filter(move |p| p.owner == o).flat_map(|p| p.tokens.iter().copied());
+        let home = |o: u8| tokens(o).filter(|&t| t == FINISHED).count() as i32;
+        let board = |o: u8| tokens(o).map(|t| if t == FINISHED { 0 } else { t.max(0) as i32 }).sum::<i32>();
+        let base = |o: u8| tokens(o).filter(|&t| t == BASE).count() as i32;
         owners.sort_by(|&a, &b| {
             let d = (done(b) as i32) - (done(a) as i32);
             let k = if d != 0 {
@@ -201,7 +198,15 @@ impl Game {
             } else if done(a) {
                 place(a) - place(b)
             } else {
-                progress(b) - progress(a)
+                let h = home(b) - home(a);
+                let g = board(b) - board(a);
+                if h != 0 {
+                    h
+                } else if g != 0 {
+                    g
+                } else {
+                    base(a) - base(b)
+                }
             };
             k.cmp(&0)
         });
