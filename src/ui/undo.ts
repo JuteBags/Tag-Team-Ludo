@@ -20,7 +20,7 @@ export interface UndoFrame<C = unknown> {
 /** Undos per game, the setting's choices. */
 export const UNDO_CHOICES = [0, 1, 2] as const;
 /** How long the turn-ends window stays open, in ms. */
-export const UNDO_WINDOW_MS = 2500;
+export const UNDO_WINDOW_MS = 1500;
 
 export class UndoBook<C = unknown> {
   private frames: UndoFrame<C>[] = [];

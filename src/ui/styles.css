@@ -259,7 +259,7 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .undobtn .ur-bg{stroke:transparent}
 .undobtn .ur{stroke:transparent;stroke-dasharray:107;stroke-dashoffset:0;stroke-linecap:round}
 .undobtn.window .ur-bg,.undobtn.still .ur-bg{stroke:rgba(255,255,255,.2)}
-.undobtn.window .ur{stroke:#ffd65a;animation:undodrain var(--undo-ms,2500ms) linear forwards}
+.undobtn.window .ur{stroke:#ffd65a;animation:undodrain var(--undo-ms,1500ms) linear forwards}
 .undobtn.still .ur{stroke:#ffd65a;stroke-dashoffset:40;animation:none}
 @keyframes undodrain{to{stroke-dashoffset:107}}
 .undobtn.none{opacity:.45}
