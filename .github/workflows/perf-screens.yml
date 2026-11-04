@@ -1,0 +1,47 @@
+# The app's screens measured the same way every time (#98): tools/perf/screens.mjs on a production build in
+# headless Chrome (390x844, CPU throttled), per screen: memory, idle frames and paints, main-thread time; and
+# the cold start and chunk sizes. Tables in the run summary, perf-screens.json as an artifact. By hand only
+# (every perf: PR runs it before and after); a PR labelled `performance` that touches the UI also runs it.
+name: Perf screens
+
+on:
+  workflow_dispatch:
+    inputs:
+      throttle:
+        description: 'CPU throttle (x)'
+        required: true
+        default: '4'
+  pull_request:
+    types: [opened, synchronize, labeled]
+    paths:
+      - 'src/ui/**'
+      - 'tools/perf/**'
+      - '.github/workflows/perf-screens.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  screens:
+    name: perf screens
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'performance') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.63.0
+      - name: Serve the build
+        run: |
+          npx vite preview --port 4173 --strictPort > preview.log 2>&1 &
+          for i in $(seq 60); do curl -sf http://localhost:4173/ > /dev/null && break; sleep 1; done
+      - run: echo "commit ${{ github.sha }}, $(nproc) vCPUs, $(google-chrome --version 2>/dev/null)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - run: node tools/perf/screens.mjs http://localhost:4173/ "$(command -v google-chrome || command -v chromium)" --throttle ${{ inputs.throttle || '4' }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: perf-screens
+          path: perf-screens.json
