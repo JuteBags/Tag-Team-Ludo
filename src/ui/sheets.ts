@@ -9,7 +9,7 @@ import { ACHIEVEMENTS, takeNew, type AchievementGroup } from './rewards';
 import { summary } from '../engine/ai/review';
 import { isComplete, isQueued, onReviewChange, progressOf } from './reviewQueue';
 import { peopleOf } from './reviewRun';
-import { accuracyText, luckBand, trendOf } from './reviewWords';
+import { accuracyText, trendOf } from './reviewWords';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
 
 const GROUPS: AchievementGroup[] = ['Ladder', 'Extreme', 'Milestones', 'Everyday'];
@@ -121,7 +121,7 @@ function trendCard(box: HTMLElement, t: ReturnType<typeof trendOf>) {
   const grid = [0, 50, 100].map((v) => `<line x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 5}" y="${y(v) + 3.5}" text-anchor="end">${v}</text>`).join('');
   const pct = (v: number) => (Number.isFinite(v) ? `${Math.round(v)}%` : '–');
   box.innerHTML = `<h4>Accuracy and luck, your last ${n} games</h4>
-    <p class="tlegend"><span class="acc"><i></i>Accuracy</span><span class="luck"><i></i>Luck</span></p>
+    <p class="tlegend"><span class="acc"><i></i>Accuracy</span><span class="luck"><i></i>Luckometer</span></p>
     <svg viewBox="-4 -6 ${W + 8} ${H + 12}" aria-hidden="true">${grid}${line(t.games.map((g) => 100 * g.accuracy), 'acc')}${line(t.games.map((g) => g.luckPct), 'luck')}</svg>
     <p class="tavg">Average: <b class="acc">accuracy ${pct(100 * t.accuracy)}</b> · <b class="luck">luck ${pct(t.luck)}</b>. Oldest on the left.</p>`;
 }
