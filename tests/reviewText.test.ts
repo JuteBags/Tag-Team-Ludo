@@ -2,8 +2,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { positionKey } from '../src/engine/rng';
-import { REVIEW_VERSION, summary, type DecisionValues, type MoveReview, type ReviewAsk, type Reviewer } from '../src/engine/ai/review';
-import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken, luckBand, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS, plainVerdict, BETTER_COLOR, LABEL_LOOK, type VerdictPart } from '../src/ui/reviewText';
+import { REVIEW_VERSION, accuracyOf, luckPercent, summary, type DecisionValues, type MoveReview, type ReviewAsk, type Reviewer } from '../src/engine/ai/review';
+import { bigRolls, etaText, evenChance, graphPoints, keyMoves, luckWords, moveText, reviewedText, rollText, verdictMoves, whichToken, luckBand, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS, plainVerdict, BETTER_COLOR, LABEL_LOOK, type VerdictPart, runningAccuracy, runningLuck, trendOf, ACCURACY_LINE_FROM, TREND_GAMES } from '../src/ui/reviewText';
 import type { Move } from '../src/engine';
 
 const mem = new Map<string, string>();
@@ -39,8 +39,8 @@ function game(seed: number): GameRecord {
 
 describe('review words', () => {
   it('says luck in words first, and calls small luck average', () => {
-    expect(luckWords(12.4, true)).toMatchObject({ word: 'Lucky dice', tone: 'lucky', line: 'your rolls gave you 12 points of winning chance more than average rolls.' });
-    expect(luckWords(-17, true).line).toBe('your rolls cost you 17 points of winning chance compared with average rolls.');
+    expect(luckWords(12.4, true)).toMatchObject({ word: 'Lucky dice', tone: 'lucky', line: 'your rolls gave you 12 points of win probability more than average rolls.' });
+    expect(luckWords(-17, true).line).toBe('your rolls cost you 17 points of win probability compared with average rolls.');
     expect(luckWords(-8, true).word).toBe('Unlucky dice');
     expect(luckWords(4.9, true).tone).toBe('average');
     expect(luckWords(-30, false).line).toMatch(/^their rolls cost them 30 points/);
@@ -101,7 +101,7 @@ describe('luck %, headline and turning point', () => {
     expect(headline({ won: false, accuracy: 0.6, luckPct: 98, name: 'You', keyMistakes: 0, inaccuracies: 7 })).toBe('No big mistakes, but small slips added up in close decisions.');
     expect(headline({ won: false, accuracy: 0.8, luckPct: 98, name: 'You', keyMistakes: 0, inaccuracies: 3 })).toBe('The dice were kind (luck 98%), but 3 small slips added up.');
     const blunder = { at: 9, owner: 0, played: 0, best: 1, playedChance: 0.1, bestChance: 0.4, gap: 32, se: 1, label: 'blunder' } as MoveReview;
-    expect(headline({ won: false, accuracy: 0.92, luckPct: 70, name: 'You', decider: blunder })).toBe('One blunder decided it: a single move cost 32 points of winning chance.');
+    expect(headline({ won: false, accuracy: 0.92, luckPct: 70, name: 'You', decider: blunder })).toBe('One blunder decided it: a single move cost 32 points of win probability.');
   });
   it('finds the biggest swing, a move or a roll', () => {
     const mv = (at: number, gap: number): MoveReview => ({ at, owner: 0, played: 0, best: 1, playedChance: 0.5, bestChance: 0.5, gap, se: 0.5, label: 'mistake' });
@@ -367,5 +367,43 @@ describe('plain verdicts (#124)', () => {
     expect(say(mv({}), mv({ tokens: [1] }), 'good', 1.2).better).toBe(true);
     // A gap that rounds to 0 still says +1: the better move was better.
     expect(say(mv({}), mv({ tokens: [1] }), 'inaccuracy', 0.3).win!.text).toBe('+1% to win');
+  });
+});
+
+describe('accuracy and luck graphs (#134)', () => {
+  const mv = (at: number, label: MoveReview['label'], gap: number, spread: number): MoveReview => ({ at, owner: 0, played: 1, best: 0, playedChance: 0.5, bestChance: 0.5, gap, se: 0.2, label, gaps: [0, gap, spread] });
+  it("running accuracy: from the first counted decision, solid from the 5th (the split index), ending at the game's accuracy", () => {
+    const mine = [mv(1, 'good', 1, 1.5), mv(2, 'best', 0, 8), mv(3, 'mistake', 7, 9), mv(4, 'best', 0, 6), mv(5, 'best', 0, 12), mv(6, 'inaccuracy', 3, 4), mv(7, 'best', 0, 5)];
+    const { values, solidFrom } = runningAccuracy(mine);
+    // The Good move in a 1.5-point decision doesn't count: no value there. Counted: moves at index 1, 2, 3, 4, 5, 6.
+    expect(values[0]).toBeNull();
+    expect(values.slice(1).every((x) => x !== null)).toBe(true);
+    expect(solidFrom).toBe(5); // the 5th counted decision
+    expect(values.at(-1)).toBeCloseTo(accuracyOf(mine), 12);
+    expect(ACCURACY_LINE_FROM).toBe(5);
+  });
+  it('running accuracy with fewer than 5 counted decisions: all faded, still ending at the card figure', () => {
+    const mine = [mv(1, 'best', 0, 8), mv(2, 'mistake', 7, 9), mv(3, 'good', 1, 1.2)];
+    const { values, solidFrom } = runningAccuracy(mine);
+    expect(solidFrom).toBe(mine.length);
+    expect(values.at(-1)).toBeCloseTo(accuracyOf(mine), 12);
+  });
+  it("running luck ends at the card's luck, one point per roll that has a luck, never NaN", () => {
+    const r = (at: number, owner: number, luck: number, sd?: number) => ({ at, owner, face: 3, luck, ...(sd === undefined ? {} : { sd }) });
+    const luck = [r(5, 0, 4, 8), r(2, 0, -3, 6), r(9, 1, 2, 5), r(12, 0, 1, 4)];
+    const pts = runningLuck(luck, 0);
+    expect(pts.map((p) => p.at)).toEqual([2, 5, 12].filter((at) => Number.isFinite(luckPercent(luck.filter((l) => l.owner === 0 && l.at <= at), 0))));
+    expect(pts.every((p) => Number.isFinite(p.pct))).toBe(true);
+    expect(pts.at(-1)!.pct).toBeCloseTo(luckPercent(luck, 0), 9);
+  });
+  it('the trend: the last 10 games, oldest first, averages over games that have one; none under 2 games', () => {
+    const g = (accuracy: number, luckPct: number) => ({ accuracy, luckPct });
+    const games = Array.from({ length: 12 }, (_, i) => g(0.5 + i / 100, 40 + i));
+    const t = trendOf(games)!;
+    expect(t.games).toHaveLength(TREND_GAMES);
+    expect(t.games[0]).toEqual(games[2]);
+    expect(t.accuracy).toBeCloseTo((0.52 + 0.61) / 2, 9);
+    expect(trendOf([g(0.8, 50), g(NaN, 60)])!.accuracy).toBeCloseTo(0.8, 9);
+    expect(trendOf([g(0.8, 50)])).toBeNull();
   });
 });

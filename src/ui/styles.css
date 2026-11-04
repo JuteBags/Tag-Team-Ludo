@@ -830,6 +830,17 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvgraph .tick{fill:rgba(255,255,255,.5);font-size:9px}
 .review .rvgraph .final{fill:#ffd65a;font-size:12px;font-weight:900}
 .review .rvgraph .hit{cursor:pointer}
+/* The graph's tabs (#134): Win % / Accuracy / Luck, one line at a time. Accuracy sky blue and solid, luck orange
+   and dashed (Okabe-Ito, safe for colour-blindness), each labelled at its end. */
+.review .rvgtabs{display:flex;gap:6px;margin:6px 0 2px}
+.review .rvgtabs button{flex:1;min-height:36px;border-radius:12px;font-size:13px;font-weight:900;color:#fff;background:rgba(0,0,0,.25);opacity:.75}
+.review .rvgtabs button.on{opacity:1;background:rgba(255,255,255,.16);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.35)}
+.review .rvgraph polyline.accuracy{stroke:#56B4E9;stroke-width:2.6}
+.review .rvgraph polyline.accuracy.early{stroke-width:1.5;opacity:.35}
+.review .rvgraph polyline.luck{stroke:#E69F00;stroke-width:2.6;stroke-dasharray:7 5}
+.review .rvgraph circle.accuracy{fill:#56B4E9}.review .rvgraph circle.luck{fill:#E69F00}
+.review .rvgraph .final.accuracy{fill:#56B4E9}.review .rvgraph .final.luck{fill:#E69F00}
+.review .rvgnote{margin:6px 0 0;font-size:12px;font-weight:800;opacity:.75}
 .review .rvleave{margin:-4px 0 10px;font-size:12px;font-weight:700;opacity:.75}
 .review .rvtabs{display:flex;gap:4px;padding:4px;margin:4px 0 10px;border-radius:14px;background:rgba(0,0,0,.25)}
 .review .rvtabs button{flex:1;min-height:40px;border-radius:11px;background:none;color:#fff;font-size:14px;font-weight:900;opacity:.75}
@@ -962,3 +973,23 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .benchout:empty{display:none}
 .benchbox .later{display:block;margin:8px auto 0;min-height:44px;background:none;border:0;color:#fff;font-size:15px;font-weight:800;text-decoration:underline;opacity:.85}
 .review .rvfew{margin:8px 0 0;font-size:12px;font-weight:700;line-height:1.35;opacity:.8}
+
+/* Stats: the accuracy and luck trends (#134), last 10 reviewed games; a legend row names the two lines. */
+.trend{margin:6px 0 10px;padding:10px 12px;border-radius:16px;background:rgba(0,0,0,.22);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.1);text-align:left}
+.trend[hidden]{display:none}
+.trend h4{margin:0;font-size:14px;font-weight:900}
+.trend svg{display:block;width:100%;height:auto;margin-top:4px}
+.trend text{fill:rgba(255,255,255,.55);font-size:9px;font-weight:800}
+.trend .grid{stroke:rgba(255,255,255,.1)}
+.trend polyline{fill:none;stroke-width:2.6;stroke-linejoin:round}
+.trend polyline.acc{stroke:#56B4E9}.trend polyline.luck{stroke:#E69F00;stroke-dasharray:7 5}
+.trend circle.acc{fill:#56B4E9}.trend circle.luck{fill:#E69F00}
+.trend .tlegend{display:flex;gap:16px;margin:6px 0 0;font-size:12px;font-weight:900}
+.trend .tlegend span{display:flex;align-items:center;gap:6px}
+.trend .tlegend i{display:inline-block;width:22px;height:0;border-top:3px solid}
+.trend .tlegend .acc{color:#56B4E9}.trend .tlegend .acc i{border-color:#56B4E9}
+.trend .tlegend .luck{color:#E69F00}.trend .tlegend .luck i{border-color:#E69F00;border-top-style:dashed}
+.trend .tavg{margin:6px 0 0;font-size:12px;font-weight:800;opacity:.9}
+.trend .tavg .acc{color:#56B4E9}.trend .tavg .luck{color:#E69F00}
+.trend .tnote{margin:0;font-size:12px;font-weight:800;opacity:.8}
+
