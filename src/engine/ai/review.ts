@@ -94,8 +94,13 @@ export interface LabelRules {
   /** How near a cut (points, after the se rule) a gap must be to get more playouts. */
   edge: number;
 }
-/** The review's rules (version 4). */
-export const RULES: LabelRules = { cuts: CUTS, se: true, turningPoint: true, edge: 2 };
+/**
+ * The review's rules (version 4). EDGE 1.5 (#138, review-edge run 41849492112): through the app's own review,
+ * key labels agree with a 1,024-playout review 70.7% of the time (version 3: 68.0%) at 1.07x version 3's
+ * review time; EDGE 2 and 3 gave the same, as B's cuts sit close enough that 1.5 already tops up every
+ * borderline decision to PLAYOUTS_MAX.
+ */
+export const RULES: LabelRules = { cuts: CUTS, se: true, turningPoint: true, edge: 1.5 };
 /** Review version 3's, for measuring against. */
 export const RULES_V3: LabelRules = { cuts: CUTS_V3, se: false, turningPoint: false, edge: 2 };
 
