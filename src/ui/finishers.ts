@@ -44,20 +44,30 @@ function shake(layer: SVGGElement, px: number, ms: number) {
   );
 }
 
-/** A few jagged crack lines out from the centre, `n` of them up to `len` long, deterministic per kill. */
-function cracks(n: number, len: number, seed: number): string {
+/**
+ * Ground fissures out from the pit's rim: `n` of them, up to `len` long, deterministic per kill. Each one is a
+ * filled sliver that tapers from `w` wide at the rim to a point, jagged rather than jointed: a dark core in the
+ * board's own shade colour, a darker seam down its middle, and a light edge on its upper side, the one the light
+ * catches. They lie on the ground, so they're flattened by the board's tilt (`f`) like the pit.
+ */
+function cracks(n: number, len: number, seed: number, start: number, w: number, f: number): string {
   let r = seed;
   const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+  const pt = (x: number, y: number) => `${x.toFixed(1)},${y.toFixed(1)}`;
   let out = '';
   for (let i = 0; i < n; i++) {
-    const ang = (360 / n) * i + rnd() * 26 - 13;
-    const l = len * (0.65 + rnd() * 0.35);
-    let d = 'M0,0';
-    for (let k = 1; k <= 5; k++) d += ` L${((l * k) / 5).toFixed(1)},${((rnd() - 0.5) * l * 0.22).toFixed(1)}`;
-    // a side branch
-    const b = l * (0.35 + rnd() * 0.25);
-    d += ` M${b.toFixed(1)},0 L${(b + l * 0.25).toFixed(1)},${((rnd() < 0.5 ? -1 : 1) * l * 0.2).toFixed(1)}`;
-    out += `<g transform="rotate(${ang.toFixed(1)})"><path class="ck" d="${d}" fill="none" stroke="#1b120a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+    const ang = (360 / n) * i + rnd() * 30 - 15;
+    const l = len * (0.7 + rnd() * 0.3);
+    // A jagged centre line: seven points, each kicked to alternate sides by a random amount.
+    const c: [number, number][] = [];
+    for (let k = 0; k <= 6; k++) c.push([start + (l * k) / 6, k === 0 ? 0 : (k % 2 ? 1 : -1) * (0.3 + rnd() * 0.7) * l * 0.07]);
+    const half = (t: number) => (w / 2) * Math.pow(1 - t, 0.85);
+    const side = (s: number, scale = 1) => c.map(([x, y], k) => pt(x, y + s * half(k / 6) * scale));
+    const upper = Math.cos((ang * Math.PI) / 180) >= 0 ? -1 : 1; // the side that faces up on the screen
+    out += `<g transform="scale(1 ${f / 0.55}) rotate(${ang.toFixed(1)})"><g class="ck">
+      <polygon points="${[...side(-1), ...side(1).reverse()].join(' ')}" style="fill:var(--b-shade)"/>
+      <polygon points="${[...side(-1, 0.4), ...side(1, 0.4).reverse()].join(' ')}" fill="#000" opacity=".45"/>
+      <polyline points="${side(upper, 1.15).join(' ')}" fill="none" style="stroke:var(--b-tile1)" stroke-opacity=".7" stroke-width="1.1" stroke-linejoin="round"/></g></g>`;
   }
   return out;
 }
@@ -110,7 +120,7 @@ async function earthquake(layers: Layers, at: Pt, ms: number, victims: Victim[],
   const ground = el(
     layers.under,
     `<defs><linearGradient id="${id}w" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a2e15"/><stop offset=".38" stop-color="#22140a"/><stop offset=".62" stop-color="#070403"/><stop offset="1" stop-color="#000"/></linearGradient></defs>
-    <g transform="translate(${x} ${y})"><g class="cks">${cracks(big ? 9 : 6, 46 * k, quakes * 7919)}</g>
+    <g transform="translate(${x} ${y})"><g class="cks">${cracks(big ? 6 : 4, 50 * k, quakes * 7919, R * k * 0.8, big ? 13 : 10, f)}</g>
     <g class="hole" transform="scale(0)"><ellipse cy="2" rx="${R + 7}" ry="${(R + 7) * f}" fill="#000" opacity=".28"/>
     <ellipse rx="${R}" ry="${R * f}" fill="#6b4624"/><path d="M${-R},0 A${R},${R * f} 0 0 1 ${R},0" fill="none" stroke="#a07648" stroke-width="2.2"/>
     <ellipse rx="${r}" ry="${r * f}" fill="url(#${id}w)"/><ellipse cy="${r * f * 0.35}" rx="${r * 0.72}" ry="${r * f * 0.5}" fill="#000"/></g></g>`,
