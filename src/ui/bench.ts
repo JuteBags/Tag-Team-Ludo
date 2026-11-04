@@ -294,7 +294,7 @@ export function benchScreen(onClose: () => void): HTMLElement {
       say(`engine: ${plain ? 'plain (forced by ?wasm=plain)' : wasmKind() === 'simd' ? 'simd' : 'plain (no WebAssembly SIMD here)'}`);
       const run = benchRun(review, {
         // ?wasm=plain loads the plain engine build in every worker (#151: the fallback where SIMD is missing).
-        worker: () => new Worker(new URL('../engine/ai/rollout-worker.ts', import.meta.url), { type: 'module', ...(plain ? { name: FORCE_PLAIN } : {}) }),
+        worker: () => new Worker(new URL('../engine/ai/rollout-worker.ts', import.meta.url), { type: 'module', name: plain ? FORCE_PLAIN : '' }),
         pause: (on) => setGame(on ? 'extreme' : 'none'),
         say,
       });
