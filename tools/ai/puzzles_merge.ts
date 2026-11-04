@@ -3,7 +3,7 @@
 // in a fixed shuffled order, written compact (src/engine/puzzles.ts decodes it).
 //   node tools/ai/dist/puzzles_merge.mjs puzzles-0.json puzzles-1.json ... [--out src/engine/puzzle-pool.json]
 // The days: Mon–Wed Easy, Thu–Fri Medium, Sat–Sun Hard (src/engine/puzzles.ts BAND_OF_WEEKDAY), so a year
-// needs 157 Easy, 104 Medium and 104 Hard; each band's list is cycled by itself.
+// (any 365 days) needs 157 Easy, 105 Medium and 105 Hard; each band's list is cycled by itself.
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { seeded, SEATS } from '../../src/engine';
@@ -14,7 +14,8 @@ const oi = argv.indexOf('--out');
 const out = oi >= 0 ? argv[oi + 1]! : 'src/engine/puzzle-pool.json';
 const files = argv.filter((x, i) => !x.startsWith('--') && argv[i - 1] !== '--out');
 const PER_GAME = 2;
-const NEED = { hard: 104, medium: 104, easy: 157 } as const;
+// Any 365 days in a row hold at most 157 Mon-Wed, 105 Thu-Fri and 105 Sat-Sun days (52 weeks and a day).
+const NEED = { hard: 105, medium: 105, easy: 157 } as const;
 const BANDS = ['hard', 'medium', 'easy'] as const;
 const summary = process.env.GITHUB_STEP_SUMMARY;
 const md = (line: string) => {

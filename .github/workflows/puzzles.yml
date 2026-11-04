@@ -32,10 +32,10 @@ permissions:
 
 # A push runs these (by hand, the inputs); FROM is the first game's seed, ONLY a subset of games (--only).
 env:
-  GAMES: '15'
+  GAMES: '60'
   SHARDS: '4'
-  FROM: '241'
-  ONLY: 'normal-4p'
+  FROM: '1'
+  ONLY: ''
 
 jobs:
   plan:
