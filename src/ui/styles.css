@@ -248,6 +248,23 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
   text-shadow:0 2px 0 rgba(0,0,0,.3);animation:nudge .9s ease-in-out infinite}
 .rollbtn svg{width:26px;height:26px}
 .rollbtn svg path{fill:#fff;stroke:#fff}
+/* Undo (#143): a round icon beside the tray, the undos left ("2/2") under it; in the turn-ends window its ring
+   drains. 48px to tap; the caption counts seconds instead under reduced motion. */
+.undobtn{flex:none;width:56px;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;margin-left:auto;color:#fff;background:none;border:0;padding:0}
+.undobtn[hidden]{display:none}
+.undobtn svg{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.16);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.35)}
+.undobtn svg path{stroke:#fff}
+.undobtn small{font:900 12px 'Nunito';opacity:.85;line-height:1}
+.undobtn .ur-bg,.undobtn .ur{fill:none;stroke-width:3;transform:rotate(-90deg);transform-origin:50% 50%}
+.undobtn .ur-bg{stroke:transparent}
+.undobtn .ur{stroke:transparent;stroke-dasharray:107;stroke-dashoffset:0;stroke-linecap:round}
+.undobtn.window .ur-bg,.undobtn.still .ur-bg{stroke:rgba(255,255,255,.2)}
+.undobtn.window .ur{stroke:#ffd65a;animation:undodrain var(--undo-ms,1500ms) linear forwards}
+.undobtn.still .ur{stroke:#ffd65a;stroke-dashoffset:40;animation:none}
+@keyframes undodrain{to{stroke-dashoffset:107}}
+.undobtn.none{opacity:.45}
+.undobtn:active:not(:disabled) svg{transform:translateY(2px)}
+@media (prefers-reduced-motion: reduce){.undobtn.window .ur{animation:none}}
 .rollbtn:active{transform:translateY(3px);box-shadow:inset 0 2px 0 rgba(255,255,255,.45),0 2px 0 var(--d)}
 .tdie{width:52px;height:52px;padding:0;border-radius:12px;transition:transform .15s,opacity .2s,box-shadow .15s;animation:tdIn .3s cubic-bezier(.16,1,.3,1)}
 .tdie svg{display:block;width:100%;height:100%;filter:drop-shadow(0 2px 0 rgba(0,0,0,.3))}
