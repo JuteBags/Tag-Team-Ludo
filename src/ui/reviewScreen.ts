@@ -23,7 +23,7 @@ const GL = 22;
 
 /** The review graph's tabs (#134): "Win %" (the win probability, not "Win rate", which Stats uses for games won). */
 type GraphTab = 'win' | 'accuracy' | 'luck';
-const GRAPH_TABS: [GraphTab, string][] = [['win', 'Win %'], ['accuracy', 'Accuracy'], ['luck', 'Luckometer']];
+const GRAPH_TABS: [GraphTab, string][] = [['win', 'Win %'], ['accuracy', 'Accuracy'], ['luck', 'Luck-O-Meter']];
 const GRAPH_KEY = 'ludo-graph-tab';
 const loadGraphTab = (): GraphTab => {
   try {
@@ -265,7 +265,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
         ${end ? `<circle class="${graphTab}" cx="${end[0].toFixed(1)}" cy="${end[1].toFixed(1)}" r="3.5"/>${endLabel(end, label, `final ${graphTab}`)}` : ''}
         ${graphTab === 'accuracy' ? `<rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/>` : ''}</svg>`;
     const who = isYou(pov) ? 'Your' : `${names[pov]}'s`;
-    q('.rvgraph small').textContent = graphTab === 'accuracy' ? `${who} accuracy so far` : `${who} Luckometer`;
+    q('.rvgraph small').textContent = graphTab === 'accuracy' ? `${who} accuracy so far` : `${who} Luck-O-Meter`;
   };
 
   const moveRow = (m: MoveReview, turning = false) => {
