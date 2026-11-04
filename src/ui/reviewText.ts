@@ -158,7 +158,8 @@ export function headline(o: { won: boolean; accuracy: number; name: string; deci
   if (!o.won && o.decider && (o.decider.label === 'blunder' || o.decider.label === 'mistake'))
     return `One ${o.decider.label} decided it: a single move gave up ${Math.max(1, Math.round(o.decider.gap))}% to win.`;
   const great = scored && o.accuracy >= GREAT_PLAY;
-  if (o.won) return great ? 'Won on great play.' : 'Won, with a few slips to learn from.';
+  // A clean win (no mistake of any kind) never talks of slips.
+  if (o.won) return great ? 'Won on great play.' : o.keyMistakes === 0 && !o.inaccuracies ? 'Won without a slip.' : 'Won, with a few slips to learn from.';
   if (great) return `${o.name} played well: the turning point decided it.`;
   // No key mistakes: it was the small slips that added up, so say that rather than "mistakes".
   // No mistake of any kind: say so, rather than "lost on mistakes" over a list of Best and Good moves.
