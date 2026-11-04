@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { chooseMove, createGame, move, moveEvent, replay, roll, rollEvent, seeded, seededDie, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { positionKey } from '../src/engine/rng';
 import { REVIEW_VERSION, accuracyOf, luckPercent, summary, type DecisionValues, type MoveReview, type ReviewAsk, type Reviewer } from '../src/engine/ai/review';
-import { bigRolls, etaText, evenChance, graphPoints, keyMoves, moveText, reviewedText, rollText, verdictMoves, whichToken, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS, plainVerdict, BETTER_COLOR, LABEL_LOOK, type VerdictPart, runningAccuracy, runningLuck, trendOf, ACCURACY_LINE_FROM, TREND_GAMES } from '../src/ui/reviewText';
+import { verdictText, bigRolls, etaText, evenChance, graphPoints, keyMoves, moveText, reviewedText, rollText, verdictMoves, whichToken, headline, turningPoint, accuracyText, FEW_BIG_DECISIONS, plainVerdict, BETTER_COLOR, LABEL_LOOK, type VerdictPart, runningAccuracy, runningLuck, trendOf, ACCURACY_LINE_FROM, TREND_GAMES } from '../src/ui/reviewText';
 import type { Move } from '../src/engine';
 
 const mem = new Map<string, string>();
@@ -76,20 +76,21 @@ describe('key moves and big rolls', () => {
   it('picks the rolls that swung the game most, for anyone, lucky or not', () => {
     const r = bigRolls([{ at: 1, owner: 0, face: 6, luck: 3 }, { at: 2, owner: 1, face: 6, luck: 15 }, { at: 3, owner: 0, face: 1, luck: -12 }, { at: 4, owner: 1, face: 2, luck: -1 }, { at: 5, owner: 0, face: 5, luck: 8 }]);
     expect(r.map((x) => x.at)).toEqual([2, 3, 5]);
-    expect(rollText(r[0]!, 'Aarav', false)).toBe("Aarav's lucky 6: +15 for them");
-    expect(rollText(r[1]!, 'You', true)).toBe('Your unlucky 1: −12');
+    expect(rollText(r[0]!, 'Aarav', false)).toBe('Aarav: +15% to win');
+    expect(rollText(r[1]!, 'You', true)).toBe('−12% to win');
   });
 });
 
 describe('luck %, headline and turning point', () => {
   it('tells the story of the game', () => {
-    expect(headline({ won: false, accuracy: 0.92, luckPct: 12, name: 'You' })).toBe('You played well, but the dice went against you.');
-    expect(headline({ won: true, accuracy: 0.95, luckPct: 50, name: 'You' })).toBe('Won on great play.');
-    expect(headline({ won: false, accuracy: 0.7, luckPct: 50, name: 'Aarav' })).toBe('Lost on mistakes: the key moves show where.');
-    expect(headline({ won: false, accuracy: 0.6, luckPct: 98, name: 'You', keyMistakes: 0, inaccuracies: 7 })).toBe('No big mistakes, but small slips added up in close decisions.');
-    expect(headline({ won: false, accuracy: 0.8, luckPct: 98, name: 'You', keyMistakes: 0, inaccuracies: 3 })).toBe('The dice were kind, but 3 small slips added up.');
+    expect(headline({ won: false, accuracy: 0.92, name: 'You' })).toBe('You played well: the turning point decided it.');
+    expect(headline({ won: true, accuracy: 0.95, name: 'You' })).toBe('Won on great play.');
+    expect(headline({ won: true, accuracy: 0.8, name: 'You' })).toBe('Won, with a few slips to learn from.');
+    expect(headline({ won: false, accuracy: 0.7, name: 'Aarav' })).toBe('Lost on mistakes: the key moves show where.');
+    expect(headline({ won: false, accuracy: 0.6, name: 'You', keyMistakes: 0, inaccuracies: 7 })).toBe('No big mistakes, but small slips added up in close decisions.');
+    expect(headline({ won: false, accuracy: 0.8, name: 'You', keyMistakes: 0, inaccuracies: 3 })).toBe('Lost on 3 small slips: the key moves show where.');
     const blunder = { at: 9, owner: 0, played: 0, best: 1, playedChance: 0.1, bestChance: 0.4, gap: 32, se: 1, label: 'blunder' } as MoveReview;
-    expect(headline({ won: false, accuracy: 0.92, luckPct: 70, name: 'You', decider: blunder })).toBe('One blunder decided it: a single move cost 32 points of win probability.');
+    expect(headline({ won: false, accuracy: 0.92, name: 'You', decider: blunder })).toBe('One blunder decided it: a single move gave up 32% to win.');
   });
   it('finds the biggest swing, a move or a roll', () => {
     const mv = (at: number, gap: number): MoveReview => ({ at, owner: 0, played: 0, best: 1, playedChance: 0.5, bestChance: 0.5, gap, se: 0.5, label: 'mistake' });
@@ -123,13 +124,18 @@ describe('a game with no meaningful decision', () => {
     expect(s.accuracy).toBeLessThan(0.99 + 1e-9);
     expect(s.labels.inaccuracy).toBe(2);
   });
-  it('gets a headline that quotes no accuracy', () => {
+  it('never judges the dice in words (#152)', () => {
     for (const won of [true, false])
-      for (const luckPct of [10, 50, 90]) {
-        const h = headline({ won, accuracy: NaN, luckPct, name: 'You', keyMistakes: 0, inaccuracies: 2 });
-        expect(h).not.toMatch(/NaN/);
-        expect(h).not.toMatch(/played well|great play|\d+% accuracy/);
-      }
+      for (const accuracy of [0.5, 0.8, 0.95, NaN])
+        for (const keyMistakes of [0, 2])
+          expect(headline({ won, accuracy, name: 'You', keyMistakes, inaccuracies: 3 })).not.toMatch(/luck|dice|kind/i);
+  });
+  it('gets a headline that quotes no accuracy', () => {
+    for (const won of [true, false]) {
+      const h = headline({ won, accuracy: NaN, name: 'You', keyMistakes: 0, inaccuracies: 2 });
+      expect(h).not.toMatch(/NaN/);
+      expect(h).not.toMatch(/played well|great play|\d+% accuracy/);
+    }
   });
 });
 
@@ -316,6 +322,13 @@ describe('plain verdicts (#124)', () => {
   const say = (played: Move, best: Move, label: 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder' = 'mistake', gap = 8, who = 'You') =>
     plainVerdict({ label, played: 0, best: 1, gap }, { moves: [played, best] }, who);
 
+  it('titles a verdict in the one unit the review uses: % to win (#152)', () => {
+    const s = { moves: [mv({})], players: [] } as unknown as GameState;
+    const head = (label: MoveReview['label'], gap: number) => verdictText({ label, played: 0, best: 0, gap } as MoveReview, s, 'You').head;
+    expect(head('mistake', 7.6)).toBe('Mistake: −8% to win');
+    expect(head('inaccuracy', 2.2)).toBe('Inaccuracy: −2% to win');
+    expect(head('best', 0)).toBe('Best');
+  });
   it('names the better move that gets a token home', () => {
     expect(text(say(mv({ steps: 3 }), mv({ tokens: [1], steps: 6, finishes: 1 }), 'blunder', 19).parts)).toBe('You moved [you:this token] 3. Moving [better:that one] 6 gets it home.');
   });
