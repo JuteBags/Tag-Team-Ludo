@@ -33,6 +33,15 @@ const loadGraphTab = (): GraphTab => {
     return 'win';
   }
 };
+/**
+ * A line's end label, always inside the chart (#134): right-aligned to the end point when it ends near the
+ * right edge (they all do), just above it, or below it when the point is near the top.
+ */
+const endLabel = (end: readonly [number, number], text: string, cls: string) => {
+  const [x, y] = end;
+  const ty = y < 14 ? y + 14 : y - 7;
+  return `<text x="${(x - 2).toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="end" class="${cls}">${text}</text>`;
+};
 const saveGraphTab = (t: GraphTab) => {
   try {
     localStorage.setItem(GRAPH_KEY, t);
@@ -220,7 +229,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
         <polyline points="${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')}"/>
         ${pts.slice(0, mine.length).map(([x, y], i) => (mine[i]!.label === 'best' || mine[i]!.label === 'good' ? '' : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${LABEL_LOOK[mine[i]!.label].color}"/>`)).join('')}
         ${star}
-        <text x="${end[0] + 6}" y="${Math.max(8, Math.min(GH, end[1] + 4))}" class="final">${Math.round(100 * (result[0] ?? mine.at(-1)!.playedChance))}%</text>
+        ${endLabel(end, `${Math.round(100 * (result[0] ?? mine.at(-1)!.playedChance))}%`, 'final')}
         <rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/></svg>`;
     // Names go in as text, like everywhere else.
     q('.rvgraph small').textContent = `${isYou(pov) ? 'Your' : `${names[pov]}'s`} win probability`;
@@ -255,7 +264,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     q('.rvgraph').innerHTML = `<small></small>${graphTabs()}<svg viewBox="-6 -8 ${GW + 40} ${GH + 16}" aria-hidden="true">
         ${[0, 50, 100].map(tick).join('')}${mid}
         ${pts.length ? `<polyline class="${graphTab}" points="${pts.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ')}"/>` : ''}
-        ${end ? `<circle class="${graphTab}" cx="${end[0].toFixed(1)}" cy="${end[1].toFixed(1)}" r="3.5"/><text x="${Math.min(GW - 48, end[0] + 6)}" y="${Math.max(10, Math.min(GH - 2, end[1] - 6))}" class="final ${graphTab}">${label}</text>` : ''}
+        ${end ? `<circle class="${graphTab}" cx="${end[0].toFixed(1)}" cy="${end[1].toFixed(1)}" r="3.5"/>${endLabel(end, label, `final ${graphTab}`)}` : ''}
         ${graphTab === 'accuracy' ? `<rect class="hit" x="${GL}" y="-8" width="${GW - GL}" height="${GH + 16}" fill="transparent"/>` : ''}</svg>${note ? `<p class="rvgnote"></p>` : ''}`;
     const who = isYou(pov) ? 'Your' : `${names[pov]}'s`;
     q('.rvgraph small').textContent = `${who} ${graphTab === 'accuracy' ? 'accuracy' : 'luck'} so far`;
