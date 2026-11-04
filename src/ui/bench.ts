@@ -13,7 +13,7 @@ import { SEATS as TABLE, chooseMove, createGame, move, roll, seeded, seededDie, 
 import type { Label } from '../engine/ai/review';
 import { setGame } from './reviewQueue';
 import { runReview } from './reviewRun';
-import { MAX_POOL, poolSize, ReviewPool } from '../engine/ai/review-worker';
+import { isMobile, MAX_POOL_DESKTOP, poolSize, ReviewPool } from '../engine/ai/review-worker';
 
 const PER_ARM = 50;
 const ARMS: { layout: '2p' | '4p'; nmax: number }[] = [
@@ -141,9 +141,9 @@ function timeReview(rec: GameRecord, pool: ReviewPool, onStop: (stop: () => void
     const t0 = performance.now();
     let luckMs: number | null = null;
     let firstKeyMs: number | null = null;
-    const luck = (r: GameRecord, stopped?: () => boolean) => {
+    const luck = (r: GameRecord, stopped?: () => boolean, yieldTo?: () => boolean) => {
       const t = performance.now();
-      return pool.luck(r, stopped)!.then((v) => ((luckMs = performance.now() - t), v));
+      return pool.luck(r, stopped, yieldTo)!.then((v) => ((luckMs = performance.now() - t), v));
     };
     const stop = runReview(
       rec,
@@ -330,13 +330,16 @@ async function movesBench(worker: Worker, say: (l: string) => void, hidden: () =
 
 /**
  * The game review test (#105, #151): per game, the first key verdict, the whole review and the luck pass, on
- * a pool of 1, 2 and 3 workers (the app uses poolSize()), and each worker's wasm memory.
+ * a pool of 1, 2, 3 and 4 workers (and 6 on a computer: MAX_POOL_DESKTOP), and each worker's wasm memory.
+ * The app uses poolSize().
  */
 async function reviewBench(_worker: Worker, say: (l: string) => void, hidden: () => boolean, onStop: (stop: () => void) => void) {
   const nav = navigator as Navigator & { deviceMemory?: number };
   say(`pool: the app uses ${poolSize()} review worker${poolSize() > 1 ? 's' : ''} here (cores ${nav.hardwareConcurrency ?? '?'}, memory ${nav.deviceMemory ?? '?'} GB)`);
   const games = REVIEW_GAMES.map((g) => ({ ...g, rec: reviewRecord(g) }));
-  for (let size = 1; size <= MAX_POOL; size++) {
+  // A phone tries 4 too (1+3 and 2+2 big cores): the app keeps MAX_POOL there until a phone's run says otherwise.
+  const sizes = isMobile(nav) ? [1, 2, 3, 4] : [1, 2, 3, 4, MAX_POOL_DESKTOP];
+  for (const size of sizes) {
     if (hidden()) return;
     const pool = new ReviewPool(size);
     try {

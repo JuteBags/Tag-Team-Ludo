@@ -1,22 +1,42 @@
 // The review's rollouts in Web Workers (rollout-worker.ts, kind 'review'), so reviewing a game never competes
 // with a bot thinking in a game. A pool of them (#151): one core did a whole review while phones have 4-8, so
-// the review's decisions and its luck pass are spread over up to MAX_POOL workers, each with its own wasm
+// the review's decisions and its luck pass are spread over up to MAX_POOL workers (MAX_POOL_DESKTOP on a computer), each with its own wasm
 // engine. Every decision is seeded by itself and every luck chunk is independent, so a review is the same
 // whatever the pool's size. Null where workers can't run.
 import type { GameState } from '../types';
 import type { GameRecord } from '../record';
 import { LUCK_CHUNK, type DecisionValues, type Reviewer, type ReviewAsk, type RollLuck } from './review';
 
-/** At most this many review workers: big.LITTLE phones have about 4 fast cores, and one is the UI's. */
+/** At most this many review workers on a phone or tablet: big.LITTLE has about 4 fast cores, and one is the UI's. */
 export const MAX_POOL = 3;
+/**
+ * At most this many on a desktop or laptop: its cores are all fast, and many players review on the web build.
+ * The bench's curve (review-bench.yml, #151) set it.
+ */
+export const MAX_POOL_DESKTOP = 6;
+
+/** What poolSize reads of the device (navigator's fields; userAgentData is Chromium's). */
+export interface PoolDevice {
+  hardwareConcurrency?: number;
+  deviceMemory?: number;
+  userAgentData?: { mobile?: boolean };
+}
+
+/** Whether this device's main pointer is a finger. */
+const coarsePointer = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+
+/** A phone or tablet: the browser says so (Chromium), else its main pointer is a finger (Safari, Firefox). */
+export function isMobile(nav: PoolDevice | undefined, coarse = coarsePointer()): boolean {
+  return nav?.userAgentData?.mobile ?? coarse;
+}
 
 /**
  * The pool's size on this device: one core fewer than it reports (the UI keeps one), at least 1, at most
- * MAX_POOL, and at most 2 on a phone that reports 2 GB of memory or less.
+ * MAX_POOL on a phone or tablet and MAX_POOL_DESKTOP elsewhere, and at most 2 with 2 GB of memory or less.
  */
-export function poolSize(nav: { hardwareConcurrency?: number; deviceMemory?: number } | undefined = typeof navigator !== 'undefined' ? navigator : undefined): number {
+export function poolSize(nav: PoolDevice | undefined = typeof navigator !== 'undefined' ? navigator : undefined, coarse = coarsePointer()): number {
   const cores = nav?.hardwareConcurrency ?? 4;
-  let n = Math.max(1, Math.min(cores - 1, MAX_POOL));
+  let n = Math.max(1, Math.min(cores - 1, isMobile(nav, coarse) ? MAX_POOL : MAX_POOL_DESKTOP));
   if (nav?.deviceMemory !== undefined && nav.deviceMemory <= 2) n = Math.min(n, 2);
   return n;
 }
@@ -30,6 +50,9 @@ interface Slot {
   /** Calls in flight on this worker. */
   busy: number;
   pending: Map<number, Pending>;
+  /** Decisions (kind 'review') in flight on this worker, and who waits for it to have none (luck's yield). */
+  decisions: number;
+  idle: (() => void)[];
 }
 
 /** The pool's Reviewer, and how many decisions it can take at once (review.ts ReviewOptions.parallel). */
@@ -57,7 +80,7 @@ export class ReviewPool {
       } catch {
         break;
       }
-      const slot: Slot = { w, busy: 0, pending: new Map() };
+      const slot: Slot = { w, busy: 0, pending: new Map(), decisions: 0, idle: [] };
       w.onmessage = (e: MessageEvent<{ id: number; values?: DecisionValues; error?: string }>) => {
         const p = slot.pending.get(e.data.id);
         slot.pending.delete(e.data.id);
@@ -69,6 +92,7 @@ export class ReviewPool {
         // This worker is gone: its calls fail, and it leaves the pool (the next call uses another one).
         for (const p of slot.pending.values()) p.fail(new Error('review worker failed'));
         slot.pending.clear();
+        slot.idle.splice(0).forEach((f) => f());
         w.terminate();
         this.slots = this.slots?.filter((s) => s !== slot);
         if (this.slots && !this.slots.length) this.slots = undefined;
@@ -109,7 +133,14 @@ export class ReviewPool {
       const now = this.make();
       if (!now) return Promise.reject(new Error('review workers stopped'));
       // The net screen plays nothing out and has no decision of its own (seed 0): any worker.
-      return this.call<DecisionValues>(this.pick(now, ask?.mode === 'screen' ? undefined : seed), { kind: 'review', state, n, seed, ask });
+      const slot = this.pick(now, ask?.mode === 'screen' ? undefined : seed);
+      slot.decisions++;
+      const settle = () => {
+        if (--slot.decisions === 0) slot.idle.splice(0).forEach((g) => g());
+      };
+      const r = this.call<DecisionValues>(slot, { kind: 'review', state, n, seed, ask });
+      r.then(settle, settle);
+      return r;
     };
     return Object.assign(f, { parallel: slots.length });
   }
@@ -119,8 +150,10 @@ export class ReviewPool {
    * (#125) spread over every worker (#151). Chunks are independent (the luck cache starts afresh at each
    * roll), so the values are the same on any worker; they're put back in order. A stop (`stopped`, checked
    * before each chunk) lands within one chunk per worker; it resolves null then. Null where workers can't run.
+   * While `yieldTo()` is true, a worker takes its next chunk only once it has no decision in flight: the
+   * review's decisions go first (until its first key verdict, #151), and a chunk never queues ahead of one.
    */
-  luck(rec: GameRecord, stopped: () => boolean = () => false): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
+  luck(rec: GameRecord, stopped: () => boolean = () => false, yieldTo: () => boolean = () => false): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
     const slots = this.make();
     if (!slots) return null;
     return (async () => {
@@ -133,10 +166,17 @@ export class ReviewPool {
         await Promise.all(
           slots.map(async (s, k) => {
             while (next < chunks) {
+              // A decision's turn: wait for this worker to finish its decisions. A macrotask after each, so
+              // the review hands out its next decision (to this worker, now the least busy) before the check.
+              while (yieldTo() && s.decisions > 0 && !stopped() && this.slots?.includes(s)) {
+                await new Promise<void>((r) => s.idle.push(r));
+                await new Promise((r) => setTimeout(r, 0));
+              }
               if (stopped()) {
                 halted = true;
                 return;
               }
+              if (next >= chunks) return;
               const c = next++;
               parts[c] = await this.call(s, { kind: 'luck-chunk', run: passes[k]!.run, from: c * LUCK_CHUNK, to: (c + 1) * LUCK_CHUNK });
             }
@@ -178,8 +218,8 @@ export function workerReviewer(): PoolReviewer | null {
 }
 
 /** The app's luck pass in the pool (ReviewPool.luck). Null where workers can't run. */
-export function workerLuck(rec: GameRecord, stopped: () => boolean = () => false): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
-  return appPool().luck(rec, stopped);
+export function workerLuck(rec: GameRecord, stopped: () => boolean = () => false, yieldTo: () => boolean = () => false): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
+  return appPool().luck(rec, stopped, yieldTo);
 }
 
 /** Ends the app's pool (the review queue calls it once it's empty or paused), so no idle worker holds memory. */
