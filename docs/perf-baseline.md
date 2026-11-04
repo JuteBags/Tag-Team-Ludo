@@ -5,6 +5,8 @@ The numbers every later `perf:` PR measures against. **Part 1 (this file so far)
 - a static audit of what can run while a screen is idle;
 - a static audit of paint cost.
 
+**CI measurements: §4** (headless Chrome, throttled, on every `perf:` PR). **Phone measurements: §5, pending.**
+
 **Device measurements: pending instance 1.** These are memory (PSS, JS heap), idle and in-game CPU traces, frames painted while idle, cold start and battery. On MuMu instance 1 the app currently opens on a separate host screen that captures black, so the device half waits for that to be fixed. Real-phone numbers come from the owner, as in #89.
 
 Commit measured: `a4184f9` (main, after #102). Build: `build.yml` run 41400098043 (its `web` and `android` artifacts, not a local build).
@@ -124,22 +126,92 @@ Per-screen listeners are attached to the screen's own elements and go with them.
 
 Static shadows cost once per paint, not per frame. They matter mostly when the same layer also repaints for an animation: the board frame (`.bframe`) and the active player's corner sit next to I2–I4.
 
-## 4. What the device half will measure (pending)
-Per the issue, on MuMu instance 1 (once it shows the app on display 0):
-- `dumpsys meminfo` PSS: total, Java heap, native, graphics;
-- DevTools heap and detached nodes;
-- 30 s idle and in-game traces with a count of frames painted;
-- `am start -W` cold start;
-- 10-minute battery: game against idle.
+## 4. CI baseline: the app's screens in headless Chrome
 
-Screens:
-- home idle;
-- setup;
-- a game vs Hard;
-- a game vs Extreme;
-- the result;
-- the replay;
-- the review running;
-- the store.
+The numbers every `perf:` PR compares against: the PR runs the same script before and after its change.
 
-The flags above (I1–I8) are what the traces should confirm or rule out first.
+- **Script:** `tools/perf/screens.mjs`.
+- **Workflow:** `.github/workflows/perf-screens.yml`. It runs by hand (`gh workflow run perf-screens.yml --ref <branch>`), and on a PR labelled `performance` that touches `src/ui/**`.
+- **Run:** 41874446199, on commit `8914178` (PR #157's merge of `50240de` into main).
+- **Runner:** GitHub `ubuntu-latest`, 4 vCPUs, Google Chrome 156.0.8078.47, headless.
+- **Settings:**
+  - the production build (`vite preview`);
+  - 390×844 at DPR 2;
+  - CPU throttled **4×**, as a proxy for a mid-range phone;
+  - 1.5 s to settle, then **10 s with no input** per screen (0.3 s to settle for the bots' turns).
+- **Measures:**
+  - JS heap and DOM nodes, from `Performance.getMetrics`;
+  - frames drawn (`DrawFrame`) and main-thread paints (`Paint`), from a trace;
+  - main-thread task time and its script, style and layout parts, in ms per second, from the `getMetrics` deltas.
+
+**Cold start** (a fresh context, to the home screen):
+
+| | |
+|---|---:|
+| first contentful paint | 572 ms |
+| DOMContentLoaded / load | 522 / 524 ms |
+| home screen interactive | 1219 ms |
+| fetched | 141 kB |
+
+The home-interactive time is when the script saw the vs Computer button visible. It includes Playwright's polling, so treat it as ±50 ms.
+
+**Per screen:**
+
+| screen | JS heap used / total (MB) | DOM nodes | frames/s | paints/s | main-thread task ms/s | script | style | layout |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| home | 2.85 / 4.87 | 2226 | 0 | 0 | 2.2 | 0.2 | 0 | 0 |
+| setup | 3.21 / 5.37 | 3276 | 0 | 0 | 0.2 | 0.1 | 0 | 0 |
+| game, waiting for the roll | 3.61 / 4.23 | 4150 | 60 | 0 | 7.7 | 0.2 | 0 | 0 |
+| game, waiting for the move | 4.14 / 4.73 | 4391 | 44 | 0.2 | 2.4 | 0.1 | 0.1 | 0 |
+| game, the bots' turns | 3.98 / 4.98 | 4445 | 54.7 | 72.4 | 238.2 | 5 | 13.4 | 15.8 |
+| replay | 5.1 / 7.48 | 5754 | 0 | 0 | 0.2 | 0.1 | 0 | 0 |
+| review (finished) | 5.73 / 10.73 | 8798 | 0 | 0 | 0.7 | 0 | 0 | 0 |
+| store | 5.1 / 9.35 | 3298 | 0 | 0 | 0.2 | 0 | 0 | 0 |
+
+How each screen is set up:
+- **The game:** a saved 4-player vs Computer game (Hard bots), opened with Continue, with the person to roll and three tokens out.
+- **Waiting for the move:** after the roll.
+- **The bots' turns:** after a tap on a landing marker.
+- **The replay and the review:** the seed-24 game's share link (`tools/perf/game-seed24.link.txt`), reviewed to the end.
+
+**Largest chunks** (from `dist/`):
+
+| chunk | raw kB | gzip kB |
+|---|---:|---:|
+| ludo_wasm.wasm | 303.2 | 109.1 |
+| extreme-net.bin | 205.0 | 189.8 |
+| index.js | 135.4 | 45.6 |
+| index.css | 74.7 | 16.1 |
+| art.js | 42.3 | 12.7 |
+| rollout-worker.js | 29.0 | 11.0 |
+| reviewQueue.js | 23.8 | 9.6 |
+| palace.js | 20.1 | 6.7 |
+| nunito 900 / 800 (woff2) | 16.3 / 16.1 | 16.3 / 16.2 |
+| replayScreen.js | 13.4 | 5.7 |
+| reviewScreen.js | 13.0 | 5.1 |
+
+The wasm and the nets are not fetched at startup: the cold start fetched 141 kB.
+
+**What it shows:**
+- **Settled screens are quiet.** Home, setup, replay, the finished review and the store all draw 0 frames and use under 2.5 ms/s of main thread. Section 2 predicted this for home; it now holds for those five screens.
+- **The bots' turns are the one busy screen:** 238 ms/s of main thread, almost a quarter of it, with 72 paints/s. Script is only 5 ms/s, because the bots think in the worker. The rest is rendering. Every hop, throw and squash is a rAF `tween` that sets an SVG `<g>`'s `transform` attribute (`boardView.ts:506-546`, `set`). That repaints the board SVG on every frame, and more than once per frame drawn (72 paints for 55 frames).
+- **The game keeps drawing while it waits for the person:**
+  - 60 frames/s while waiting for the roll (I5 `nudge`);
+  - 44 frames/s while waiting for the move (I2 `bob`).
+
+  Both are compositor-only here, with no main-thread paints (0 and 0.2/s). So I2's "SVG repaints" flag does not hold in Chrome 156, and I3's trail was not on show in this run. The cost is GPU and compositor frames for as long as the person thinks, which is battery on a phone. CI can't price that.
+- **The review is the heaviest screen:** 8.8k DOM nodes against the replay's 5.8k, and a 10.7 MB heap total. The store (3.3k nodes) still has a 9.35 MB heap total right after it, because nothing collected the garbage yet. This is not a leak by itself; a phone run would confirm it.
+
+## 5. Needs a real ARM phone
+
+Headless Chrome on an x86 runner can't measure these. They need the owner's phone (as in #89), or MuMu once memory allows:
+- **Absolute memory:** the Android WebView's PSS (total, Java heap, native, graphics) from `dumpsys meminfo`, not Chrome's JS heap.
+- **True CPU cost:** a 4× throttle on x86 is only a proxy for a mid-range ARM core, and the wasm engine's speed differs most (#151's bench).
+- **Battery:** 10 minutes of a game against 10 minutes idle. This is the only way to price the idle compositor frames in §4.
+- **Frame pacing:** dropped and janky frames during the bots' turns and the kill effects, on a real GPU, rather than the frame count.
+- **Cold start with the WebView's start-up and the APK:** `am start -W`, plus first paint inside the app.
+- **Detached DOM nodes** after leaving the review and the replay, from a DevTools heap snapshot on the device.
+
+Screens: as in §4, plus a game vs Extreme, the result, and the review while it runs (the CI numbers are for the finished review).
+
+The flags in section 2 (I1–I8) and the targets from §4 are what the device traces should confirm first.
