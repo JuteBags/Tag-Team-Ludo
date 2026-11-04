@@ -13,7 +13,7 @@ import { dieMarkup } from './dice';
 import { framesOf, namesOf } from './replay';
 import { follow } from './reviewQueue';
 import { decisionsToReview, peopleOf, type ReviewProgress } from './reviewRun';
-import { accuracyText, bigRolls, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, luckBand, luckWords, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
+import { accuracyText, bigRolls, sixRuns, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, luckBand, luckWords, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
 import type { StoredReview } from './store';
 
 const GW = 330;
@@ -312,7 +312,11 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       h.className = 'rvhead';
       h.textContent = 'Big dice moments';
       list.appendChild(h);
-      for (const r of bigRolls(d.luck).filter((r) => !(tp?.kind === 'roll' && tp.roll.at === r.at))) list.appendChild(rollRow(r));
+      const big = bigRolls(d.luck).filter((r) => !(tp?.kind === 'roll' && tp.roll.at === r.at));
+      for (const r of big) list.appendChild(rollRow(r));
+      // This person's cancelled runs of three 6s (#135) are always listed: one row each, after the big ones.
+      const shown = new Set([...big.map((r) => r.at), ...(tp?.kind === 'roll' ? [tp.roll.at] : [])]);
+      for (const r of sixRuns(d.luck, pov).filter((r) => !shown.has(r.at))) list.appendChild(rollRow(r));
     }
   };
 

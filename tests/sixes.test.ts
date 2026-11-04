@@ -11,7 +11,7 @@ import { decodeNet } from '../src/engine/ai/netbin';
 import { faceValues, rollLuck } from '../src/engine/ai/review';
 import { ownerValues } from '../src/engine/ai/search';
 import { moveEvent, rollEvent } from '../src/engine/record';
-import { bigRolls, rollEvents, rollText } from '../src/ui/reviewText';
+import { bigRolls, rollEvents, rollText, sixRuns } from '../src/ui/reviewText';
 
 const net = new Net(decodeNet(new Uint8Array(readFileSync(new URL('../src/engine/ai/extreme-net.bin', import.meta.url)))));
 const TWO: Seat[] = [{ color: 'blue', owner: 0, bot: true }, { color: 'red', owner: 1, bot: true }];
@@ -100,5 +100,8 @@ describe('a run of three 6s (#135)', () => {
     expect(bigRolls(luck)[0]!.at).toBe(5);
     expect(rollText(luck[2]!, 'Aarav', true)).toBe('Three 6s cancelled: −6% to win');
     expect(rollText(luck[2]!, 'Aarav', false)).toBe("Aarav's three 6s cancelled: −6% to win for them");
+    // Listed for its person whether or not it's a big roll.
+    expect(sixRuns(luck, 0).map((r) => [r.at, r.luck])).toEqual([[5, -6]]);
+    expect(sixRuns(luck, 1)).toEqual([]);
   });
 });

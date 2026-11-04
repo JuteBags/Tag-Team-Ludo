@@ -96,6 +96,9 @@ export const keyMoves = (moves: MoveReview[]) => moves.filter((m) => KEY_LABELS.
  */
 export const rollEvents = (luck: RollLuck[]): RollLuck[] => luck.filter((r) => !r.inRun).map((r) => (r.run === undefined ? r : { ...r, luck: r.run }));
 
+/** A person's cancelled runs of three 6s, as roll events, in game order: the review lists every one (#135). */
+export const sixRuns = (luck: RollLuck[], owner: number): RollLuck[] => rollEvents(luck).filter((r) => r.run !== undefined && r.owner === owner);
+
 export const bigRolls = (luck: RollLuck[], n = 3) => rollEvents(luck).sort((a, b) => Math.abs(b.luck) - Math.abs(a.luck) || a.at - b.at).slice(0, n);
 
 /** A big roll in words: "Your lucky 6: +12" or "Aarav's unlucky 1: −9 for them". */
