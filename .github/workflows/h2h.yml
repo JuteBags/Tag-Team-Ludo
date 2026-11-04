@@ -2,17 +2,12 @@
 # Their referee (only crates/ludo_core, at a pinned commit) is checked out into the runner's temp dir, and V17 (the ONNX file
 # alphaludo.in serves) is downloaded into the runner's temp dir and checked against a pinned sha256. Neither is
 # committed, cached (no actions/cache), uploaded as an artifact or shipped; only our results are uploaded.
-#   On a PR touching the harness: the classic-mode tests, the lockstep parity check (10k games) and a V17 probe.
-#   By hand: gh workflow run h2h.yml -f mode=match -f layout=4p -f a=extreme-net -f b=v17 -f deals=250 -f shards=25
+#   Dispatch only (mode=parity: the classic-mode tests, the lockstep parity check over 10k games and a V17 probe).
+#   gh workflow run h2h.yml -f mode=match -f layout=4p -f a=extreme-net -f b=v17 -f deals=250 -f shards=25
 #            (mode=parity|probe|match; the pilot is a match with a=extreme-net b=extreme-rules).
 name: AlphaLudo head-to-head
 
 on:
-  pull_request:
-    paths:
-      - 'tools/ai/h2h/**'
-      - 'sim-rs/tests/classic.rs'
-      - '.github/workflows/h2h.yml'
   workflow_dispatch:
     inputs:
       mode:
@@ -90,11 +85,11 @@ jobs:
         if: env.MODE == 'parity'
         run: '"$RUNNER_TEMP/target/release/h2h" parity --games 10000'
       - uses: actions/setup-python@v6
-        if: env.MODE != 'parity' || github.event_name == 'pull_request'
+        if: true
         with:
           python-version: '3.12'
       - name: Fetch V17 (runner temp only)
-        if: env.MODE != 'parity' || github.event_name == 'pull_request'
+        if: true
         env:
           URL: ${{ inputs.model_url || 'https://alphaludo.in/v/94f7d0f0d0/model_v17.onnx' }}
           PIN: ${{ inputs.model_sha256 }}
