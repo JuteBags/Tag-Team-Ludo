@@ -67,6 +67,8 @@ export class BoardView {
   private fx: SVGGElement;
   private marks: SVGGElement;
   private badges: SVGGElement;
+  /** Between the board and the pieces: what happens in the ground (a finisher's pit, its dim). */
+  private under: SVGGElement;
   private pawns = new Map<string, SVGGElement>();
   private placed = new Map<string, Place>();
   private targets: Target[] = [];
@@ -112,6 +114,7 @@ export class BoardView {
     this.fx = q('fx');
     this.marks = q('marks');
     this.badges = q('badges');
+    this.under = q('under');
     for (const p of players) {
       p.tokens.forEach((_, i) => {
         const g = document.createElementNS(NS, 'g');
@@ -439,8 +442,6 @@ export class BoardView {
     const offs: Pt[] = keys.length === 2 ? STACK[2]!.o : [[0, 0]];
     const s = keys.length === 2 ? STACK[2]!.s : TRACK_SCALE;
     let from = keys.map((k) => this.placed.get(k)!);
-    // Where the attacker started: Green's shot is fired from there.
-    const origin: Pt = [from[0]!.x, from[0]!.y];
     const pts = stepPoints(m.color, m.from, m.to);
     const kill = m.captures.length > 0;
     for (const [i, pt] of pts.entries()) {
@@ -460,11 +461,18 @@ export class BoardView {
     }
     if (kill) {
       // The attacker's colour finishes the kill its own way (finishers.ts) and takes the victim out:
-      // swept away, burnt, cut in two or shot back. The victim then reappears in its base.
+      // swept away, burnt, cut in two or swallowed by the earth. The victim then reappears in its base.
       const finisher = finisherMs > 0 && !calm();
       if (finisher) {
-        const victims = m.captures.map((c) => ({ art: this.pawns.get(c.color + c.token)!.querySelector<SVGGElement>('.pawn-art')!, home: spot(c.color, -1, c.token).pt, s: this.placed.get(c.color + c.token)!.s }));
-        await playFinisher(this.badges, m.color, origin, [x, y], finisherMs / speed, victims);
+        const victims = m.captures.map((c) => {
+          const p = this.placed.get(c.color + c.token)!;
+          return { art: this.pawns.get(c.color + c.token)!.querySelector<SVGGElement>('.pawn-art')!, at: [p.x, p.y] as Pt, home: spot(c.color, -1, c.token).pt, s: p.s };
+        });
+        const hunters = keys.map((k) => {
+          const p = this.placed.get(k)!;
+          return { art: this.pawns.get(k)!.querySelector<SVGGElement>('.pawn-art')!, at: [p.x, p.y] as Pt, s: p.s };
+        });
+        await playFinisher({ under: this.under, top: this.badges }, m.color, [x, y], finisherMs / speed, victims, this.tilted, hunters);
         onHit?.();
       }
       sfx.kill(m.captures.length);
