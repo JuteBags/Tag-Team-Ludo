@@ -145,7 +145,7 @@ export const GREAT_PLAY = 0.9;
 
 /**
  * The story of the game in one sentence, from one player's side: whether they won and how well they played
- * (accuracy 0-1). It leaves the dice out: the Luckometer shows them as a number, and words like "unlucky" judge
+ * (accuracy 0-1). It leaves the dice out: the Luck-O-Meter shows them as a number, and words like "unlucky" judge
  * them (the owner, #152). `name` is "You" or the player's name.
  */
 export function headline(o: { won: boolean; accuracy: number; name: string; decider?: MoveReview; keyMistakes?: number; inaccuracies?: number }): string {
@@ -158,9 +158,12 @@ export function headline(o: { won: boolean; accuracy: number; name: string; deci
   if (!o.won && o.decider && (o.decider.label === 'blunder' || o.decider.label === 'mistake'))
     return `One ${o.decider.label} decided it: a single move gave up ${Math.max(1, Math.round(o.decider.gap))}% to win.`;
   const great = scored && o.accuracy >= GREAT_PLAY;
-  if (o.won) return great ? 'Won on great play.' : 'Won, with a few slips to learn from.';
+  // A clean win (no mistake of any kind) never talks of slips.
+  if (o.won) return great ? 'Won on great play.' : o.keyMistakes === 0 && !o.inaccuracies ? 'Won without a slip.' : 'Won, with a few slips to learn from.';
   if (great) return `${o.name} played well: the turning point decided it.`;
   // No key mistakes: it was the small slips that added up, so say that rather than "mistakes".
+  // No mistake of any kind: say so, rather than "lost on mistakes" over a list of Best and Good moves.
+  if (o.keyMistakes === 0 && !o.inaccuracies) return `${o.name} made no mistakes: the turning point decided it.`;
   const slips = !o.keyMistakes && o.inaccuracies ? `${o.inaccuracies} small slip${o.inaccuracies === 1 ? '' : 's'}` : '';
   return slips ? `Lost on ${slips}: the key moves show where.` : 'Lost on mistakes: the key moves show where.';
 }

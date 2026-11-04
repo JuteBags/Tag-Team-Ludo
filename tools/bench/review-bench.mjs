@@ -1,5 +1,5 @@
 // Runs the hidden bench page's GAME REVIEW test (src/ui/bench.ts, #105, #151) headless and prints its lines,
-// with the 1/2/3-worker scaling table in the run summary. .github/workflows/review-bench.yml runs it on CI
+// with the 1/2/3(/4/6)-worker scaling table in the run summary. .github/workflows/review-bench.yml runs it on CI
 // against a production build served by `vite preview`.
 //   node tools/bench/review-bench.mjs http://localhost:4173/ [chrome path]
 import { appendFileSync } from 'node:fs';
@@ -28,11 +28,16 @@ try {
   md('');
   md(lines.find((l) => l.startsWith('pool:')) ?? '');
   md('');
-  md('| game | workers | first key verdict | whole review | of which the luck pass | speed-up |');
-  md('|---|---:|---:|---:|---:|---:|');
+  // The serial share (Amdahl): with T1 on one worker and Tn on n, s = (Tn/T1 - 1/n) / (1 - 1/n). It's what
+  // caps the speed-up at 1/s however many cores; a pool bigger than the runner's cores inflates it.
+  md('| game | workers | first key verdict | whole review | of which the luck pass | speed-up | serial share |');
+  md('|---|---:|---:|---:|---:|---:|---:|');
   for (const r of rows) {
     const one = rows.find((x) => x[1] === r[1] && x[2] === '1');
-    md(`| ${r[1]} | ${r[2]} | ${r[3]} s | ${r[4]} s | ${r[5]} s | ${one ? (Number(one[4]) / Number(r[4])).toFixed(2) + '×' : ''} |`);
+    const n = Number(r[2]);
+    const ratio = one ? Number(r[4]) / Number(one[4]) : NaN;
+    const serial = n > 1 && one ? (((ratio - 1 / n) / (1 - 1 / n)) * 100).toFixed(0) + ' %' : '';
+    md(`| ${r[1]} | ${r[2]} | ${r[3]} s | ${r[4]} s | ${r[5]} s | ${one ? (1 / ratio).toFixed(2) + '×' : ''} | ${serial} |`);
   }
   md('');
   for (const m of mem) md(`- ${m}`);

@@ -29,7 +29,7 @@ const md = (line) => {
 };
 const link = readFileSync(new URL('./game-seed24.link.txt', import.meta.url), 'utf8').trim();
 
-/** A saved vs Computer game, 4 players, the person (blue) to roll with three tokens out: Continue opens it. */
+/** A saved vs Computer game, 4 players, the person (blue) to roll with three tokens out, seeded: Continue opens it. */
 function savedGame() {
   const seats = [
     { color: 'blue', owner: 0, bot: false },
@@ -39,7 +39,9 @@ function savedGame() {
   ];
   const tokens = { blue: [6, 19, 31, -1], green: [4, 22, -1, -1], red: [12, 27, -1, -1], yellow: [9, 35, -1, -1] };
   const state = { players: seats.map((s) => ({ ...s, tokens: tokens[s.color] })), current: 0, phase: 'roll', dice: null, rolls: [], sixes: 0, moves: [], ranking: [], turnCount: 24, event: null, singles: false };
-  return { v: 1, config: { mode: 'pvc', seats, first: 'blue', names: ['You', 'Bot 1', 'Bot 2', 'Bot 3'] }, state, kills: 0, pairs: 0, faces: [], savedAt: Date.now() };
+  // A fixed seed: the dice and the bots' choices come from it and the position, so every run plays the same
+  // bots' turns (a perf: PR's before and after compare the same moves).
+  return { v: 1, config: { mode: 'pvc', seats, first: 'blue', names: ['You', 'Bot 1', 'Bot 2', 'Bot 3'] }, state, kills: 0, pairs: 0, faces: [], savedAt: Date.now(), seed: 24 };
 }
 
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
@@ -53,18 +55,52 @@ try {
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttle });
   await cdp.send('Performance.enable');
   const metrics = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]));
+  /** A trace's node (a backend node id) as tag.class#id, or '?' once it's gone. */
+  const nodeName = async (backendId) => {
+    try {
+      await cdp.send('DOM.getDocument', { depth: 0 });
+      const { node } = await cdp.send('DOM.describeNode', { backendNodeId: backendId });
+      const at = Object.fromEntries((node.attributes ?? []).reduce((r, v, i, a) => (i % 2 ? r : [...r, [v, a[i + 1]]]), []));
+      return `${node.nodeName.toLowerCase()}${at.class ? '.' + at.class.trim().split(/\s+/).join('.') : ''}${at.id ? '#' + at.id : ''}`;
+    } catch {
+      return `node ${backendId}`;
+    }
+  };
 
   /** One screen: settle, then `idleMs` with no input, traced. */
   async function measure(name, settle = 1500) {
     await page.waitForTimeout(settle);
     const m0 = await metrics();
-    await browser.startTracing(page, { categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline.frame'] });
+    await browser.startTracing(page, { categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline.frame', 'cc', 'disabled-by-default-devtools.timeline', 'toplevel', 'blink', 'v8'] });
     await page.waitForTimeout(idleMs);
     const trace = JSON.parse((await browser.stopTracing()).toString('utf8'));
     const m1 = await metrics();
     const ev = trace.traceEvents ?? trace;
     const count = (n) => ev.filter((e) => e.name === n).length;
     const per = (k) => (1000 * (m1[k] - m0[k])) / idleMs; // seconds of work per second -> ms per second
+    // Where the paints go: main-thread paint and raster time (ms per second), and the elements whose layers
+    // repaint most (each Paint names its layer's node).
+    const durMs = (n) => ev.filter((e) => e.name === n && e.dur).reduce((t, e) => t + e.dur / 1000, 0) * (1000 / idleMs);
+    const byNode = new Map();
+    for (const e of ev) if (e.name === 'Paint' && e.args?.data?.nodeId) byNode.set(e.args.data.nodeId, (byNode.get(e.args.data.nodeId) ?? 0) + 1);
+    const top = [...byNode].sort((x, y) => y[1] - x[1]).slice(0, 4);
+    // The renderer's main thread by event, top-level only (each event's time without what it nests in): where
+    // the task time goes, in ms per second.
+    const mainTid = ev.find((e) => e.ph === 'M' && e.name === 'thread_name' && e.args?.name === 'CrRendererMain')?.tid;
+    const spans = ev.filter((e) => e.tid === mainTid && e.ph === 'X' && e.dur > 0).sort((x, y) => x.ts - y.ts || y.dur - x.dur);
+    const self = new Map();
+    const stack = [];
+    for (const e of spans) {
+      while (stack.length && stack[stack.length - 1].ts + stack[stack.length - 1].dur <= e.ts) stack.pop();
+      const parent = stack[stack.length - 1];
+      if (parent) self.set(parent.name, (self.get(parent.name) ?? 0) - e.dur);
+      self.set(e.name, (self.get(e.name) ?? 0) + e.dur);
+      stack.push(e);
+    }
+    const busiest = [...self].filter(([n]) => n !== 'RunTask' && n !== 'ThreadControllerImpl::RunTask').sort((x, y) => y[1] - x[1]).slice(0, 8)
+      .map(([n, us]) => `${n} ${((us / 1000) * (1000 / idleMs)).toFixed(1)}`);
+    const painted = [];
+    for (const [id, n] of top) painted.push(`${await nodeName(id)} ${((n * 1000) / idleMs).toFixed(1)}/s`);
     const row = {
       screen: name,
       heapUsedMB: +(m1.JSHeapUsedSize / 1048576).toFixed(2),
@@ -72,6 +108,10 @@ try {
       nodes: m1.Nodes,
       framesPerS: +((count('DrawFrame') * 1000) / idleMs).toFixed(1),
       paintsPerS: +((count('Paint') * 1000) / idleMs).toFixed(1),
+      paintMsPerS: +durMs('Paint').toFixed(1),
+      rasterMsPerS: +durMs('RasterTask').toFixed(1),
+      painted: painted.join(', '),
+      busiest: busiest.join(', '),
       taskMsPerS: +(per('TaskDuration') * 1000).toFixed(1),
       scriptMsPerS: +(per('ScriptDuration') * 1000).toFixed(1),
       styleMsPerS: +(per('RecalcStyleDuration') * 1000).toFixed(1),
@@ -80,10 +120,13 @@ try {
     rows.push(row);
     console.log('SCREEN ' + JSON.stringify(row));
   }
+  // The check-in card and the update prompt come up a moment after the home screen: wait a little for one,
+  // then close it (Later / Not now).
   const dismiss = async () => {
-    for (const sel of ['.menu-ov [data-act=later]', '[data-act=later]']) {
-      const b = await page.$(sel);
-      if (b && (await b.isVisible())) await b.click().catch(() => {});
+    const b = await page.waitForSelector('.menu-ov [data-act=later]', { state: 'visible', timeout: 3000 }).catch(() => null);
+    if (b) {
+      await b.click().catch(() => {});
+      await page.waitForSelector('.menu-ov', { state: 'detached', timeout: 3000 }).catch(() => {});
     }
   };
 
@@ -170,9 +213,17 @@ md(`### The app's screens (#98): headless Chrome, 390×844, CPU throttled ${thro
 md('');
 if (cold) md(`**Cold start:** first contentful paint ${cold.fcpMs} ms, home interactive ${cold.homeInteractiveMs} ms (DOMContentLoaded ${cold.domContentLoadedMs} ms, load ${cold.loadMs} ms), ${(cold.bytes / 1024).toFixed(0)} kB fetched.`);
 md('');
-md('| screen | JS heap used / total (MB) | DOM nodes | frames/s | paints/s | main-thread task ms/s | script | style | layout |');
-md('|---|---:|---:|---:|---:|---:|---:|---:|---:|');
-for (const r of rows) md(`| ${r.screen} | ${r.heapUsedMB} / ${r.heapTotalMB} | ${r.nodes} | ${r.framesPerS} | ${r.paintsPerS} | ${r.taskMsPerS} | ${r.scriptMsPerS} | ${r.styleMsPerS} | ${r.layoutMsPerS} |`);
+md('| screen | JS heap used / total (MB) | DOM nodes | frames/s | paints/s | paint ms/s | raster ms/s | main-thread task ms/s | script | style | layout |');
+md('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
+for (const r of rows) md(`| ${r.screen} | ${r.heapUsedMB} / ${r.heapTotalMB} | ${r.nodes} | ${r.framesPerS} | ${r.paintsPerS} | ${r.paintMsPerS} | ${r.rasterMsPerS} | ${r.taskMsPerS} | ${r.scriptMsPerS} | ${r.styleMsPerS} | ${r.layoutMsPerS} |`);
+md('');
+md('| screen | the layers that repaint most |');
+md('|---|---|');
+for (const r of rows) if (r.painted) md(`| ${r.screen} | ${r.painted} |`);
+md('');
+md('| screen | the main thread by event (self time, ms/s) |');
+md('|---|---|');
+for (const r of rows) if (r.taskMsPerS >= 20) md(`| ${r.screen} | ${r.busiest} |`);
 md('');
 if (chunks.length) {
   md('| chunk | raw kB | gzip kB |');
