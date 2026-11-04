@@ -145,7 +145,7 @@ export const GREAT_PLAY = 0.9;
 
 /**
  * The story of the game in one sentence, from one player's side: whether they won and how well they played
- * (accuracy 0-1). It leaves the dice out: the Luckometer shows them as a number, and words like "unlucky" judge
+ * (accuracy 0-1). It leaves the dice out: the Luck-O-Meter shows them as a number, and words like "unlucky" judge
  * them (the owner, #152). `name` is "You" or the player's name.
  */
 export function headline(o: { won: boolean; accuracy: number; name: string; decider?: MoveReview; keyMistakes?: number; inaccuracies?: number }): string {

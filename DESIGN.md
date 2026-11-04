@@ -15,7 +15,7 @@ conflicts between the skills disappear once you ask which register a pixel belon
 | --- | --- | --- | --- |
 | **Play** | Board, pawns, dice, tray, landing markers, avatars, the turn | Tactile and physical. Objects have weight, depth and material. | Painter: skeuomorphism for games, touch psychology, spatial truth in motion |
 | **Spectacle** | Kill finishers, palace cutscene, home banner, win screen, unlocks | Showy, long if it reads, always skippable | Lemo-Opuscar's DIRECTOR.md: hook, one native move, beat sheet, sound and rhythm first |
-| **Information** | Review, Luckometer, stats, achievements, store lists, settings, setup questions | Quiet, flat, the number first | tasteskill `app-screens.md`: colour on data not chrome, KPIs as type, honest states |
+| **Information** | Review, Luck-O-Meter, stats, achievements, store lists, settings, setup questions | Quiet, flat, the number first | tasteskill `app-screens.md`: colour on data not chrome, KPIs as type, honest states |
 
 The home screen sits between Play and Information. Its tiles are Play objects (you press them like pieces), and its
 captions are Information.
