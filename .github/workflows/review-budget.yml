@@ -1,0 +1,64 @@
+# #178: the review's playout budget. Each arm (a screen threshold, a looser race, a smaller base, combinations)
+# through the app's own review against the #138 study's 1,024-playout reference (review-study.yml run
+# 41837368569's decisions.jsonl), with |Δaccuracy| against today's review and the review time
+# (tools/ai/review_budget.ts). On study/budget* pushes only: a study, no app change.
+name: Review budget
+
+on:
+  push:
+    branches: ['study/budget**']
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  eval:
+    name: eval ${{ matrix.layout }} ${{ matrix.mover }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        layout: [2p, 3p, 4p, 2h-opposite, 2h-side]
+        mover: [hard, normal]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - run: node tools/ai/dist/review_budget.mjs --task eval --layout ${{ matrix.layout }} --mover ${{ matrix.mover }} --games 5 --seeds 2 --arms today,skip@1,skip@2,skip@3,z@2,z@1.5,base@64,skip@2+z@2,skip@2+base@64,skip@2+z@2+base@64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: budget-${{ matrix.layout }}-${{ matrix.mover }}
+          path: budget.jsonl
+
+  report:
+    name: report
+    needs: eval
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: study-cuts-*
+          path: ref
+          run-id: 41837368569
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: budget-*
+          path: budget
+      - run: node tools/ai/dist/review_budget.mjs --task report ref budget | tee budget-report.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: budget-report
+          path: budget-report.txt
