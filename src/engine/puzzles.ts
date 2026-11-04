@@ -8,6 +8,9 @@
 // shards: 367 puzzles (157 Easy, 105 Medium, 105 Hard: any 365 days in a row), 16.0 kB gzip. v2 prefers
 // positions with 3+ candidates: every Easy and Medium one; Hard 70, and 35 with 2 (Hard is always a move the
 // Normal bot gets wrong, with the other move within 15·f: a trap, not a coin flip).
+// v3 adds the Expert list (the owner's extra daily puzzle): 71 positions even the Hard bot gets wrong, none
+// of them a daily puzzle, the daily bands kept exactly as in v2; with run 41912353721 (an Expert top-up: games
+// 301-420, 4p with a Normal player, 8 x 15): 19.0 kB gzip in all. expertFrom is set by the 3.5.0 release.
 // Pool.v changes with every regeneration or re-merge: a cached entry is decoded only against its own version.
 import { FINISHED, SEATS, type Color } from './board';
 import { createGame, move, roll, trayMoves } from './game';
@@ -24,7 +27,13 @@ export interface Pool {
   easy: PoolEntry[];
   medium: PoolEntry[];
   hard: PoolEntry[];
+  /** The Expert puzzles (v3, #99): one a day from expertFrom ('YYYY-MM-DD'), never a daily puzzle. */
+  expertFrom?: string;
+  expert?: PoolEntry[];
 }
+
+/** expertFrom until the release sets it: no Expert puzzle shows before that day (tests fail on it at 3.5.0). */
+export const EXPERT_FROM_UNSET = '2099-01-01';
 
 export interface Puzzle {
   band: Band;
@@ -95,6 +104,19 @@ export function decodePuzzle(e: PoolEntry, band: Band): Puzzle {
 export function dailyPuzzle(dayKey: string, pool: Pool): Puzzle {
   const { band, index } = puzzleOf(dayKey, pool);
   return decodePuzzle(pool[band][index]!, band);
+}
+
+/**
+ * The day's Expert puzzle (#99, the owner's): beside the daily one, a position even the Hard bot gets wrong,
+ * one a day in the list's order from the pool's expertFrom. Null before that day, once the list is used up,
+ * or with no list (an older pool). Never the day's daily puzzle: the lists share no position.
+ */
+export function dailyExpert(dayKey: string, pool: Pool): Puzzle | null {
+  const list = pool.expert;
+  if (!list?.length || !pool.expertFrom) return null;
+  const i = dayNumber(dayKey) - dayNumber(pool.expertFrom);
+  if (i < 0 || i >= list.length) return null;
+  return decodePuzzle(list[i]!, 'hard');
 }
 
 /** The pool (a lazy chunk of its own: nothing at startup). */
