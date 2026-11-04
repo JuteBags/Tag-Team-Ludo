@@ -62,6 +62,10 @@ export function verdictMoves(s: GameState, played: Move, best: Move, nameOf?: (c
   return [named(played), named(best)];
 }
 
+/** The better move for a key row's short line (#167): "front token 5", "moved 2", "brought a token out". */
+export const betterText = (s: GameState, played: Move, best: Move, nameOf?: (c: Move['color']) => string) =>
+  verdictMoves(s, played, best, nameOf)[1].replace(/^moved the /, '');
+
 /** The win chance an average player has in this game: 100 / people (50 in 2p and team games, 25 in 4p). */
 export const evenChance = (people: number) => 100 / people;
 

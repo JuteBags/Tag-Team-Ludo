@@ -120,4 +120,20 @@ describe('sound', () => {
     expect(a.state).toBe('suspended');
     doc.hidden = false;
   });
+  it('Dice sounds off (#184) silences the roll, the shake and the landing with its six chime; every other sound plays', () => {
+    sfx.land(1); // the context exists from here
+    const a = FakeContext.last;
+    sfx.setDiceMuted(true);
+    const n = a.started.length;
+    sfx.roll(600);
+    sfx.shake(600);
+    sfx.land(6);
+    expect(a.started.length).toBe(n);
+    sfx.hop();
+    expect(a.started.length).toBeGreaterThan(n);
+    sfx.setDiceMuted(false);
+    const m = a.started.length;
+    sfx.land(6);
+    expect(a.started.length).toBeGreaterThan(m);
+  });
 });
