@@ -1,7 +1,7 @@
 //! game.ts: turn flow (roll the tray, then play it; a 6, a capture or a token home rolls again),
 //! game end and rankings. Mutates in place where the TS returns a new state; the visible state after
 //! each call is the same.
-use crate::rules::{apply_move, is_done, legal_moves, Board, Move, MoveList, BASE, FINISHED};
+use crate::rules::{apply_move, classic_moves, is_done, legal_moves, Board, Move, MoveList, BASE, FINISHED};
 
 pub const PHASE_ROLL: u8 = 0;
 pub const PHASE_MOVE: u8 = 1;
@@ -23,6 +23,11 @@ pub struct Game {
     pub nrank: usize,
     pub turn_count: u32,
     pub singles: bool,
+    /// Classic one-die Ludo (#148, the AlphaLudo head-to-head; their `ludo_core` rules): each roll is played at
+    /// once (no tray), no pairs and no blocking, only a lone token is captured (2+ of a colour on a square are
+    /// immune), a 6, a capture or a token home rolls again, three 6s forfeit the turn, and the game ends when the
+    /// first player gets all four home. Set with `Game::classic`; `singles` is set too, for the features.
+    pub classic: bool,
 }
 
 impl Game {
@@ -41,7 +46,15 @@ impl Game {
             nrank: 0,
             turn_count: 0,
             singles,
+            classic: false,
         }
+    }
+
+    /// A classic one-die game (see `classic`): `seats` as in `new`.
+    pub fn classic(seats: &[(u8, u8)]) -> Self {
+        let mut g = Game::new(seats, true);
+        g.classic = true;
+        g
     }
 
     #[inline]
@@ -77,6 +90,9 @@ impl Game {
     /// Puts a rolled face in the tray (game.ts roll with `forced`).
     pub fn roll(&mut self, dice: u8) {
         debug_assert!(self.phase == PHASE_ROLL);
+        if self.classic {
+            return self.classic_roll(dice);
+        }
         let color = self.current_color();
         let sixes = if dice == 6 { self.sixes + 1 } else { 0 };
         if sixes == 3 {
@@ -111,6 +127,9 @@ impl Game {
     /// Plays `m` (one of self.moves).
     pub fn play(&mut self, m: &Move) {
         debug_assert!(self.phase == PHASE_MOVE);
+        if self.classic {
+            return self.classic_play(m);
+        }
         self.b = apply_move(&self.b, m);
         let cur = self.current;
         let me_done = is_done(&self.b.p[cur]);
@@ -164,6 +183,52 @@ impl Game {
             return;
         }
         self.pass_turn();
+    }
+
+    /// Classic roll (ludo_core GameState::roll): a third 6 in a row forfeits the turn; no legal move passes it.
+    fn classic_roll(&mut self, dice: u8) {
+        if dice == 6 {
+            self.sixes += 1;
+            if self.sixes >= 3 {
+                return self.pass_turn();
+            }
+        } else {
+            self.sixes = 0;
+        }
+        self.moves.clear();
+        classic_moves(&self.b, self.current_color(), dice, &mut self.moves);
+        if self.moves.is_empty() {
+            return self.pass_turn();
+        }
+        self.rolls[0] = dice;
+        self.nrolls = 1;
+        self.phase = PHASE_MOVE;
+    }
+
+    /// Classic move (ludo_core GameState::apply_move): the first player with all four home wins and ends the
+    /// game; a 6, a capture or a token home rolls again (the run of 6s carries on), anything else passes the turn.
+    fn classic_play(&mut self, m: &Move) {
+        self.b = apply_move(&self.b, m);
+        let cur = self.current;
+        self.nrolls = 0;
+        self.moves.clear();
+        if is_done(&self.b.p[cur]) {
+            self.ranking[0] = self.b.p[cur].color;
+            self.nrank = 1;
+            for i in 0..self.b.n {
+                if i != cur {
+                    self.ranking[self.nrank] = self.b.p[i].color;
+                    self.nrank += 1;
+                }
+            }
+            self.phase = PHASE_OVER;
+            return;
+        }
+        if m.roll == 6 || m.ncap > 0 || m.finishes > 0 {
+            self.phase = PHASE_ROLL;
+        } else {
+            self.pass_turn();
+        }
     }
 
     /// People in finishing order (game.ts ownerRanking): done people by their last colour's place, then

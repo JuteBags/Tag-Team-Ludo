@@ -312,6 +312,50 @@ pub fn legal_moves(b: &Board, color: u8, roll: u8, singles: bool, out: &mut Move
     }
 }
 
+/// Classic one-die moves (#148, ludo_core legal_moves / apply_move): a 6 brings out any token in base (to its
+/// start, a star); any other token moves `roll` if it doesn't pass 56 (no blocking, no pairs). Landing on a normal
+/// square captures an enemy colour's token there only if it is alone (2+ of a colour are immune). Tokens of a colour
+/// on the same square give one move, as `legal_moves` does.
+pub fn classic_moves(b: &Board, color: u8, roll: u8, out: &mut MoveList) {
+    let me = *b.of(color);
+    let r = roll as i8;
+    if roll == 6 {
+        for (i, &t) in me.tokens.iter().enumerate() {
+            if t == BASE {
+                out.push(Move { kind: KIND_RELEASE, color, ntok: 1, tok: [i as u8, 0], from: BASE, to: 0, steps: 0, roll, ..EMPTY_MOVE });
+            }
+        }
+    }
+    let mut seen = [false; 64];
+    for (i, &t) in me.tokens.iter().enumerate() {
+        if t == BASE || t == FINISHED || seen[t as usize] {
+            continue;
+        }
+        seen[t as usize] = true;
+        let to = t + r;
+        if to > FINISHED {
+            continue;
+        }
+        let mut mv = Move { kind: KIND_SINGLE, color, ntok: 1, tok: [i as u8, 0], from: t, to, steps: r, roll, ..EMPTY_MOVE };
+        let sq = square_of(color, to);
+        if sq >= 0 && !is_safe(sq) {
+            let mine = b.owner_of(color);
+            for p in b.players() {
+                if p.owner == mine {
+                    continue;
+                }
+                let mut here = p.tokens.iter().enumerate().filter(|&(_, &x)| square_of(p.color, x) == sq);
+                if let (Some((k, _)), None) = (here.next(), here.next()) {
+                    mv.caps[mv.ncap as usize] = (p.color, k as u8);
+                    mv.ncap += 1;
+                }
+            }
+        }
+        mv.finishes = (to == FINISHED) as u8;
+        out.push(mv);
+    }
+}
+
 pub fn apply_move(b: &Board, m: &Move) -> Board {
     let mut next = *b;
     {

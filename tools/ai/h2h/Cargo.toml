@@ -1,0 +1,16 @@
+[package]
+name = "h2h"
+version = "0.1.0"
+edition = "2021"
+description = "Head-to-head harness (#148): our engine against AlphaLudo V17 in their classic rules; built and run on CI only"
+publish = false
+
+# Its own crate, outside sim-rs: our normal builds never fetch the referee. The referee is AlphaLudo's ludo_core
+# (github.com/sumit7194/AlphaLudo, no licence: all rights reserved), fetched by cargo at this pinned commit when the
+# workflow builds; it is never committed, cached or shipped, and no binary built from it leaves the runner.
+[dependencies]
+ludo-sim = { path = "../../../sim-rs" }
+ludo_core = { git = "https://github.com/sumit7194/AlphaLudo", rev = "5d4e498008fb235807a1240688ddbf28b5fb7576" }
+
+[profile.release]
+opt-level = 3
