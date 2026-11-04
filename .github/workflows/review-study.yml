@@ -1,0 +1,83 @@
+# Review studies that decide label and luck changes (#135, #138), never on every PR:
+#   sixes   the luck of 6, 6, 6 on crafted positions, and the net against playouts at sixes 0, 1, 2
+#           (tools/ai/sixes_luck.ts);
+#   cuts    every REVIEW_CALIB decision at 1,024 playouts (the reference) and at 128, 256 and 512 (3 seeds),
+#           one job per layout and mover (tools/ai/review_cuts.ts);
+#   report  the cut sets' labels per game, their stability and review time, with examples, in one table.
+# By hand, or by pushing a study/* branch (a workflow that isn't on main yet can't be started by hand).
+name: Review study
+
+on:
+  push:
+    branches: ['study/**']
+  workflow_dispatch:
+    inputs:
+      games:
+        description: 'REVIEW_CALIB games per layout and mover'
+        required: true
+        default: '5'
+
+permissions:
+  contents: read
+
+jobs:
+  sixes:
+    name: sixes
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - run: node tools/ai/dist/sixes_luck.mjs --n 1024 | tee sixes.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: study-sixes
+          path: sixes.txt
+
+  cuts:
+    name: cuts ${{ matrix.layout }} ${{ matrix.mover }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        layout: [2p, 3p, 4p, 2h-opposite, 2h-side]
+        mover: [hard, normal]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - run: node tools/ai/dist/review_cuts.mjs --task eval --layout ${{ matrix.layout }} --mover ${{ matrix.mover }} --games ${{ inputs.games || '5' }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: study-cuts-${{ matrix.layout }}-${{ matrix.mover }}
+          path: decisions.jsonl
+
+  report:
+    name: report
+    needs: cuts
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: study-cuts-*
+          path: cuts
+      - run: node tools/ai/dist/review_cuts.mjs --task report cuts | tee report.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: study-report
+          path: report.txt
