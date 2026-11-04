@@ -1,13 +1,12 @@
 // Crafted positions in tools/ai/positions (transcribed from screenshots, for the engine to review on CI).
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { FINISHED, SAFE_SQUARES, squareOf, trayMoves, type Color, type PlayerState } from '../src/engine';
+import move87 from '../tools/ai/positions/move87.json';
 
 interface Position { seats: { color: Color; owner: number; bot: boolean }[]; tokens: Record<string, number[]>; current: Color; tray: number[]; played: { token: number; from: number; to: number }; best: { token: number; from: number; to: number } }
-const load = (name: string) => JSON.parse(readFileSync(new URL(`../tools/ai/positions/${name}.json`, import.meta.url), 'utf8')) as Position;
 
 describe('move 87 (2.5.0 demo, #97)', () => {
-  const p = load('move87');
+  const p = move87 as Position;
   const players: PlayerState[] = p.seats.map((s) => ({ ...s, tokens: p.tokens[s.color]! }));
   it('is a legal position: four tokens each, a die 1-6, the mover seated', () => {
     for (const pl of players) {
