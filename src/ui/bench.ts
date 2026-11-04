@@ -122,7 +122,12 @@ export function reviewRecord(g: { layout: '2p' | '4p'; seed: number; events: str
 
 const KEY = new Set<Label>(['inaccuracy', 'mistake', 'blunder']);
 
+/** Where the review test reads the time-left estimate: at these shares of the decisions done. */
+const ETA_AT = [0.1, 0.25, 0.5];
+
 export interface ReviewTiming {
+  /** The estimate shown at each ETA_AT share (seconds left; null: none shown yet) and the real time left. */
+  etas?: { at: number; shown: number | null; actual: number }[];
   /** Since the review started (ms): the first key verdict in, and all done. */
   firstKeyMs: number | null;
   totalMs: number;
@@ -141,6 +146,8 @@ function timeReview(rec: GameRecord, pool: ReviewPool, onStop: (stop: () => void
     const t0 = performance.now();
     let luckMs: number | null = null;
     let firstKeyMs: number | null = null;
+    // The estimate shown at 10, 25 and 50 % of the decisions (seconds left), and when (ms since the start).
+    const etas: { at: number; shown: number | null; ms: number }[] = [];
     const luck = (r: GameRecord, stopped?: () => boolean, yieldTo?: () => boolean) => {
       const t = performance.now();
       return pool.luck(r, stopped, yieldTo)!.then((v) => ((luckMs = performance.now() - t), v));
@@ -151,7 +158,8 @@ function timeReview(rec: GameRecord, pool: ReviewPool, onStop: (stop: () => void
       (p) => {
         const now = performance.now() - t0;
         if (firstKeyMs === null && p.moves.some((m) => KEY.has(m.label))) firstKeyMs = now;
-        if (p.finished) resolve({ luckMs, firstKeyMs, totalMs: now, decisions: p.total, reviewed: p.done });
+        for (const at of ETA_AT) if (p.total && p.done / p.total >= at && !etas.some((e) => e.at === at)) etas.push({ at, shown: p.eta, ms: now });
+        if (p.finished) resolve({ luckMs, firstKeyMs, totalMs: now, decisions: p.total, reviewed: p.done, etas: etas.map((e) => ({ at: e.at, shown: e.shown, actual: (now - e.ms) / 1000 })) });
       },
       false,
       pool.reviewer(),
@@ -355,6 +363,7 @@ async function reviewBench(_worker: Worker, say: (l: string) => void, hidden: ()
         if (!r) return;
         const missing = r.reviewed < r.decisions ? `; only ${r.reviewed} of ${r.decisions} reviewed: a worker failed` : '';
         say(`review ${g.layout} game ${g.seed}, ${size} worker${size > 1 ? 's' : ''}: first key verdict ${sec(r.firstKeyMs)}, all ${sec(r.totalMs)} (of which the luck pass ${sec(r.luckMs)}; ${r.decisions} decisions${missing})`);
+        say(`eta ${g.layout} game ${g.seed}, ${size} worker${size > 1 ? 's' : ''}: ${(r.etas ?? []).map((e) => `${Math.round(100 * e.at)}% shows ${e.shown === null ? '-' : `${e.shown.toFixed(0)} s`}, really ${e.actual.toFixed(0)} s`).join('; ')}`);
       }
       const mem = await pool.memory();
       say(`memory, ${size} worker${size > 1 ? 's' : ''}: wasm ${mem.map((b) => `${(b / 1048576).toFixed(1)} MB`).join(' + ')}`);
