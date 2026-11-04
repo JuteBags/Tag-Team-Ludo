@@ -27,7 +27,7 @@ Each row is one tested person playing against people who are all one level below
 - **Cells** give the win rate in % with its 95% interval.
 - **Seeds** are the same for every row.
   - Easy, Normal and Hard rows use 2000 seeds, with every seat in turn, so 4,000–8,000 games per row.
-  - Extreme rows use 200–400 seeds, so 600–800 games per row.
+  - Extreme rows use 200–400 seeds, so 600–800 games per row. The two 4-player fair-dice Extreme rows use 1,000 seeds (4,000 games, the same seeds; #166).
 - **Engine:** the Rust port (`sim-rs`). It plays the same games as the app's TypeScript engine: the TS and Rust arenas give identical results.
 - **Dice:** fair dice are the baseline. The app's own dice change these numbers by about 2 points at most.
 
@@ -39,12 +39,12 @@ CI (`.github/workflows/ai-levels.yml`, "Bot levels") replays the Easy, Normal an
 |---|---|---|---|---|---|
 | 2 players | 50.0 | 79.2 ± 1.3 | 68.8 ± 1.4 | 54.2 ± 1.5 | 58.6 ± 3.4 |
 | 3 players | 33.3 | 71.1 ± 1.1 | 44.1 ± 1.3 | 38.5 ± 1.2 | 36.5 ± 3.9 |
-| 4 players | 25.0 | 64.1 ± 1.1 | 32.8 ± 1.0 | 30.8 ± 1.0 | 30.2 ± 3.2 |
+| 4 players | 25.0 | 64.1 ± 1.1 | 32.8 ± 1.0 | 30.8 ± 1.0 | 29.7 ± 1.4 |
 | 2 players, 2 houses each (opposite) | 50.0 | 88.9 ± 1.0 | 71.4 ± 1.4 | 54.9 ± 1.5 | 59.9 ± 3.4 |
 | 2 players, 2 houses each (side by side) | 50.0 | 89.1 ± 1.0 | 69.7 ± 1.4 | 53.4 ± 1.5 | 61.6 ± 3.4 |
 | 2 players, no doubles | 50.0 | 90.8 ± 0.9 | 64.2 ± 1.5 | 55.5 ± 1.5 | 53.5 ± 3.5 |
 | 3 players, no doubles | 33.3 | 82.1 ± 1.0 | 44.5 ± 1.3 | 39.6 ± 1.2 | 36.0 ± 3.8 |
-| 4 players, no doubles | 25.0 | 76.1 ± 0.9 | 36.0 ± 1.1 | 32.9 ± 1.0 | 25.9 ± 3.0 |
+| 4 players, no doubles | 25.0 | 76.1 ± 0.9 | 36.0 ± 1.1 | 32.9 ± 1.0 | 28.8 ± 1.4 |
 | 2 players, 2 houses each (opposite), no doubles | 50.0 | 96.6 ± 0.6 | 66.6 ± 1.5 | 53.2 ± 1.5 | 61.6 ± 3.4 |
 | 2 players, 2 houses each (side by side), no doubles | 50.0 | 96.4 ± 0.6 | 68.2 ± 1.4 | 53.6 ± 1.5 | 58.8 ± 3.4 |
 
@@ -65,5 +65,5 @@ CI (`.github/workflows/ai-levels.yml`, "Bot levels") replays the Easy, Normal an
 
 ### Known gaps
 
-- **4 players, no doubles:** Extreme vs Hard is 25.9 ± 3.0 on fair dice and 27.0 ± 3.1 on the app's dice, about level with Hard. Both Extreme and Hard were tuned on games with doubles, and Hard's gain over the previous Hard's rules is also missing without doubles.
+- **4 players, no doubles:** Extreme vs Hard is 28.8 ± 1.4 on fair dice over 4,000 games, against 29.7 ± 1.4 with doubles on the same seeds (#166). Doubles off costs Extreme under a point; the earlier 25.9 ± 3.0 (800 games) was a low draw. Extreme also beats Normal by more than Hard does there (36.1 ± 1.4 against 32.5 ± 1.4 for Hard), so the dice don't cap it. The app's-dice row (27.0 ± 3.1) is still the earlier, smaller run.
 - **The Hard over Normal step** is the smallest, about +4 points in the 2-player modes. It's a real step everywhere, but a modest one.
