@@ -23,11 +23,13 @@ try {
   await page.waitForFunction(() => /\bdone\b|failed|interrupted/.test(document.querySelector('.benchout')?.textContent ?? ''), null, { timeout: 40 * 60 * 1000 });
   const lines = (await page.textContent('.benchout')).split('\n');
   console.log(lines.join('\n'));
+  console.log(`engine files fetched: ${[...fetched].sort().join(', ') || 'none seen'}`);
   if (!lines.includes('done')) process.exit(1);
   // The table: per game and pool size, the first key verdict, the whole review and the luck pass (seconds).
   const rows = lines.map((l) => /^review (\w+) game \d+, (\d) workers?: first key verdict ([\d.-]+) s, all ([\d.]+) s \(of which the luck pass ([\d.-]+) s/.exec(l)).filter(Boolean);
   const mem = lines.filter((l) => l.startsWith('memory, '));
   md('### The review on a pool of workers (#151): the bench page in headless Chromium on the runner');
+  md(`engine files fetched: ${[...fetched].sort().join(', ') || 'none seen'}`);
   md('');
   md(lines.find((l) => l.startsWith('pool:')) ?? '');
   md('');
