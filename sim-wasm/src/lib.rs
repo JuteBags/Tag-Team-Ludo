@@ -253,9 +253,10 @@ pub unsafe extern "C" fn review(state: *mut u8, len: usize, n: u32, seed: u32) -
 // Every value is the evaluator's own (eval.rs: net.ts's sums, V8's tanh and exp), and a cached value is the
 // one computed before for that position, so the values are exactly the TS net's.
 
-/// Most positions the luck cache holds before it starts over. It is also emptied before each roll's six
-/// faces (#125: 50.1% of the leaf values repeat within one roll's faces, 53.5% across the whole game, so the
-/// small cache keeps nearly every repeat and the module's memory stays small).
+/// Most positions the luck cache holds before it starts over. It is kept across a chunk's states and emptied
+/// at the start and the end of every chunk (#144: one state's six faces fill only about 200 positions, and
+/// keeping them for the chunk's next states saves about 12% of the net's evaluations), so a chunk's work never
+/// depends on the chunks before it or on which worker runs it (#151), and the module's memory stays small.
 const LUCK_MAX: usize = 2048;
 
 thread_local! {
@@ -317,6 +318,56 @@ fn chance_after(net: &Evaluator, g: &Game, face: u8, step: bool, leaves: &mut lu
     }
 }
 
+/// The same roll state for the luck pass: everything chance_after's values depend on (not turn_count).
+fn same_roll_state(a: &Game, b: &Game) -> bool {
+    a.b == b.b
+        && a.current == b.current
+        && a.phase == b.phase
+        && a.sixes == b.sixes
+        && a.tray() == b.tray()
+        && a.singles == b.singles
+        && a.ranking[..a.nrank] == b.ranking[..b.nrank]
+}
+
+/// A roll state's six values (luck_chunk kind 0, review.ts faceValues). For face 6 that rolls again, the step's
+/// values for the next faces are returned too (#144): when the 6 is what was rolled, the next state judged is
+/// exactly that position, and its faces 1-5 are those values (`step` only changes face 6).
+fn face_values(net: &Evaluator, g: &Game, known: Option<&[f64; 5]>, leaves: &mut ludo_sim::search::Map<[f64; 4]>, out: &mut Vec<f64>) -> Option<(Game, [f64; 5])> {
+    let mut next = None;
+    for f in 1..=6u8 {
+        if leaves.len() >= LUCK_MAX {
+            leaves.clear();
+        }
+        if f <= 5 {
+            if let Some(k) = known {
+                out.push(k[f as usize - 1]);
+                continue;
+            }
+            out.push(chance_after(net, g, f, true, leaves));
+            continue;
+        }
+        let mut t = *g;
+        t.roll(6);
+        if t.phase == PHASE_ROLL && t.current == g.current {
+            // chance_after's step, in its order: e += value / 6 for each next face.
+            let mut e = 0.0;
+            let mut vals = [0.0f64; 5];
+            for f2 in 1..=6u8 {
+                let v = chance_after(net, &t, f2, false, leaves);
+                if f2 <= 5 {
+                    vals[f2 as usize - 1] = v;
+                }
+                e += v / 6.0;
+            }
+            out.push(e);
+            next = Some((t, vals));
+        } else {
+            out.push(chance_after(net, g, 6, true, leaves));
+        }
+    }
+    next
+}
+
 /// One chunk of a game's luck pass (see above).
 #[no_mangle]
 pub unsafe extern "C" fn luck_chunk(states: *mut u8, len: usize, count: u32, kind: u32) -> *const f64 {
@@ -330,19 +381,17 @@ pub unsafe extern "C" fn luck_chunk(states: *mut u8, len: usize, count: u32, kin
             LUCK_OUT.with(|out| {
                 let mut out = out.borrow_mut();
                 out.clear();
+                leaves.clear();
                 let mut o = 0;
+                // The last state's 6-step: (the position after that 6, its faces 1-5), kept within this chunk only.
+                let mut after_six: Option<(Game, [f64; 5])> = None;
                 for _ in 0..count {
                     let n = u16::from_le_bytes([buf[o], buf[o + 1]]) as usize;
                     let g = decode(&buf[o + 2..o + 2 + n]);
                     o += 2 + n;
                     if kind == 0 {
-                        leaves.clear();
-                        for f in 1..=6u8 {
-                            if leaves.len() >= LUCK_MAX {
-                                leaves.clear();
-                            }
-                            out.push(chance_after(&eng.net, &g, f, true, leaves));
-                        }
+                        let known = after_six.as_ref().filter(|(t, _)| same_roll_state(t, &g)).map(|(_, v)| *v);
+                        after_six = face_values(&eng.net, &g, known.as_ref(), leaves, &mut out);
                     } else {
                         if leaves.len() >= LUCK_MAX {
                             leaves.clear();
@@ -354,6 +403,7 @@ pub unsafe extern "C" fn luck_chunk(states: *mut u8, len: usize, count: u32, kin
                         *p = (*p).max(leaves.len());
                     });
                 }
+                leaves.clear();
                 out.as_ptr()
             })
         })
