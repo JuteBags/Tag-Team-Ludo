@@ -6,6 +6,7 @@ import { chooseBotMove } from '../src/engine/ai/levels';
 import { moveEvent, NOTATION_LEGEND, replay, rollEvent, squareName, STOP_EVENT, toNotation } from '../src/engine/record';
 import { parseNotation } from '../tools/notation';
 import golden from './fixtures/notation-2p.json';
+import { boardDiagram } from './notationBoard';
 
 const ALL = ['blue', 'green', 'red', 'yellow'] as const;
 const LAYOUTS: Record<string, Seat[]> = {
@@ -129,5 +130,14 @@ describe('the game notation (#164)', () => {
     const edit = (f: (l: string) => string) => lines.map((l, i) => (i === at ? f(l) : l)).join('\n');
     expect(parseNotation(edit((l) => l.replace(/: ([a-dm-p])\+/, ': z+'))).ok).toBe(false); // not a pawn
     expect(parseNotation(edit((l) => l.replace(/: ([a-dm-p])\+\d/, ': $1+6'))).ok).toBe(false); // not that die
+  });
+});
+
+describe("docs/NOTATION.md's board (#164)", () => {
+  it('is the board the app draws, with every square named as the notation names it', async () => {
+    // @ts-expect-error: the project has no @types/node; Vitest runs on Node.
+    const { readFileSync } = await import('node:fs');
+    const doc: string = readFileSync(new URL('../docs/NOTATION.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    expect(doc).toContain('```\n' + boardDiagram() + '\n```');
   });
 });

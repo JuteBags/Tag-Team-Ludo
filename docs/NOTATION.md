@@ -42,7 +42,7 @@ Each square has a board-wide name. The 52 track squares are four arms of 13. Eac
 ```
                         G11 G12 G13
                         G10 RH1 R1
-     Green              G9  RH2 R2            Red
+     Green              G9  RH2 R2       Red
                         G8  RH3 R3
                         G7  RH4 R4
                         G6  RH5 R5
@@ -51,7 +51,7 @@ B12 GH1 GH2 GH3 GH4 GH5      #      YH5 YH4 YH3 YH2 YH1 R12
 B11 B10 B9  B8  B7  B6              Y5  Y4  Y3  Y2  Y1  R13
                         B5  BH5 Y6
                         B4  BH4 Y7
-     Blue               B3  BH3 Y8            Yellow
+     Blue               B3  BH3 Y8       Yellow
                         B2  BH2 Y9
                         B1  BH1 Y10
                         Y13 Y12 Y11
