@@ -1,0 +1,63 @@
+# #138 follow-up: the new labels through the app's own review (race, top-ups) against the #138 study's
+# 1,024-playout reference (review-study.yml run 41837368569's decisions.jsonl), today's rules and the new
+# ones at several EDGE values, with the review time (tools/ai/review_edge.ts). On study/edge* pushes only.
+name: Review edge
+
+on:
+  push:
+    branches: ['study/edge**']
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  eval:
+    name: eval ${{ matrix.layout }} ${{ matrix.mover }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        layout: [2p, 3p, 4p, 2h-opposite, 2h-side]
+        mover: [hard, normal]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - run: node tools/ai/dist/review_edge.mjs --task eval --layout ${{ matrix.layout }} --mover ${{ matrix.mover }} --games 5 --seeds 2 --edges 1,1.5,2,3
+      - uses: actions/upload-artifact@v7
+        with:
+          name: edge-${{ matrix.layout }}-${{ matrix.mover }}
+          path: edge.jsonl
+
+  report:
+    name: report
+    needs: eval
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: study-cuts-*
+          path: ref
+          run-id: 41837368569
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: edge-*
+          path: edge
+      - run: node tools/ai/dist/review_edge.mjs --task report ref edge | tee edge-report.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: edge-report
+          path: edge-report.txt
