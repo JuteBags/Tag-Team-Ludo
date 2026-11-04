@@ -35,6 +35,25 @@ export interface ReviewProgress {
 /** Verdicts this run must make before its pace is trusted for an estimate. */
 export const ETA_AFTER = 6;
 /**
+ * The review's shape (#179): the share of a run's time spent once each tenth of its decisions is settled, in
+ * the stakes order, luck pass included (review bench, run 41907326043: 2p and 4p, 1 to 6 workers, averaged).
+ * The first tenth is cheap (the race settles the biggest decisions fast), the next four cost the most (the
+ * top-ups near a cut), the second half is cheap. The time left is elapsed × (1/share − 1): measured time per
+ * unit of expected work, so a device's or an engine's speed cancels out.
+ */
+export const ETA_CURVE = [0, 0.03, 0.19, 0.35, 0.51, 0.67, 0.79, 0.88, 0.94, 0.97, 1];
+/** No estimate before this share of the run's decisions: the cheap first tenth says little about the rest. */
+export const ETA_FROM = 0.25;
+
+/** Seconds left for a run `elapsedMs` in with `share` (0-1) of its decisions settled; null before ETA_FROM. */
+export function etaLeft(elapsedMs: number, share: number): number | null {
+  if (!(share >= ETA_FROM)) return null;
+  if (share >= 1) return 0;
+  const i = Math.min(9, Math.floor(share * 10));
+  const g = ETA_CURVE[i]! + (ETA_CURVE[i + 1]! - ETA_CURVE[i]!) * (share * 10 - i);
+  return (elapsedMs / 1000) * (1 / g - 1);
+}
+/**
  * When the luck pass runs (#93): luck is one long worker call (up to 17-25 s in 4p) and the least urgent number
  * on the screen, so the key moves come first. It starts after this run's first LUCK_AFTER_KEYS key verdicts
  * (mistakes and blunders), or after LUCK_AFTER_SHARE of its decisions for a game with few or none, whichever
@@ -101,12 +120,12 @@ export function runReview(
   const done = () => settled() >= total && luck !== null;
   let when = prior?.when;
   let order: number[] | undefined;
-  // The pace of this run: when its first decision started and how many it has done.
+  // The pace of this run: when its first decision started, its decisions, and how many it has settled.
   let t0 = 0;
   let fresh = 0;
-  // The luck pass's time is left out of the pace: it runs once, between verdicts.
-  let luckMs = 0;
-  const eta = () => (fresh >= ETA_AFTER ? ((Date.now() - t0 - luckMs) / 1000 / fresh) * Math.max(0, total - settled()) : null);
+  let runSkipped = 0;
+  let toCheck = 0;
+  const eta = () => (fresh >= ETA_AFTER && toCheck > 0 ? etaLeft(Date.now() - t0, (fresh + runSkipped) / toCheck) : null);
   // The people's side alone, for the status shown on the result card and in Games & reviews.
   const people = peopleOf(rec);
   const mineTotal = decisionsToReview(rec, states, people);
@@ -136,11 +155,9 @@ export function runReview(
     const luckPass = () =>
       (luckRun ??= (async () => {
         if (luck || stopped) return;
-        const t = Date.now();
         // In chunks (#125): verdicts can go between them, and a stop lands within one.
         // Until this run's first key verdict, the decisions go first on every worker (#151).
         const r = (await luckOf(rec, () => stopped, () => !firstKey && !stopped)?.catch(() => null)) ?? null;
-        luckMs += Date.now() - t;
         if (stopped) return;
         // A cancelled run of three 6s becomes one event (#135); the worker's chunks can split a run.
         luck = r?.luck ? markSixRuns(states as GameState[], r.luck) : null;
@@ -157,7 +174,7 @@ export function runReview(
       return reviewer(...args);
     };
     // This run's decisions still to check, and the verdict count after which the luck pass starts regardless.
-    const toCheck = Math.max(0, total - settled());
+    toCheck = Math.max(0, total - settled());
     const luckAt = Math.max(1, Math.ceil(toCheck * LUCK_AFTER_SHARE));
     let keys = 0;
     t0 = Date.now();
@@ -178,6 +195,7 @@ export function runReview(
       }, undefined, (at) => {
         if (stopped) return;
         skipped.add(at);
+        runSkipped++;
         changed = true;
         report(false);
       }, { order: 'stakes', parallel: (reviewer as { parallel?: number } | null)?.parallel ?? 1, onOrder: (o) => {
