@@ -8,9 +8,9 @@
 //     must be at least 6·f points (f: the layout's scale, THRESHOLDS_BY_LAYOUT);
 //   - then the full review at 1,024 playouts: one clear Best when every other candidate is a Mistake at two
 //     standard errors, min over c ≠ best of (gap_c − 2·se_c) ≥ 3·f;
-//   - deduped by position, at most 2 per game;
-//   - a band: easy (Normal finds it, 2nd-best gap ≥ 10·f), medium (Normal finds it with less, or only Hard
-//     does), hard (Hard misses it); one band easier with a single plausible move (within 15·f of the best);
+//   - deduped by position (puzzles_merge.ts then takes at most 2 per game, the scarcest band first);
+//   - a band: easy (the Normal bot finds it, 2nd-best gap ≥ 10·f), medium (Normal finds it with less), hard
+//     (Normal misses it); one band easier with a single plausible move (within 15·f of the best);
 //   - the reveal's line: from the best move to the end of the mover's next turn, Hard at every seat, picked
 //     among 8 seeds as the one whose lead over the most tempting wrong move's line is the median (an example,
 //     not a forecast), stored with its seed.
@@ -33,7 +33,6 @@ const from = Number(a.from ?? 1);
 const out = (a.out as string | undefined) ?? 'puzzles.json';
 const PLAYOUTS = 1024;
 const LINE_SEEDS = 8;
-const PER_GAME = 2;
 
 const root = new URL('../../../', import.meta.url);
 const netBytes = new Uint8Array(readFileSync(new URL('src/engine/ai/extreme-net.bin', root)));
@@ -123,6 +122,8 @@ export interface Puzzle {
   chances: number[];
   best: number;
   band: 'easy' | 'medium' | 'hard';
+  /** The Hard bot misses it too. */
+  hardMisses: boolean;
   plausible: number;
   /** The smallest (gap − 2·se) over the other candidates, in points. */
   margin: number;
@@ -138,7 +139,7 @@ let decisionsSeen = 0;
 let screened = 0;
 let reviewed = 0;
 let reviewMs = 0;
-const rejected = { candidates: 0, spread: 0, clear: 0, duplicate: 0, perGame: 0 };
+const rejected = { candidates: 0, spread: 0, clear: 0, duplicate: 0 };
 const seen = new Set<string>();
 const puzzles: Puzzle[] = [];
 const perCombo = new Map<string, { games: number; decisions: number; puzzles: number }>();
@@ -198,7 +199,8 @@ for (let g = 0; g < games; g++) {
     };
     const normal = pick('normal');
     const hard = pick('hard');
-    let band: Puzzle['band'] = hard !== v.best ? 'hard' : normal === v.best && gap2 >= 10 * f ? 'easy' : 'medium';
+    // Hard: the Normal bot misses it (a player's mistake); the Hard bot rarely does (1 in 38 in the smoke run).
+    let band: Puzzle['band'] = normal !== v.best ? 'hard' : gap2 >= 10 * f ? 'easy' : 'medium';
     if (plausible === 1) band = band === 'hard' ? 'medium' : 'easy';
     // The most tempting wrong move: the Normal bot's, else the 2nd best.
     const wrongCand = normal !== v.best ? normal! : others.reduce((x, y) => (v.gap[y]! < v.gap[x]! ? y : x));
@@ -223,6 +225,7 @@ for (let g = 0; g < games; g++) {
       chances: s.moves.map((_, i) => r1(100 * v.mean[v.ofMove[i]!]!)),
       best: bestMove,
       band,
+      hardMisses: hard !== v.best,
       plausible,
       margin: r1(margin),
       line: { seed: mid.seed, events: mid.b.events },
@@ -230,13 +233,10 @@ for (let g = 0; g < games; g++) {
       from: { mix, seed, at },
     });
   }
-  // At most PER_GAME from one game, picked by the game's seed (not the biggest margins: that would make them easy).
-  const r = seeded(seed * 104729);
-  const take = found.map((p) => ({ p, k: r() })).sort((x, y) => x.k - y.k).slice(0, PER_GAME).map((x) => x.p);
-  rejected.perGame += found.length - take.length;
-  stat.puzzles += take.length;
-  puzzles.push(...take);
-  console.log(`game ${seed} ${combo}: ${decisions.length} decisions, ${found.length} clear, kept ${take.length}`);
+  // Every clear position is kept here; puzzles_merge.ts takes at most 2 per game, the scarce band first.
+  stat.puzzles += found.length;
+  puzzles.push(...found);
+  console.log(`game ${seed} ${combo}: ${decisions.length} decisions, ${found.length} clear`);
 }
 
 const json = JSON.stringify(puzzles);
@@ -247,13 +247,13 @@ const raw = Buffer.byteLength(json);
 const gz = gzipSync(json, { level: 9 }).length;
 md(`### Puzzle pool (#99): ${games} games, ${PLAYOUTS} playouts per candidate`);
 md('');
-md('| layout and games | games | decisions | puzzles |');
+md('| layout and games | games | decisions | clear positions |');
 md('|---|---:|---:|---:|');
 for (const [k, x] of perCombo) md(`| ${k} | ${x.games} | ${x.decisions} | ${x.puzzles} |`);
 md('');
-md(`- Decisions: ${decisionsSeen}, screened ${screened}; dropped: 1 candidate ${rejected.candidates}, net spread under 6·f ${rejected.spread}, duplicate ${rejected.duplicate}; fully reviewed ${reviewed}, not one clear Best ${rejected.clear}; clear but over ${PER_GAME} per game ${rejected.perGame}.`);
-md(`- **Accepted: ${puzzles.length}** (${((100 * puzzles.length) / decisionsSeen).toFixed(1)} % of decisions, ${((100 * (reviewed - rejected.clear)) / Math.max(1, reviewed)).toFixed(0)} % of full reviews); bands ${JSON.stringify(bands)}.`);
-md(`- Time: ${(totalMs / 1000).toFixed(0)} s in all, the full reviews ${(reviewMs / 1000).toFixed(0)} s (${(reviewMs / Math.max(1, reviewed)).toFixed(0)} ms each); **${(totalMs / 1000 / Math.max(1, puzzles.length)).toFixed(1)} s per puzzle**.`);
-md(`- Size: ${raw} B raw, ${gz} B gzip: **${(raw / Math.max(1, puzzles.length)).toFixed(0)} B per puzzle raw, ${(gz / Math.max(1, puzzles.length)).toFixed(0)} B gzip**; 365 would be ~${((365 * gz) / Math.max(1, puzzles.length) / 1024).toFixed(1)} kB gzip.`);
+md(`- Decisions: ${decisionsSeen}, screened ${screened}; dropped: 1 candidate ${rejected.candidates}, net spread under 6·f ${rejected.spread}, duplicate ${rejected.duplicate}; fully reviewed ${reviewed}, not one clear Best ${rejected.clear}.`);
+md(`- **Clear positions: ${puzzles.length}** (${((100 * puzzles.length) / decisionsSeen).toFixed(1)} % of decisions, ${((100 * (reviewed - rejected.clear)) / Math.max(1, reviewed)).toFixed(0)} % of full reviews); bands ${JSON.stringify(bands)}.`);
+md(`- Time: ${(totalMs / 1000).toFixed(0)} s in all, the full reviews ${(reviewMs / 1000).toFixed(0)} s (${(reviewMs / Math.max(1, reviewed)).toFixed(0)} ms each); **${(totalMs / 1000 / Math.max(1, puzzles.length)).toFixed(1)} s per clear position**.`);
+md(`- Size: ${raw} B raw, ${gz} B gzip: **${(raw / Math.max(1, puzzles.length)).toFixed(0)} B per position raw, ${(gz / Math.max(1, puzzles.length)).toFixed(0)} B gzip** (this shard's full form; the pool is compact: puzzles_merge.ts).`);
 md('');
 console.log('PUZZLES ' + JSON.stringify({ games, decisionsSeen, screened, reviewed, rejected, accepted: puzzles.length, bands, totalMs, reviewMs, raw, gz }));

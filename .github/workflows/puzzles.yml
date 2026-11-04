@@ -1,7 +1,8 @@
 # The daily puzzle's curated pool (#99): bot self-play, every decision screened by the net and the survivors
 # reviewed at 1,024 playouts per candidate; positions with one clear Best (tools/ai/puzzles.ts). Too heavy for
 # a laptop. By hand, or by pushing a puzzles/* branch (a workflow that isn't on main yet can't be started by
-# hand). Shards split the games; the merge step joins them and prints the totals.
+# hand). Shards split the games; the merge step joins them into the app's compact pool (puzzles_merge.ts),
+# with the counts per band and the size, as the `puzzle-pool` artifact.
 name: Puzzle pool
 
 on:
@@ -12,11 +13,11 @@ on:
       games:
         description: 'Games per shard'
         required: true
-        default: '20'
+        default: '60'
       shards:
         description: 'Shards (1-8)'
         required: true
-        default: '1'
+        default: '4'
 
 permissions:
   contents: read
@@ -28,7 +29,7 @@ jobs:
       shards: ${{ steps.p.outputs.shards }}
     steps:
       - id: p
-        run: echo "shards=$(seq 0 $(( ${{ inputs.shards || '1' }} - 1 )) | jq -sc .)" >> "$GITHUB_OUTPUT"
+        run: echo "shards=$(seq 0 $(( ${{ inputs.shards || '4' }} - 1 )) | jq -sc .)" >> "$GITHUB_OUTPUT"
   pool:
     needs: plan
     name: shard ${{ matrix.shard }}
@@ -46,9 +47,28 @@ jobs:
       - run: bash tools/ai/build.sh
       # Shard k plays games from 1 + k * games: every shard's seeds are its own, and fixed.
       - run: |
-          G=${{ inputs.games || '20' }}
+          G=${{ inputs.games || '60' }}
           node tools/ai/dist/puzzles.mjs --games $G --from $(( 1 + ${{ matrix.shard }} * G )) --out puzzles-${{ matrix.shard }}.json | tee puzzles-${{ matrix.shard }}.txt
       - uses: actions/upload-artifact@v7
         with:
           name: puzzles-${{ matrix.shard }}
           path: puzzles-${{ matrix.shard }}.*
+  merge:
+    needs: pool
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: puzzles-*
+          merge-multiple: true
+      - run: node tools/ai/dist/puzzles_merge.mjs puzzles-*.json --out puzzle-pool.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: puzzle-pool
+          path: puzzle-pool.json
