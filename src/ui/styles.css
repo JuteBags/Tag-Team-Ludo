@@ -151,6 +151,8 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .calm .pawn.movable .pawn-art{animation:none;transform:translateY(-4px)}
 .calm .trail{animation:none}
 .calm .dk-inferno .f i.p,.calm .dk-inferno .f i.p.r{animation:none}
+/* Waiting to roll, calm: the dice box and ROLL rest still; the corner's glow, the button and the hint carry the turn. */
+.calm .dbox.can-roll,.calm .rollbtn{animation:none}
 .fx .glow{fill:#fff6c2;opacity:.45;pointer-events:none}
 /* One moving cue while you choose: the pawn bobs. Its glow, ring and the landing markers stay still,
    so the eye has one target and the board isn't repainted every frame. */
