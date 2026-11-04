@@ -1,5 +1,5 @@
 //! Brilliant-move research (#100), native: tools/ai/brilliant.ts's study at native speed, on the molab box.
-//!   ludo-brilliant --layout 2p --study extreme|first|normal --games 200 --from 1 --threads 16
+//!   ludo-brilliant --layout 2p --study extreme|first|normal|random --games 200 --from 1 --threads 16
 //!                  --net extreme-net.json --playout playout-rules.json --hard hard-rules.json --out file.jsonl
 //! Self-play games with the app's engine and parameters (sim-wasm: Extreme = choose_race with up to 128
 //! playouts and a 12-turn cut, the trained net at the cut, the playout rules at every seat in the playouts; the
@@ -75,7 +75,12 @@ fn main() {
                 let n = steps as i64;
                 let mut rng = Rng::seeded(seed * 1_000_003 + n * 7919);
                 let play = if weak {
-                    if study == "first" { 0 } else { normal.choose(&g, &mut rng) }
+                    match study.as_str() {
+                        "first" => 0,
+                        // The weak floor (#100): a uniformly random legal move.
+                        "random" => ((rng.next() * g.moves.n as f64) as usize).min(g.moves.n - 1),
+                        _ => normal.choose(&g, &mut rng),
+                    }
                 } else {
                     ludo_sim::rollout::choose_race(&g, &mut rng, 128, CUT, Some(&net), &base, &base)
                 };
