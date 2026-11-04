@@ -22,7 +22,8 @@ use std::io::Write;
 use std::sync::Arc;
 
 const CUT: u32 = 12;
-const LADDER: [usize; 7] = [16, 32, 48, 64, 96, 128, 256];
+/// The rungs (#100): the owner's 8, 10, 24 and 30 added; review_cached extends the same playouts rung to rung, so they cost little.
+const LADDER: [usize; 11] = [8, 10, 16, 24, 30, 32, 48, 64, 96, 128, 256];
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -112,14 +113,15 @@ fn main() {
                         let of = ref256.of_move.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(",");
                         let li = |v: &[usize]| v.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(",");
                         lines.push(format!(
-                            "{{\"layout\":\"{layout}\",\"study\":\"{study}\",\"seed\":{seed},\"n\":{n},\"owner\":{owner},\"color\":{},\"moves\":{},\"of\":[{of}],\"gap\":[{}],\"se\":[{}],\"mean\":[{}],\"best\":{best},\"played\":{play},\"hard\":{hard_pick},\"ladder\":{{\"a\":[{}],\"b\":[{}]}},\"engine\":\"native\"}}",
+                            "{{\"layout\":\"{layout}\",\"study\":\"{study}\",\"seed\":{seed},\"n\":{n},\"owner\":{owner},\"color\":{},\"moves\":{},\"of\":[{of}],\"gap\":[{}],\"se\":[{}],\"mean\":[{}],\"best\":{best},\"played\":{play},\"hard\":{hard_pick},\"ladder\":{{\"a\":[{}],\"b\":[{}]}},\"at\":[{}],\"engine\":\"native\"}}",
                             g.current_color(),
                             g.moves.n,
                             fmt(&ref256.gap, 100.0, 2),
                             fmt(&ref256.se, 100.0, 2),
                             fmt(&ref256.mean, 1.0, 4),
                             li(&la),
-                            li(&lb)
+                            li(&lb),
+                            LADDER.iter().map(|k| k.to_string()).collect::<Vec<_>>().join(",")
                         ));
                     }
                 }
