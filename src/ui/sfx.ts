@@ -200,6 +200,22 @@ export const sfx = {
   bubbles() {
     for (let i = 0; i < 9; i++) tone(280 + Math.random() * 520, 0.09, { vol: 0.08, at: i * 0.06, slide: 2.2 });
   },
+  /** Green's kill (#147): the ground rumbling as it starts to split; deeper and longer for a pair. */
+  quake(big = false) {
+    const k = big ? 1.5 : 1;
+    noise(0.9 * k, { vol: 0.45, freq: 140, q: 0.7, type: 'lowpass' });
+    tone(55, 0.8 * k, { type: 'sine', vol: 0.45, slide: 0.7 });
+    tone(38, 0.9 * k, { type: 'triangle', vol: 0.3, at: 0.08, slide: 0.8 });
+    buzz(big ? [90, 40, 120, 40, 90] : [70, 40, 90]);
+  },
+  /** Green's kill: the ground cracking open, a sharp split and a thud; doubled for a pair. */
+  crack(big = false) {
+    for (let i = 0; i < (big ? 2 : 1); i++) {
+      noise(0.07, { vol: 0.42, at: i * 0.14, freq: 3200, q: 0.9, type: 'highpass' });
+      noise(0.22, { vol: 0.35, at: 0.03 + i * 0.14, freq: 260, q: 0.8, type: 'lowpass' });
+      tone(95, 0.3, { type: 'sine', vol: 0.4, at: 0.03 + i * 0.14, slide: 0.5 });
+    }
+  },
   /** Three sixes: the turn is lost. */
   bust() {
     tone(330, 0.2, { type: 'square', vol: 0.07 });

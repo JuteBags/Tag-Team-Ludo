@@ -1,16 +1,20 @@
-// Kill finishers (#39): each colour finishes a kill its own way, drawn in SVG over the board, and takes
-// the victim out: Green's shot blows it back, Red's guillotine cuts it in two, Blue's wave sweeps it
-// away toward its base, Yellow's lightning burns it to ash. The board then puts the victim back in its
-// base (boardView.animateMove). Only the look: the engine has already decided the kill.
+// Kill finishers (#39, #147): each colour finishes a kill its own way, drawn in SVG over the board, and
+// takes the victim out: Green's earthquake swallows it, Red's guillotine cuts it in two, Blue's wave sweeps
+// it away toward its base, Yellow's lightning burns it to ash. When a pair captures a pair (two victims,
+// "full" finishers only) the effect happens for each pawn: the blade falls twice, two waves roll, a huge
+// bolt forks onto both, the earth splits wide and both fall in. The board then puts the victims back in
+// their bases (boardView.animateMove). Only the look: the engine has already decided the kill. Everything
+// animated is transform and opacity (#98), but Yellow's charring filter.
 import type { Color } from '../engine';
 import { sfx } from './sfx';
 
 const NS = 'http://www.w3.org/2000/svg';
 type Pt = [number, number];
 
-/** A captured pawn: its art (animated in the pawn's own units), its base, and the pawn's scale. */
+/** A captured pawn: its art (animated in the pawn's own units), where it stands, its base, and the pawn's scale. */
 export interface Victim {
   art: SVGGElement;
+  at: Pt;
   home: Pt;
   s: number;
 }
@@ -37,71 +41,120 @@ function shake(layer: SVGGElement, px: number, ms: number) {
   );
 }
 
-/** Green: a bolt fired from where the attacker set off; the victim is blown back along the shot, spinning. */
-async function shot(layer: SVGGElement, from: Pt, at: Pt, ms: number, victims: Victim[]) {
-  const [ax, ay] = from, [bx, by] = at;
-  const ang = Math.atan2(by - ay, bx - ax);
-  const len = Math.hypot(bx - ax, by - ay);
-  const g = el(layer, `<g transform="translate(${ax} ${ay}) rotate(${(ang * 180) / Math.PI})">
-    <circle class="fl" r="34" fill="#eaffc2"/>
-    <rect class="bolt" x="0" y="-9" width="${len}" height="18" rx="9" fill="#5dff4a"/>
-    <rect class="core" x="0" y="-3.5" width="${len}" height="7" rx="3.5" fill="#fff"/></g>
-    <g transform="translate(${bx} ${by}) scale(2.6)"><path class="hit" d="M0,-22 L5,-5 22,0 5,5 0,22 -5,5 -22,0 -5,-5Z" fill="#eaffc2"/></g>`);
-  sfx.flare();
-  const q = (s: string) => g.querySelector(s)!;
-  void run(q('.fl'), [{ transform: 'scale(.2)', opacity: 1 }, { transform: 'scale(1.6)', opacity: 0 }], ms * 0.4);
-  void run(q('.bolt'), [{ transform: 'scaleX(0)', opacity: 1 }, { transform: 'scaleX(1)', opacity: 1, offset: 0.3 }, { transform: 'scaleX(1)', opacity: 0 }], ms * 0.7, { easing: 'linear' });
-  void run(q('.core'), [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)', offset: 0.3 }, { transform: 'scaleX(1)', opacity: 0 }], ms * 0.7, { easing: 'linear' });
-  void run(q('.hit'), [{ transform: 'scale(0)', opacity: 0 }, { transform: 'scale(0)', opacity: 0, offset: 0.25 }, { transform: 'scale(1.5) rotate(45deg)', opacity: 1, offset: 0.4 }, { transform: 'scale(2) rotate(90deg)', opacity: 0 }], ms * 0.7);
-  await wait(ms * 0.25);
-  sfx.bust();
-  shake(layer, 6, 300);
-  // Blown back along the line of fire, spinning, and gone.
+/** A few jagged crack lines out from the centre, `n` of them up to `len` long, deterministic per kill. */
+function cracks(n: number, len: number, seed: number): string {
+  let r = seed;
+  const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+  let out = '';
+  for (let i = 0; i < n; i++) {
+    const ang = (360 / n) * i + rnd() * 26 - 13;
+    const l = len * (0.65 + rnd() * 0.35);
+    let d = 'M0,0';
+    for (let k = 1; k <= 5; k++) d += ` L${((l * k) / 5).toFixed(1)},${((rnd() - 0.5) * l * 0.22).toFixed(1)}`;
+    // a side branch
+    const b = l * (0.35 + rnd() * 0.25);
+    d += ` M${b.toFixed(1)},0 L${(b + l * 0.25).toFixed(1)},${((rnd() < 0.5 ? -1 : 1) * l * 0.2).toFixed(1)}`;
+    out += `<g transform="rotate(${ang.toFixed(1)})"><path class="ck" d="${d}" fill="none" stroke="#1b120a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+  }
+  return out;
+}
+let quakes = 0;
+
+/**
+ * Green: the earth splits open. The board shakes, cracks race out from under the victim, the ground opens
+ * into a dark hole with dust and flying chips, and the pawn tips and falls in; the hole closes behind it.
+ * `big` (a pair): a huge crack in every direction, a bigger shake and dust cloud, and both fall in, one
+ * after the other.
+ */
+async function earthquake(layer: SVGGElement, at: Pt, ms: number, victims: Victim[], big: boolean) {
+  const [x, y] = at;
+  const k = big ? 2 : 1.35;
+  const dust = Array.from({ length: big ? 9 : 6 }, (_, i) => {
+    const a = (i / (big ? 9 : 6)) * Math.PI * 2;
+    return `<circle class="du" cx="${(Math.cos(a) * 16 * k).toFixed(1)}" cy="${(Math.sin(a) * 7 * k).toFixed(1)}" r="${(9 + (i % 3) * 3) * k}" fill="${i % 2 ? '#c8b49a' : '#a8916f'}" opacity="0"/>`;
+  }).join('');
+  const chips = Array.from({ length: big ? 10 : 6 }, (_, i) => `<path class="ch" d="M-3,-2 L2,-3 3,2 -2,3Z" fill="${i % 2 ? '#6b4a2a' : '#8a6a44'}" opacity="0"/>`).join('');
+  const g = el(layer, `<g transform="translate(${x} ${y})"><g class="cks">${cracks(big ? 9 : 6, 46 * k, ++quakes * 7919)}</g>
+    <g class="hole" transform="scale(${k})"><ellipse rx="26" ry="14" fill="#5a3a1c"/><ellipse rx="22" ry="11" fill="#0b0705"/><ellipse cy="-3" rx="16" ry="6" fill="#000"/></g>
+    ${dust}${chips}</g>`);
+  const q = (sel: string) => g.querySelector(sel)!;
+  const all = (sel: string) => [...g.querySelectorAll(sel)];
+  sfx.quake(big);
+  shake(layer, big ? 15 : 9, ms * (big ? 0.6 : 0.45));
+  // The cracks race out (each grows from the centre along its own line).
+  all('.ck').forEach((c, i) => void run(c, [{ transform: 'scaleX(0)', opacity: 1 }, { transform: 'scaleX(1)', opacity: 1, offset: 0.7 }, { transform: 'scaleX(1)', opacity: 1 }], ms * 0.28, { delay: (i % 3) * ms * 0.02, easing: 'cubic-bezier(.2,.9,.3,1)' }));
+  await wait(ms * 0.22);
+  // The ground splits: the hole opens with a crack, dust puffs up and chips fly.
+  sfx.crack(big);
+  void run(q('.hole'), [{ transform: `scale(0)` }, { transform: `scale(${k * 1.12})`, offset: 0.55 }, { transform: `scale(${k})` }], ms * 0.18, { easing: 'cubic-bezier(.3,1.4,.5,1)' });
+  all('.du').forEach((d, i) => void run(d, [{ transform: 'translate(0,0) scale(.3)', opacity: 0 }, { transform: `translate(0,${-6 * k}px) scale(1)`, opacity: 0.85, offset: 0.25 }, { transform: `translate(${((i % 2 ? 1 : -1) * (6 + i * 2)) * k}px,${-26 * k}px) scale(1.7)`, opacity: 0 }], ms * 0.6, { delay: i * 18 }));
+  all('.ch').forEach((c, i) => {
+    const a = (i / chips.length) * Math.PI * 2 + i;
+    const dx = Math.cos(a) * (28 + (i % 4) * 8) * k;
+    return void run(c, [{ transform: 'translate(0,0) rotate(0)', opacity: 1 }, { transform: `translate(${dx * 0.6}px,${-30 * k}px) rotate(200deg)`, opacity: 1, offset: 0.45 }, { transform: `translate(${dx}px,${-4 * k}px) rotate(420deg)`, opacity: 0 }], ms * 0.42, { easing: 'cubic-bezier(.3,.6,.6,1)' });
+  });
+  await wait(ms * 0.12);
+  // Each victim tips toward the hole and drops in, shrinking into the dark.
   await Promise.all(
-    victims.map((v) => {
-      const [dx, dy] = local(v, Math.cos(ang) * 110, Math.sin(ang) * 110);
-      return run(v.art, [{ transform: 'none', opacity: 1 }, { transform: `translate(${dx * 0.5}px,${dy * 0.5 - 12}px) rotate(300deg)`, opacity: 1, offset: 0.5 }, { transform: `translate(${dx}px,${dy}px) rotate(620deg) scale(.6)`, opacity: 0 }], ms * 0.7, { easing: 'cubic-bezier(.1,.7,.3,1)' });
+    victims.map((v, i) => {
+      const [dx, dy] = local(v, x - v.at[0], y - v.at[1]);
+      const tip = (v.at[0] <= x ? 1 : -1) * 28;
+      return run(v.art, [{ transform: 'none', opacity: 1 }, { transform: `translate(${dx * 0.3}px,${dy * 0.3}px) rotate(${tip}deg)`, opacity: 1, offset: 0.35 }, { transform: `translate(${dx}px,${dy + 6}px) rotate(${tip * 1.6}deg) scale(.45)`, opacity: 0.9, offset: 0.7 }, { transform: `translate(${dx}px,${dy + 10}px) rotate(${tip * 2}deg) scale(.05)`, opacity: 0 }], ms * 0.42, { delay: big ? i * ms * 0.14 : 0, easing: 'cubic-bezier(.5,0,.8,.6)' });
     }),
   );
+  // The ground closes and the cracks fade.
+  void run(q('.hole'), [{ transform: `scale(${k})`, opacity: 1 }, { transform: 'scale(0)', opacity: 0.6 }], ms * 0.16, { easing: 'cubic-bezier(.6,0,.9,.5)' });
+  await run(q('.cks'), [{ opacity: 1 }, { opacity: 0 }], ms * 0.2);
   g.remove();
 }
 
-/** Red: a guillotine blade drops onto the victim and cuts it clean in two; the halves fall apart. */
-async function guillotine(layer: SVGGElement, at: Pt, ms: number, victims: Victim[]) {
+/**
+ * Red: a guillotine blade drops onto the victim and cuts it clean in two; the halves fall apart. With
+ * `each` (a pair), the blade falls once per pawn: it cuts one, rises, and falls again on the other.
+ */
+async function guillotine(layer: SVGGElement, at: Pt, ms: number, victims: Victim[], each: boolean) {
   const [x, y] = at;
   const g = el(layer, `<g transform="translate(${x} ${y}) scale(3.4)">
     <g class="bl"><rect x="-26" y="-118" width="5" height="96" fill="#6b4422"/><rect x="21" y="-118" width="5" height="96" fill="#6b4422"/><rect x="-28" y="-122" width="56" height="7" rx="2" fill="#4a2e16"/>
     <g class="blade"><path d="M-21,-60 H21 V-40 L-21,-28Z" fill="#cfd6e0" stroke="#3a4252" stroke-width="1.6"/><path d="M-21,-31 L21,-43" stroke="#fff" stroke-width="1.6"/><rect x="-6" y="-66" width="12" height="7" fill="#3a4252"/></g></g>
     <path class="slash" d="M-30,4 L30,-12" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity="0"/></g>`);
-  const q = (s: string) => g.querySelector(s)!;
-  // The frame drops in, then the blade falls along it.
-  await run(q('.bl'), [{ transform: 'translateY(-50px)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }], ms * 0.25);
-  await run(q('.blade'), [{ transform: 'translateY(0)' }, { transform: 'translateY(40px)' }], ms * 0.14, { easing: 'cubic-bezier(.8,0,1,.6)' });
-  sfx.bust();
-  sfx.kill(2);
-  shake(layer, 10, 380);
-  void run(q('.slash'), [{ opacity: 1, transform: 'scaleX(.2)' }, { opacity: 0, transform: 'scaleX(1.4)' }], ms * 0.3);
+  const q = (sel: string) => g.querySelector(sel)!;
   // Cut in two: two clipped copies of the pawn fall apart while the whole pawn hides.
-  const parts = victims.flatMap((v, i) => {
-    const id = `cut${++cuts}_${i}`;
-    const parent = v.art.parentNode as SVGGElement;
-    const defs = document.createElementNS(NS, 'g');
-    defs.innerHTML = `<clipPath id="${id}a"><polygon points="-40,-40 40,-40 40,-6 -40,6"/></clipPath><clipPath id="${id}b"><polygon points="-40,6 40,-6 40,40 -40,40"/></clipPath>`;
-    parent.appendChild(defs);
-    v.art.style.opacity = '0';
-    const half = (clip: string, top: boolean) => {
-      const c = v.art.cloneNode(true) as SVGGElement;
-      c.style.opacity = '1';
-      c.setAttribute('clip-path', `url(#${clip})`);
-      parent.appendChild(c);
-      void run(c, [{ transform: 'none' }, { transform: top ? 'translate(-3px,-2px) rotate(-6deg)' : 'translate(2px,1px)', offset: 0.2 }, { transform: top ? 'translate(-22px,14px) rotate(-70deg)' : 'translate(16px,10px) rotate(28deg)', opacity: 1, offset: 0.75 }, { transform: top ? 'translate(-26px,18px) rotate(-80deg)' : 'translate(18px,12px) rotate(30deg)', opacity: 0 }], ms * 0.6, { easing: 'cubic-bezier(.5,0,.7,1)' });
-      return c;
-    };
-    return [half(`${id}a`, true), half(`${id}b`, false), defs];
-  });
+  const cut = (vs: Victim[]) =>
+    vs.flatMap((v, i) => {
+      const id = `cut${++cuts}_${i}`;
+      const parent = v.art.parentNode as SVGGElement;
+      const defs = document.createElementNS(NS, 'g');
+      defs.innerHTML = `<clipPath id="${id}a"><polygon points="-40,-40 40,-40 40,-6 -40,6"/></clipPath><clipPath id="${id}b"><polygon points="-40,6 40,-6 40,40 -40,40"/></clipPath>`;
+      parent.appendChild(defs);
+      v.art.style.opacity = '0';
+      const half = (clip: string, top: boolean) => {
+        const c = v.art.cloneNode(true) as SVGGElement;
+        c.style.opacity = '1';
+        c.setAttribute('clip-path', `url(#${clip})`);
+        parent.appendChild(c);
+        void run(c, [{ transform: 'none' }, { transform: top ? 'translate(-3px,-2px) rotate(-6deg)' : 'translate(2px,1px)', offset: 0.2 }, { transform: top ? 'translate(-22px,14px) rotate(-70deg)' : 'translate(16px,10px) rotate(28deg)', opacity: 1, offset: 0.75 }, { transform: top ? 'translate(-26px,18px) rotate(-80deg)' : 'translate(18px,12px) rotate(30deg)', opacity: 0 }], ms * 0.6, { easing: 'cubic-bezier(.5,0,.7,1)' });
+        return c;
+      };
+      return [half(`${id}a`, true), half(`${id}b`, false), defs];
+    });
+  // The frame drops in, then the blade falls along it: once, or once per pawn.
+  await run(q('.bl'), [{ transform: 'translateY(-50px)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }], ms * 0.25);
+  const rounds = each ? victims.map((v) => [v]) : [victims];
+  const parts: Element[] = [];
+  for (const [r, vs] of rounds.entries()) {
+    if (r > 0) await run(q('.blade'), [{ transform: 'translateY(40px)' }, { transform: 'translateY(0)' }], ms * 0.12, { easing: 'cubic-bezier(.2,.8,.4,1)' });
+    await run(q('.blade'), [{ transform: 'translateY(0)' }, { transform: 'translateY(40px)' }], ms * 0.14, { easing: 'cubic-bezier(.8,0,1,.6)' });
+    sfx.bust();
+    sfx.kill(2);
+    shake(layer, r > 0 ? 13 : 10, 380);
+    void run(q('.slash'), [{ opacity: 1, transform: 'scaleX(.2)' }, { opacity: 0, transform: 'scaleX(1.4)' }], ms * 0.3);
+    parts.push(...cut(vs));
+    if (r < rounds.length - 1) await wait(ms * 0.18);
+  }
   void run(q('.bl'), [{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0, transform: 'translateY(-30px)' }], ms * 0.6);
   await wait(ms * 0.62);
-  parts.forEach((p) => p.remove());
+  parts.forEach((x) => x.remove());
   g.remove();
 }
 
@@ -133,21 +186,28 @@ async function wave(layer: SVGGElement, at: Pt, ms: number, victims: Victim[]) {
   g.remove();
 }
 
-/** Yellow: the sky goes dark, three forked bolts strike, and the victim burns to a pile of ash. */
-async function lightning(layer: SVGGElement, at: Pt, ms: number, victims: Victim[]) {
+/**
+ * Yellow: the sky goes dark, three forked bolts strike, and the victim burns to a pile of ash. `big` (a
+ * pair): one huge bolt, bigger and brighter, forking onto each pawn, a bigger flash and a harder shake.
+ */
+async function lightning(layer: SVGGElement, at: Pt, ms: number, victims: Victim[], big: boolean) {
   const [x, y] = at;
   const bolt = (dx: number, rot: number, w: number) => `<g transform="translate(${dx} 0) rotate(${rot})"><path class="bolt" d="M-10,-200 L12,-130 -8,-122 16,-56 -6,-50 6,0 M12,-130 L34,-100 26,-96 44,-70 M16,-56 L-14,-30" fill="none" stroke="#fffbd0" stroke-width="${w + 6}" stroke-linejoin="round" stroke-linecap="round" opacity="0"/><path class="bolt" d="M-10,-200 L12,-130 -8,-122 16,-56 -6,-50 6,0 M12,-130 L34,-100 26,-96 44,-70 M16,-56 L-14,-30" fill="none" stroke="#ffd23f" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round" opacity="0"/></g>`;
   const embers = Array.from({ length: 12 }, (_, i) => `<circle class="em" cx="${(i % 6) * 6 - 15}" cy="0" r="${1.4 + (i % 3) * 0.6}" fill="${i % 2 ? '#ff9a1f' : '#ffd23f'}" opacity="0"/>`).join('');
   const sky = el(layer, '<rect width="600" height="600" fill="#0a0820"/>');
-  const g = el(layer, `<g transform="translate(${x} ${y}) scale(2)"><circle class="glow" r="46" fill="#fff6b0" opacity="0"/>${bolt(-26, -8, 3)}${bolt(24, 10, 3)}${bolt(0, 0, 5)}
+  // A pair: forks aimed at each pawn (their offsets from the hit, in this group's units) and a thicker trunk.
+  const sc = big ? 2.7 : 2;
+  const forks = big ? victims.map((v) => bolt((v.at[0] - x) / sc, v.at[0] > x ? 9 : -9, 4)).join('') : `${bolt(-26, -8, 3)}${bolt(24, 10, 3)}`;
+  const g = el(layer, `<g transform="translate(${x} ${y}) scale(${sc})"><circle class="glow" r="${big ? 62 : 46}" fill="#fff6b0" opacity="0"/>${forks}${bolt(0, 0, big ? 8 : 5)}
     <g class="ash" opacity="0"><ellipse cx="0" cy="9" rx="13" ry="4.5" fill="#2a241e"/><ellipse cx="-2" cy="6" rx="8" ry="3.6" fill="#4a4038"/><ellipse cx="2" cy="4" rx="4" ry="2.2" fill="#6a6058"/></g>
     <g class="smoke" opacity="0"><circle cx="-4" cy="-6" r="7" fill="#6a6a72"/><circle cx="5" cy="-14" r="9" fill="#55555e"/><circle cx="-2" cy="-26" r="11" fill="#45454d"/></g>${embers}</g>`);
   const q = (s: string) => g.querySelector(s)!;
-  void run(sky, [{ opacity: 0 }, { opacity: 0.75, offset: 0.2 }, { opacity: 0.75, offset: 0.7 }, { opacity: 0 }], ms, { easing: 'linear' }).then(() => sky.remove());
+  void run(sky, [{ opacity: 0 }, { opacity: big ? 0.85 : 0.75, offset: 0.2 }, { opacity: big ? 0.85 : 0.75, offset: 0.7 }, { opacity: 0 }], ms, { easing: 'linear' }).then(() => sky.remove());
   await wait(ms * 0.18);
   sfx.flare();
   sfx.bust();
-  shake(layer, 8, 380);
+  if (big) sfx.kill(2);
+  shake(layer, big ? 14 : 8, big ? 520 : 380);
   [...g.querySelectorAll('.bolt')].forEach((b, i) => void run(b, [{ opacity: 0 }, { opacity: 1, offset: 0.08 }, { opacity: 0.15, offset: 0.18 }, { opacity: 1, offset: 0.28 }, { opacity: 0.6, offset: 0.55 }, { opacity: 0 }], ms * 0.45, { easing: 'linear', delay: Math.floor(i / 2) * 70 }));
   void run(q('.glow'), [{ opacity: 0, transform: 'scale(.2)' }, { opacity: 1, transform: 'scale(1.4)', offset: 0.2 }, { opacity: 0, transform: 'scale(2.4)' }], ms * 0.45);
   // Charred black, then it crumbles down into ash while it smokes and embers rise.
@@ -167,38 +227,60 @@ let spots = 0;
 let cuts = 0;
 
 /**
- * Plays the attacker colour's finisher at the victim's square and takes the victim out. `from` is where
- * the attacker set off (Green fires from there). Resolves when it's done; the board then puts the victim
- * back in its base.
+ * Plays the attacker colour's finisher at the victim's square and takes the victims out. With two victims (a
+ * pair captured a pair) and a "full" finisher (`ms` of a second or more), the effect happens for each pawn.
+ * Under "full" the earthquake and the doubles take the time to read clearly (the owner: 2.5-3 s is fine,
+ * #147), never over 2.9 s; "short" stays quick and plays one effect. Resolves when it's done; the board then
+ * puts the victims back in their bases.
  */
-export async function playFinisher(layer: SVGGElement, attacker: Color, from: Pt, at: Pt, ms = 560, victims: Victim[] = []): Promise<void> {
+export async function playFinisher(layer: SVGGElement, attacker: Color, at: Pt, ms = 560, victims: Victim[] = []): Promise<void> {
+  const full = ms >= 1000;
+  const double = victims.length > 1 && full;
+  // Each colour's own length (its effect's ms, and how long it runs in all, for the camera and spotlight).
+  const len = (x: number) => Math.min(2900, x);
+  const fxMs =
+    attacker === 'green' ? len(ms * (double ? 1.9 : full ? 1.4 : 1))
+    : attacker === 'red' ? ms * (double ? 1.3 : 1)
+    : attacker === 'blue' ? ms * (double ? 1.15 : 1)
+    : len(ms * (double ? 1.85 : 1));
+  const total = len(
+    attacker === 'red' && double ? fxMs * 1.45
+    : attacker === 'blue' && double ? ms * 0.55 + fxMs * 1.01
+    : fxMs,
+  );
   // A spotlight: the board darkens around the hit for the length of the finisher.
   const id = `spot${++spots}`;
   const dim = el(layer, `<defs><radialGradient id="${id}" cx="${at[0]}" cy="${at[1]}" r="230" gradientUnits="userSpaceOnUse"><stop offset=".12" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".72"/></radialGradient></defs><rect width="600" height="600" fill="url(#${id})"/>`);
-  void run(dim, [{ opacity: 0 }, { opacity: 1, offset: 0.15 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }], ms + 160, { easing: 'linear' });
-  // The camera: zooms in on the hit, holds through the finisher, then pulls back out.
+  void run(dim, [{ opacity: 0 }, { opacity: 1, offset: (0.15 * ms) / total }, { opacity: 1, offset: 1 - (0.2 * ms) / total }, { opacity: 0 }], total + 160, { easing: 'linear' });
+  // The camera: zooms in on the hit, holds through the finisher (a double's too), then pulls back out.
   const frame = layer.ownerSVGElement?.closest<HTMLElement>('.bframe');
   const svg = layer.ownerSVGElement;
   if (frame && svg) {
     const k = svg.clientWidth / 600;
     const dx = (at[0] - 300) * k, dy = (at[1] - 300) * k;
+    const span = total + 420;
+    const ease = Math.min(0.3, (0.22 * (ms + 420)) / span);
     frame.animate(
       [
         { translate: '0 0', scale: '1' },
-        { translate: `${-dx * 0.55}px ${-dy * 0.55}px`, scale: '1.55', offset: 0.22 },
-        { translate: `${-dx * 0.55}px ${-dy * 0.55}px`, scale: '1.62', offset: 0.78 },
+        { translate: `${-dx * 0.55}px ${-dy * 0.55}px`, scale: '1.55', offset: ease },
+        { translate: `${-dx * 0.55}px ${-dy * 0.55}px`, scale: '1.62', offset: 1 - ease },
         { translate: '0 0', scale: '1' },
       ],
-      { duration: ms + 420, easing: 'cubic-bezier(.3,.7,.3,1)' },
+      { duration: span, easing: 'cubic-bezier(.3,.7,.3,1)' },
     );
   }
   const fx =
-    attacker === 'green' ? shot(layer, from, at, ms, victims)
-    : attacker === 'red' ? guillotine(layer, at, ms, victims)
-    : attacker === 'blue' ? wave(layer, at, ms, victims)
-    : lightning(layer, at, ms, victims);
+    attacker === 'green' ? earthquake(layer, at, fxMs, victims, double)
+    : attacker === 'red' ? guillotine(layer, at, fxMs, victims, double)
+    : attacker === 'blue'
+      ? double
+        ? // Two waves, one after the other, each carrying one pawn away toward its base.
+          Promise.all(victims.map((v, i) => wait(i * ms * 0.55).then(() => wave(layer, v.at, fxMs, [v])))).then(() => undefined)
+        : wave(layer, at, fxMs, victims)
+      : lightning(layer, at, fxMs, victims, double);
   await fx;
-  // The victim stays hidden until the board puts it back in its base.
+  // The victims stay hidden until the board puts them back in their bases.
   for (const v of victims) {
     v.art.getAnimations().forEach((a) => a.cancel());
     v.art.style.opacity = '0';
