@@ -25,7 +25,7 @@ captions are Information.
 1. **Say less (owner).** Show the number, not a word that repeats it. "69%", never "a bit lucky". Text stays only
    when it carries something that isn't visible anywhere else (a why line, "+N% to win").
 2. **Colour means a player first.** Red, Green, Yellow and Blue belong to the houses and to nothing else. Data uses
-   Okabe-Ito: accuracy is sky blue `#56B4E9` (solid), luck is orange `#E69F00` (dashed). Good and bad are never
+   Okabe-Ito: accuracy is sky blue `#56B4E9` (solid), luck is orange `#E69F00` (dashed). The review's labels use the rest of the Okabe-Ito set (#162): Best `#3ccf9e`, Good `#8fdcc0`, Inaccuracy `#f0e442`, Mistake `#ff6f3c`, Blunder `#e58bc0`, all from `LABEL_LOOK`. Good and bad are never
    shown by red and green alone; give them a shape, a sign or a position too. Colour-blind symbols are a
    first-class mode, so check them in every review.
 3. **Physical truth on the board.** A pawn enters from where it was and leaves toward where it goes. Layer order is
@@ -114,5 +114,4 @@ anyone builds it. Checked against `main` on 2026-11-04.
   the pause menu.
 - **Home footer.** It has two lines of small grey meta. Proposal: move the version and the avatar credit into
   Settings → About.
-- **Board look.** The owner said "doesn't look good". The Classic frame is a 4-stop orange gradient with cream tiles
-  on tan. Next deliverable: 2–3 options with images, one of them Wooden as the default.
+- **Board look:** decided on #162. Classic stays the default, as it was in 2.5.0. The bad look in #150 came from the camera zoom, the dim and a broken harness, not from the board.

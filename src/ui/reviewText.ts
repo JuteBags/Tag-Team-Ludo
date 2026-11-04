@@ -5,13 +5,18 @@ import { accuracyText } from './reviewWords';
 // Moved to reviewWords.ts (#98) so the Stats sheet doesn't load this file at startup; still exported from here.
 export { accuracyText };
 
-/** Each label's symbol (so colour isn't the only cue), name and colour. */
+/**
+ * Each label's symbol (so colour isn't the only cue), name and colour. The colours are the colour-blind-safe
+ * Okabe-Ito set, lifted for the navy ground (the owner's pick on #162): bluish green, a paler green, yellow,
+ * vermillion, reddish purple. None of them is luck's orange (#E69F00) or accuracy's sky blue (#56B4E9). Keep
+ * styles.css (the history chips, the replay's "Mistake" captions) and the replay's jump badge in step.
+ */
 export const LABEL_LOOK: Record<Label, { sym: string; name: string; color: string }> = {
-  best: { sym: '★', name: 'Best', color: '#4ade80' },
-  good: { sym: '✓', name: 'Good', color: '#a3e635' },
-  inaccuracy: { sym: '?!', name: 'Inaccuracy', color: '#facc15' },
-  mistake: { sym: '?', name: 'Mistake', color: '#fb923c' },
-  blunder: { sym: '??', name: 'Blunder', color: '#f87171' },
+  best: { sym: '★', name: 'Best', color: '#3ccf9e' },
+  good: { sym: '✓', name: 'Good', color: '#8fdcc0' },
+  inaccuracy: { sym: '?!', name: 'Inaccuracy', color: '#f0e442' },
+  mistake: { sym: '?', name: 'Mistake', color: '#ff6f3c' },
+  blunder: { sym: '??', name: 'Blunder', color: '#e58bc0' },
 };
 export const LABELS: Label[] = ['best', 'good', 'inaccuracy', 'mistake', 'blunder'];
 
