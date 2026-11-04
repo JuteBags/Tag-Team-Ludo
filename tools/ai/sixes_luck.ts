@@ -54,8 +54,8 @@ md(`## #135: a run of sixes in the luck`);
 md('');
 md('### 1. The luck of 6, 6, 6 (points of win chance; the app\'s own computation, fair dice)');
 md('');
-md('| position | 1st 6 | 2nd 6 | 3rd 6 (cancels) | sum | the roller\'s net chance: before → after the run |');
-md('|---|---:|---:|---:|---:|---|');
+md("| position | 1st 6 | 2nd 6 | 3rd 6 (cancels) | the run (sum) | the run, of the roller's chance at the start | the roller's net chance: before → after the run |");
+md('|---|---:|---:|---:|---:|---:|---|');
 for (const [name, s0] of POSITIONS) {
   const owner = s0.players[s0.current]!.owner;
   const people = Math.max(...s0.players.map((p) => p.owner)) + 1;
@@ -70,7 +70,7 @@ for (const [name, s0] of POSITIONS) {
   const before = ownerValues(net, s0, people)[owner]!;
   const after = ownerValues(net, s, people)[owner]!;
   const sum = lucks.reduce((t, x) => t + x, 0);
-  md(`| ${name} | ${lucks[0]!.toFixed(2)} | ${lucks[1]!.toFixed(2)} | ${lucks[2]!.toFixed(2)} | **${sum.toFixed(2)}** | ${pct(before)}% → ${pct(after)}% (${s.players[s.current]!.color} to ${s.phase}) |`);
+  md(`| ${name} | ${lucks[0]!.toFixed(2)} | ${lucks[1]!.toFixed(2)} | **${lucks[2]!.toFixed(2)}** | **${sum.toFixed(2)}** | ${((100 * sum) / (100 * before)).toFixed(0)}% | ${pct(before)}% → ${pct(after)}% (${s.players[s.current]!.color} to ${s.phase}) |`);
   console.log('SIXES ' + JSON.stringify({ name, lucks, sum, before, after }));
 }
 md('');
@@ -106,16 +106,40 @@ md(`### 2. The net against playouts (${N} paired playouts per move), the roller'
 md('');
 md('| position | sixes, tray | net | playouts (seed 1) | playouts (seed 2) | net − playouts (mean of the seeds) |');
 md('|---|---|---:|---:|---:|---:|');
+const corrected: { name: string; lucks: number[][]; v0: number[]; end: number[] }[] = [];
 for (const [name, s0] of POSITIONS.filter(([n]) => n.startsWith('2p'))) {
   const me = s0.players[s0.current]!.owner;
-  let s = s0;
+  const states = [s0];
+  for (let k = 0; k < 3; k++) states.push(roll(states[k]!, () => 0, 6));
+  // Per seed, one memo: V(s0), V(s1), V(s2) and the value after the cancelling 6.
+  const per = [1, 2].map((seed) => {
+    const memo = new Map<string, number>();
+    const v = [0, 1, 2].map((k) => playoutValue(states[k]!, me, 1000 * seed + 17 * k, memo));
+    const end = valueAfter(states[3]!, me, 1000 * seed + 99, memo, 0);
+    return { v, end };
+  });
   for (let k = 0; k < 3; k++) {
+    const s = states[k]!;
     const nv = ownerValues(net, s, 2)[me]!;
-    const pv = [1, 2].map((seed) => playoutValue(s, me, 1000 * seed + 17 * k, new Map()));
+    const pv = per.map((x) => x.v[k]!);
     const mean = (pv[0]! + pv[1]!) / 2;
     md(`| ${name} | ${s.sixes}, [${s.rolls.join(', ')}] | ${pct(nv)} | ${pct(pv[0]!)} | ${pct(pv[1]!)} | ${(100 * (nv - mean)).toFixed(2)} |`);
     console.log('SIXVAL ' + JSON.stringify({ name, sixes: s.sixes, tray: s.rolls, net: nv, playouts: pv }));
-    s = roll(s, () => 0, 6);
   }
+  // With playout values, a roll's luck is V(after the 6) - V(before): the faces' expectation is V(before) itself.
+  corrected.push({ name, lucks: per.map(({ v, end }) => [v[1]! - v[0]!, v[2]! - v[1]!, end - v[2]!]), v0: per.map((x) => x.v[0]!), end: per.map((x) => x.end) });
+}
+md('');
+md(`### 3. The luck of 6, 6, 6 from the playout values (${N} playouts per move, mean of 2 seeds; 2p only: in 4p the review gives the mover's chance alone)`);
+md('');
+md("| position | 1st 6 | 2nd 6 | 3rd 6 (cancels) | the run (sum) | the run, of the roller's chance at the start | the roller's chance: before → after the run |");
+md('|---|---:|---:|---:|---:|---:|---|');
+for (const c of corrected) {
+  const m = (k: number) => (100 * (c.lucks[0]![k]! + c.lucks[1]![k]!)) / 2;
+  const v0 = (c.v0[0]! + c.v0[1]!) / 2;
+  const end = (c.end[0]! + c.end[1]!) / 2;
+  const sum = m(0) + m(1) + m(2);
+  md(`| ${c.name} | ${m(0).toFixed(2)} | ${m(1).toFixed(2)} | **${m(2).toFixed(2)}** | **${sum.toFixed(2)}** | ${(sum / (100 * v0) * 100).toFixed(0)}% | ${pct(v0)}% → ${pct(end)}% |`);
+  console.log('SIXLUCK ' + JSON.stringify(c));
 }
 md('');

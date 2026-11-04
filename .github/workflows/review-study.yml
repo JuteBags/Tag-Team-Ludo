@@ -40,6 +40,8 @@ jobs:
 
   cuts:
     name: cuts ${{ matrix.layout }} ${{ matrix.mover }}
+    # A push whose commit message says [sixes-only] runs just the sixes job.
+    if: ${{ !contains(github.event.head_commit.message, '[sixes-only]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     strategy:
@@ -63,7 +65,7 @@ jobs:
   report:
     name: report
     needs: cuts
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && !contains(github.event.head_commit.message, '[sixes-only]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
