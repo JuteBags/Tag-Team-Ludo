@@ -40,7 +40,7 @@ export interface DecisionValues {
 /**
  * What to ask the engine for instead of the full review (#101): the net screen, or the race for the move
  * played (an index into state.moves), which first skips the playouts when the net's spread is under `skip`
- * points, and settles Best within `best` points (the layout's Best cut; BEST_WITHIN when missing) at `z`
+ * points, and settles Best within `best` points (the layout's Best cut; rollout.rs BEST_WITHIN when missing) at `z`
  * standard errors (0 or missing: the engine's schedule, rollout.rs best_z).
  */
 export type ReviewAsk = { mode: 'screen' } | { mode: 'race'; played: number; best?: number; skip?: number; z?: number };
@@ -51,15 +51,58 @@ export type Reviewer = (state: GameState, n: number, seed: number, ask?: ReviewA
 export type Label = 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder';
 
 /**
- * The label cuts in 2p (points of win chance given up, 0-100), calibrated in tools/ai/REVIEW_CALIB.md: "best"
- * up to BEST_WITHIN (or within one standard error: a coin flip isn't a mistake), then the top of each label.
+ * A label cut set, in points of win probability given up (0-100), for 2p; other layouts are scaled by
+ * THRESHOLDS_BY_LAYOUT, none under `floor`. "Best" up to `best` (or within one standard error: a coin flip
+ * isn't a mistake), then the top of each label (tools/ai/REVIEW_CALIB.md, #138).
  */
-export const BEST_WITHIN = 1.5;
-export const THRESHOLDS: [Label, number][] = [
-  ['good', 2],
-  ['inaccuracy', 5],
-  ['mistake', 10],
-];
+export interface Cuts {
+  /** Best: within this many points of the top (or within one standard error). */
+  best: number;
+  /** Each label's upper end, in order; above the last, Blunder. */
+  tops: [Label, number][];
+  floor: number;
+}
+
+/** The cuts (#138, set B, the owner's pick): Mistake from 3 points, Blunder from 6. No floor. */
+export const CUTS: Cuts = {
+  best: 1,
+  tops: [
+    ['good', 1.5],
+    ['inaccuracy', 3],
+    ['mistake', 6],
+  ],
+  floor: 0,
+};
+/** Review version 3's cuts (#65), for measuring against: Best 1.5, Good 2, Inaccuracy 5, Mistake 10, a 1-point floor. */
+export const CUTS_V3: Cuts = {
+  best: 1.5,
+  tops: [
+    ['good', 2],
+    ['inaccuracy', 5],
+    ['mistake', 10],
+  ],
+  floor: 1,
+};
+
+/** How labels are given: the cuts, and the rules on top of them. */
+export interface LabelRules {
+  cuts: Cuts;
+  /** The harsher label only when the gap clears its cut by one standard error (#138). */
+  se: boolean;
+  /** One label harsher when the best move kept you at 50% or more and yours put you under (#138, the owner's). */
+  turningPoint: boolean;
+  /** How near a cut (points, after the se rule) a gap must be to get more playouts. */
+  edge: number;
+}
+/**
+ * The review's rules (version 4). EDGE 1.5 (#138, review-edge run 41849492112): through the app's own review,
+ * key labels agree with a 1,024-playout review 70.7% of the time (version 3: 68.0%) at 1.07x version 3's
+ * review time; EDGE 2 and 3 gave the same, as B's cuts sit close enough that 1.5 already tops up every
+ * borderline decision to PLAYOUTS_MAX.
+ */
+export const RULES: LabelRules = { cuts: CUTS, se: true, turningPoint: true, edge: 1.5 };
+/** Review version 3's, for measuring against. */
+export const RULES_V3: LabelRules = { cuts: CUTS_V3, se: false, turningPoint: false, edge: 2 };
 
 /**
  * Each layout's scale on the 2p cuts (REVIEW_CALIB.md): with more players a move's gaps are smaller, so the
@@ -68,9 +111,6 @@ export const THRESHOLDS: [Label, number][] = [
  * bootstrap intervals): see tools/ai/REVIEW_CALIB.md.
  */
 export const THRESHOLDS_BY_LAYOUT: Record<string, number> = { '2p': 1, '3p': 0.85, '4p': 0.85, '2h-opposite': 0.65, '2h-side': 0.65 };
-
-/** No scaled cut goes under this many points. */
-const CUT_FLOOR = 1;
 
 /** A game's layout, as the calibration names it: "2p", "3p", "4p", "2h-opposite" or "2h-side" (two houses each). */
 export function layoutKey(s: GameState): string {
@@ -81,28 +121,49 @@ export function layoutKey(s: GameState): string {
   return Math.abs(mine[0]! - mine[1]!) === 2 ? '2h-opposite' : '2h-side';
 }
 
-/** The cuts for a layout: the 2p ones scaled by THRESHOLDS_BY_LAYOUT (1 for a layout not in it), none under CUT_FLOOR. */
-export function cutsFor(layout = '2p'): { best: number; tops: [Label, number][] } {
+/** The cuts for a layout: the 2p ones scaled by THRESHOLDS_BY_LAYOUT (1 for a layout not in it), none under the floor. */
+export function cutsFor(layout = '2p', cuts: Cuts = CUTS): { best: number; tops: [Label, number][] } {
   const f = THRESHOLDS_BY_LAYOUT[layout] ?? 1;
-  const cut = (x: number) => Math.max(CUT_FLOOR, x * f);
-  return { best: cut(BEST_WITHIN), tops: THRESHOLDS.map(([l, t]) => [l, cut(t)]) };
-}
-
-/** The label for a move that gave up `gap` points (± `se`) in a game of `layout` (layoutKey). */
-export function labelOf(gap: number, se: number, layout = '2p'): Label {
-  const c = cutsFor(layout);
-  if (gap <= c.best || gap <= se) return 'best';
-  for (const [label, top] of c.tops) if (gap < top) return label;
-  return 'blunder';
+  const cut = (x: number) => Math.max(cuts.floor, x * f);
+  return { best: cut(cuts.best), tops: cuts.tops.map(([l, t]) => [l, cut(t)]) };
 }
 
 /**
- * The version of the labels (thresholds, playouts and SKIP_BELOW): a cached review from another version is
- * redone. 3: a base of 128 playouts, the race and the net screen (#101). Not bumped for the Float32 net (#98):
- * on CI it changed no label (7,368/7,368) and accuracy by at most 5e-7 points. A net change that does change
- * labels must still bump it.
+ * The label for a move that gave up `gap` points (± `se`) in a game of `layout` (layoutKey). With the se rule,
+ * a harsher label only when the gap clears its cut by one standard error (#138): a move near a cut gets the
+ * milder label, as a coin flip isn't a mistake (move 87 of the 2.5.0 demo: 9.6 ± 0.3 points, which 128
+ * playouts called a Blunder 35% of the time under version 3's cuts).
  */
-export const REVIEW_VERSION = 3;
+export function labelOf(gap: number, se: number, layout = '2p', rules: LabelRules = RULES): Label {
+  const c = cutsFor(layout, rules.cuts);
+  if (gap <= c.best || gap <= se) return 'best';
+  const g = rules.se ? gap - se : gap;
+  for (const [label, top] of c.tops) if (g < top) return label;
+  return 'blunder';
+}
+
+/** The labels in order, mildest first, as `cuts` uses them. */
+const ladder = (cuts: Cuts): Label[] => ['best', ...cuts.tops.map(([l]) => l), 'blunder'];
+
+/**
+ * The turning-point rule (#138, the owner's): when the best move kept you at 50% or more and yours put you
+ * under, one label harsher (a Blunder stays a Blunder). A Best stays Best: a move within the Best cut that
+ * happens to cross 50% is a coin flip, not a turning point (#142 review). Chances are fractions (0-1).
+ */
+export function turned(label: Label, played: number, best: number, rules: LabelRules = RULES): Label {
+  if (!rules.turningPoint || label === 'best' || label === 'blunder' || !(best >= 0.5 && played < 0.5)) return label;
+  const l = ladder(rules.cuts);
+  return l[Math.min(l.length - 1, l.indexOf(label) + 1)]!;
+}
+
+/**
+ * The version of the labels and the luck: a cached review from another version is redone. 3: a base of 128
+ * playouts, the race and the net screen (#101). 4 (#135, #138): a harsher label only when the gap clears its
+ * cut by one se; a 6 that rolls again valued one step on; a cancelled run of three 6s shown as one event.
+ * Not bumped for the Float32 net (#98), which changed no label. A change that does change labels or luck
+ * must bump it.
+ */
+export const REVIEW_VERSION = 4;
 
 /**
  * The net screen (#101): a decision whose candidates the net values within this many points of each other
@@ -116,12 +177,11 @@ export const SKIP_BELOW = 0;
 /** Playouts per candidate, and the most a decision is topped up to when its gap sits near a label's edge. */
 export const PLAYOUTS = 128;
 export const PLAYOUTS_MAX = 1024;
-/** How near (points) a label's edge a gap must be to get more playouts. */
-const EDGE = 2;
-
-const nearEdge = (gap: number, layout = '2p') => {
-  const c = cutsFor(layout);
-  return [c.best, ...c.tops.map(([, t]) => t)].some((t) => Math.abs(gap - t) < EDGE);
+/** Whether a gap (± se) sits within `rules.edge` points of a cut, where more playouts can change its label. */
+const nearEdge = (gap: number, se: number, layout: string, rules: LabelRules) => {
+  const c = cutsFor(layout, rules.cuts);
+  const g = rules.se ? gap - se : gap;
+  return Math.abs(gap - c.best) < rules.edge || c.tops.some(([, t]) => Math.abs(g - t) < rules.edge);
 };
 
 export interface MoveReview {
@@ -159,6 +219,8 @@ export interface ReviewOptions {
   skipBelow?: number;
   /** The race's bound for settling Best, in standard errors at every look (for measuring); the engine's schedule by default. */
   raceZ?: number;
+  /** The label rules (default RULES): other ones only for measuring (tools/ai/review_edge.ts). */
+  rules?: LabelRules;
   /** Called once with the decisions (state indexes) in the order they'll be reviewed: the stakes order when the
    *  net screened them (#93: the review screen lists them all straight away, "…" until each verdict lands). */
   onOrder?: (order: number[]) => void;
@@ -172,6 +234,13 @@ export interface RollLuck {
   luck: number;
   /** The spread (standard deviation, in points) of this roll's luck over the faces it could have been. */
   sd?: number;
+  /**
+   * On a third 6 that cancels the run (RULES.md rule 13, #135): the whole run's luck, the three 6s added up
+   * (points). The review shows the run as this one event; the luck total is the same either way.
+   */
+  run?: number;
+  /** On the first two 6s of a cancelled run: shown as part of the run's event, not on their own. */
+  inRun?: true;
 }
 
 /** A deterministic seed for one decision of one game, so a review never changes when it's run again. */
@@ -193,7 +262,8 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
   const skipBelow = opts.skipBelow ?? SKIP_BELOW;
   const layout = states[0] ? layoutKey(states[0]) : '2p';
   // The race settles Best within the layout's own Best cut (labelOf's), so it never calls Best what the cuts call Good.
-  const bestCut = cutsFor(layout).best;
+  const rules = opts.rules ?? RULES;
+  const bestCut = cutsFor(layout, rules.cuts).best;
   const todo: number[] = [];
   for (let i = 0; i + 1 < states.length; i++) {
     const s = states[i]!;
@@ -262,7 +332,7 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
       }
     }
     // Not settled as Best: the full review's values (the race filled up to n), topped up near an edge as always.
-    while (!settledBest && n < PLAYOUTS_MAX && c !== v.best && nearEdge(100 * v.gap[c]!, layout)) {
+    while (!settledBest && n < PLAYOUTS_MAX && c !== v.best && nearEdge(100 * v.gap[c]!, 100 * v.se[c]!, layout, rules)) {
       n *= 2;
       v = await reviewer(s, n, decisionSeed(rec, s));
     }
@@ -272,7 +342,7 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
     const best = v.ofMove.indexOf(v.best);
     const gaps = v.ofMove.map((c) => (c === v.best ? 0 : Math.round(1000 * v.gap[c]!) / 10));
     // The race settles Best only when every rival is, even at +z se, under the layout's Best cut better: labelOf agrees.
-    const label = settledBest ? 'best' : labelOf(gap, se, layout);
+    const label = turned(settledBest ? 'best' : labelOf(gap, se, layout, rules), v.mean[cp]!, v.mean[v.best]!, rules);
     const r: MoveReview = { at: i, owner, played, best, playedChance: v.mean[cp]!, bestChance: v.mean[v.best]!, gap, se, label, gaps };
     if (settledBest) r.approx = 'race';
     out.push(r);
@@ -288,12 +358,24 @@ export function faceChances(rec: GameRecord, s: GameState): number[] {
   return diceWeights(s.players, color, seeded(mixSeed(rec.seed, 'dice' + positionKey(s))), s.singles);
 }
 
-/** The roller's chance after `face` at `s`: the best play of the dice it completes, or the net's value mid-tray. */
-function chanceAfter(net: Evaluator, s: GameState, face: number): number {
+/**
+ * The roller's chance after `face` at `s`: the best play of the dice it completes; after a 6 that rolls again
+ * (`step`), the expectation over the next face, fair, one step on (#135: the net reads a tray with 6s in it up
+ * to 5 points low against playouts, and one step on the mean error goes from 2.6 to 1.6 points; a 6 inside
+ * that step takes the net's value, as a full recursion through the trays of two and three dice would cost
+ * 4-16x for no measured gain); else (the turn has passed) the net's value. sim-wasm chance_after mirrors this
+ * operation for operation.
+ */
+function chanceAfter(net: Evaluator, s: GameState, face: number, step = true): number {
   const owner = s.players[s.current]!.owner;
   const owners = Math.max(...s.players.map((p) => p.owner)) + 1;
   const t = roll(s, () => 0, face);
   if (t.phase === 'move' && t.current === s.current) return Math.max(...searchValues(net, t, { depth: 1, chance: 0 }).map((x) => x.value));
+  if (step && t.phase === 'roll' && t.current === s.current) {
+    let e = 0;
+    for (let f = 1; f <= 6; f++) e += chanceAfter(net, t, f, false) / 6;
+    return e;
+  }
   return ownerValues(net, t, owners)[owner]!;
 }
 
@@ -320,6 +402,23 @@ export function luckFrom(rec: GameRecord, states: GameState[], i: number, v: num
 export function rollLuck(rec: GameRecord, states: GameState[], net: Evaluator): RollLuck[] {
   const out: RollLuck[] = [];
   for (let i = 0; i + 1 < states.length; i++) if (isJudgedRoll(states, i)) out.push(luckFrom(rec, states, i, faceValues(net, states[i]!)));
+  return markSixRuns(states, out);
+}
+
+/**
+ * Marks each cancelled run of three 6s (#135) in a game's luck: the third 6 (rolled with two 6s already in this
+ * run) gets the run's total, the two before it `inRun`. Every luck number stays as it is.
+ */
+export function markSixRuns(states: GameState[], luck: RollLuck[]): RollLuck[] {
+  const out = luck.map((l) => ({ ...l }));
+  out.forEach((l, k) => {
+    if (l.face !== 6 || states[l.at]!.sixes !== 2) return;
+    const a = out[k - 2];
+    const b = out[k - 1];
+    if (!a || !b || a.owner !== l.owner || b.owner !== l.owner || a.face !== 6 || b.face !== 6 || states[b.at]!.sixes !== 1 || states[a.at]!.sixes !== 0) return;
+    a.inRun = b.inRun = true;
+    l.run = a.luck + b.luck + l.luck;
+  });
   return out;
 }
 

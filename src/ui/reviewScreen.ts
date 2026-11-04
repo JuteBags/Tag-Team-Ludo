@@ -13,7 +13,7 @@ import { dieMarkup } from './dice';
 import { framesOf, namesOf } from './replay';
 import { follow } from './reviewQueue';
 import { decisionsToReview, peopleOf, type ReviewProgress } from './reviewRun';
-import { accuracyText, bigRolls, runningAccuracy, runningLuck, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
+import { accuracyText, bigRolls, runningAccuracy, runningLuck, sixRuns, etaText, FEW_BIG_DECISIONS, evenChance, graphPoints, headline, keyMoves, LABEL_LOOK, LABELS, reviewedText, rollText, SHOW_AFTER, turningPoint, verdictText } from './reviewText';
 import type { StoredReview } from './store';
 
 const GW = 330;
@@ -384,7 +384,11 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       h.className = 'rvhead';
       h.textContent = 'Big dice moments';
       list.appendChild(h);
-      for (const r of bigRolls(d.luck).filter((r) => !(tp?.kind === 'roll' && tp.roll === r))) list.appendChild(rollRow(r));
+      const big = bigRolls(d.luck).filter((r) => !(tp?.kind === 'roll' && tp.roll.at === r.at));
+      for (const r of big) list.appendChild(rollRow(r));
+      // This person's cancelled runs of three 6s (#135) are always listed: one row each, after the big ones.
+      const shown = new Set([...big.map((r) => r.at), ...(tp?.kind === 'roll' ? [tp.roll.at] : [])]);
+      for (const r of sixRuns(d.luck, pov).filter((r) => !shown.has(r.at))) list.appendChild(rollRow(r));
     }
   };
 
@@ -457,7 +461,8 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     if (row.dataset.roll !== undefined) {
       const r = d.luck?.find((x) => x.at === Number(row.dataset.roll));
       const step = r ? frameAfter(r.at) : -1;
-      onReplayAt(Number(row.dataset.roll), r ? `${rollText(r, names[r.owner]!, isYou(r.owner))}${frames[step] ? ` · ${frames[step]!.caption}` : ''}` : '', pov);
+      // A cancelled run's caption is the event alone: the fanned dice already show the roll (#142 UI review).
+      onReplayAt(Number(row.dataset.roll), r ? `${rollText(r, names[r.owner]!, isYou(r.owner))}${frames[step] && r.run === undefined ? ` · ${frames[step]!.caption}` : ''}` : '', pov);
     } else {
       // No caption of its own: the replay says the verdict in its plain words (#124).
       onReplayAt(Number(row.dataset.at), '', pov);

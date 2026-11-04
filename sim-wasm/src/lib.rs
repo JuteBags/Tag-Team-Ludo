@@ -17,7 +17,7 @@
 //! same as every sim-rs trace, so the index means the same move on both sides.
 use ludo_sim::bot::Policy;
 use ludo_sim::eval::Evaluator;
-use ludo_sim::game::{tray_moves, Game, PHASE_MOVE};
+use ludo_sim::game::{tray_moves, Game, PHASE_MOVE, PHASE_ROLL};
 use ludo_sim::rng::Rng;
 use ludo_sim::rules::{Board, Player};
 use ludo_sim::search::SearchOptions;
@@ -291,8 +291,9 @@ pub extern "C" fn luck_peak() -> u32 {
     LUCK_PEAK.with(|p| *p.borrow() as u32)
 }
 
-/// The roller's chance after `face` at `g` (a roll state): review.ts chanceAfter.
-fn chance_after(net: &Evaluator, g: &Game, face: u8, leaves: &mut ludo_sim::search::Map<[f64; 4]>) -> f64 {
+/// The roller's chance after `face` at `g` (a roll state): review.ts chanceAfter, operation for operation
+/// (`step`: a 6 that rolls again is valued one step on).
+fn chance_after(net: &Evaluator, g: &Game, face: u8, step: bool, leaves: &mut ludo_sim::search::Map<[f64; 4]>) -> f64 {
     let owner = g.b.p[g.current].owner as usize;
     let mut t = *g;
     t.roll(face);
@@ -304,6 +305,13 @@ fn chance_after(net: &Evaluator, g: &Game, face: u8, leaves: &mut ludo_sim::sear
             best = ludo_sim::jsmath::max(best, v);
         }
         best
+    } else if step && t.phase == PHASE_ROLL && t.current == g.current {
+        // A 6 that rolls again (#135): the expectation over the next face, one step on, as review.ts chanceAfter.
+        let mut e = 0.0;
+        for f in 1..=6u8 {
+            e += chance_after(net, &t, f, false, leaves) / 6.0;
+        }
+        e
     } else {
         ludo_sim::search::owner_values_keep(net, &t, leaves)[owner]
     }
@@ -333,7 +341,7 @@ pub unsafe extern "C" fn luck_chunk(states: *mut u8, len: usize, count: u32, kin
                             if leaves.len() >= LUCK_MAX {
                                 leaves.clear();
                             }
-                            out.push(chance_after(&eng.net, &g, f, leaves));
+                            out.push(chance_after(&eng.net, &g, f, true, leaves));
                         }
                     } else {
                         if leaves.len() >= LUCK_MAX {
