@@ -5,7 +5,8 @@ import { homeScreen } from './homeScreen';
 import { handleBack } from './native';
 import type { GameConfig, Mode } from './setup';
 import { setupScreen } from './setupScreen';
-import { giveUpSaved, loadGame, loadReview, type SavedGame } from './store';
+import { giveUpSaved, loadGame, loadPuzzleLog, loadReview, type SavedGame } from './store';
+import { puzzleBadge } from './puzzleDay';
 import { applyLook } from './themes';
 import { offerUpdate } from './update';
 import { offerCheckIn } from './checkin';
@@ -35,9 +36,9 @@ export function mountApp(root: HTMLElement) {
   const home = async () => {
     game = null;
     setGame('none');
-    const saved = await loadGame();
+    const [saved, log] = await Promise.all([loadGame(), loadPuzzleLog()]);
     if (game) return; // a game started while the save was loading
-    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()));
+    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle());
     setScreen(stage, screen);
     // On the home screen only, never during a game: a newer version on the site, then today's check-in.
     void offerUpdate(screen).then(() => offerCheckIn(screen));
@@ -49,6 +50,9 @@ export function mountApp(root: HTMLElement) {
       count = 2;
       setup(mode, 2);
     }));
+  /** The daily puzzle (#99): the screen and the pool load together; its log is read fresh each time. */
+  const puzzle = () =>
+    void show(stage, () => Promise.all([screens.puzzle(), loadPuzzleLog()]), ([m, log]) => m.puzzleScreen(m.pool, log, () => void home()), () => void home());
   /** The replay of `rec`; `back` returns to where it was opened from. With a stored review it opens in review mode. */
   // `keep`: the game is one of the past games, so its review is stored (not for a game from a link).
   const storedReview = async (rec: GameRecord, keep: boolean) =>
