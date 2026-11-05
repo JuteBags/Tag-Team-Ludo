@@ -233,13 +233,20 @@ function ago(t: number): string {
 /** The pin (#97): an outline when off, filled gold when on (styles.css .pgpin). */
 const PIN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 6 3 3v2h-4v6l-1 1-1-1v-6H7v-2l3-3z"/></svg>';
 
-/** A short note over a sheet (the achievement toast's look), gone after a few seconds. */
+/** A short note just above a sheet's DONE (the achievement toast's look), read out politely, gone after ~2.5 s. */
 function note(ov: HTMLElement, text: string) {
-  const t = document.createElement('div');
-  t.className = 'achtoast sheetnote';
+  const box = ov.querySelector<HTMLElement>('.box')!;
+  let t = box.querySelector<HTMLElement>('.sheetnote');
+  if (!t) {
+    t = document.createElement('div');
+    t.className = 'achtoast sheetnote';
+    t.setAttribute('role', 'status');
+    t.setAttribute('aria-live', 'polite');
+    box.appendChild(t);
+  }
   t.textContent = text;
-  ov.appendChild(t);
-  t.animate([{ opacity: 0, transform: 'translate(-50%,10px)' }, { opacity: 1, transform: 'translate(-50%,0)', offset: 0.12 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }], { duration: 2600, fill: 'both' }).onfinish = () => t.remove();
+  t.getAnimations().forEach((a) => a.cancel());
+  t.animate([{ opacity: 0, transform: 'translate(-50%,10px)' }, { opacity: 1, transform: 'translate(-50%,0)', offset: 0.12 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }], { duration: 2600, fill: 'both' });
 }
 
 /**
@@ -287,7 +294,7 @@ export function pastGamesSheet(host: HTMLElement, games: PastGame[], onReplay: (
         const colours = [...new Set(g.rec.seats.map((s) => s.color))].map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
         const what = g.mode === 'pvp' ? 'With friends' : 'vs Computer';
         const pin = `<button class="pgpin${g.pinned ? ' on' : ''}" data-pin="${i}" aria-pressed="${g.pinned ? 'true' : 'false'}" aria-label="${g.pinned ? 'Unpin this game' : 'Pin this game'}">${PIN_ICON}</button>`;
-        return `<div class="pg${g.mode === 'pvc' && g.place === 1 ? ' won' : ''}"><button class="pgmain" data-i="${i}"><span class="pgc">${colours}</span><span class="pgt"><b>${what} · ${people} players</b><small>${ago(g.at)}${g.mode === 'pvc' ? ` · <em>${g.place === 1 ? '🏆 Won' : place(g.place)}</em>` : ''}</small>${status(g)}</span></button><button class="pgplay" data-replay="${i}" aria-label="Watch the replay">▶</button>${pin}</div>`;
+        return `<div class="pg${g.mode === 'pvc' && g.place === 1 ? ' won' : ''}"><button class="pgmain" data-i="${i}"><span class="pgc">${colours}</span><span class="pgt"><b>${what} · ${people} players</b><small>${ago(g.at)}${g.mode === 'pvc' ? ` · <em>${g.place === 1 ? '🏆 Won' : place(g.place)}</em>` : ''}</small>${status(g)}</span></button><span class="pgside"><button class="pgplay" data-replay="${i}" aria-label="Watch the replay">▶</button>${pin}</span></div>`;
       })
       .join('');
   const ov = sheet(host, 'Games & reviews', past.length ? `<p class="sub">Tap a game for its review, ▶ for the replay</p><div class="pglist">${rows()}</div>` : `<div class="empty"><b class="disp">No games yet</b><p class="sub">Finish a game and its replay and review show up here.</p></div>`);
