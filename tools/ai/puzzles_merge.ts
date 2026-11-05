@@ -95,13 +95,14 @@ const expert = [...expertAll.filter((p) => candidates(p) >= 3), ...expertAll.fil
 });
 // With --faces and a kept pool that has its Expert list, that list is kept too (only the strips are added).
 const expertList = facesOf && keep?.expert ? keep.expert : expert.map(compact);
-// Each entry's roll strip (#194): [13] the faces' win % with best play, [14] their chances under the app's
-// dice (both 1 decimal, faces 1..6), or 0 for a decision in the middle of a turn's dice.
+// Each entry's roll strip (#194): [13] the faces' win % with best play (whole %, faces 1..6), [14] their
+// chances under the app's dice (%, 1 decimal), or 0 for a decision in the middle of a turn's dice.
 const withFaces = (e: unknown[]) => {
   if (!facesOf) return e;
   const f = facesOf[idOf(e)];
   if (f === undefined) throw new Error(`no faces for ${idOf(e)}`);
-  return [...e.slice(0, 13), f ? f.faces : 0, f ? f.weights : 0];
+  // The faces in whole %, as the puzzle's chances (so the rolled face is the best move's chance exactly).
+  return [...e.slice(0, 13), f ? f.faces.map((x) => Math.round(x)) : 0, f ? f.weights : 0];
 };
 // The pool's version: every regeneration or re-merge bumps it (a cached entry is only decoded against its own).
 const POOL_VERSION = facesOf ? 4 : 3;
