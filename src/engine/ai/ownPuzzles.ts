@@ -5,10 +5,10 @@
 //   2nd-best gap − 2·se ≥ 3·f + 0.5, and se ≤ 1.5 (f: the layout's scale, THRESHOLDS_BY_LAYOUT)
 // Moves with a gap of 0 must reach the best's position (the same candidate), or it's a tie: no puzzle. The
 // reveal's line is the real game: the played move and what followed, to the end of the mover's next turn.
-import { move, moveEvent, positionKey, replay, seeded, type GameRecord, type GameState } from '..';
-import type { Puzzle } from '../puzzles';
+import { mixSeed, move, moveEvent, positionKey, replay, roll, seeded, type GameRecord, type GameState } from '..';
+import { rollStrip, type Puzzle, type RollStrip } from '../puzzles';
 import { chooseBotMove } from './levels';
-import { layoutKey, REVIEW_VERSION, THRESHOLDS_BY_LAYOUT, type MoveReview } from './review';
+import { faceChances, layoutKey, REVIEW_VERSION, THRESHOLDS_BY_LAYOUT, type MoveReview } from './review';
 
 /** The played move's standard error above which the stand-in is too loose. */
 export const OWN_MAX_SE = 1.5;
@@ -22,6 +22,11 @@ export interface OwnPuzzle extends Omit<Puzzle, 'line' | 'wrong' | 'layout'> {
   layout: string;
   /** The move they played (a mistake or blunder) and the real game from there. */
   played: { move: number; events: string };
+  /**
+   * Where the roll's strip comes from (#194), when the decision came straight from a roll: the roll state
+   * before it, each face's chance under the game's dice, and the seed. ownRollStrip works it out.
+   */
+  rollFrom: { pre: GameState; weights: number[]; seed: number } | null;
 }
 
 /** A game of theirs with its review: `id` names the game (the store's key), `v` the review's version. */
@@ -68,6 +73,32 @@ function bandOf(s: GameState, gaps: number[], f: number, seed: number): Puzzle['
   return band;
 }
 
+/** The roll that led to the decision at `at` (re-rolling its face gives that position), or null mid-turn. */
+function rollFromOf(rec: GameRecord, states: GameState[], at: number): OwnPuzzle['rollFrom'] {
+  const s = states[at]!;
+  const pre = states[at - 1];
+  if (!pre || pre.phase !== 'roll' || pre.current !== s.current || !s.dice) return null;
+  const again = roll(pre, () => 0, s.dice);
+  if (positionKey(again) !== positionKey(s)) return null;
+  return { pre, weights: faceChances(rec, pre), seed: decisionSeedOf(rec, s) };
+}
+
+/** A seed for the strip's playouts: the decision's own (the review's decisionSeed is the same idea). */
+const decisionSeedOf = (rec: GameRecord, s: GameState) => mixSeed(rec.seed ?? 0x5eed, 'faces' + positionKey(s));
+
+/**
+ * The roll's strip for one of your puzzles (#194), worked out when it opens: each face's win chance with best
+ * play at `n` playouts (1,024: the pool's) on the review workers (`faces`: workerFaces), the rolled face being
+ * your puzzle's best-move chance. Null when the decision didn't come straight from a roll, or without workers.
+ */
+export async function ownRollStrip(p: OwnPuzzle, faces: (pre: GameState, n: number, seed: number, rolled: { face: number; chance: number }) => Promise<number[]> | null, n = 1024): Promise<RollStrip | null> {
+  if (!p.rollFrom) return null;
+  const face = p.state.dice!;
+  const v = await faces(p.rollFrom.pre, n, p.rollFrom.seed, { face, chance: p.chances[p.best]! / 100 });
+  if (!v) return null;
+  return rollStrip(face, v.map((x) => Math.round(1000 * x) / 10), p.rollFrom.weights.map((w) => Math.round(1000 * w) / 10));
+}
+
 /**
  * Every puzzle in these reviewed games, biggest mistakes first (then newer games first: `games` newest first).
  * Only full reviews of this version (REVIEW_VERSION) count.
@@ -101,6 +132,9 @@ export function ownPuzzles(games: ReviewedGame[]): OwnPuzzle[] {
         chances: m.gaps.map((x, i) => Math.round(i === m.played ? 100 * m.playedChance : best - x)),
         best: m.best,
         expert: false,
+        // The roll's strip is worked out when the puzzle opens (#194, in the review worker): null until then.
+        roll: null,
+        rollFrom: rollFromOf(g.rec, r.states, m.at),
         played: { move: m.played, events: followed(g.rec, r.states, m.at) },
         order: gi,
       });
