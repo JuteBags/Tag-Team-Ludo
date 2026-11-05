@@ -39,12 +39,14 @@ interface Settings {
   undoWait: boolean;
   /** Achievements done (rewards.ts), by id. */
   achieved: string[];
+  /** Haptics for your own moments (haptics.ts, #73), apart from sound. */
+  vibration: boolean;
 }
 
 export type Theme = 'classic' | 'wood' | 'dark' | 'metal' | 'tron' | 'halloween';
 
 const KEY = 'ludo-settings';
-const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: false, friendNames: [], myName: '', myColor: 'blue', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false, killFx: 'full', undos: 2, undoWait: true, achieved: [] };
+const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: false, friendNames: [], myName: '', myColor: 'blue', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false, killFx: 'full', undos: 2, undoWait: true, achieved: [], vibration: true };
 
 function load(): Settings {
   try {

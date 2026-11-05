@@ -1104,6 +1104,11 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .swrow[data-k=dicesound]{min-height:44px;padding-left:26px}
 .swrow.dim{opacity:.45}
 
+/* #73 the bench's "Feel each haptic" row: a small button per moment. */
+.benchfeel{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.benchfeel h3{width:100%;margin:0;font-size:14px;font-weight:900}
+.benchfeel button{width:auto;margin:0;padding:8px 12px;border-radius:12px;font-size:13px;font-weight:800;text-decoration:none;background:rgba(255,255,255,.12);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.22)}
+.benchfeel{justify-content:center}
 /* #194 the roll card (the owner's pick A): the strip, each face's win % with best play. Neutral: luck is never green or red. */
 .pzfaces{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
 .pzfaces .f{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0 3px;border-radius:10px;background:rgba(255,255,255,.07)}

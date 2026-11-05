@@ -10,6 +10,7 @@
 //     memory, with the pool size the app would use on this device.
 // The review queue waits while a test runs, so a past game's review doesn't share the phone's time.
 import { SEATS as TABLE, chooseMove, createGame, move, replay, roll, seeded, seededDie, type Color, type GameRecord, type GameState, type Seat } from '../engine';
+import { createHaptics, defaultDriver, PATTERNS, type Moment } from './haptics';
 import { LUCK_CHUNK, REVIEW_VERSION, type Label } from '../engine/ai/review';
 import { LiveReview, livePoolSize, type LiveEngine } from './liveReview';
 import { setGame } from './reviewQueue';
@@ -283,6 +284,22 @@ export function benchRun(review: boolean, deps: BenchDeps): { done: Promise<void
   };
 }
 
+/**
+ * "Feel each haptic" (#73): a button per moment, to tune the feels on a real phone (an emulator has no motor).
+ * It plays even with Vibration off and has no rate limit, so each one can be tried on its own.
+ */
+function hapticsRow(): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'benchfeel';
+  const tryIt = createHaptics(defaultDriver(), () => true);
+  row.innerHTML = `<h3>Feel each haptic${tryIt.available ? '' : ' (no vibration on this device)'}</h3>${(Object.keys(PATTERNS) as Moment[]).map((m) => `<button data-feel="${m}"${tryIt.available ? '' : ' disabled'}>${m}</button>`).join('')}`;
+  row.addEventListener('click', (e) => {
+    const m = (e.target as HTMLElement).closest<HTMLElement>('[data-feel]')?.dataset.feel as Moment | undefined;
+    if (m) tryIt.feel(m);
+  });
+  return row;
+}
+
 export function benchScreen(onClose: () => void): HTMLElement {
   const el = document.createElement('div');
   el.className = 'screen bench';
@@ -294,6 +311,7 @@ export function benchScreen(onClose: () => void): HTMLElement {
     <button class="b3 blue disp" data-act="copy" hidden>COPY RESULTS</button>
     <button class="later" data-act="back">Back to the game</button></div>`;
   const out = el.querySelector<HTMLElement>('.benchout')!;
+  out.before(hapticsRow());
   const starts = [...el.querySelectorAll<HTMLButtonElement>('[data-act=run], [data-act=review]')];
   const lines: string[] = [];
   const say = (l: string) => {

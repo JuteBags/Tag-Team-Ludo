@@ -3,6 +3,7 @@ import { isSafe, type Color, type Move, type PlayerState } from '../engine';
 import { PALETTE, boardSVG, pawnArt } from './art';
 import { playFinisher } from './finishers';
 import { spot, stepPoints, type Pt } from './geometry';
+import { haptics } from './haptics';
 import { sfx } from './sfx';
 import { labelLayout, MARK_SCALE, nearest, pillAt, type Pill, type Target } from './targets';
 
@@ -332,6 +333,7 @@ export class BoardView {
     if (own.length === 1) return this.choose(own[0]!);
     this.selected = hit.pawn;
     sfx.tick();
+    haptics.feel('select');
     this.drawTargets(own);
     this.onSelect?.(own);
   }
