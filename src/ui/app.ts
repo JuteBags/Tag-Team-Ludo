@@ -40,7 +40,7 @@ export function mountApp(root: HTMLElement) {
     setGame('none');
     const [saved, log] = await Promise.all([loadGame(), loadPuzzleLog()]);
     if (game) return; // a game started while the save was loading
-    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle(), (rejoin) => void online(rejoin));
+    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle(), { room: (rejoin) => void online(rejoin) });
     setScreen(stage, screen);
     // On the home screen only, never during a game: the Privacy note and Terms of use until they're accepted
     // (#208: first launch, and again when they change), then a newer version on the site, then today's check-in.
