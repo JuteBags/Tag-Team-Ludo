@@ -16,7 +16,7 @@ import { replay, type GameRecord } from '../record';
 import { LUCK_CHUNK, luckChunk, luckPass, netLuck, wasmLuck, type LuckSource } from './luck';
 import type { ReviewAsk } from './review';
 import { RolloutEngine } from './rollout';
-import { wasmUrl } from './wasmModule';
+import wasmUrl from './ludo_wasm.wasm?url';
 import netUrl from './extreme-net.bin?url';
 import type { GameState } from '../types';
 
@@ -26,7 +26,7 @@ let netBytes: Promise<Uint8Array> | null = null;
 const loadNet = () => (netBytes ??= fetch(netUrl).then(async (r) => new Uint8Array(await r.arrayBuffer())));
 
 function load(): Promise<RolloutEngine> {
-  engine ??= Promise.all([fetch(wasmUrl()).then((r) => r.arrayBuffer()), loadNet()]).then(([wasm, net]) => RolloutEngine.create(wasm, net, PLAYOUT_RULES));
+  engine ??= Promise.all([fetch(wasmUrl).then((r) => r.arrayBuffer()), loadNet()]).then(([wasm, net]) => RolloutEngine.create(wasm, net, PLAYOUT_RULES));
   return engine;
 }
 

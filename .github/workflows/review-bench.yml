@@ -14,10 +14,6 @@ on:
       - 'tools/bench/review-bench.mjs'
       - '.github/workflows/review-bench.yml'
   workflow_dispatch:
-    inputs:
-      query:
-        description: "Added to the page's URL, e.g. ?wasm=plain for the plain engine build (#151)"
-        default: ''
 
 permissions:
   contents: read
@@ -40,4 +36,4 @@ jobs:
           npx vite preview --port 4173 --strictPort > preview.log 2>&1 &
           for i in $(seq 60); do curl -sf http://localhost:4173/ > /dev/null && break; sleep 1; done
       - run: nproc
-      - run: node tools/bench/review-bench.mjs "http://localhost:4173/${{ inputs.query }}" "$(command -v google-chrome || command -v chromium)"
+      - run: node tools/bench/review-bench.mjs http://localhost:4173/ "$(command -v google-chrome || command -v chromium)"

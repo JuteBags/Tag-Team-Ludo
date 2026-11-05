@@ -68,8 +68,7 @@ export class ReviewPool {
   private bySeed = new Map<number, Slot>();
   private nextId = 0;
 
-  /** `name`: the workers' name (`wasm=plain` makes them load the plain engine build, #151). */
-  constructor(readonly size: number = poolSize(), readonly name = '') {}
+  constructor(readonly size: number = poolSize()) {}
 
   private make(): Slot[] | null {
     if (this.slots !== undefined) return this.slots;
@@ -77,7 +76,7 @@ export class ReviewPool {
     for (let k = 0; k < this.size; k++) {
       let w: Worker;
       try {
-        w = new Worker(new URL('./rollout-worker.ts', import.meta.url), { type: 'module', name: this.name });
+        w = new Worker(new URL('./rollout-worker.ts', import.meta.url), { type: 'module' });
       } catch {
         break;
       }
