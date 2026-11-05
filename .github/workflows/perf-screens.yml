@@ -49,3 +49,49 @@ jobs:
         with:
           name: perf-screens
           path: perf-screens.json
+
+  # The review screen (#98 target 3): tools/perf/review.mjs and review-frames.mjs on main's build and on this
+  # one, on the same runner: the before and after, and every redraw's DOM and screenshots compared.
+  review:
+    name: perf review screen
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'performance') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha || 'main' }}
+          path: base
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Build this branch and main
+        run: |
+          npm ci --no-audit --no-fund && npm run build
+          (cd base && npm ci --no-audit --no-fund && npm run build)
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.63.0
+      - name: Serve both builds
+        run: |
+          npx vite preview --port 4173 --strictPort > preview.log 2>&1 &
+          (cd base && npx vite preview --port 4174 --strictPort > ../preview-base.log 2>&1 &)
+          for p in 4173 4174; do for i in $(seq 60); do curl -sf http://localhost:$p/ > /dev/null && break; sleep 1; done; done
+      - run: echo "commit ${{ github.sha }} against main $(git -C base rev-parse --short HEAD), $(nproc) vCPUs, $(google-chrome --version 2>/dev/null)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Measure (main, then this branch)
+        run: |
+          chrome="$(command -v google-chrome || command -v chromium)"
+          node tools/perf/review.mjs http://localhost:4174/ "$chrome" --throttle ${{ inputs.throttle || '4' }} --label main --out perf-review-main.json
+          node tools/perf/review.mjs http://localhost:4173/ "$chrome" --throttle ${{ inputs.throttle || '4' }} --label "this branch" --out perf-review.json
+      - name: Frames (main, then this branch), compared
+        run: |
+          chrome="$(command -v google-chrome || command -v chromium)"
+          node tools/perf/review-frames.mjs http://localhost:4174/ frames/main "$chrome"
+          node tools/perf/review-frames.mjs http://localhost:4173/ frames/branch "$chrome"
+          node tools/perf/review-frames.mjs --compare frames/main frames/branch
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: perf-review
+          path: |
+            perf-review*.json
+            frames/

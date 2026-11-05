@@ -9,7 +9,7 @@
 import { ownerRanking, replay, type GameRecord, type GameState } from '../engine';
 import { summary, type Label, type MoveReview, type RollLuck } from '../engine/ai/review';
 import { avatarSVG, cssVars, icons } from './art';
-import { dieMarkup } from './dice';
+import { stillDieMarkup } from './dice';
 import { framesOf, namesOf } from './replay';
 import { follow } from './reviewQueue';
 import { decisionsToReview, peopleOf, type ReviewProgress } from './reviewRun';
@@ -48,6 +48,63 @@ const saveGraphTab = (t: GraphTab) => {
   } catch {
     // Storage blocked: the choice lasts for this screen.
   }
+};
+
+// Each redraw touches only what changed (#98 target 3): a part whose markup is the same keeps its nodes, so the
+// browser restyles and lays out only what's new. The screen is the same at every step as a full rebuild.
+const drawn = new WeakMap<Element, string>();
+/** Sets `e`'s HTML, or leaves it when it's what was set last. */
+const setHTML = (e: Element, html: string) => {
+  if (drawn.get(e) === html) return;
+  e.innerHTML = html;
+  drawn.set(e, html);
+};
+const setText = (e: Element, text: string) => {
+  if (e.textContent !== text) e.textContent = text;
+};
+/**
+ * Makes `list`'s children the rows `want` names, in order: a row already there under the same key is kept (moved
+ * if need be), a new one is made, and the rest go. A key names everything its row shows.
+ */
+const rowKey = new WeakMap<Element, string>();
+const fillRows = (list: HTMLElement, want: [string, () => HTMLElement][]) => {
+  const have = new Map<string, Element>();
+  for (const c of Array.from(list.children)) {
+    const k = rowKey.get(c);
+    if (k !== undefined && !have.has(k)) have.set(k, c);
+  }
+  let i = 0;
+  for (const [k, make] of want) {
+    let e = have.get(k);
+    if (e) have.delete(k);
+    else {
+      e = make();
+      rowKey.set(e, k);
+    }
+    const there = list.children[i];
+    if (there !== e) list.insertBefore(e, there ?? null);
+    i++;
+  }
+  while (list.children.length > i) list.lastElementChild!.remove();
+};
+/** Makes `strip`'s cells the markup in `cells`, replacing only the cells that changed. */
+const drawnCells = new WeakMap<Element, string[]>();
+const fillCells = (strip: HTMLElement, cells: string[]) => {
+  const last = drawnCells.get(strip);
+  drawnCells.set(strip, cells);
+  if (!last) {
+    strip.innerHTML = cells.join('');
+    return;
+  }
+  const t = document.createElement('template');
+  for (let i = 0; i < cells.length; i++) {
+    if (last[i] === cells[i]) continue;
+    t.innerHTML = cells[i]!;
+    const cell = t.content.firstElementChild!;
+    if (i < last.length) strip.replaceChild(cell, strip.children[i]!);
+    else strip.appendChild(cell);
+  }
+  while (strip.children.length > cells.length) strip.lastElementChild!.remove();
 };
 
 /** What the screen draws: the live review, or the older one while it's being redone. */
@@ -151,27 +208,34 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const tp = ready && d.luck ? turningPoint(mine, d.luck, pov, (at) => (p.chances?.[at]?.[pov] !== undefined ? p.chances[at]![pov]! / 100 : undefined)) : null;
     const story = ready && d.luck && s.moves ? headline({ won: won(pov), accuracy: s.accuracy, name: isYou(pov) ? 'You' : names[pov]!, decider: tp?.kind === 'move' ? tp.move : undefined, keyMistakes: s.keyMistakes, inaccuracies: s.labels.inaccuracy }) : '';
     q('.rvhead1').hidden = !story;
-    q('.rvhead1').textContent = story;
+    setText(q('.rvhead1'), story);
     // The card: accuracy (only once done: a partial one swings) and luck % side by side.
-    const card = document.createElement('div');
-    card.className = 'rvcard';
-    card.setAttribute('style', cssVars(colorOf(pov)));
     const acc = !ready ? '…' : s.moves ? accuracyText(s.accuracy) : '–';
     const lpct = d.luck && Number.isFinite(s.luckPct) ? `${Math.round(s.luckPct)}%` : '…';
-    card.innerHTML = `<div class="rvwho"><em class="ac">${acc}<small>accuracy</small></em><em class="lk">${lpct}<small>luck</small></em></div>
+    const cardHTML = `<div class="rvwho"><em class="ac">${acc}<small>accuracy</small></em><em class="lk">${lpct}<small>luck</small></em></div>
       <div class="rvchips">${LABELS.map((l) => `<button data-filter="${l}" style="--c:${LABEL_LOOK[l].color}" aria-label="${LABEL_LOOK[l].name}: ${s.labels[l]}"${filter === l ? ' class="on"' : ''}><i>${LABEL_LOOK[l].sym}</i>${s.labels[l]}</button>`).join('')}</div>
 `;
     // No accuracy for a game without a decision where much was at stake: say why under the card's top row.
-    if (ready && s.moves && !Number.isFinite(s.accuracy)) {
-      const few = document.createElement('p');
-      few.className = 'rvfew';
-      few.textContent = FEW_BIG_DECISIONS;
-      card.querySelector('.rvwho')!.after(few);
+    const fewNote = ready && s.moves && !Number.isFinite(s.accuracy);
+    const cards = q('.rvcards');
+    const cardKey = `${colorOf(pov)}|${fewNote}|${cardHTML}`;
+    if (drawn.get(cards) !== cardKey) {
+      drawn.set(cards, cardKey);
+      const card = document.createElement('div');
+      card.className = 'rvcard';
+      card.setAttribute('style', cssVars(colorOf(pov)));
+      card.innerHTML = cardHTML;
+      if (fewNote) {
+        const few = document.createElement('p');
+        few.className = 'rvfew';
+        few.textContent = FEW_BIG_DECISIONS;
+        card.querySelector('.rvwho')!.after(few);
+      }
+      // No "N key mistakes" line under the name: the tiles below already count every label, and its "key"
+      // (mistakes and blunders) read against the Key moves list, which has inaccuracies too (#158 review).
+      // Everyone else's luck is on their own side of the switch (#167): no "Aarav's dice" rows here.
+      cards.replaceChildren(card);
     }
-    // No "N key mistakes" line under the name: the tiles below already count every label, and its "key"
-    // (mistakes and blunders) read against the Key moves list, which has inaccuracies too (#158 review).
-    // Everyone else's luck is on their own side of the switch (#167): no "Aarav's dice" rows here.
-    q('.rvcards').replaceChildren(card);
     graphLuck = d.luck ?? [];
     drawGraph(mine, tp);
     // Progress: how far, about how long is left, and once done, when.
@@ -179,10 +243,16 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const povTotal = povTotals.get(pov) ?? (povTotals.set(pov, decisionsToReview(rec, states, [pov])), povTotals.get(pov)!);
     const povDone = p.moves.filter((m) => m.owner === pov).length;
     const eta = etaText(p.eta);
-    q('.rvprog span').textContent = p.finished
-      ? [`${povDone} moves reviewed`, reviewedText(p.when)].filter(Boolean).join(' · ')
-      : `${d.stale ? 'Updating' : 'Reviewing'}… ${povDone} of ${povTotal}${eta ? ` · ${eta}` : ''}`;
-    q<HTMLElement>('.rvprog .bar i').style.width = `${povTotal ? (100 * povDone) / povTotal : 100}%`;
+    setText(
+      q('.rvprog span'),
+      p.finished ? [`${povDone} moves reviewed`, reviewedText(p.when)].filter(Boolean).join(' · ') : `${d.stale ? 'Updating' : 'Reviewing'}… ${povDone} of ${povTotal}${eta ? ` · ${eta}` : ''}`,
+    );
+    const bar = q<HTMLElement>('.rvprog .bar i');
+    const width = `${povTotal ? (100 * povDone) / povTotal : 100}%`;
+    if (drawn.get(bar) !== width) {
+      drawn.set(bar, width);
+      bar.style.width = width;
+    }
     q('.rvprog').classList.toggle('done', p.finished);
     q('.rvleave').hidden = p.finished;
     drawList(d, mine, tp);
@@ -198,7 +268,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
   const drawGraph = (mine: MoveReview[], tp: ReturnType<typeof turningPoint>) => {
     graphMoves = mine;
     if (mine.length < SHOW_AFTER) {
-      q('.rvgraph').innerHTML = '';
+      setHTML(q('.rvgraph'), '');
       return;
     }
     if (graphTab !== 'win') return drawLine(mine);
@@ -211,14 +281,14 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     // The turning point sits on its move, or on the first of this side's moves after its roll.
     const ti = !tp ? -1 : tp.kind === 'move' ? mine.indexOf(tp.move) : mine.findIndex((m) => m.at > tp.roll.at);
     const star = ti >= 0 ? pin(pts[ti]![0], pts[ti]![1], '#ffd23f', '★', 'tp') : '';
-    q('.rvgraph').innerHTML = `${graphTabs()}<svg viewBox="-6 -12 ${GW + 40} ${GH + 22}" aria-hidden="true">
+    setHTML(q('.rvgraph'), `${graphTabs()}<svg viewBox="-6 -12 ${GW + 40} ${GH + 22}" aria-hidden="true">
         ${[0, 50, 100].map(tick).join('')}
         <line x1="${GL}" y1="${even}" x2="${GW}" y2="${even}" class="even"/>
         <polyline points="${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')}"/>
         ${pts.slice(0, mine.length).map(([x, y], i) => (mine[i]!.label === 'best' || mine[i]!.label === 'good' || i === ti ? '' : mine[i]!.label === 'inaccuracy' ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.2" class="dot" style="fill:${LABEL_LOOK.inaccuracy.color}"/>` : pin(x, y, LABEL_LOOK[mine[i]!.label].color, LABEL_LOOK[mine[i]!.label].sym))).join('')}
         ${star}
         ${endLabel(end, `${Math.round(100 * (result[0] ?? mine.at(-1)!.playedChance))}%`, 'final')}
-        <rect class="hit" x="${GL}" y="-12" width="${GW - GL}" height="${GH + 22}" fill="transparent"/></svg>`;
+        <rect class="hit" x="${GL}" y="-12" width="${GW - GL}" height="${GH + 22}" fill="transparent"/></svg>`);
   };
   /** A moment on the graph: its label's symbol in a ring of its colour. */
   const pin = (x: number, y: number, c: string, sym: string, cls = '') =>
@@ -256,11 +326,11 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const end = pts.at(-1) ?? faded.at(-1);
     const poly = (ps: [number, number][], cls: string) => (ps.length > 1 ? `<polyline class="${cls}" points="${ps.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ')}"/>` : '');
     const mid = graphTab === 'luck' ? `<line x1="${GL}" y1="${y(50)}" x2="${GW}" y2="${y(50)}" class="even"/><text x="${GW - 4}" y="${y(50) + 12}" text-anchor="end">average luck</text>` : '';
-    q('.rvgraph').innerHTML = `${graphTabs()}<svg viewBox="-6 -12 ${GW + 40} ${GH + 22}" aria-hidden="true">
+    setHTML(q('.rvgraph'), `${graphTabs()}<svg viewBox="-6 -12 ${GW + 40} ${GH + 22}" aria-hidden="true">
         ${[0, 50, 100].map(tick).join('')}${mid}
         ${poly(faded, `${graphTab} early`)}${poly(pts, graphTab)}
         ${end ? `<circle class="${graphTab}" cx="${end[0].toFixed(1)}" cy="${end[1].toFixed(1)}" r="3.5"/>${endLabel(end, label, `final ${graphTab}`)}` : ''}
-        ${graphTab === 'accuracy' ? `<rect class="hit" x="${GL}" y="-12" width="${GW - GL}" height="${GH + 22}" fill="transparent"/>` : ''}</svg>`;
+        ${graphTab === 'accuracy' ? `<rect class="hit" x="${GL}" y="-12" width="${GW - GL}" height="${GH + 22}" fill="transparent"/>` : ''}</svg>`);
   };
 
   const KEY = new Set<Label>(['inaccuracy', 'mistake', 'blunder']);
@@ -293,13 +363,20 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     // Dice are never judged (the owner: no green or red on luck): the swing is neutral and its sign says which way.
     // On another side's review the roll is named, since the swing is the roller's.
     const theirs = r.owner !== pov;
-    b.innerHTML = `<i class="die">${dieMarkup(r.face, 24)}</i><span><b></b><small></small></span><strong class="rvswing other">${swing(x)}</strong>`;
+    b.innerHTML = `<i class="die">${stillDieMarkup(r.face, 24)}</i><span><b></b><small></small></span><strong class="rvswing other">${swing(x)}</strong>`;
     const what = r.run !== undefined ? 'Three 6s cancelled' : theirs ? `${isYou(r.owner) ? 'Your' : `${names[r.owner]}'s`} dice` : 'Dice';
     b.querySelector('b')!.textContent = turning ? 'Turning point' : what;
     b.querySelector('small')!.textContent = `Move ${step > 0 ? step : '?'}${turning && (theirs || r.run !== undefined) ? ` · ${what}` : ''}`;
     b.setAttribute('aria-label', `${turning ? 'Turning point: ' : ''}${rollText(r, names[r.owner]!, isYou(r.owner))}. Move ${step}. ${frames[step]?.caption ?? ''}`);
     return b;
   };
+  /** The keys of the rows above: a row is kept across redraws while its key is the same. */
+  const moveKey = (m: MoveReview, turning = false) => `m${turning ? 't' : ''}|${pov}|${m.at}|${m.owner}|${m.played}|${m.best}|${m.playedChance}|${m.bestChance}|${m.gap}|${m.se}|${m.label}|${m.approx ?? ''}|${m.gaps?.join(',') ?? ''}`;
+  const rollKey = (r: RollLuck, turning = false) => `r${turning ? 't' : ''}|${pov}|${r.at}|${r.owner}|${r.face}|${r.luck}|${r.sd ?? ''}|${r.run ?? ''}`;
+  type Rows = [string, () => HTMLElement][];
+  const addMove = (rows: Rows, m: MoveReview, turning = false) => rows.push([moveKey(m, turning), () => moveRow(m, turning)]);
+  const addRoll = (rows: Rows, r: RollLuck, turning = false) => rows.push([rollKey(r, turning), () => rollRow(r, turning)]);
+  const addNote = (rows: Rows, text: string) => rows.push([`n|${text}`, () => note(text)]);
   /** A decision still to review (#93): where it is in the game, and "…" until its verdict lands. */
   const pendingRow = (at: number, checking: boolean) => {
     const r = document.createElement('div');
@@ -318,7 +395,7 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
    * review works in), each a verdict once it lands or "…" until then. Verdicts from an earlier run (the
    * biggest, done first then) lead. `all`: every decision in game order instead.
    */
-  const checkingList = (list: HTMLElement, p: ReviewProgress, mine: MoveReview[], all: boolean) => {
+  const checkingList = (rows: Rows, p: ReviewProgress, mine: MoveReview[], all: boolean) => {
     const done = new Map(mine.map((m) => [m.at, m]));
     const skipped = new Set(p.skipped ?? []);
     const ownerAt = (at: number) => states[at]!.players[states[at]!.current]!.owner;
@@ -331,16 +408,16 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     for (const at of ats) {
       const m = done.get(at);
       if (m) {
-        if (!filter || m.label === filter) list.appendChild(moveRow(m));
+        if (!filter || m.label === filter) addMove(rows, m);
       } else if (!filter) {
         if (!all && pending >= PENDING_SHOWN) more++;
         else {
-          list.appendChild(pendingRow(at, at === next));
+          rows.push([`p|${at}|${at === next}`, () => pendingRow(at, at === next)]);
           pending++;
         }
       }
     }
-    if (more) list.appendChild(note(`+${more} more to check`));
+    if (more) addNote(rows, `+${more} more to check`);
   };
 
   const note = (text: string) => {
@@ -354,41 +431,50 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const f = q('.rvfilter');
     f.hidden = !filter;
     // The heading names the filter ("Inaccuracy moves"); the bar is just its ✕, on the heading's line (#167).
-    f.querySelector('span')!.textContent = '';
-    const list = q('.rvlist');
-    list.replaceChildren();
+    setText(f.querySelector('span')!, '');
+    const rows: Rows = [];
+    listRows(d, mine, tp, rows);
+    fillRows(q('.rvlist'), rows);
+  };
+  const listRows = (d: Shown, mine: MoveReview[], tp: ReturnType<typeof turningPoint>, rows: Rows) => {
     // While the review runs: every decision straight away, "…" until its verdict lands (#93).
-    q('.rvkeyh').textContent = !d.finished && !d.stale && prog?.order && !filter ? 'Biggest decisions first' : filter ? `${LABEL_LOOK[filter].name} moves` : 'Key moments';
+    setText(q('.rvkeyh'), !d.finished && !d.stale && prog?.order && !filter ? 'Biggest decisions first' : filter ? `${LABEL_LOOK[filter].name} moves` : 'Key moments');
     if (!d.finished && !d.stale && prog?.order) {
-      checkingList(list, prog, mine, false);
+      checkingList(rows, prog, mine, false);
       return;
     }
     if (mine.length < SHOW_AFTER && !d.finished) return;
     if (view === 'all') {
       const shownMoves = filter ? mine.filter((m) => m.label === filter) : mine;
-      for (const m of shownMoves) list.appendChild(moveRow(m));
-      if (!shownMoves.length) list.appendChild(note(filter ? `No ${LABEL_LOOK[filter].name.toLowerCase()} moves${d.finished ? '' : ' so far'}.` : d.finished ? 'No moves to review.' : 'Reviewing…'));
+      for (const m of shownMoves) addMove(rows, m);
+      if (!shownMoves.length) addNote(rows, filter ? `No ${LABEL_LOOK[filter].name.toLowerCase()} moves${d.finished ? '' : ' so far'}.` : d.finished ? 'No moves to review.' : 'Reviewing…');
       return;
     }
     // The turning point first, then the key moves, then the rolls that swung the game.
-    if (tp) list.appendChild(tp.kind === 'move' ? moveRow(tp.move, true) : rollRow(tp.roll, true));
-    const key = keyMoves(mine).filter((m) => !(tp?.kind === 'move' && tp.move === m));
-    for (const m of expanded ? key : key.slice(0, KEY_SHOWN)) list.appendChild(moveRow(m));
-    if (!expanded && key.length > KEY_SHOWN) {
-      const more = document.createElement('button');
-      more.className = 'rvmore';
-      more.dataset.act = 'more';
-      more.textContent = `Show ${key.length - KEY_SHOWN} more`;
-      list.appendChild(more);
+    if (tp) {
+      if (tp.kind === 'move') addMove(rows, tp.move, true);
+      else addRoll(rows, tp.roll, true);
     }
-    if (!key.length && !(tp?.kind === 'move')) list.appendChild(note(d.finished ? 'Clean game: every move was Best or Good.' : 'No mistakes so far.'));
+    const key = keyMoves(mine).filter((m) => !(tp?.kind === 'move' && tp.move === m));
+    for (const m of expanded ? key : key.slice(0, KEY_SHOWN)) addMove(rows, m);
+    if (!expanded && key.length > KEY_SHOWN) {
+      const text = `Show ${key.length - KEY_SHOWN} more`;
+      rows.push([`more|${text}`, () => {
+        const more = document.createElement('button');
+        more.className = 'rvmore';
+        more.dataset.act = 'more';
+        more.textContent = text;
+        return more;
+      }]);
+    }
+    if (!key.length && !(tp?.kind === 'move')) addNote(rows, d.finished ? 'Clean game: every move was Best or Good.' : 'No mistakes so far.');
     if (d.luck?.length) {
       // This side's own biggest rolls, after its moves (anyone else's are on their side of the switch).
       const big = bigRolls(d.luck.filter((r) => r.owner === pov)).filter((r) => !(tp?.kind === 'roll' && tp.roll.at === r.at));
-      for (const r of big) list.appendChild(rollRow(r));
+      for (const r of big) addRoll(rows, r);
       // This person's cancelled runs of three 6s (#135) are always listed: one row each, after the big ones.
       const shown = new Set([...big.map((r) => r.at), ...(tp?.kind === 'roll' ? [tp.roll.at] : [])]);
-      for (const r of sixRuns(d.luck, pov).filter((r) => !shown.has(r.at))) list.appendChild(rollRow(r));
+      for (const r of sixRuns(d.luck, pov).filter((r) => !shown.has(r.at))) addRoll(rows, r);
     }
   };
 
@@ -399,10 +485,12 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
     const cells = mine.length + Math.max(0, d.finished ? 0 : total - mine.length);
     q('.rvstriph').hidden = strip.hidden = cells < SHOW_AFTER;
     const n = Object.fromEntries(LABELS.map((l) => [l, mine.filter((m) => m.label === l).length]));
-    strip.setAttribute('aria-label', `Every move: ${LABELS.map((l) => `${n[l]} ${LABEL_LOOK[l].name}`).join(', ')}`);
-    strip.innerHTML =
-      mine.map((m) => `<i data-at="${m.at}" class="${m.label}${filter && m.label !== filter ? ' dim' : ''}" style="--c:${LABEL_LOOK[m.label].color}"></i>`).join('') +
-      '<i class="todo"></i>'.repeat(Math.max(0, cells - mine.length));
+    const label = `Every move: ${LABELS.map((l) => `${n[l]} ${LABEL_LOOK[l].name}`).join(', ')}`;
+    if (strip.getAttribute('aria-label') !== label) strip.setAttribute('aria-label', label);
+    fillCells(strip, [
+      ...mine.map((m) => `<i data-at="${m.at}" class="${m.label}${filter && m.label !== filter ? ' dim' : ''}" style="--c:${LABEL_LOOK[m.label].color}"></i>`),
+      ...Array.from({ length: Math.max(0, cells - mine.length) }, () => '<i class="todo"></i>'),
+    ]);
   };
 
   let unfollow = () => {};
