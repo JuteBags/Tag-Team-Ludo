@@ -96,7 +96,8 @@ export async function ownRollStrip(p: OwnPuzzle, faces: (pre: GameState, n: numb
   const face = p.state.dice!;
   const v = await faces(p.rollFrom.pre, n, p.rollFrom.seed, { face, chance: p.chances[p.best]! / 100 });
   if (!v) return null;
-  return rollStrip(face, v.map((x) => Math.round(1000 * x) / 10), p.rollFrom.weights.map((w) => Math.round(1000 * w) / 10));
+  // Whole % for the faces, as the pool's and as the puzzle's chances; the weights to 1 decimal.
+  return rollStrip(face, v.map((x) => Math.round(100 * x)), p.rollFrom.weights.map((w) => Math.round(1000 * w) / 10));
 }
 
 /**
