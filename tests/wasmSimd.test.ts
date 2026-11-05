@@ -42,6 +42,22 @@ describe('the SIMD engine build (#151)', () => {
     }
   }, 300_000);
 
+  it("gives every position value (#194) bit for bit as the plain build, and the review's mean for a candidate", async () => {
+    const [plain, simd] = await engines();
+    const all = states(103);
+    for (const [i, s] of all.filter((_, k) => k % 37 === 0).slice(0, 25).entries()) {
+      const owner = s.players[s.current]!.owner;
+      expect(Object.is(simd!.value(s, 32, 7 + i, owner), plain!.value(s, 32, 7 + i, owner))).toBe(true);
+    }
+    // A candidate's value in the review is the same playouts from its position: value() gives it exactly.
+    const d = all.find((s) => s.phase === 'move' && new Set(s.moves.map((m) => JSON.stringify(move(s, m).players.map((p) => p.tokens)))).size === s.moves.length && s.moves.length >= 2)!;
+    const r = plain!.review(d, 64, 21);
+    for (const [k, m] of d.moves.entries()) {
+      const c = r.ofMove[k]!;
+      expect(Object.is(plain!.value(move(d, m), 64, 21, d.players[d.current]!.owner), r.mean[c])).toBe(true);
+    }
+  }, 300_000);
+
   it('gives every luck value bit for bit as the plain build', async () => {
     const [plain, simd] = await engines();
     const all = states(13);

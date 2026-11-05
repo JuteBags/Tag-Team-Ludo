@@ -184,6 +184,32 @@ try {
     await measure("game, the bots' turns", 300);
   }
 
+  // 5c. Steady play (#176): the continued Hard game after its review has caught up with the game so far (a
+  // 20 s wait at the roll), then a move and the bots' turns: with the live pool this device gets, and with 1
+  // live worker (the page reports 3 cores: liveReview.ts livePoolSize gives a computer min(2, cores - 2)).
+  if (saves?.hard) {
+    const realCores = await page.evaluate(() => navigator.hardwareConcurrency);
+    for (const cores of [realCores, 3]) {
+      await cdp.send('Emulation.setHardwareConcurrencyOverride', { hardwareConcurrency: cores });
+      const live = cores <= 2 ? 0 : Math.min(2, cores - 2);
+      await page.evaluate((g) => localStorage.setItem('CapacitorStorage.ludo-save', JSON.stringify(g)), saves.hard);
+      await page.goto(url, { waitUntil: 'load' });
+      await dismiss();
+      await page.$eval('[data-act=continue]', (b) => b.click());
+      await page.waitForSelector('[data-act=roll]:not([hidden])', { timeout: 30000 });
+      await page.waitForTimeout(20000);
+      await measure(`steady play, ${live} live worker${live === 1 ? '' : 's'}: waiting for the roll`, 0);
+      await page.$eval('[data-act=roll]', (b) => b.click());
+      const mv = await page.waitForSelector('.pawn.movable', { timeout: 30000 }).catch(() => null);
+      if (mv) {
+        const box = await ((await page.$('.mark')) ?? mv).boundingBox();
+        if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        await measure(`steady play, ${live} live worker${live === 1 ? '' : 's'}: the bots' turns`, 300);
+      }
+    }
+    await cdp.send('Emulation.setHardwareConcurrencyOverride', { hardwareConcurrency: realCores });
+  }
+
   // 5b. The same game against Extreme bots (#176: the game's review pauses while one thinks).
   if (saves?.extreme) {
     await page.evaluate((g) => localStorage.setItem('CapacitorStorage.ludo-save', JSON.stringify(g)), saves.extreme);

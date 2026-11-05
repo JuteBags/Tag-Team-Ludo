@@ -423,6 +423,31 @@ async function reviewBench(_worker: Worker, say: (l: string) => void, hidden: ()
     }
   }
   if (!hidden()) await liveBench(_worker, say, hidden, games);
+  if (!hidden()) await stripBench(say, games);
+}
+
+/**
+ * The roll's strip for one of your puzzles (#194), as it's worked out when the puzzle opens: each face's win
+ * chance with best play at 1,024 playouts, on 1 worker, for a decision straight after a roll in each bench
+ * game. The PM's bar: over 5 s with SIMD, the verdict shows first and the strip after.
+ */
+async function stripBench(say: (l: string) => void, games: { layout: '2p' | '4p'; seed: number; rec: GameRecord }[]) {
+  const pool = new ReviewPool(1);
+  try {
+    for (const g of games) {
+      const states = replay(g.rec).states;
+      const at = states.findIndex((s, i) => i > 40 && s.phase === 'move' && s.moves.length >= 2 && states[i - 1]!.phase === 'roll' && states[i - 1]!.current === s.current);
+      if (at < 0) continue;
+      const pre = states[at - 1]!;
+      // Untimed first: the worker loads its engine.
+      if (g === games[0]) await pool.faces(pre, 16, 1);
+      const t = performance.now();
+      const v = await pool.faces(pre, 1024, 7, { face: states[at]!.dice!, chance: 0.5 });
+      say(`strip ${g.layout} game ${g.seed}: the roll's six faces at 1,024 playouts in ${sec(performance.now() - t)} on 1 worker (${(v ?? []).map((x) => Math.round(100 * x)).join(' ')})`);
+    }
+  } finally {
+    pool.stop();
+  }
 }
 
 /** How fast the live test plays the bench's games: an event every LIVE_PACE_MS (faster than people play). */

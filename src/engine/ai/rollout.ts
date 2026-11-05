@@ -27,6 +27,8 @@ interface Exports {
   luck_end?(): void;
   luck_size?(): number;
   luck_peak?(): number;
+  /** An owner's win chance at a position by the review's playouts (#194); missing in modules built before it. */
+  value?(state: number, len: number, n: number, seed: number, owner: number): number;
 }
 
 const PHASES = { roll: 0, move: 1, over: 2 } as const;
@@ -137,6 +139,23 @@ export class RolloutEngine {
     if (ofMove.length !== state.moves.length) throw new Error(`review saw ${ofMove.length} moves, the game has ${state.moves.length}`);
     const kind = ask.mode === 'screen' ? 'screen' : (['full', 'best', 'worse', 'net'] as const)[stop]!;
     return { ofMove, mean: pick(0), gap: pick(1), se: pick(2), best, count: pick(3), kind, complete: complete === 1 };
+  }
+
+  /** Whether this module values a position by playouts (#194). */
+  get hasValue(): boolean {
+    return !!this.x.value;
+  }
+
+  /**
+   * `owner`'s win chance at `state` (any phase): the mean of `n` of the review's own playouts from it, seeded
+   * from `seed` (sim-rs rollout.rs review_playout), so it is on the review's scale (#194).
+   */
+  value(state: GameState, n: number, seed: number, owner: number): number {
+    if (!this.x.value) throw new Error('this rollout engine has no value');
+    const [p, l] = this.put(encodeState(state));
+    const v = this.x.value(p, l, n, seed >>> 0, owner);
+    if (Number.isNaN(v)) throw new Error('rollout engine not initialised');
+    return v;
   }
 
   /** How many moves the engine sees in `state` (must equal state.moves.length). */

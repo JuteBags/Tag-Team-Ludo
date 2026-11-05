@@ -13,6 +13,17 @@ const face = (v: number, cls: string, tf: string, win: boolean) =>
   `<div class="f ${cls}${win ? ' win' : ''}" style="transform:${tf}">${Array.from({ length: 9 }, (_, k) => (PIPS[v]!.includes(k) ? `<i class="p${v === 1 || v === 6 ? ' r' : ''}"></i>` : '<i></i>')).join('')}</div>`;
 
 export function dieMarkup(v: number, size: number, rx?: number, ry?: number, mode: DiceFace = settings.diceFace, skin: string = equipped('dice').id): string {
+  return cube(v, size, rx, ry, mode, skin, false);
+}
+
+/**
+ * A die that never moves from its resting pose (the review's roll rows, #98): only the three faces and core
+ * plates that face the viewer. The other three are backface-hidden at rest and draw nothing, so it looks the
+ * same as dieMarkup's with half the elements.
+ */
+export const stillDieMarkup = (v: number, size: number) => cube(v, size, undefined, undefined, settings.diceFace, equipped('dice').id, true);
+
+function cube(v: number, size: number, rx: number | undefined, ry: number | undefined, mode: DiceFace, skin: string, still: boolean): string {
   const h = size / 2;
   const [restX, restY] = REST[mode];
   // Two faces that are neither v nor its opposite, and not opposite each other.
@@ -23,10 +34,12 @@ export function dieMarkup(v: number, size: number, rx?: number, ry?: number, mod
   const [fr, tp, rt] = mode === 'top' ? [a, v, b] : [v, a, b];
   const tf = { fr: `translateZ(${h}px)`, bk: `rotateY(180deg) translateZ(${h}px)`, rt: `rotateY(90deg) translateZ(${h}px)`, lf: `rotateY(-90deg) translateZ(${h}px)`, tp: `rotateX(90deg) translateZ(${h}px)`, bt: `rotateX(-90deg) translateZ(${h}px)` };
   // An inner core fills the gaps the rounded corners leave at the cube's edges.
-  const core = (['fr', 'bk', 'rt', 'lf', 'tp', 'bt'] as const).map((k) => `<div class="c" style="transform:${tf[k].replace(`${h}px`, `${h * 0.86}px`)}"></div>`).join('');
+  // At rest (both tilts look down and to the left) the back, left and bottom sides face away from the viewer.
+  const away = new Set(still ? ['bk', 'lf', 'bt'] : []);
+  const core = (['fr', 'bk', 'rt', 'lf', 'tp', 'bt'] as const).filter((k) => !away.has(k)).map((k) => `<div class="c" style="transform:${tf[k].replace(`${h}px`, `${h * 0.86}px`)}"></div>`).join('');
   // The dice skin in use (skins.ts) is a class: its look lives in styles.css (.dk-bone, .dk-tron, ...).
   return `<div class="diew dk-${skin}" style="width:${size}px;height:${size}px;perspective:${size * 7}px"><div class="dsh"></div><div class="die3" style="width:${size}px;height:${size}px;transform:rotateX(${rx ?? restX}deg) rotateY(${ry ?? restY}deg)">${core}
-  ${face(7 - fr, 'bk', tf.bk, false)}${face(7 - rt, 'lf', tf.lf, false)}${face(7 - tp, 'bt', tf.bt, false)}
+  ${still ? '' : `${face(7 - fr, 'bk', tf.bk, false)}${face(7 - rt, 'lf', tf.lf, false)}${face(7 - tp, 'bt', tf.bt, false)}`}
   ${face(tp, 'tp', tf.tp, mode === 'top')}${face(rt, 'rt', tf.rt, false)}${face(fr, 'fr', tf.fr, mode === 'front')}</div></div>`;
 }
 

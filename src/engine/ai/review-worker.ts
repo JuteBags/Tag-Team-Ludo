@@ -232,6 +232,18 @@ export class ReviewPool {
     return p;
   }
 
+  /**
+   * A roll's strip (#194): the roller's win chance after each face 1..6 at the roll state `pre`, with best
+   * play, by `n` playouts per decision (faceValues.ts), on the least busy worker. `rolled`: the face rolled and
+   * its value as shown, taken as it is. Null where workers can't run.
+   */
+  faces(pre: GameState, n: number, seed: number, rolled?: { face: number; chance: number }): Promise<number[]> | null {
+    const slots = this.make();
+    if (!slots) return null;
+    // The reply's `values` (onmessage takes them out).
+    return this.call<number[]>(this.pick(slots), { kind: 'faces', state: pre, n, seed, rolled });
+  }
+
   /** Each worker's wasm memory in bytes (the bench's memory line); 0 for one whose engine isn't loaded. */
   async memory(): Promise<number[]> {
     const slots = this.slots ?? [];
@@ -263,6 +275,11 @@ export function workerReviewer(): PoolReviewer | null {
 /** The app's luck pass in the pool (ReviewPool.luck). Null where workers can't run. */
 export function workerLuck(rec: GameRecord, stopped: () => boolean = () => false, yieldTo: () => boolean = () => false, have: readonly (LuckPart | undefined)[] = []): Promise<{ luck: RollLuck[]; chances: number[][] } | null> | null {
   return appPool().luck(rec, stopped, yieldTo, have);
+}
+
+/** A roll's strip on the app's pool (ReviewPool.faces). Null where workers can't run. */
+export function workerFaces(pre: GameState, n: number, seed: number, rolled?: { face: number; chance: number }): Promise<number[]> | null {
+  return appPool().faces(pre, n, seed, rolled);
 }
 
 /** Ends the app's pool (the review queue calls it once it's empty or paused), so no idle worker holds memory. */

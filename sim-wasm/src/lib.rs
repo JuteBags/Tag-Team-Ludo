@@ -148,6 +148,24 @@ fn keep(s: Vec<u8>, seed: u32, res: Vec<Vec<f64>>) {
     PLAYED.with(|k| *k.borrow_mut() = (s, seed, res));
 }
 
+/// `owner`'s win chance at a position (#194): the mean of `n` of the review's own playouts from it (rollout.rs
+/// review_playout, seeded from `seed`), so it is on the review's scale: a forced move, a turn that passes, or a
+/// roll still to come valued as the review values a candidate's position. NaN if init was not called.
+#[no_mangle]
+pub unsafe extern "C" fn value(state: *mut u8, len: usize, n: u32, seed: u32, owner: u32) -> f64 {
+    let g = decode(&take(state, len));
+    ENGINE.with(|e| match e.borrow().as_ref() {
+        Some(eng) => {
+            let mut sum = 0.0;
+            for i in 0..n as usize {
+                sum += ludo_sim::rollout::review_playout(&g, seed as i64, i, owner as u8, CUT, Some(&eng.net), &eng.base);
+            }
+            sum / n.max(1) as f64
+        }
+        None => f64::NAN,
+    })
+}
+
 /// The fast review of one decision (#101), as f64s at the returned pointer, valid until the next call:
 /// [moves, candidates, best, complete, stop, candidate of each move ..., then mean, gap, se, playouts per
 /// candidate ...]. `mode` 1: the net screen (rollout.rs screen: mean = the net's value, gap = below the net's
