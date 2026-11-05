@@ -83,6 +83,17 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole
 50. When your move ends your turn (or the game, or your last token home), there's a short moment (1.5 s) to undo before anyone rolls. Settings can turn that wait off.
 51. The game's record keeps only the moves that stood, so the replay and the review judge the moves you finally played.
 
+## K. Online: private rooms
+
+52. **Play online → Create a room** picks the number of colours (2-4), doubles on or off, and how the bots play (Easy, Normal or Hard). The room gets a 5-character code; friends join with **Join a room** on their own phones. Up to one person per colour.
+53. The person who created the room is the host. The host starts the game once at least 2 people are in; colours nobody took are played by bots. The lobby waits at most **2 minutes**: then the game starts by itself with whoever is in, or, if nobody joined the host, the room closes. Each person plays one colour, in the order they joined (the host is Blue). Who plays first is drawn at random.
+54. The server rolls every die and checks every move; all the rules above apply unchanged, with the same dice as offline (rule 31).
+55. Each roll and each move has a **30-second clock**. When it runs out, the server plays that step for the person (as a Normal bot would). After two clocks in a row run out, a bot plays for them until they roll or move again.
+56. A person who loses the connection or closes the app can rejoin the same game (**Back to room** on the home screen); while they're away the clock keeps running for them.
+57. **Leave game** in the menu hands the colour to a bot for the rest of the game. When every person has finished or left, the game ends there (rule 34), without waiting for the bots.
+58. Online games always play on to the last place: there is no keep-playing vote (rule 41).
+59. There is no undo online (section J): a move the server has taken can't be taken back.
+
 ## Known risks (accepted for v1, revisit after playtests)
 
 - A pair parked on a normal square holds back enemy singles until they land on it exactly, and a locked pair can sit stuck through a run of odd rolls.

@@ -15,6 +15,7 @@ import { decodeRecord, type GameRecord } from '../engine';
 import { linkPayload } from './replay';
 import { bootReviews, setGame } from './reviewQueue';
 import { prefetchAtIdle, screens, setScreen, show } from './lazy';
+import type { RoomLink } from '../net/client';
 
 const W = 390;
 const H = 844;
@@ -39,7 +40,7 @@ export function mountApp(root: HTMLElement) {
     setGame('none');
     const [saved, log] = await Promise.all([loadGame(), loadPuzzleLog()]);
     if (game) return; // a game started while the save was loading
-    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle());
+    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle(), (rejoin) => void online(rejoin));
     setScreen(stage, screen);
     // On the home screen only, never during a game: the Privacy note and Terms of use until they're accepted
     // (#208: first launch, and again when they change), then a newer version on the site, then today's check-in.
@@ -69,6 +70,20 @@ export function mountApp(root: HTMLElement) {
   const review = async (rec: GameRecord, back: () => void, keep = true, pov?: number) => {
     const stored = await storedReview(rec, keep);
     await show(stage, screens.review, (m) => m.reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p), keep, at, caption, p), keep, pov), back);
+  };
+  /** Play online: the private-room screens, then the room's game (the server plays it; this screen shows it). */
+  const online = async (rejoin = false) => {
+    await show(stage, screens.online, (m) => m.onlineScreen(playOnline, () => void home(), rejoin), () => void home());
+  };
+  const playOnline = (link: RoomLink, cfg: GameConfig) => {
+    if (game && stage.contains(game.el)) game.dispose();
+    const toResult = () => setScreen(stage, g.el);
+    // Play again: a new room (the old one is over).
+    const g = new GameScreen(cfg, (to) => (to === 'home' ? void home() : to === 'replay' ? g.finalRecord && void watch(g.finalRecord, toResult) : to === 'review' ? g.finalRecord && void review(g.finalRecord, toResult) : void online()), undefined, undefined, link);
+    game = g;
+    setScreen(stage, g.el);
+    setGame('light');
+    if (import.meta.env.DEV) (window as unknown as { __ludo: GameScreen }).__ludo = g;
   };
   // Set while a game starts, so a double tap on Start or Play again can't open two games.
   let starting = false;
