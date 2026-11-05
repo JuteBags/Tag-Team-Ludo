@@ -8,7 +8,7 @@
 //   - the heap left after going back home (against the home screen's before: what stays once it's closed);
 //   - reopening it (the link's replay again, then review): to the first draw and to the finished screen.
 // Writes the tables to the run summary and perf-review.json.
-//   node tools/perf/review.mjs <url> [chrome path] [--throttle 4]
+//   node tools/perf/review.mjs <url> [chrome path] [--throttle 4] [--out perf-review.json] [--label main]
 // .github/workflows/perf-screens.yml runs it next to screens.mjs.
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
@@ -21,6 +21,8 @@ const flag = (k, d) => {
 const pos = args.filter((x, i) => !x.startsWith('--') && !args[i - 1]?.startsWith('--'));
 const [url, executablePath] = pos;
 const throttle = Number(flag('throttle', 4));
+const outFile = flag('out', 'perf-review.json');
+const label = flag('label', '');
 const summary = process.env.GITHUB_STEP_SUMMARY;
 const md = (line) => {
   console.log(line);
@@ -29,6 +31,8 @@ const md = (line) => {
 const games = [
   ['2p', readFileSync(new URL('./game-seed24.link.txt', import.meta.url), 'utf8').trim()],
   ['4p', readFileSync(new URL('./game-4p-seed24.link.txt', import.meta.url), 'utf8').trim()],
+  // The person played by Easy: enough key moves for "Show N more".
+  ['4p, Easy person', readFileSync(new URL('./game-4p-easy-seed24.link.txt', import.meta.url), 'utf8').trim()],
 ];
 
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
@@ -193,8 +197,8 @@ try {
   await browser.close();
 }
 
-writeFileSync('perf-review.json', JSON.stringify({ throttle, rows: out }, null, 2));
-md(`### The review screen (#98 target 3): headless Chrome, 390×844, CPU throttled ${throttle}×`);
+writeFileSync(outFile, JSON.stringify({ label, throttle, rows: out }, null, 2));
+md(`### The review screen (#98 target 3)${label ? `, ${label}` : ""}: headless Chrome, 390×844, CPU throttled ${throttle}×`);
 md('');
 md('**While the review runs** (the main thread; the review itself is in the workers):');
 md('');
