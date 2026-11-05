@@ -146,6 +146,28 @@ describe('review queue', { timeout: 60_000 }, () => {
     expect(luckArgs.at(-1)![3]).toEqual([part]);
   });
 
+  it('with automatic reviews off (#97): nothing is queued on its own, an opened review still runs, and on again resumes', async () => {
+    const a = game(13);
+    const b = game(14);
+    Q.enqueue(a, { keep: false });
+    await until(() => calls.length > 0);
+    // Off: the one running stops (nobody opened it), and a new game isn't queued.
+    await Q.setAutoReview(false);
+    expect(Q.isQueued(a)).toBe(false);
+    const before = calls.length;
+    release.splice(0).forEach((r) => r());
+    Q.enqueue(b, { keep: false });
+    await flush();
+    await flush();
+    expect(calls.length).toBe(before);
+    expect(Q.isQueued(b)).toBe(false);
+    // Opening a review runs it.
+    Q.follow(b, () => {}, { keep: false, open: true });
+    await until(() => calls.length > before);
+    expect(calls.length).toBeGreaterThan(before);
+    await Q.setAutoReview(true);
+  });
+
   it('queues only the newest few games on its own', async () => {
     Q.setGame('extreme');
     const gs = [game(4), game(5), game(6), game(7), game(8)];

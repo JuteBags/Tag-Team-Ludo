@@ -11,7 +11,11 @@ import { REVIEW_VERSION, type Reviewer } from '../engine/ai/review';
 import { stopReviewWorker, workerLuck, workerReviewer } from '../engine/ai/review-worker';
 import type { LiveHandOff } from './liveReview';
 import { peopleOf, runReview, type ReviewProgress } from './reviewRun';
+import { saveSetting, settings } from './settings';
 import { keyOf, loadPastGames, loadReview, loadSummaries, loadSummary, type StoredReview } from './store';
+
+/** Reviews run on their own (#97, Settings): off, only a review whose screen was opened runs. */
+const auto = () => settings.autoReview !== false;
 
 /** How many of the newest unreviewed games are queued on their own; older ones are reviewed when opened. */
 export const AUTO_QUEUE = 3;
@@ -63,7 +67,7 @@ const emit = (job: Job) => {
 };
 
 function next(): Job | undefined {
-  return [...jobs.values()].filter((j) => !j.finished).sort((a, b) => b.opened - a.opened || Number(a.pvp) - Number(b.pvp) || b.at - a.at)[0];
+  return [...jobs.values()].filter((j) => !j.finished && (auto() || j.opened > 0)).sort((a, b) => b.opened - a.opened || Number(a.pvp) - Number(b.pvp) || b.at - a.at)[0];
 }
 
 /** The reviewer, giving the page a turn between decisions so a game's turn never waits on the review. */
@@ -145,6 +149,8 @@ function update() {
 
 /** Puts a game in the queue (if it isn't there or done) without moving anything ahead of it. */
 export function enqueue(rec: GameRecord, opts: { keep?: boolean; pvp?: boolean; at?: number; live?: LiveHandOff } = {}) {
+  // Off (#97): nothing is queued on its own; the review starts when its screen is opened.
+  if (!auto()) return;
   const key = keyOf(rec);
   if (!jobs.has(key)) jobs.set(key, { key, rec, keep: opts.keep ?? true, pvp: !!opts.pvp, at: opts.at ?? Date.now(), opened: 0, who: peopleOf(rec), finished: false, live: opts.live });
   trim();
@@ -222,6 +228,12 @@ export async function bootReviews() {
     hidden = document.hidden;
     update();
   });
+  await queuePast();
+}
+
+/** Queues the newest unreviewed past games (none while reviews don't run on their own). */
+async function queuePast() {
+  if (!auto()) return;
   const past = (await loadPastGames().catch(() => [])).filter((g) => g.rec.seats.some((s) => !s.bot));
   // Finished or not, from the reviews' summaries (one small read, #98). A game without a current summary is
   // read in full once, which writes its summary for the next start.
@@ -234,6 +246,22 @@ export async function bootReviews() {
     if (!complete) todo.push(g);
   }
   todo.forEach((g) => enqueue(g.rec, { pvp: g.mode === 'pvp', at: g.at }));
+}
+
+/**
+ * The Settings switch (#97): on, past games are queued again; off, every job nobody opened goes, and the one
+ * running stops unless its screen was opened. A game being played is reviewed live only when on (gameScreen).
+ */
+export async function setAutoReview(on: boolean) {
+  saveSetting('autoReview', on);
+  if (on) {
+    await queuePast();
+    void pump();
+    return;
+  }
+  if (running && !running.job.opened) pause();
+  for (const [k, j] of jobs) if (!j.opened && !j.finished) jobs.delete(k);
+  void pump();
 }
 
 /** For tests: forget every job. */

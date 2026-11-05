@@ -160,8 +160,9 @@ export class GameScreen {
     this.drawTrays();
     keepAwake(true);
     document.addEventListener('visibilitychange', this.onHidden);
-    // A game with a person in it is reviewed as it's played (#176); a continued one is fed its whole record.
-    if (config.seats.some((x) => !x.bot)) {
+    // A game with a person in it is reviewed as it's played (#176), unless reviews are off (#97); a continued
+    // one is fed its whole record.
+    if (config.seats.some((x) => !x.bot) && settings.autoReview !== false) {
       this.live = new LiveReview();
       this.liveUpdate();
     }
