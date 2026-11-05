@@ -99,7 +99,7 @@ try {
         const type = types[snap.nodes[i + ti]];
         const size = snap.nodes[i + si];
         byType[type] = (byType[type] ?? 0) + size;
-        const nm = type === 'object' || type === 'closure' || type === 'code' ? `${type}:${String(snap.strings[snap.nodes[i + ni]]).slice(0, 60)}` : type;
+        const nm = type === 'object' || type === 'closure' || type === 'code' || type === 'native' ? `${type}:${String(snap.strings[snap.nodes[i + ni]]).replace(/\s+/g, ' ').slice(0, 60)}` : type;
         byName[nm] = (byName[nm] ?? 0) + size;
       }
       return { byType, byName };
@@ -219,7 +219,7 @@ try {
     row.afterBack.heapOverHomeMB = +(row.afterBack.heapMB - row.home.heapMB).toFixed(2);
     const backKinds = await heapKinds();
     row.afterBack.byType = grew(homeKinds.byType, backKinds.byType, 8).join(', ');
-    row.afterBack.byName = grew(homeKinds.byName, backKinds.byName, 10).join(', ');
+    row.afterBack.byName = grew(homeKinds.byName, backKinds.byName, 14).join(', ');
     // Reopen: the link's replay again, then the review (the queue has it).
     await openReplay();
     await page.waitForTimeout(1500);
