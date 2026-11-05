@@ -52,7 +52,8 @@ export async function shareLink(rec: GameRecord, site: string): Promise<string> 
 /** The record in a link's fragment, if there is one: `#game=...`. */
 export const linkPayload = (hash: string) => (hash.startsWith('#game=') ? hash.slice('#game='.length) : null);
 
-function describe(m: Move, who: string, names: (c: Color) => string): string {
+/** A move in words: "Red moved 4, capturing Blue" (the replay's captions; also the puzzle's example line). */
+export function describe(m: Move, who: string, names: (c: Color) => string): string {
   const what = m.kind === 'release' ? 'brought a token out' : m.tokens.length > 1 ? `moved a pair ${m.steps}` : `moved ${m.steps}`;
   const kills = m.captures.length ? `, capturing ${[...new Set(m.captures.map((c) => names(c.color)))].join(' and ')}` : '';
   const home = m.finishes ? (m.finishes > 1 ? `, ${m.finishes} tokens home` : ', a token home') : '';

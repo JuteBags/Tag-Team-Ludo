@@ -224,6 +224,42 @@ export async function saveCheckIn(c: CheckIn): Promise<boolean> {
   }
 }
 
+// ---------- the daily puzzle (#99, puzzleDay.ts) ----------
+
+/** A puzzle played: the move picked (an index into its state.moves) and whether it was the best. */
+export interface PuzzlePick {
+  pick: number;
+  best: boolean;
+}
+/** The last day a puzzle was played, the days in a row up to it, the longest run, and that day's picks. */
+export interface PuzzleLog {
+  last: string;
+  streak: number;
+  best: number;
+  daily?: PuzzlePick;
+  expert?: PuzzlePick;
+}
+
+const PUZZLE = 'ludo-puzzle';
+/** The stored puzzle log, null before the first puzzle, or 'error' when storage can't be read. */
+export async function loadPuzzleLog(): Promise<PuzzleLog | null | 'error'> {
+  try {
+    const { value } = await Preferences.get({ key: PUZZLE });
+    return value ? (JSON.parse(value) as PuzzleLog) : null;
+  } catch {
+    return 'error';
+  }
+}
+/** Stores the puzzle log; false when the write failed (then no gold is paid, so it can't be paid twice). */
+export async function savePuzzleLog(l: PuzzleLog): Promise<boolean> {
+  try {
+    await Preferences.set({ key: PUZZLE, value: JSON.stringify(l) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------- past games (#65) ----------
 
 /**

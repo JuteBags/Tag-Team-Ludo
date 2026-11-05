@@ -62,6 +62,19 @@ export function etaLeft(elapsedMs: number, share: number): number | null {
 export const LUCK_AFTER_KEYS = 2;
 export const LUCK_AFTER_SHARE = 1 / 3;
 
+/**
+ * One decision alone (#176, the review while the game is played): the verdict the whole review gives it, from
+ * a record that reaches past it. Every other decision is masked (one move: nothing to choose), as a resumed
+ * review does, and the verdict's seed is its own (decisionSeed: the game's seed and the position). 'skip':
+ * nothing to choose there (every move reaches the same position); undefined: not a decision of `who`.
+ */
+export async function reviewDecision(rec: GameRecord, states: GameState[], at: number, who: number[], reviewer: Reviewer): Promise<MoveReview | 'skip' | undefined> {
+  const masked = states.map((s, i) => (i === at ? s : { ...s, moves: s.moves.slice(0, 1) }));
+  let out: MoveReview | 'skip' | undefined;
+  await reviewMoves(rec, masked, who, reviewer, (m) => void (out = m), undefined, () => void (out = 'skip'), { order: 'stakes', parallel: 1 });
+  return out;
+}
+
 /** The owners whose moves are reviewed by default: the people (bots only when asked for). */
 export const peopleOf = (rec: GameRecord) => [...new Set(rec.seats.filter((s) => !s.bot).map((s) => s.owner))];
 

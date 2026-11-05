@@ -62,6 +62,14 @@ try {
     md('');
   }
   for (const m of mem) md(`- ${m}`);
+  // The review while the game is played (#176): ready after the end, and Extreme's think beside it.
+  const live = lines.filter((l) => l.startsWith('live') || l.startsWith('extreme think') || l.startsWith('strip '));
+  if (live.length) {
+    md('');
+    md('**The review while the game is played (#176)**');
+    md('');
+    for (const l of live) md(`- ${l}`);
+  }
   md('');
 } finally {
   await browser.close();

@@ -17,15 +17,12 @@
 // Prints PUZZLES {...} with the counts, the timing and the size, and writes the puzzles to --out.
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
-import { createGame, move, moveEvent, positionKey, roll, rollEvent, seeded, seededDie, type BotLevel, type GameState, type Move, type Rng, type Seat } from '../../src/engine';
-import { chooseBotMove } from '../../src/engine/ai/levels';
-import { Net } from '../../src/engine/ai/net';
-import { decodeNet } from '../../src/engine/ai/netbin';
+import { move, moveEvent, positionKey, roll, rollEvent, seeded, type BotLevel, type GameState, type Move } from '../../src/engine';
 import { PLAYOUT_RULES } from '../../src/engine/ai/playout-rules';
 import { layoutKey, THRESHOLDS_BY_LAYOUT, type DecisionValues } from '../../src/engine/ai/review';
 import { RolloutEngine } from '../../src/engine/ai/rollout';
-import { chooseExtreme } from '../../src/engine/ai/search';
-import { flags, MODES } from './common';
+import { flags } from './common';
+import { botMove, CYCLE, netBytes, playGame, type Mix } from './puzzle_games';
 
 const a = flags(process.argv.slice(2));
 const games = Number(a.games ?? 20);
@@ -37,48 +34,12 @@ const PLAYOUTS = 1024;
 const LINE_SEEDS = 8;
 
 const root = new URL('../../../', import.meta.url);
-const netBytes = new Uint8Array(readFileSync(new URL('src/engine/ai/extreme-net.bin', root)));
 const engine = await RolloutEngine.create(readFileSync(new URL('src/engine/ai/ludo_wasm.wasm', root)), netBytes, PLAYOUT_RULES);
-const extremeNet = new Net(decodeNet(netBytes));
 const summary = process.env.GITHUB_STEP_SUMMARY;
 const md = (line: string) => {
   console.log(line);
   if (summary) appendFileSync(summary, line + '\n');
 };
-
-/** The games: 10 in a cycle, 6 of them 2p and 4 of them 4p, over the three pairings. */
-type Mix = 'hard-hard' | 'extreme-normal' | 'normal-normal';
-const MIX_LEVELS: Record<Mix, [BotLevel, BotLevel]> = { 'hard-hard': ['hard', 'hard'], 'extreme-normal': ['extreme', 'normal'], 'normal-normal': ['normal', 'normal'] };
-const CYCLE: [string, Mix][] = [
-  ['2p', 'hard-hard'], ['2p', 'extreme-normal'], ['2p', 'normal-normal'], ['4p', 'hard-hard'], ['4p', 'extreme-normal'],
-  ['2p', 'hard-hard'], ['2p', 'extreme-normal'], ['2p', 'normal-normal'], ['4p', 'normal-normal'], ['4p', 'extreme-normal'],
-];
-
-/** A bot's move at its level; Extreme with the shipped net (search depth 1, as the app without its worker). */
-function botMove(s: GameState, rng: Rng, level?: BotLevel): Move {
-  const lv = level ?? s.players[s.current]!.level ?? 'normal';
-  if (lv === 'extreme') return chooseExtreme(extremeNet, s, rng, { depth: 1 });
-  if (lv === s.players[s.current]!.level) return chooseBotMove(s, rng);
-  const players = s.players.map((p, i) => (i === s.current ? { ...p, level: lv } : p));
-  return chooseBotMove({ ...s, players }, rng);
-}
-
-/** Every decision of one game (the states where the mover has 2+ moves), the app's dice. */
-function playGame(seed: number, layout: string, mix: Mix): { seats: Seat[]; decisions: GameState[] } {
-  const [l0, l1] = MIX_LEVELS[mix];
-  const seats: Seat[] = MODES[layout]!.seats().map((s, i) => ({ ...s, bot: true, level: i % 2 === 0 ? l0 : l1 }));
-  const rng = seeded(seed * 31 + 7);
-  let s = createGame(seats, seats[seed % seats.length]!.color, MODES[layout]!.singles);
-  const decisions: GameState[] = [];
-  for (let n = 0; s.phase !== 'over' && n < 20000; n++) {
-    if (s.phase === 'roll') s = roll(s, () => 0, seededDie(seed, s));
-    else {
-      if (s.moves.length > 1) decisions.push(s);
-      s = move(s, botMove(s, rng));
-    }
-  }
-  return { seats, decisions };
-}
 
 /** A mover's standing: its tokens' progress (base 0, home 57) minus the opponents' average. */
 function standing(s: GameState, owner: number): number {

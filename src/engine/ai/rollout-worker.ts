@@ -15,6 +15,7 @@ import { decodeNet } from './netbin';
 import { replay, type GameRecord } from '../record';
 import { LUCK_CHUNK, luckChunk, luckPass, netLuck, wasmLuck, type LuckSource } from './luck';
 import type { ReviewAsk } from './review';
+import { facesByPlayouts } from './faceValues';
 import { RolloutEngine } from './rollout';
 import { wasmUrl } from './wasmModule';
 import netUrl from './extreme-net.bin?url';
@@ -52,7 +53,7 @@ const endPass = () => {
   pass = null;
 };
 
-type Msg = { id: number; kind?: 'review' | 'luck' | 'luck-begin' | 'luck-chunk' | 'luck-end' | 'memory'; state: GameState; nmax: number; n: number; seed: number; ask?: ReviewAsk; rec: GameRecord; run: number; from: number; to: number };
+type Msg = { id: number; kind?: 'review' | 'luck' | 'luck-begin' | 'luck-chunk' | 'luck-end' | 'memory' | 'faces'; state: GameState; nmax: number; n: number; seed: number; ask?: ReviewAsk; rec: GameRecord; run: number; from: number; to: number; rolled?: { face: number; chance: number } };
 
 self.onmessage = async (e: MessageEvent<Msg>) => {
   const { id, kind, state, nmax, n, seed, ask } = e.data;
@@ -92,6 +93,11 @@ self.onmessage = async (e: MessageEvent<Msg>) => {
     }
     if (kind === 'review') {
       self.postMessage({ id, values: (await load()).reviewFast(state, n, seed, ask) });
+      return;
+    }
+    // A roll's strip (#194): each face's win chance with best play, by playouts (faceValues.ts).
+    if (kind === 'faces') {
+      self.postMessage({ id, values: facesByPlayouts(await load(), state, n, seed, e.data.rolled) });
       return;
     }
     const m = (await load()).choose(state, nmax, seed);

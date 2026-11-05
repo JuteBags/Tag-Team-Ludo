@@ -96,6 +96,8 @@ try {
         c.querySelectorAll('.die3 > .c').forEach((e) => {
           if (/rotateY\(180deg\)|rotateY\(-90deg\)|rotateX\(-90deg\)/.test(e.getAttribute('style') ?? '')) e.remove();
         });
+        // The progress bar's fill: a width on one build, a scaleX on the other (#98); its pixels are in the screenshots.
+        c.querySelectorAll('.rvprog .bar i').forEach((e) => e.removeAttribute('style'));
         // The time left changes with the clock.
         const p = c.querySelector('.rvprog span');
         if (p) p.textContent = (p.textContent ?? '').replace(/ · (Almost done|About [^·]* left)$/, '');
@@ -156,6 +158,19 @@ try {
     await page.click('[data-act=review]');
     await page.waitForTimeout(3000);
     if (held) await shoot('running');
+    // The progress bar at 40% and 100% (#98: a width transition or a scaleX one, whichever this build has), as
+    // a crop of the progress row: for the before/after look, not compared byte for byte.
+    if (held && name === '2p')
+      for (const f of [0.4, 1]) {
+        await page.evaluate((x) => {
+          const i = document.querySelector('.rvprog .bar i');
+          if (getComputedStyle(i).transitionProperty.includes('transform')) i.style.transform = `scaleX(${x})`;
+          else i.style.width = `${100 * x}%`;
+        }, f);
+        await page.waitForTimeout(600);
+        const box = await page.$('.rvprog');
+        if (box) writeFileSync(join(outDir, `bar-${Math.round(100 * f)}.png`), await box.screenshot({ animations: 'disabled' }));
+      }
     else console.log(`${name}: the engine module wasn't held (already loaded): no running-state screenshot`);
     release();
     await finished();

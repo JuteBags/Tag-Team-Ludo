@@ -20,7 +20,7 @@ import type { GameState } from './types';
 export type Band = 'easy' | 'medium' | 'hard';
 
 /** One puzzle as stored (puzzles_merge.ts compact): see decodePuzzle. */
-export type PoolEntry = [string, number[], number, number[], number[], number[], number, number, number, string, number, string, number];
+export type PoolEntry = [string, number[], number, number[], number[], number[], number, number, number, string, number, string, number, (number[] | 0)?, (number[] | 0)?];
 export interface Pool {
   /** Bumped by every regeneration or re-merge (a cache of an entry keys on it). */
   v: number;
@@ -35,8 +35,25 @@ export interface Pool {
 /** expertFrom until the release sets it: no Expert puzzle shows before that day (tests fail on it at 3.5.0). */
 export const EXPERT_FROM_UNSET = '2099-01-01';
 
+/**
+ * The roll's strip (#194): the mover's win % with best play after each face 1..6 of the last die (the dice
+ * before it as they were), on the move verdict's own playout scale; each face's chance under the game's dice;
+ * the win % before that roll (their weighted average); and what the roll did (the rolled face's win % minus
+ * it: the review's roll luck). The rolled face's win % is the best move's.
+ */
+export interface RollStrip {
+  face: number;
+  faces: number[];
+  weights: number[];
+  before: number;
+  /** Win % points the roll added (+) or took (−), with best play. */
+  effect: number;
+}
+
 export interface Puzzle {
   band: Band;
+  /** The roll's strip; null for a decision in the middle of a turn's dice (after another move), or an older pool. */
+  roll: RollStrip | null;
   layout: '2p' | '4p';
   /** The position: the mover to choose among state.moves (from the tray). */
   state: GameState;
@@ -84,7 +101,7 @@ export function puzzleOf(dayKey: string, pool: Pool): { band: Band; index: numbe
 
 /** A stored puzzle as a position to play: the seats of its layout, its tokens, mover and tray. */
 export function decodePuzzle(e: PoolEntry, band: Band): Puzzle {
-  const [layout, tokens, mover, tray, gaps, chances, best, expert, seed, events, wrong, wrongEvents, singles] = e;
+  const [layout, tokens, mover, tray, gaps, chances, best, expert, seed, events, wrong, wrongEvents, singles, faces, weights] = e;
   if (layout !== '2p' && layout !== '4p') throw new Error(`puzzle layout ${layout}`);
   const colors = SEATS[layout === '2p' ? 2 : 4];
   const g = createGame(
@@ -97,7 +114,15 @@ export function decodePuzzle(e: PoolEntry, band: Band): Puzzle {
   const ranking = players.filter((p) => p.tokens.every((t) => t === FINISHED)).map((p) => p.color);
   const current = players.findIndex((p) => p.color === colors[mover]);
   const state: GameState = { ...g, players, ranking, current, phase: 'move', dice: tray.at(-1) ?? null, rolls: [...tray], sixes: 0, moves: trayMoves(players, colors[mover]!, tray, singles === 1), event: null };
-  return { band, layout, state, gaps, chances, best, expert: expert === 1, line: { seed, events }, wrong: { move: wrong, events: wrongEvents } };
+  const roll = faces && weights ? rollStrip(tray.at(-1)!, faces, weights) : null;
+  return { band, layout, state, gaps, chances, best, expert: expert === 1, roll, line: { seed, events }, wrong: { move: wrong, events: wrongEvents } };
+}
+
+/** The strip's numbers from the faces' win % and their chances (faceValues.ts rollEffect, in win % points). */
+export function rollStrip(face: number, faces: number[], weights: number[]): RollStrip {
+  const sum = weights.reduce((a, w) => a + w, 0) || 1;
+  const before = faces.reduce((a, v, k) => a + (v * weights[k]!) / sum, 0);
+  return { face, faces, weights, before, effect: faces[face - 1]! - before };
 }
 
 /** The day's puzzle from the pool (everyone's the same on the same calendar day). */
