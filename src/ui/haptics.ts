@@ -8,7 +8,8 @@
 //   buzz (the call sites decide whose it is; in pass-the-phone every person counts).
 // - The Vibration setting is the one control. Reduced motion doesn't mute it: that setting is about what moves
 //   on screen, and a tap you feel isn't motion.
-// - At most about two moments a second (MAX_PER_SECOND), however fast the game; a moment past that is dropped.
+// - At most about two moments a second (MAX_PER_SECOND), however fast the game; a moment past that is dropped,
+//   unless it outranks every recent one (RANK: win > kill, killed, bust > home > six, pair > release, safe > select).
 //   A new moment replaces the rest of one still playing (a pair kill's second hit, a win's lights).
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
@@ -60,8 +61,11 @@ export const PATTERNS: Record<Moment, Pattern> = {
   win: [{ at: 0, feel: { notify: 'success' } }, { at: 260, feel: L }, { at: 120, feel: L }],
 };
 
-/** Moments in any rolling second, at most. */
+/** Moments in any rolling second, at most (a moment that outranks them all still plays: RANK). */
 export const MAX_PER_SECOND = 2;
+
+/** Which moments matter most (#193 review): past the limit, a moment plays only if it outranks every recent one. */
+export const RANK: Record<Moment, number> = { select: 0, release: 1, safe: 1, six: 2, pair: 2, home: 3, kill: 4, killPair: 4, killed: 4, bust: 4, win: 5 };
 
 export interface Driver {
   play(f: Feel): void;
@@ -109,18 +113,21 @@ const realClock: Clock = {
 
 /** Haptics over a driver, a clock and the on/off switch: injected, so tests can check every rule. */
 export function createHaptics(driver: Driver | null, on: () => boolean, clock: Clock = realClock) {
-  const recent: number[] = [];
+  const recent: { t: number; rank: number }[] = [];
   let pending: unknown[] = [];
   return {
     /** Whether this device can buzz at all (the Settings switch is hidden when it can't). */
     available: driver !== null,
-    /** Plays a moment, if vibration is on and the last second hasn't had MAX_PER_SECOND already. */
+    /** Plays a moment, if vibration is on and the last second hasn't had MAX_PER_SECOND already (or it outranks them). */
     feel(m: Moment): boolean {
       if (!driver || !on()) return false;
       const t = clock.now();
-      while (recent.length && t - recent[0]! >= 1000) recent.shift();
-      if (recent.length >= MAX_PER_SECOND) return false;
-      recent.push(t);
+      while (recent.length && t - recent[0]!.t >= 1000) recent.shift();
+      // Past the limit, a tick or a safe landing can never swallow a kill, a home or a win: a higher rank
+      // always plays, an equal or lower one is dropped.
+      const rank = RANK[m];
+      if (recent.length >= MAX_PER_SECOND && recent.some((r) => r.rank >= rank)) return false;
+      recent.push({ t, rank });
       pending.forEach((p) => clock.cancel(p));
       pending = [];
       let wait = 0;

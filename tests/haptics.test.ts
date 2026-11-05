@@ -68,12 +68,13 @@ describe('haptics', () => {
     expect(h.feel('win')).toBe(false);
   });
 
-  it(`never plays more than ${MAX_PER_SECOND} moments in any second, however fast the game`, () => {
+  it(`never plays more than ${MAX_PER_SECOND} moments in any second unless one outranks them, however fast the game`, () => {
     const { h, advance } = rig();
-    // A burst: a 6, a release, a kill and a 6 again, 100 ms apart, then a steady stream for 5 s.
+    // A burst that never outranks what came before (a kill, a 6, a release, a 6), 100 ms apart, then a
+    // steady stream of ticks for 5 s. (A moment that outranks the recent ones still plays: the rank test.)
     const started: number[] = [];
     let t = 0;
-    for (const m of ['six', 'release', 'kill', 'six'] as const) {
+    for (const m of ['kill', 'six', 'release', 'six'] as const) {
       if (h.feel(m)) started.push(t);
       advance(100);
       t += 100;
@@ -95,5 +96,28 @@ describe('haptics', () => {
     h.feel('kill');
     advance(1000);
     expect(played.map((p) => p.feel)).toEqual([{ notify: 'success' }, { impact: 'heavy' }]);
+  });
+  it('a tick or a safe landing never swallows a kill, a home or a win (the rank)', () => {
+    const { h, advance } = rig();
+    // Select then kill within 100 ms: the kill plays.
+    expect(h.feel('select')).toBe(true);
+    advance(50);
+    expect(h.feel('kill')).toBe(true);
+    // The second is full (2 moments): a tick or a safe landing is dropped, a win still plays.
+    advance(50);
+    expect(h.feel('select')).toBe(false);
+    expect(h.feel('safe')).toBe(false);
+    expect(h.feel('win')).toBe(true);
+    // Equal or lower than the win in the window: dropped.
+    expect(h.feel('kill')).toBe(false);
+    expect(h.feel('win')).toBe(false);
+  });
+
+  it('past the limit, a moment outranking two ticks still plays', () => {
+    const { h } = rig();
+    h.feel('select');
+    h.feel('select');
+    expect(h.feel('select')).toBe(false);
+    expect(h.feel('home')).toBe(true);
   });
 });
