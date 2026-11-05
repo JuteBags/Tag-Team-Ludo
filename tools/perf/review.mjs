@@ -5,8 +5,8 @@
 //   - finished, after a GC: DOM nodes (all, and the elements of each part: the card, the graph, the key moments,
 //     the strip), the JS heap against the replay screen before it, and 5 s idle;
 //   - each tap, to the next frame: "Show N more", a count's filter, the graph's tabs, the other side's review;
-//   - reopening it (back to the replay, review again): to the first draw and to the finished screen;
-//   - the heap left after going back (what the screen keeps once closed).
+//   - the heap left after going back home (against the home screen's before: what stays once it's closed);
+//   - reopening it (the link's replay again, then review): to the first draw and to the finished screen.
 // Writes the tables to the run summary and perf-review.json.
 //   node tools/perf/review.mjs <url> [chrome path] [--throttle 4]
 // .github/workflows/perf-screens.yml runs it next to screens.mjs.
@@ -35,6 +35,7 @@ const browser = await chromium.launch(executablePath ? { executablePath } : {});
 const out = [];
 try {
   for (const [name, link] of games) {
+    try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
     const page = await context.newPage();
     page.on('pageerror', (e) => console.log('PAGEERROR', String(e)));
@@ -75,8 +76,18 @@ try {
       );
     const row = { game: name };
 
-    await page.goto(url + '#game=' + link, { waitUntil: 'load' });
-    await page.waitForSelector('[data-act=review]', { timeout: 30000 });
+    // The home screen first (its heap is what going back should return to), then the link's replay.
+    await page.goto(url, { waitUntil: 'load' });
+    await page.waitForSelector('[data-mode=pvc]', { state: 'visible' });
+    const later = await page.waitForSelector('.menu-ov [data-act=later]', { state: 'visible', timeout: 3000 }).catch(() => null);
+    if (later) await later.click().catch(() => {});
+    await page.waitForTimeout(1500);
+    row.home = await heapMB();
+    const openReplay = async () => {
+      await page.evaluate((l) => (location.hash = '#game=' + l), link);
+      await page.waitForSelector('[data-act=review]', { timeout: 30000 });
+    };
+    await openReplay();
     await page.waitForTimeout(1500);
     const before = await heapMB();
     row.replay = before;
@@ -142,9 +153,14 @@ try {
     row.taps.ownSide = await tap('.rvpov .rvp[data-pov="0"]');
     await page.waitForTimeout(1500);
 
-    // Reopen: back to the replay, then the review again (the queue has it).
+    // Back (a link's review goes back home), and what stays: the heap over the home screen's, after a GC.
     await page.click('[data-act=back]');
-    await page.waitForSelector('[data-act=review]', { timeout: 30000 });
+    await page.waitForSelector('[data-mode=pvc]', { state: 'visible', timeout: 30000 });
+    await page.waitForTimeout(1500);
+    row.afterBack = await heapMB();
+    row.afterBack.heapOverHomeMB = +(row.afterBack.heapMB - row.home.heapMB).toFixed(2);
+    // Reopen: the link's replay again, then the review (the queue has it).
+    await openReplay();
     await page.waitForTimeout(1500);
     row.reopen = await page.evaluate(
       () =>
@@ -165,16 +181,13 @@ try {
           look();
         }),
     );
-    await page.waitForTimeout(1500);
-    // Leave it and see what stays: back to the replay, GC.
-    await page.click('[data-act=back]');
-    await page.waitForSelector('[data-act=review]', { timeout: 30000 });
-    await page.waitForTimeout(1500);
-    row.afterBack = await heapMB();
-    row.afterBack.heapOverReplayMB = +(row.afterBack.heapMB - before.heapMB).toFixed(2);
     out.push(row);
     console.log('REVIEW ' + JSON.stringify(row));
     await context.close();
+    } catch (e) {
+      console.log(`REVIEW ${name} FAILED: ${e?.stack ?? e}`);
+      process.exitCode = 1;
+    }
   }
 } finally {
   await browser.close();
@@ -194,12 +207,14 @@ for (const r of out) {
 md('');
 md('**Finished** (after a GC; elements per part of the screen; heap against the replay before it):');
 md('');
-md('| game | DOM nodes | screen elements | card | graph | key moments (rows) | strip (cells) | after "Show N more": list (rows) | filtered list (rows) | JS heap | over the replay | idle task | left after back |');
+md('| game | DOM nodes | screen elements | card | graph | key moments (rows) | strip (cells) | after "Show N more": list (rows) | filtered list (rows) | JS heap | over the replay | idle task | home after back, over home before |');
 md('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
 for (const r of out) {
   const f = r.finished;
-  md(`| ${r.game} | ${f.nodes} | ${f.screen} | ${f.card} | ${f.graph} | ${f.list} (${f.rows}) | ${f.strip} (${f.cells}) | ${r.expanded.list} (${r.expanded.rows}) | ${r.filtered.list} (${r.filtered.rows}, ${r.filtered.label}) | ${f.heapMB} MB | +${f.heapOverReplayMB} MB | ${f.idleTaskMsPerS} ms/s | +${r.afterBack.heapOverReplayMB} MB |`);
+  md(`| ${r.game} | ${f.nodes} | ${f.screen} | ${f.card} | ${f.graph} | ${f.list} (${f.rows}) | ${f.strip} (${f.cells}) | ${r.expanded.list} (${r.expanded.rows}) | ${r.filtered.list} (${r.filtered.rows}, ${r.filtered.label}) | ${f.heapMB} MB | +${f.heapOverReplayMB} MB | ${f.idleTaskMsPerS} ms/s | +${r.afterBack.heapOverHomeMB} MB |`);
 }
+md('');
+md('For comparison (after a GC): ' + out.map((r) => `${r.game}: home ${r.home.nodes} nodes, ${r.home.heapMB} MB; the replay ${r.replay.nodes} nodes, ${r.replay.heapMB} MB`).join('; ') + '.');
 md('');
 md('**Taps and opening** (to the next frame):');
 md('');
