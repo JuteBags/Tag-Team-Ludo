@@ -51,7 +51,9 @@
 - Rolls and kills with feel: dice throws, kill finishers (full, short or off in Settings), banners, sounds and vibration, and the palace: each colour's tokens are welcomed home with a short cutscene.
 - Boards (Classic, Wooden, Dark, plus store boards), colour-blind symbols (● ▲ ■ ◆), fast bots, reduced motion respected, and an update prompt when a newer version is out.
 
-Online play and private rooms are planned for a later update.
+### Online (private rooms)
+- **Play online:** create a room and share its 5-character code; friends join on their own phones. Colours nobody takes are played by bots (Easy, Normal or Hard).
+- The server rolls the dice and checks every move. Each roll or move has a 30-second clock, and a dropped connection or a closed app can rejoin the game.
 
 ## Development
 
@@ -64,6 +66,18 @@ npm test           # rules, dice, replay, review and bot tests
 npm run sim        # the long all-bot simulations (~40,000 games: kills, idle rolls, game length; minutes)
 npm run build      # typecheck + production build to dist/
 ```
+
+### Online play (private rooms)
+
+The room server lives in `server/` (a Cloudflare Worker with Durable Objects). To play online locally, run it next to the game:
+
+```bash
+cd server && npm install
+npm run dev        # room server at ws://localhost:8787 (no Cloudflare account needed)
+npm run smoke      # optional: two scripted players play a whole game against it
+```
+
+The game in `npm run dev` connects to it by itself. Open two browser windows (one private) to be two players. A build for phones needs the server's address: `VITE_ROOMS_URL=wss://<your-worker>.workers.dev npm run build`.
 
 To open the Android project in Android Studio: `npm run build`, then `npx cap sync android`, then open `android/`.
 

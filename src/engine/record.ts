@@ -77,6 +77,22 @@ export function setupError(r: GameRecord): string | null {
   return null;
 }
 
+/**
+ * The position after one record event (a die in the roll phase, a move in the move phase), for events that
+ * come one at a time (online play). Throws on an event that doesn't fit; STOP_EVENT is not a position change.
+ */
+export function applyEvent(s: GameState, ev: string): GameState {
+  if (s.phase === 'over') throw new Error('event after the end of the game');
+  if (s.phase === 'roll') {
+    const face = Number(ev);
+    if (ev.length !== 1 || !(face >= 1 && face <= 6)) throw new Error(`not a die: ${ev}`);
+    return roll(s, () => 0, face);
+  }
+  const m = s.moves.filter((x) => tokensCode(x.tokens) + x.roll === ev);
+  if (m.length !== 1) throw new Error(`not a legal move: ${ev}`);
+  return move(s, m[0]!);
+}
+
 /** The game's first position. */
 export const startOf = (r: Pick<GameRecord, 'seats' | 'first' | 'singles'>) => createGame(r.seats, r.first, r.singles);
 

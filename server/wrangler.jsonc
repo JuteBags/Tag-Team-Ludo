@@ -1,0 +1,24 @@
+// The room server (src/index.ts). `npm run dev` runs it on this computer (http://localhost:8787, no account
+// needed); `npm run deploy:staging` puts the staging copy on workers.dev. Durable Object bindings and vars are
+// not inherited by environments, so each environment lists its own.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tag-team-ludo-rooms-dev",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "Room" }] },
+  // SQLite-backed Durable Objects: the only kind on the free plan.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "vars": { "ALLOWED_ORIGINS": "*" },
+  "observability": { "enabled": true },
+  "env": {
+    "staging": {
+      "name": "tag-team-ludo-rooms-staging",
+      // The game itself too (the root `npm run build` output), so one link is enough to play: requests that
+      // aren't a file (/ws, /health) go to the Worker.
+      "assets": { "directory": "../dist" },
+      "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "Room" }] },
+      "vars": { "ALLOWED_ORIGINS": "http://localhost:5173,https://localhost,capacitor://localhost,https://jutebags.github.io" }
+    }
+  }
+}

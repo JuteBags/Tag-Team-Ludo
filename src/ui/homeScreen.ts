@@ -8,6 +8,7 @@ import { settingsSheet, statsSheet, symbolRow } from './sheets';
 import { giveUpNote, givingUpLoses, levelOf, loadStats, type SavedGame } from './store';
 import { setSymbols } from './themes';
 import type { PuzzleBadge } from './puzzleDay';
+import { loadRoom } from '../net/client';
 
 /** "just now", "12 min ago", "3 h ago", "2 days ago": when a saved game was last played. */
 function ago(t: number): string {
@@ -31,9 +32,11 @@ const HERO: PlayerState[] = [
   { color: 'yellow', owner: 3, bot: true, tokens: [29, -1, -1, -1] },
 ];
 
-export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, onPlay: (mode: Mode) => void, saved: SavedGame | null, onContinue: () => void, onStore: () => void, onReplay: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void, puzzle?: PuzzleBadge, onPuzzle?: () => void): HTMLElement {
+export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, onPlay: (mode: Mode) => void, saved: SavedGame | null, onContinue: () => void, onStore: () => void, onReplay: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void, puzzle?: PuzzleBadge, onPuzzle?: () => void, onOnline?: (rejoin: boolean) => void): HTMLElement {
   const el = document.createElement('div');
-  el.className = `screen home${saved ? ' has-save' : ''}`;
+  el.className = `screen home${saved ? ' has-save' : ''}${onOnline ? ' has-online' : ''}`;
+  /** An online room this device is in (it can be rejoined). */
+  const room = loadRoom();
   const dots = (n: number) => COLORS.slice(0, n).map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
   const people = saved ? saved.config.names.length : 0;
   // Continue says how far you've got: your tokens home in the saved game.
@@ -56,12 +59,13 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
       <button class="mcard pvc" data-mode="pvc"><span class="ci">${icons.robot}</span><b class="disp">VS COMPUTER</b><small>You against bots</small></button>
       <button class="mcard pvp" data-mode="pvp"><span class="ci">${icons.friends}</span><b class="disp">WITH FRIENDS</b><small>Pass the phone</small></button>
     </div>
+    ${onOnline ? `<button class="onrow" data-act="online"><span class="gl">${icons.globe}</span><span><b class="disp">${room ? 'BACK TO ROOM ' + room.code : 'PLAY ONLINE'}</b><small>${room ? 'Your online game goes on' : 'Friends play on their own phones'}</small></span><em class="chev" aria-hidden="true">${icons.next}</em></button>` : ''}
     ${puzzle && onPuzzle
       ? `<button class="storerow half" data-act="store" aria-label="Store, ${settings.gold} gold"><span class="sp3">${pawnSVG('blue')}${pawnSVG('red')}${pawnSVG('yellow')}</span><span><b class="disp">STORE</b><em class="gp"><i class="coin"></i>${settings.gold}</em></span></button>
     <button class="pzrow${puzzle.done ? ' done' : ''}" data-act="puzzle" aria-label="Daily puzzle, ${puzzle.done ? 'done today' : BAND[puzzle.band]}, ${puzzle.streak} ${puzzle.streak === 1 ? 'day' : 'days'} in a row"><span class="pi">${puzzle.done ? PUZZLE_DONE : PUZZLE_ICON}</span><span><b class="disp">PUZZLE</b><small>${puzzle.done ? 'Done' : BAND[puzzle.band]}${puzzle.streak ? ` · ★ ${puzzle.streak}` : ''}</small></span></button>`
       : `<button class="storerow" data-act="store"><span class="sp3">${pawnSVG('blue')}${pawnSVG('red')}${pawnSVG('yellow')}</span><span><b class="disp">STORE</b><small>Pawns, dice and boards</small></span><em class="gp"><i class="coin"></i>${settings.gold}</em></button>`}
     <button class="cbrow" data-act="symbols" role="switch" aria-checked="${settings.symbols}"><span>Colour-blind symbols</span>${symbolRow()}<em class="swl">${settings.symbols ? 'On' : 'Off'}</em><i class="sw"></i></button>
-    <div class="foot">Both modes play offline · Online play and private rooms coming soon · v${__APP_VERSION__}<small>Avatars: Fun Emoji by Davis Uche, CC BY 4.0</small></div>`;
+    <div class="foot">vs Computer and With friends play offline · v${__APP_VERSION__}<small>Avatars: Fun Emoji by Davis Uche, CC BY 4.0</small></div>`;
   el.querySelector('.tilt')!.appendChild(new BoardView(HERO, 286).el);
   // A new game replaces the saved one. When that counts as a loss, ask first.
   el.querySelectorAll<HTMLElement>('.mcard').forEach((b) =>
@@ -102,6 +106,7 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
   el.querySelector('[data-act=continue]')?.addEventListener('click', onContinue);
   el.querySelector('[data-act=store]')!.addEventListener('click', onStore);
   el.querySelector('[data-act=puzzle]')?.addEventListener('click', () => onPuzzle?.());
+  el.querySelector('[data-act=online]')?.addEventListener('click', () => onOnline?.(!!room));
   el.querySelector('[data-act=stats]')!.addEventListener('click', () => void statsSheet(el, onReplay, onReview));
   el.querySelector('[data-act=settings]')!.addEventListener('click', () => settingsSheet(el, sync));
   return el;
