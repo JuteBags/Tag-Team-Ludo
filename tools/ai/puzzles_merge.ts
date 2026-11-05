@@ -14,9 +14,12 @@ const oi = argv.indexOf('--out');
 const out = oi >= 0 ? argv[oi + 1]! : 'src/engine/puzzle-pool.json';
 // --keep pool.json: keep that pool's daily bands exactly as they are (no one's daily puzzle changes) and only
 // build the Expert list from the shards (pool v3).
+// --faces puzzle-faces.json (tools/ai/puzzle_faces.ts, #194): each puzzle's roll strip appended (pool v4).
+const fi = argv.indexOf('--faces');
+const facesOf = fi >= 0 ? (JSON.parse(readFileSync(argv[fi + 1]!, 'utf8')) as Record<string, { faces: number[]; weights: number[] } | null>) : null;
 const ki = argv.indexOf('--keep');
-const keep = ki >= 0 ? (JSON.parse(readFileSync(argv[ki + 1]!, 'utf8')) as { easy: unknown[][]; medium: unknown[][]; hard: unknown[][] }) : null;
-const files = argv.filter((x, i) => !x.startsWith('--') && argv[i - 1] !== '--out' && argv[i - 1] !== '--keep');
+const keep = ki >= 0 ? (JSON.parse(readFileSync(argv[ki + 1]!, 'utf8')) as { easy: unknown[][]; medium: unknown[][]; hard: unknown[][]; expert?: unknown[][]; expertFrom?: string }) : null;
+const files = argv.filter((x, i) => !x.startsWith('--') && argv[i - 1] !== '--out' && argv[i - 1] !== '--keep' && argv[i - 1] !== '--faces');
 /** The start day of the Expert puzzles until the release sets it (tests/puzzles.test.ts fails on it at 3.5.0). */
 const EXPERT_FROM_UNSET = '2099-01-01';
 const PER_GAME = 2;
@@ -90,9 +93,27 @@ const expert = [...expertAll.filter((p) => candidates(p) >= 3), ...expertAll.fil
   expertGames.set(p.from.seed, n + 1);
   return true;
 });
+// With --faces and a kept pool that has its Expert list, that list is kept too (only the strips are added).
+const expertList = facesOf && keep?.expert ? keep.expert : expert.map(compact);
+// Each entry's roll strip (#194): [13] the faces' win % with best play (whole %, faces 1..6), [14] their
+// chances under the app's dice (%, 1 decimal), or 0 for a decision in the middle of a turn's dice.
+const withFaces = (e: unknown[]) => {
+  if (!facesOf) return e;
+  const f = facesOf[idOf(e)];
+  if (f === undefined) throw new Error(`no faces for ${idOf(e)}`);
+  // The faces in whole %, as the puzzle's chances (so the rolled face is the best move's chance exactly).
+  return [...e.slice(0, 13), f ? f.faces.map((x) => Math.round(x)) : 0, f ? f.weights : 0];
+};
 // The pool's version: every regeneration or re-merge bumps it (a cached entry is only decoded against its own).
-const POOL_VERSION = 3;
-const json = JSON.stringify({ v: POOL_VERSION, ...bands, expertFrom: EXPERT_FROM_UNSET, expert: expert.map(compact) });
+const POOL_VERSION = facesOf ? 4 : 3;
+const json = JSON.stringify({
+  v: POOL_VERSION,
+  easy: bands.easy.map(withFaces),
+  medium: bands.medium.map(withFaces),
+  hard: bands.hard.map(withFaces),
+  expertFrom: keep?.expertFrom ?? EXPERT_FROM_UNSET,
+  expert: expertList.map(withFaces),
+});
 writeFileSync(out, json + '\n');
 
 const count = (xs: Puzzle[], k: (p: Puzzle) => string) => JSON.stringify(xs.reduce<Record<string, number>>((t, p) => ((t[k(p)] = (t[k(p)] ?? 0) + 1), t), {}));

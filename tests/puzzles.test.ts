@@ -45,7 +45,7 @@ describe('the puzzle calendar', () => {
 
 describe('the pool', () => {
   it("has a year's worth per band", () => {
-    expect(pool.v).toBe(3);
+    expect(pool.v).toBe(4);
     expect(pool.easy.length).toBeGreaterThanOrEqual(157);
     // Any 365 days in a row: up to 157 Mon–Wed, 105 Thu–Fri and 105 Sat–Sun days.
     expect(pool.medium.length).toBeGreaterThanOrEqual(105);
@@ -109,6 +109,29 @@ describe('the pool', () => {
     else expect(pool.expertFrom).toBe(EXPERT_FROM_UNSET);
     // A real day either way.
     expect(() => dayNumber(pool.expertFrom!)).not.toThrow();
+  });
+
+  it("the roll's strip (#194): the rolled face is the best move's win %, and before the roll is the faces' average under the dice", () => {
+    let strips = 0;
+    for (const band of [...BANDS, 'expert' as const])
+      (pool[band] ?? []).forEach((e, i) => {
+        const p = decodePuzzle(e, band === 'expert' ? 'hard' : band);
+        if (!p.roll) return;
+        strips++;
+        const at = `${band} ${i}`;
+        const r = p.roll;
+        expect(r.face, at).toBe(p.state.dice);
+        expect(r.faces[r.face - 1], at).toBe(p.chances[p.best]);
+        expect(r.faces.every((v) => v >= 0 && v <= 100), at).toBe(true);
+        expect(r.weights.reduce((a, w) => a + w, 0), at).toBeCloseTo(100, 0);
+        const w = r.weights.reduce((a, x) => a + x, 0);
+        expect(r.before, at).toBeCloseTo(r.faces.reduce((a, v, k) => a + (v * r.weights[k]!) / w, 0), 9);
+        expect(r.effect, at).toBeCloseTo(r.faces[r.face - 1]! - r.before, 9);
+        // The roll's effect never beats the best face or falls below the worst.
+        expect(r.faces[r.face - 1]! - r.before, at).toBeLessThanOrEqual(Math.max(...r.faces) - r.before + 1e-9);
+      });
+    // Most puzzles come straight from a roll (the rest are mid-turn: no strip).
+    expect(strips).toBeGreaterThan(300);
   });
 
   it("judges a pick: the best, the points a pick gives up, and both win chances", () => {
