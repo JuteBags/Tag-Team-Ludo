@@ -13,7 +13,7 @@ import { dayKey } from './checkin';
 import { dieMarkup } from './dice';
 import { goldOf, picksOf, played, streakNow, weekdayOf, type Which } from './puzzleDay';
 import { describe } from './replay';
-import { LABEL_LOOK, plainVerdict } from './reviewText';
+import { LABEL_LOOK, plainVerdict, toWin } from './reviewText';
 import { whyFacts, whyLine } from './reviewWhy';
 import { earn } from './skins';
 import { savePuzzleLog, type PuzzleLog } from './store';
@@ -146,7 +146,8 @@ export function puzzleScreen(pool: Pool, stored: PuzzleLog | null | 'error', bac
     q('.rpdice').replaceChildren();
     text.replaceChildren(span('vtag', pv.name, `--c:${pv.color}`));
     if (r.isBest) text.append(span('vwin', `${r.bestChance}% to win`, `color:${LABEL_LOOK.best.color}`));
-    else if (pv.win) text.append(span('vwin', pv.win.text, `color:${pv.win.color}`));
+    // What the pick cost, the review's way: "−3% to win" in the label's colour (a plus in green would read as a gain).
+    else text.append(span('vwin', toWin(-r.lost), `color:${pv.color}`));
     const line = document.createElement('span');
     line.className = 'vline';
     for (const part of pv.parts) line.append(typeof part === 'string' ? part : span(`vp ${part.pill}`, part.text));
@@ -178,7 +179,7 @@ export function puzzleScreen(pool: Pool, stored: PuzzleLog | null | 'error', bac
     view!.markMoved([]);
     view!.layout(states[0]!.players);
     cap.classList.add('plain', 'line');
-    foot.innerHTML = `<div class="pzbtns"><button class="pzsec disp" data-act="line">▶ PLAY AGAIN</button><button class="b3 blue disp" data-act="answer">ANSWER</button></div>`;
+    foot.innerHTML = `<div class="pzbtns"><button class="pzsec disp" data-act="line">▶ REPLAY</button><button class="b3 blue disp" data-act="answer">ANSWER</button></div>`;
     const say = (words: string, dice: number[]) => {
       text.replaceChildren(span('vtag', 'One way it could go', '--c:#cfd8ff'), span('vline', words));
       q('.rpdice').innerHTML = dice.map((d) => `<i>${dieMarkup(d, 22)}</i>`).join('');
