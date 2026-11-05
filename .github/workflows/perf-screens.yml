@@ -40,7 +40,11 @@ jobs:
           npx vite preview --port 4173 --strictPort > preview.log 2>&1 &
           for i in $(seq 60); do curl -sf http://localhost:4173/ > /dev/null && break; sleep 1; done
       - run: echo "commit ${{ github.sha }}, $(nproc) vCPUs, $(google-chrome --version 2>/dev/null)" | tee -a "$GITHUB_STEP_SUMMARY"
-      - run: node tools/perf/screens.mjs http://localhost:4173/ "$(command -v google-chrome || command -v chromium)" --throttle ${{ inputs.throttle || '4' }}
+      # The continued games, with their record (tools/perf/savedgame.ts).
+      - run: |
+          npx rolldown tools/perf/savedgame.ts --platform node --format esm --file tools/perf/dist/savedgame.mjs --log-level silent
+          node tools/perf/dist/savedgame.mjs > saved-games.json
+      - run: node tools/perf/screens.mjs http://localhost:4173/ "$(command -v google-chrome || command -v chromium)" --throttle ${{ inputs.throttle || '4' }} --saved saved-games.json
       - uses: actions/upload-artifact@v7
         with:
           name: perf-screens

@@ -1,5 +1,5 @@
 // The rarely used screens, loaded on first use (#98): replay, review, store, the bench page, the palace
-// cutscene and the share card stay out of the startup bundle. On the web, a chunk never fetched would fail
+// cutscene, the share card and the daily puzzle with its pool (#99) stay out of the startup bundle. On the web, a chunk never fetched would fail
 // if the connection dropped later ("Both modes play offline"), so prefetchAtIdle() fetches them all at idle
 // once the home screen is up; the APK has every chunk locally anyway. A failed import shows loadFailed()
 // with a retry, never a blank screen.
@@ -23,6 +23,8 @@ export const screens = {
   bench: lazy(() => import('./bench')),
   palace: lazy(() => import('./palace')),
   shareCard: lazy(() => import('./shareCard')),
+  /** The daily puzzle (#99): its screen and the puzzle pool (a chunk of its own), together. */
+  puzzle: lazy(() => Promise.all([import('./puzzleScreen'), import('../engine/puzzles').then((m) => m.loadPool())]).then(([m, pool]) => ({ ...m, pool }))),
 };
 
 /**

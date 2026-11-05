@@ -171,7 +171,7 @@ fn review_cands(g: &Game) -> (Vec<usize>, Vec<Game>) {
 
 /// Playout `i` of candidate position `t` in a review seeded `seed`. It depends on (seed, i) alone, so the
 /// first k playouts of any review of the decision are the same: a race over them is a prefix of review(n).
-fn review_playout(t: &Game, seed: i64, i: usize, me: u8, cut: u32, eval: Option<&Evaluator>, base: &Policy) -> f64 {
+pub fn review_playout(t: &Game, seed: i64, i: usize, me: u8, cut: u32, eval: Option<&Evaluator>, base: &Policy) -> f64 {
     let s = seed.wrapping_mul(7919).wrapping_add(i as i64);
     let mut d = [Rng::seeded(s), Rng::seeded(s ^ 0x1111), Rng::seeded(s ^ 0x2222), Rng::seeded(s ^ 0x3333)];
     let mut r = Rng::seeded(s ^ 0x1234_5678);

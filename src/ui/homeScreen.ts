@@ -7,6 +7,7 @@ import type { Mode } from './setup';
 import { settingsSheet, statsSheet, symbolRow } from './sheets';
 import { giveUpNote, givingUpLoses, levelOf, loadStats, type SavedGame } from './store';
 import { setSymbols } from './themes';
+import type { PuzzleBadge } from './puzzleDay';
 
 /** "just now", "12 min ago", "3 h ago", "2 days ago": when a saved game was last played. */
 function ago(t: number): string {
@@ -17,6 +18,11 @@ function ago(t: number): string {
   return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} day${h < 36 ? '' : 's'} ago`;
 }
 
+const BAND = { easy: 'Easy', medium: 'Medium', hard: 'Hard' } as const;
+/** The daily puzzle's mark (#99): a target, and a tick once today's is played. */
+const PUZZLE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"/></svg>`;
+const PUZZLE_DONE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+
 /** Decorative board on the home screen (blue pair on a star). */
 const HERO: PlayerState[] = [
   { color: 'blue', owner: 0, bot: false, tokens: [8, 8, -1, -1] },
@@ -25,7 +31,7 @@ const HERO: PlayerState[] = [
   { color: 'yellow', owner: 3, bot: true, tokens: [29, -1, -1, -1] },
 ];
 
-export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, onPlay: (mode: Mode) => void, saved: SavedGame | null, onContinue: () => void, onStore: () => void, onReplay: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void): HTMLElement {
+export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, onPlay: (mode: Mode) => void, saved: SavedGame | null, onContinue: () => void, onStore: () => void, onReplay: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void, puzzle?: PuzzleBadge, onPuzzle?: () => void): HTMLElement {
   const el = document.createElement('div');
   el.className = `screen home${saved ? ' has-save' : ''}`;
   const dots = (n: number) => COLORS.slice(0, n).map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
@@ -50,7 +56,10 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
       <button class="mcard pvc" data-mode="pvc"><span class="ci">${icons.robot}</span><b class="disp">VS COMPUTER</b><small>You against bots</small></button>
       <button class="mcard pvp" data-mode="pvp"><span class="ci">${icons.friends}</span><b class="disp">WITH FRIENDS</b><small>Pass the phone</small></button>
     </div>
-    <button class="storerow" data-act="store"><span class="sp3">${pawnSVG('blue')}${pawnSVG('red')}${pawnSVG('yellow')}</span><span><b class="disp">STORE</b><small>Pawns, dice and boards</small></span><em class="gp"><i class="coin"></i>${settings.gold}</em></button>
+    ${puzzle && onPuzzle
+      ? `<button class="storerow half" data-act="store" aria-label="Store, ${settings.gold} gold"><span class="sp3">${pawnSVG('blue')}${pawnSVG('red')}${pawnSVG('yellow')}</span><span><b class="disp">STORE</b><em class="gp"><i class="coin"></i>${settings.gold}</em></span></button>
+    <button class="pzrow${puzzle.done ? ' done' : ''}" data-act="puzzle" aria-label="Daily puzzle, ${puzzle.done ? 'done today' : BAND[puzzle.band]}, ${puzzle.streak} ${puzzle.streak === 1 ? 'day' : 'days'} in a row"><span class="pi">${puzzle.done ? PUZZLE_DONE : PUZZLE_ICON}</span><span><b class="disp">PUZZLE</b><small>${puzzle.done ? 'Done' : BAND[puzzle.band]}${puzzle.streak ? ` · ★ ${puzzle.streak}` : ''}</small></span></button>`
+      : `<button class="storerow" data-act="store"><span class="sp3">${pawnSVG('blue')}${pawnSVG('red')}${pawnSVG('yellow')}</span><span><b class="disp">STORE</b><small>Pawns, dice and boards</small></span><em class="gp"><i class="coin"></i>${settings.gold}</em></button>`}
     <button class="cbrow" data-act="symbols" role="switch" aria-checked="${settings.symbols}"><span>Colour-blind symbols</span>${symbolRow()}<em class="swl">${settings.symbols ? 'On' : 'Off'}</em><i class="sw"></i></button>
     <div class="foot">Both modes play offline · Online play and private rooms coming soon · v${__APP_VERSION__}<small>Avatars: Fun Emoji by Davis Uche, CC BY 4.0</small></div>`;
   el.querySelector('.tilt')!.appendChild(new BoardView(HERO, 286).el);
@@ -92,6 +101,7 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
   });
   el.querySelector('[data-act=continue]')?.addEventListener('click', onContinue);
   el.querySelector('[data-act=store]')!.addEventListener('click', onStore);
+  el.querySelector('[data-act=puzzle]')?.addEventListener('click', () => onPuzzle?.());
   el.querySelector('[data-act=stats]')!.addEventListener('click', () => void statsSheet(el, onReplay, onReview));
   el.querySelector('[data-act=settings]')!.addEventListener('click', () => settingsSheet(el, sync));
   return el;

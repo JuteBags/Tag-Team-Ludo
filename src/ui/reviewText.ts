@@ -97,7 +97,8 @@ export const sixRuns = (luck: RollLuck[], owner: number): RollLuck[] => rollEven
 export const bigRolls = (luck: RollLuck[], n = 3) => rollEvents(luck).sort((a, b) => Math.abs(b.luck) - Math.abs(a.luck) || a.at - b.at).slice(0, n);
 
 /** A roll's swing in the verdicts' unit, never under 1: "+12% to win" (#152). */
-const toWin = (x: number) => `${x >= 0 ? '+' : '−'}${Math.max(1, Math.round(Math.abs(x)))}% to win`;
+/** Points of win chance as "+12% to win" / "−3% to win" (at least 1, so a swing never reads as 0). */
+export const toWin = (x: number) => `${x >= 0 ? '+' : '−'}${Math.max(1, Math.round(Math.abs(x)))}% to win`;
 
 /**
  * A big roll as the win chance it gave: "+12% to win" for you, "Aarav: −9% to win" for anyone else. The die
