@@ -11,9 +11,9 @@ import { avatarSVG, cssVars, icons } from './art';
 import { BoardView } from './boardView';
 import { dayKey } from './checkin';
 import { dieMarkup } from './dice';
-import { goldOf, picksOf, played, streakNow, weekdayOf, type Which } from './puzzleDay';
+import { goldOf, picksOf, winMove, played, streakNow, weekdayOf, type Which } from './puzzleDay';
 import { describe } from './replay';
-import { LABEL_LOOK, plainVerdict, toWin } from './reviewText';
+import { plainVerdict } from './reviewText';
 import { whyFacts, whyLine } from './reviewWhy';
 import { earn } from './skins';
 import { savePuzzleLog, type PuzzleLog } from './store';
@@ -35,6 +35,12 @@ function expertOf(day: string, pool: Pool): Puzzle | null {
   }
 }
 
+
+/** A small flat die face for the roll strip. */
+const pipFace = (n: number) => {
+  const P: Record<number, [number, number][]> = { 1: [[9, 9]], 2: [[5, 5], [13, 13]], 3: [[5, 5], [9, 9], [13, 13]], 4: [[5, 5], [13, 5], [5, 13], [13, 13]], 5: [[5, 5], [13, 5], [9, 9], [5, 13], [13, 13]], 6: [[5, 4.5], [13, 4.5], [5, 9], [13, 9], [5, 13.5], [13, 13.5]] };
+  return `<svg viewBox="0 0 18 18" aria-hidden="true"><rect x=".75" y=".75" width="16.5" height="16.5" rx="4" class="fc"/>${P[n]!.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.7" class="fp"/>`).join('')}</svg>`;
+};
 /** The text of an element built safely (names and copy never go in as markup). */
 const span = (cls: string, text: string, style?: string) => {
   const s = document.createElement('span');
@@ -97,6 +103,9 @@ export function puzzleScreen(pool: Pool, stored: PuzzleLog | null | 'error', bac
     const mover = s.players[s.current]!.color;
     const ask = q<HTMLElement>('.pzask');
     ask.setAttribute('style', cssVars(mover));
+    // Back to the ask (a tab switch from a revealed puzzle): the roll card goes.
+    ask.classList.remove('rolled');
+    ask.querySelector('.roll')?.remove();
     ask.querySelector('.av')!.innerHTML = avatarSVG(mover);
     ask.querySelector('b')!.textContent = `You're ${houseName(mover)}`;
     ask.querySelector('.dice')!.innerHTML = s.rolls.map((r) => `<i>${dieMarkup(r, 34)}</i>`).join('');
@@ -144,10 +153,30 @@ export function puzzleScreen(pool: Pool, stored: PuzzleLog | null | 'error', bac
     cap.classList.add('plain');
     cap.classList.remove('line');
     q('.rpdice').replaceChildren();
+    // #194 (the owner's pick A): the roll's luck in the top card, where the dice were, and only the move's
+    // cost in the verdict. The strip is each face's win % with best play, neutral (luck is never green or
+    // red); a decision in the middle of a turn's dice has no strip (roll is null), so the card stays as it was.
+    const strip = pz.roll;
+    const ask = q<HTMLElement>('.pzask');
+    ask.classList.toggle('rolled', !!strip);
+    ask.querySelector('.roll')?.remove();
+    if (strip) {
+      const after = s.rolls.length > 1 ? `, after the ${s.rolls.slice(0, -1).join(' and ')}` : '';
+      const fromRoll = Math.round(Math.abs(strip.effect)) < 1 ? winMove(0) : `${winMove(strip.effect)}, from the roll`;
+      const card = document.createElement('span');
+      card.className = 'roll';
+      card.innerHTML = `<span class="rh"><b></b><em></em></span><span class="pzfaces" role="img">${strip.faces.map((v, k) => `<span class="f${k + 1 === strip.face ? ' on' : ''}">${pipFace(k + 1)}<b>${v}</b></span>`).join('')}</span>`;
+      card.querySelector('.rh b')!.textContent = `Your ${strip.face}${after}`;
+      card.querySelector('.rh em')!.textContent = fromRoll;
+      card.querySelector('.pzfaces')!.setAttribute('aria-label', `Win % for each roll: ${strip.faces.map((v, k) => `${k + 1}: ${v}`).join(', ')}. You rolled ${strip.face}.`);
+      ask.append(card);
+      ask.setAttribute('aria-label', `Your ${strip.face}${after}: ${fromRoll}.`);
+    }
+    // "more" only when the roll took some away too.
+    const more = strip && strip.effect <= -0.5 ? ' more' : '';
+    const moveWords = r.isBest ? (strip ? 'The most this roll allows' : `${r.bestChance}% to win`) : `Your move: ${winMove(-r.lost)}${more}`;
     text.replaceChildren(span('vtag', pv.name, `--c:${pv.color}`));
-    if (r.isBest) text.append(span('vwin', `${r.bestChance}% to win`, `color:${LABEL_LOOK.best.color}`));
-    // What the pick cost, the review's way: "−3% to win" in the label's colour (a plus in green would read as a gain).
-    else text.append(span('vwin', toWin(-r.lost), `color:${pv.color}`));
+    text.append(span('vwin', moveWords, `color:${pv.color}`));
     const line = document.createElement('span');
     line.className = 'vline';
     for (const part of pv.parts) line.append(typeof part === 'string' ? part : span(`vp ${part.pill}`, part.text));

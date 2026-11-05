@@ -1,6 +1,6 @@
 // The daily puzzle's day (src/ui/puzzleDay.ts): the band by weekday, the streak of days played, one try each.
 import { describe, expect, it } from 'vitest';
-import { bandOf, goldOf, picksOf, played, streakNow, weekdayOf } from '../src/ui/puzzleDay';
+import { bandOf, goldOf, picksOf, played, streakNow, weekdayOf, winMove } from '../src/ui/puzzleDay';
 
 const right = { pick: 0, best: true };
 const wrong = { pick: 2, best: false };
@@ -57,5 +57,11 @@ describe('daily puzzle day', () => {
 
   it('pays 20 for the best move and 5 for a try', () => {
     expect([goldOf(true), goldOf(false)]).toEqual([20, 5]);
+  });
+  it('says what happens to your win %, never a bare minus (#194)', () => {
+    expect(winMove(5.4)).toBe('Win % ▲ 5');
+    expect(winMove(-2.6)).toBe('Win % ▼ 3');
+    expect(winMove(0.4)).toBe('Win % about the same');
+    expect(winMove(-0.4)).toBe('Win % about the same');
   });
 });

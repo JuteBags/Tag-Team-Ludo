@@ -1103,3 +1103,18 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 /* #184 Dice sounds: a sub-switch of Sound, indented under it, greyed while Sound is off. */
 .swrow[data-k=dicesound]{min-height:44px;padding-left:26px}
 .swrow.dim{opacity:.45}
+
+/* #194 the roll card (the owner's pick A): the strip, each face's win % with best play. Neutral: luck is never green or red. */
+.pzfaces{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+.pzfaces .f{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0 3px;border-radius:10px;background:rgba(255,255,255,.07)}
+.pzfaces .f svg{width:18px;height:18px}
+.pzfaces .fc{fill:rgba(255,255,255,.9)}
+.pzfaces .fp{fill:#1b2a5c}
+.pzfaces .f b{font-size:13px;font-weight:900;line-height:1;opacity:.78}
+.pzfaces .f.on{background:rgba(255,255,255,.22);box-shadow:inset 0 0 0 2px #fff}
+.pzfaces .f.on b{opacity:1}
+.pzask.rolled{height:auto;padding:8px 10px;flex-direction:column;align-items:stretch;gap:6px}
+.pzask.rolled .av,.pzask.rolled .t,.pzask.rolled .dice{display:none}
+.pzask .roll{display:flex;flex-direction:column;gap:6px}
+.pzask .rh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:13px;font-weight:900}
+.pzask .rh em{font-style:normal;opacity:.9}
