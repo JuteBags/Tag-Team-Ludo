@@ -54,3 +54,9 @@ export interface PuzzleBadge {
   streak: number;
 }
 export const puzzleBadge = (l: PuzzleLog | null, today = dayKey()): PuzzleBadge => ({ band: bandOf(today), done: !!picksOf(l, today).daily, streak: streakNow(l, today) });
+
+/** "Win % ▲ 5" / "Win % ▼ 3" / "Win % about the same": what happens to your win %, in points (#194). */
+export const winMove = (x: number) => {
+  const n = Math.round(Math.abs(x));
+  return n < 1 ? 'Win % about the same' : `Win % ${x > 0 ? '▲' : '▼'} ${n}`;
+};
