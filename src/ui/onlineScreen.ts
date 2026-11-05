@@ -47,7 +47,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   const tg = (k: string, items: [string, string][], on: string) => `<div class="tg" data-k="${k}">${items.map(([v, t]) => `<button data-v="${v}"${v === on ? ' class="on"' : ''}>${t}</button>`).join('')}</div>`;
   el.innerHTML = `
     <div class="gtop"><button class="rbtn" data-act="back" aria-label="Back">${icons.back}</button>
-      <div class="mode"><small>PLAY ONLINE</small><b>PRIVATE ROOM</b></div><span class="rbtn-space"></span></div>
+      <div class="mode"><small>WITH FRIENDS · ONLINE</small><b>PRIVATE ROOM</b></div><span class="rbtn-space"></span></div>
     <section class="wiz quickfoot" data-step="menu">
       <h3 class="disp">Private room</h3><p class="sub">Friends play on their own phones</p>
       <div class="mid"><div class="sp">
