@@ -855,7 +855,8 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .review .rvrow>i.die{width:30px;display:grid;place-items:center}
 .review .rvprog{display:flex;align-items:center;gap:10px;margin:12px 0 8px;font-size:13px;font-weight:800}
 .review .rvprog .bar{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden}
-.review .rvprog .bar i{display:block;height:100%;background:#ffd65a;transition:width .3s}
+.review .rvprog .bar i{display:block;height:100%;background:#ffd65a;transform-origin:left;transform:scaleX(0);transition:transform .3s}
+.review .rvprog:not(.done) .bar i{will-change:transform}
 .review .rvprog.done .bar{display:none}
 .review .rvlist{display:flex;flex-direction:column;gap:6px}
 .review .rvrow{display:flex;align-items:center;gap:10px;min-height:48px;padding:8px 12px;border-radius:14px;background:rgba(0,0,0,.25);color:#fff;text-align:left}
