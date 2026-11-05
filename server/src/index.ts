@@ -1,16 +1,24 @@
 // The room server: a Cloudflare Worker that routes each WebSocket to its room, and the Room Durable Object
 // (one per room code) that runs it. All game logic is in room-core.ts; this file is only the wiring.
 //
-//   GET /health                          {"ok":true,"protocol":1}
-//   GET /ws?create={"players":4,...}     a new room (the first message back is its lobby, with the code)
-//   GET /ws?code=ABCDE                   join a room
-// Then the app's first message is `hello` (src/net/protocol.ts).
+//   GET /health                          {"ok":true,"protocol":2}
+//   GET /ws?create={"mode":"ffa",...}    a new private room (the first message back is its lobby, with the code)
+//   GET /ws?code=ABCDE                   join a room (private, or the ranked game the queue matched you into)
+//   GET /mm?mode=1v1                     ranked: search for a game (a WebSocket to that mode's Matchmaker)
+//   POST /api/account                    ranked: your guest account and ratings (accounts.ts)
+// Then the app's first message is `hello` (src/net/protocol.ts), or `queue` on /mm.
 import { DurableObject } from 'cloudflare:workers';
-import { CODE_ALPHABET, CODE_LEN, PROTOCOL, isCode, type ClientMsg, type ErrorCode, type ServerMsg } from '../../src/net/protocol';
+import { CODE_ALPHABET, CODE_LEN, GAME_MODES, PROTOCOL, isCode, type AccountKey, type ClientMsg, type ErrorCode, type GameMode, type RoomOptions, type ServerMsg } from '../../src/net/protocol';
+import { Accounts } from './accounts';
+import { Matchmaker } from './matchmaker';
 import { RoomCore, validOptions, type RoomData, type RoomIO } from './room-core';
+
+export { Accounts, Matchmaker };
 
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>;
+  MATCH: DurableObjectNamespace<Matchmaker>;
+  ACCOUNTS: DurableObjectNamespace<Accounts>;
   /** Comma-separated origins allowed to open a WebSocket, or "*" (dev). Requests with no Origin (native) always pass. */
   ALLOWED_ORIGINS: string;
 }
@@ -18,7 +26,8 @@ export interface Env {
 const MAX_MESSAGE = 2048;
 const TOKEN = /^[0-9a-f]{32}$/;
 
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' } });
+const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...CORS } });
 
 function originOk(req: Request, env: Env): boolean {
   const origin = req.headers.get('Origin');
@@ -32,14 +41,38 @@ function newCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(CODE_LEN));
   return [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
 }
+Matchmaker.newCode = newCode;
+
+const accounts = (env: Env) => env.ACCOUNTS.get(env.ACCOUNTS.idFromName('global'));
+
+/** POST /api/account: the guest account (made on the first call) and its ratings. */
+async function account(req: Request, env: Env): Promise<Response> {
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
+  let body: { id?: string; secret?: string; name?: string };
+  try {
+    body = (await req.json()) as typeof body;
+  } catch {
+    return json({ error: 'bad body' }, 400);
+  }
+  const key: AccountKey | null = body.id && body.secret ? { id: body.id, secret: body.secret } : null;
+  const reply = await accounts(env).account(key, String(body.name ?? ''));
+  return reply ? json(reply) : json({ error: 'no-account' }, 404);
+}
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === '/health') return json({ ok: true, protocol: PROTOCOL });
-    if (url.pathname !== '/ws') return json({ error: 'not found' }, 404);
+    if (url.pathname === '/api/account') return account(req, env);
+    if (url.pathname !== '/ws' && url.pathname !== '/mm') return json({ error: 'not found' }, 404);
     if (req.headers.get('Upgrade') !== 'websocket') return json({ error: 'expected a WebSocket' }, 426);
     if (!originOk(req, env)) return json({ error: 'origin not allowed' }, 403);
+    if (url.pathname === '/mm') {
+      const mode = url.searchParams.get('mode') as GameMode;
+      if (!GAME_MODES.includes(mode)) return json({ error: 'bad mode' }, 400);
+      return env.MATCH.get(env.MATCH.idFromName(`mm:${mode}`)).fetch(req);
+    }
 
     const create = url.searchParams.get('create');
     if (create !== null) {
@@ -116,7 +149,15 @@ export class Room extends DurableObject<Env> {
         void ctx.storage.deleteAll();
       },
       random: () => crypto.getRandomValues(new Uint32Array(1))[0]! / 4294967296,
+      rate: (report) => accounts(this.env).rate(report),
     };
+  }
+
+  /** Ranked: the queue made this room (false when the code is already taken). It starts at once. */
+  async createRanked(code: string, options: RoomOptions, slots: ({ token: string; name: string; account: string } | null)[], botRating: number): Promise<boolean> {
+    if (this.core) return false;
+    this.core = RoomCore.ranked(code, options, slots, botRating, this.io());
+    return true;
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -199,6 +240,8 @@ const ERRORS: Record<ErrorCode, string> = {
   'not-enough': 'At least two people are needed to start.',
   'not-your-turn': 'It’s not your turn.',
   stale: 'That was already played.',
+  'no-account': 'Your ranked account wasn’t found. Try again.',
+  'in-queue': 'You started searching somewhere else.',
   illegal: 'That move isn’t allowed.',
   'bad-message': 'The app sent something the server didn’t understand.',
 };

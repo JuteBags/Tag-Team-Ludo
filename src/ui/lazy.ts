@@ -26,6 +26,7 @@ export const screens = {
   /** The daily puzzle (#99): its screen and the puzzle pool (a chunk of its own), together. */
   puzzle: lazy(() => Promise.all([import('./puzzleScreen'), import('../engine/puzzles').then((m) => m.loadPool())]).then(([m, pool]) => ({ ...m, pool }))),
   online: lazy(() => import('./onlineScreen')),
+  ranked: lazy(() => import('./rankedScreen')),
 };
 
 /**

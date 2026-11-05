@@ -39,7 +39,7 @@ export function mountApp(root: HTMLElement) {
     setGame('none');
     const [saved, log] = await Promise.all([loadGame(), loadPuzzleLog()]);
     if (game) return; // a game started while the save was loading
-    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle(), { room: (rejoin) => void online(rejoin) });
+    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle(), { room: (rejoin) => void online(rejoin), ranked: () => void ranked() });
     setScreen(stage, screen);
     // On the home screen only, never during a game: a newer version on the site, then today's check-in.
     void offerUpdate(screen).then(() => offerCheckIn(screen));
@@ -67,15 +67,20 @@ export function mountApp(root: HTMLElement) {
     const stored = await storedReview(rec, keep);
     await show(stage, screens.review, (m) => m.reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p), keep, at, caption, p), keep, pov), back);
   };
-  /** Play online: the private-room screens, then the room's game (the server plays it; this screen shows it). */
+  /** With friends, online: the private-room screens, then the room's game (the server plays it; this screen shows it). */
   const online = async (rejoin = false) => {
     await show(stage, screens.online, (m) => m.onlineScreen(playOnline, () => void home(), rejoin), () => void home());
+  };
+  /** Ranked PvP: your ranks and the search, then the matched game. */
+  const ranked = async () => {
+    await show(stage, screens.ranked, (m) => m.rankedScreen(playOnline, () => void home()), () => void home());
   };
   const playOnline = (link: RoomLink, cfg: GameConfig) => {
     if (game && stage.contains(game.el)) game.dispose();
     const toResult = () => setScreen(stage, g.el);
-    // Play again: a new room (the old one is over).
-    const g = new GameScreen(cfg, (to) => (to === 'home' ? void home() : to === 'replay' ? g.finalRecord && void watch(g.finalRecord, toResult) : to === 'review' ? g.finalRecord && void review(g.finalRecord, toResult) : void online()), undefined, undefined, link);
+    // Play again: a new room (the old one is over), or a new ranked search.
+    const again = link.setup?.ranked ? () => void ranked() : () => void online();
+    const g = new GameScreen(cfg, (to) => (to === 'home' ? void home() : to === 'replay' ? g.finalRecord && void watch(g.finalRecord, toResult) : to === 'review' ? g.finalRecord && void review(g.finalRecord, toResult) : again()), undefined, undefined, link);
     game = g;
     setScreen(stage, g.el);
     setGame('light');

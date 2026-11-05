@@ -2,10 +2,11 @@
 // way the app will, by applying the server's events with the engine, and plays a legal move on its turn.
 import { describe, expect, it } from 'vitest';
 import { STOP_EVENT, applyEvent, createGame, moveEvent, replay, seeded, type GameState } from '../src/engine';
-import { PROTOCOL, type ClientMsg, type RoomOptions, type ServerMsg } from '../src/net/protocol';
-import { BOT_MOVE_MS, LOBBY_MS, MAX_TIMEOUTS, OVER_MS, RoomCore, TURN_MS, type RoomData, type RoomIO } from '../server/src/room-core';
+import { PROTOCOL, type ClientMsg, type GameSetup, type RoomOptions, type ServerMsg } from '../src/net/protocol';
+import { BOT_MOVE_MS, LOBBY_MS, MAX_TIMEOUTS, OVER_MS, RoomCore, setupFor, type RateReport, TURN_MS, type RoomData, type RoomIO } from '../server/src/room-core';
 
-const OPTS: RoomOptions = { players: 4, singles: false, botLevel: 'normal' };
+const OPTS: RoomOptions = { mode: 'ffa', pairing: 'opposite', singles: false, botLevel: 'normal' };
+const ppl = (names: string[]) => names.map((name, member) => ({ member, name }));
 const tok = (i: number) => i.toString(16).padStart(32, '0');
 
 /** A fake world: a clock, the alarm, and every message each person got. */
@@ -33,11 +34,13 @@ function world(seed = 1) {
 /** A phone: follows the room's messages like the app does. */
 class Phone {
   state: GameState | null = null;
+  setup: GameSetup | null = null;
   events: string[] = [];
   you = -1;
   over: Extract<ServerMsg, { t: 'over' }> | null = null;
   lobby: Extract<ServerMsg, { t: 'lobby' }> | null = null;
   errors: string[] = [];
+  rated: Extract<ServerMsg, { t: 'rated' }> | null = null;
   private read = 0;
   constructor(readonly token: string, private w: ReturnType<typeof world>) {}
 
@@ -51,6 +54,7 @@ class Phone {
         this.you = m.you;
       } else if (m.t === 'game') {
         this.you = m.you;
+        this.setup = m.setup;
         this.events = [...m.events];
         this.state = createGame(m.setup.seats, m.setup.first, m.setup.singles);
         for (const ev of m.events) if (ev !== STOP_EVENT) this.state = applyEvent(this.state, ev);
@@ -59,13 +63,14 @@ class Phone {
         this.events.push(m.ev);
         if (m.ev !== STOP_EVENT) this.state = applyEvent(this.state!, m.ev);
       } else if (m.t === 'over') this.over = m;
+      else if (m.t === 'rated') this.rated = m;
       else if (m.t === 'error') this.errors.push(m.code);
     }
   }
 
   myTurn() {
     const s = this.state;
-    return !!s && !this.over && s.phase !== 'over' && s.players[s.current]!.owner === this.you && !s.players[s.current]!.bot;
+    return !!s && !this.over && s.phase !== 'over' && this.setup!.control[s.players[s.current]!.color] === this.you;
   }
 
   /** What this phone would send on its turn: a roll, or a random legal move. */
@@ -98,7 +103,7 @@ async function playOut(room: RoomCore, w: ReturnType<typeof world>, phones: Phon
 describe('online room: lobby', () => {
   it('takes people up to the seats, and only the host starts, with two people or more', async () => {
     const w = world();
-    const room = RoomCore.create('ABCDE', { ...OPTS, players: 2 }, w.io);
+    const room = RoomCore.create('ABCDE', { ...OPTS, mode: '1v1' }, w.io);
     expect(room.hello(tok(1), hello(1))).toBeNull();
     expect(await room.handle(tok(1), { t: 'start' })).toBe('not-enough');
     expect(room.hello(tok(2), hello(2))).toBeNull();
@@ -160,8 +165,10 @@ describe('online room: lobby', () => {
 describe('online room: a game', () => {
   for (const [label, opts, people] of [
     ['4 houses, 2 people + 2 bots', OPTS, 2],
-    ['2 houses, 2 people, no doubles', { ...OPTS, players: 2, singles: true }, 2],
-    ['3 houses, 3 people, hard bots', { ...OPTS, players: 3, botLevel: 'hard' }, 3],
+    ['1v1, no doubles', { ...OPTS, mode: '1v1', singles: true }, 2],
+    ['1(x2) v 1(x2), side by side, hard bots', { ...OPTS, mode: 'duo', pairing: 'adjacent', botLevel: 'hard' }, 2],
+    ['2v2, 4 people', { ...OPTS, mode: '2v2' }, 4],
+    ['2v2, 3 people and a bot partner', { ...OPTS, mode: '2v2', botLevel: 'easy' }, 3],
   ] as [string, RoomOptions, number][]) {
     it(`plays to the end: ${label}`, async () => {
       for (let seed = 1; seed <= 3; seed++) {
@@ -185,9 +192,24 @@ describe('online room: a game', () => {
     });
   }
 
+  it('seats the modes: 2v2 partners opposite on one side, duo two colours each, bots in empty slots', () => {
+    const t = setupFor({ ...OPTS, mode: '2v2' }, ppl(['Asha', 'Bilal', 'Chen']), 'blue');
+    expect(t.seats.map((s) => [s.color, s.owner, s.bot])).toEqual([['blue', 0, false], ['green', 1, false], ['red', 0, false], ['yellow', 1, true]]);
+    expect(t.control).toEqual({ blue: 0, green: 1, red: 2, yellow: -1 });
+    expect(t.names).toEqual(['Asha & Chen', 'Bilal']);
+    const d = setupFor({ ...OPTS, mode: 'duo', pairing: 'adjacent' }, ppl(['Asha']), 'blue');
+    expect(d.seats.map((s) => [s.color, s.owner, s.bot])).toEqual([['blue', 0, false], ['yellow', 0, false], ['green', 1, true], ['red', 1, true]]);
+    expect(setupFor({ ...OPTS, mode: '1v1' }, ppl(['A', 'B']), 'red').seats.map((s) => s.color)).toEqual(['blue', 'red']);
+    // Every mode's setup is a valid game record setup.
+    for (const mode of ['ffa', '1v1', 'duo', '2v2'] as const) {
+      const s = setupFor({ ...OPTS, mode }, ppl(['A', 'B']), 'blue');
+      expect(replay({ v: 1, seats: s.seats, first: s.first, events: '' }).ok).toBe(true);
+    }
+  });
+
   it('turns down stale, out-of-turn and illegal actions', async () => {
     const w = world(5);
-    const room = RoomCore.create('ABCDE', { ...OPTS, players: 2 }, w.io);
+    const room = RoomCore.create('ABCDE', { ...OPTS, mode: '1v1' }, w.io);
     room.hello(tok(1), hello(1));
     room.hello(tok(2), hello(2));
     await room.handle(tok(1), { t: 'start' });
@@ -205,7 +227,7 @@ describe('online room: a game', () => {
 
   it('plays for someone whose time runs out, and a bot takes over after repeated timeouts', async () => {
     const w = world(9);
-    const room = RoomCore.create('ABCDE', { ...OPTS, players: 2 }, w.io);
+    const room = RoomCore.create('ABCDE', { ...OPTS, mode: '1v1' }, w.io);
     room.hello(tok(1), hello(1));
     room.hello(tok(2), hello(2));
     await room.handle(tok(1), { t: 'start' });
@@ -280,5 +302,55 @@ describe('online room: a game', () => {
     phones[1] = fresh;
     await playOut(room, w, phones, rng);
     expect(room.snapshot.phase).toBe('over');
+  });
+});
+
+describe('online room: ranked', () => {
+  /** A fake accounts store: every account starts at 1000 and gets +10 for first place, -10 otherwise. */
+  const store = (reports: RateReport[]) => async (r: RateReport) => {
+    reports.push(r);
+    const out: Record<string, { before: number; after: number; games: number }> = {};
+    for (const side of r.sides) for (const m of side.members) if ('account' in m) out[m.account] = { before: 1000, after: side.place === 0 ? 1010 : 990, games: 1 };
+    return out;
+  };
+
+  it('starts at once with the matched people, rates the result, and tells each person', async () => {
+    const w = world(11);
+    const reports: RateReport[] = [];
+    w.io.rate = store(reports);
+    const room = RoomCore.ranked('RANK1', { ...OPTS, mode: '2v2' }, [{ token: tok(1), name: 'A', account: 'acc1' }, { token: tok(2), name: 'B', account: 'acc2' }, null, { token: tok(4), name: 'D', account: 'acc4' }], 1150, w.io);
+    expect(room.snapshot.phase).toBe('playing');
+    expect(room.snapshot.setup!.ranked).toBe(true);
+    expect(room.snapshot.setup!.control).toEqual({ blue: 0, green: 1, red: -1, yellow: 2 });
+    const phones = [1, 2, 4].map((i) => new Phone(tok(i), w));
+    for (const [i, p] of phones.entries()) expect(room.hello(p.token, hello([1, 2, 4][i]!))).toBeNull();
+    await playOut(room, w, phones, seeded(3));
+    await new Promise((r) => setTimeout(r, 0));
+    phones.forEach((p) => p.sync());
+    expect(reports).toHaveLength(1);
+    // Two sides; the bot on A's side is rated at the room's bot rating.
+    expect(reports[0]!.sides.map((x) => x.members)).toContainEqual([{ account: 'acc1' }, { bot: 1150 }]);
+    for (const p of phones) expect(p.rated).toMatchObject({ mode: '2v2', before: 1000 });
+    // A phone that comes back after the end gets its rating change again.
+    w.inbox.set(tok(2), []);
+    const back = new Phone(tok(2), w);
+    room.hello(tok(2), hello(2));
+    back.sync();
+    expect(back.rated).not.toBeNull();
+  });
+
+  it('a person who leaves ranks last for the rating', async () => {
+    const w = world(12);
+    const reports: RateReport[] = [];
+    w.io.rate = store(reports);
+    const room = RoomCore.ranked('RANK2', { ...OPTS, mode: 'ffa' }, [{ token: tok(1), name: 'A', account: 'a' }, { token: tok(2), name: 'B', account: 'b' }, null, null], 1000, w.io);
+    room.hello(tok(1), hello(1));
+    room.hello(tok(2), hello(2));
+    await room.handle(tok(1), { t: 'leave' });
+    const phones = [new Phone(tok(2), w)];
+    await playOut(room, w, phones, seeded(5));
+    await new Promise((r) => setTimeout(r, 0));
+    const last = reports[0]!.sides.at(-1)!;
+    expect(last.members).toEqual([{ account: 'a' }]);
   });
 });

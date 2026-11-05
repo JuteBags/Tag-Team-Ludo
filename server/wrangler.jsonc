@@ -6,9 +6,19 @@
   "name": "tag-team-ludo-rooms-dev",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "Room" }] },
+  "durable_objects": {
+        "bindings": [
+          { "name": "ROOMS", "class_name": "Room" },
+          { "name": "MATCH", "class_name": "Matchmaker" },
+          { "name": "ACCOUNTS", "class_name": "Accounts" }
+        ]
+      },
   // SQLite-backed Durable Objects: the only kind on the free plan.
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Room"] },
+    // Ranked: the queue (one per mode) and the accounts store.
+    { "tag": "v2", "new_sqlite_classes": ["Matchmaker", "Accounts"] }
+  ],
   "vars": { "ALLOWED_ORIGINS": "*" },
   "observability": { "enabled": true },
   "env": {
@@ -17,7 +27,13 @@
       // The game itself too (the root `npm run build` output), so one link is enough to play: requests that
       // aren't a file (/ws, /health) go to the Worker.
       "assets": { "directory": "../dist" },
-      "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "Room" }] },
+      "durable_objects": {
+        "bindings": [
+          { "name": "ROOMS", "class_name": "Room" },
+          { "name": "MATCH", "class_name": "Matchmaker" },
+          { "name": "ACCOUNTS", "class_name": "Accounts" }
+        ]
+      },
       "vars": { "ALLOWED_ORIGINS": "http://localhost:5173,https://localhost,capacitor://localhost,https://jutebags.github.io" }
     }
   }

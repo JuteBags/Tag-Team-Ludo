@@ -70,6 +70,8 @@ export class RoomLink {
   /** When `turn` was received (performance.now), to count its time down. */
   turnAt = 0;
   over: Extract<ServerMsg, { t: 'over' }> | null = null;
+  /** Ranked: this person's rating change, once the game is rated. */
+  rated: Extract<ServerMsg, { t: 'rated' }> | null = null;
   /** A fatal error: the room can't be (re)joined. */
   fatal: { code: ErrorCode; message: string } | null = null;
 
@@ -206,6 +208,9 @@ export class RoomLink {
         break;
       case 'members':
         this.members = m.members;
+        break;
+      case 'rated':
+        this.rated = m;
         break;
       case 'over':
         this.over = m;
