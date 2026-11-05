@@ -95,3 +95,22 @@ jobs:
           path: |
             perf-review*.json
             frames/
+
+  # What keeps a left screen alive (#201): tools/perf/leak.mjs, a few minutes.
+  leak:
+    name: perf leak
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'performance') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund && npm run build
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.63.0
+      - name: Serve the build
+        run: |
+          npx vite preview --port 4173 --strictPort > preview.log 2>&1 &
+          for i in $(seq 60); do curl -sf http://localhost:4173/ > /dev/null && break; sleep 1; done
+      - run: node tools/perf/leak.mjs http://localhost:4173/ "$(command -v google-chrome || command -v chromium)"
