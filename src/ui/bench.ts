@@ -14,6 +14,10 @@ import type { Label } from '../engine/ai/review';
 import { setGame } from './reviewQueue';
 import { runReview } from './reviewRun';
 import { isMobile, MAX_POOL_DESKTOP, poolSize, ReviewPool } from '../engine/ai/review-worker';
+import { FORCE_PLAIN, wasmKind } from '../engine/ai/wasmModule';
+
+/** ?wasm=plain: the bench loads the plain engine build, as a browser without WebAssembly SIMD would (#151). */
+const plain = typeof location !== 'undefined' && new URLSearchParams(location.search).get('wasm') === 'plain';
 
 const PER_ARM = 50;
 const ARMS: { layout: '2p' | '4p'; nmax: number }[] = [
@@ -320,8 +324,10 @@ export function benchScreen(onClose: () => void): HTMLElement {
       say(`Tag Team Ludo ${review ? 'review' : 'Extreme'} bench, v${__APP_VERSION__}`);
       say(`device: ${navigator.userAgent}`);
       say(`cores: ${navigator.hardwareConcurrency ?? '?'}`);
+      say(`engine: ${plain ? 'plain (forced by ?wasm=plain)' : wasmKind() === 'simd' ? 'simd' : 'plain (no WebAssembly SIMD here)'}`);
       const run = benchRun(review, {
-        worker: () => new Worker(new URL('../engine/ai/rollout-worker.ts', import.meta.url), { type: 'module' }),
+        // ?wasm=plain loads the plain engine build in every worker (#151: the fallback where SIMD is missing).
+        worker: () => new Worker(new URL('../engine/ai/rollout-worker.ts', import.meta.url), { type: 'module', name: plain ? FORCE_PLAIN : '' }),
         pause: (on) => setGame(on ? 'extreme' : 'none'),
         say,
       });
@@ -374,7 +380,7 @@ async function reviewBench(_worker: Worker, say: (l: string) => void, hidden: ()
   const sizes = isMobile(nav) ? [1, 2, 3, 4] : [1, 2, 3, 4, MAX_POOL_DESKTOP];
   for (const size of sizes) {
     if (hidden()) return;
-    const pool = new ReviewPool(size);
+    const pool = new ReviewPool(size, plain ? FORCE_PLAIN : '');
     try {
       // Untimed first: every worker loads its engine, the net and the luck net (as after a first review).
       const warm = games[0]!.rec;
