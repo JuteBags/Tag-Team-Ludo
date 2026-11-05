@@ -3,11 +3,11 @@ import { COLORS, type GameRecord } from '../engine';
 import { PALETTE, miniBoard, symbolPath } from './art';
 import { saveSetting, settings } from './settings';
 import { sfx } from './sfx';
-import { emptyStats, loadCheckIn, loadPastGames, loadReview, loadStats, loadSummaries, loadSummary, resetStats, type PastGame, type ReviewSummary, type Stats, type StoredReview } from './store';
+import { emptyStats, loadCheckIn, loadPastGames, loadReview, loadStats, loadSummaries, loadSummary, MAX_PINS, pinGame, resetStats, type PastGame, type ReviewSummary, type Stats, type StoredReview } from './store';
 import { daysBetween, dayKey } from './checkin';
 import { ACHIEVEMENTS, takeNew, type AchievementGroup } from './rewards';
 import { summary } from '../engine/ai/review';
-import { isComplete, isQueued, onReviewChange, progressOf } from './reviewQueue';
+import { isComplete, isQueued, onReviewChange, progressOf, setAutoReview } from './reviewQueue';
 import { peopleOf } from './reviewRun';
 import { accuracyText, trendOf } from './reviewWords';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
@@ -80,7 +80,8 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
     <div class="set"><span>Kill animations</span>${tg('killfx', [['full', 'Full', settings.killFx === 'full'], ['short', 'Short', settings.killFx === 'short'], ['off', 'Off', settings.killFx === 'off']])}</div>
     <div class="set">${sw('fast', 'Fast bots', settings.fastBots)}<small class="qh">Bots roll and move twice as fast</small></div>
     <div class="set"><span>Undos per game</span>${tg('undos', [['0', 'Off', settings.undos === 0], ['1', '1', settings.undos === 1], ['2', '2', (settings.undos ?? 2) === 2]])}</div>
-    <div class="set">${sw('undowait', 'Wait for Undo when my turn ends', settings.undoWait !== false)}<small class="qh">A moment to take back a mis-touch before the next player rolls</small></div>`,
+    <div class="set">${sw('undowait', 'Wait for Undo when my turn ends', settings.undoWait !== false)}<small class="qh">A moment to take back a mis-touch before the next player rolls</small></div>
+    <div class="set">${sw('autoreview', 'Review my games automatically', settings.autoReview !== false)}<small class="qh">Off: a review starts when you open it.</small></div>`,
   );
   ov.querySelector('.themes')!.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLButtonElement>('.th');
@@ -110,6 +111,8 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
   toggle(ov, 'killfx', (v) => saveSetting('killFx', v as 'full' | 'short' | 'off'));
   toggle(ov, 'undos', (v) => saveSetting('undos', Number(v) as 0 | 1 | 2));
   switchRow(ov, 'undowait', (on) => saveSetting('undoWait', on));
+  // #97: reviews during play and of past games, or only when one is opened.
+  switchRow(ov, 'autoreview', (on) => void setAutoReview(on));
 }
 
 /**
@@ -227,13 +230,36 @@ function ago(t: number): string {
   return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} day${h < 36 ? '' : 's'} ago`;
 }
 
+/** The pin (#97): an outline when off, filled gold when on (styles.css .pgpin). */
+const PIN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 6 3 3v2h-4v6l-1 1-1-1v-6H7v-2l3-3z"/></svg>';
+
+/** A short note just above a sheet's DONE (the achievement toast's look), read out politely, gone after ~2.5 s. */
+function note(ov: HTMLElement, text: string) {
+  const box = ov.querySelector<HTMLElement>('.box')!;
+  let t = box.querySelector<HTMLElement>('.sheetnote');
+  if (!t) {
+    t = document.createElement('div');
+    t.className = 'achtoast sheetnote';
+    t.setAttribute('role', 'status');
+    t.setAttribute('aria-live', 'polite');
+    box.appendChild(t);
+  }
+  t.textContent = text;
+  t.getAnimations().forEach((a) => a.cancel());
+  t.animate([{ opacity: 0, transform: 'translate(-50%,10px)' }, { opacity: 1, transform: 'translate(-50%,0)', offset: 0.12 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }], { duration: 2600, fill: 'both' });
+}
+
 /**
  * The last finished games, newest first, with their reviews (#96): accuracy, luck % and the mistakes once
  * reviewed, a progress ring while the review runs. Tapping a game opens its review (or its replay, for a
  * game with no person in it); ▶ opens the replay.
  */
-export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void) {
+export function pastGamesSheet(host: HTMLElement, games: PastGame[], onReplay: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void) {
   const place = (p: number) => ['', '1st', '2nd', '3rd', '4th'][p] ?? '';
+  // Pinned games first (#97), newest first among them; the rest as they are (newest first).
+  let past: PastGame[] = [];
+  const sortPinned = () => (past = [...games].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned)));
+  sortPinned();
   // Each game's stored review lives under its own key: loaded once, then the rows are drawn again.
   const reviews = new Map<PastGame, StoredReview | undefined>();
   // A finished review's numbers come from its summary (#98); only the others are read in full.
@@ -267,7 +293,8 @@ export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (r
         const people = new Set(g.rec.seats.map((s) => s.owner)).size;
         const colours = [...new Set(g.rec.seats.map((s) => s.color))].map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
         const what = g.mode === 'pvp' ? 'With friends' : 'vs Computer';
-        return `<div class="pg${g.mode === 'pvc' && g.place === 1 ? ' won' : ''}"><button class="pgmain" data-i="${i}"><span class="pgc">${colours}</span><span class="pgt"><b>${what} · ${people} players</b><small>${ago(g.at)}${g.mode === 'pvc' ? ` · <em>${g.place === 1 ? '🏆 Won' : place(g.place)}</em>` : ''}</small>${status(g)}</span></button><button class="pgplay" data-replay="${i}" aria-label="Watch the replay">▶</button></div>`;
+        const pin = `<button class="pgpin${g.pinned ? ' on' : ''}" data-pin="${i}" aria-pressed="${g.pinned ? 'true' : 'false'}" aria-label="${g.pinned ? 'Unpin this game' : 'Pin this game'}">${PIN_ICON}</button>`;
+        return `<div class="pg${g.mode === 'pvc' && g.place === 1 ? ' won' : ''}"><button class="pgmain" data-i="${i}"><span class="pgc">${colours}</span><span class="pgt"><b>${what} · ${people} players</b><small>${ago(g.at)}${g.mode === 'pvc' ? ` · <em>${g.place === 1 ? '🏆 Won' : place(g.place)}</em>` : ''}</small>${status(g)}</span></button><span class="pgside"><button class="pgplay" data-replay="${i}" aria-label="Watch the replay">▶</button>${pin}</span></div>`;
       })
       .join('');
   const ov = sheet(host, 'Games & reviews', past.length ? `<p class="sub">Tap a game for its review, ▶ for the replay</p><div class="pglist">${rows()}</div>` : `<div class="empty"><b class="disp">No games yet</b><p class="sub">Finish a game and its replay and review show up here.</p></div>`);
@@ -293,6 +320,23 @@ export function pastGamesSheet(host: HTMLElement, past: PastGame[], onReplay: (r
   });
   list?.addEventListener('click', (e) => {
     const t = e.target as Element;
+    // Pin or unpin (#97): at MAX_PINS a new pin does nothing to the list but say so.
+    const pinAt = t.closest<HTMLElement>('[data-pin]')?.dataset.pin;
+    if (pinAt !== undefined) {
+      const g = past[Number(pinAt)]!;
+      const on = !g.pinned;
+      void pinGame(g.rec, on).then((ok) => {
+        if (!ok) {
+          if (on) note(ov, `${MAX_PINS} pinned: unpin one first.`);
+          return;
+        }
+        if (on) g.pinned = true;
+        else delete g.pinned;
+        sortPinned();
+        if (list && ov.isConnected) list.innerHTML = rows();
+      });
+      return;
+    }
     const r = t.closest<HTMLElement>('[data-replay]')?.dataset.replay;
     const i = t.closest<HTMLElement>('[data-i]')?.dataset.i;
     if (r === undefined && i === undefined) return;

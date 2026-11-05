@@ -39,12 +39,19 @@ interface Settings {
   undoWait: boolean;
   /** Achievements done (rewards.ts), by id. */
   achieved: string[];
+  /**
+   * Review games on their own (#97): during play (liveReview.ts) and past games in the queue. Off: a review
+   * runs only when its screen is opened.
+   */
+  autoReview: boolean;
+  /** Your accuracy and luck on the result's share card, vs Computer (#97). Off by default. */
+  shareStats: boolean;
 }
 
 export type Theme = 'classic' | 'wood' | 'dark' | 'metal' | 'tron' | 'halloween';
 
 const KEY = 'ludo-settings';
-const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: false, friendNames: [], myName: '', myColor: 'blue', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false, killFx: 'full', undos: 2, undoWait: true, achieved: [] };
+const DEFAULTS: Settings = { diceFace: 'top', throwStyle: 'cup', theme: 'classic', symbols: false, botLevel: 'normal', doubles: false, friendNames: [], myName: '', myColor: 'blue', equipped: { pawn: 'classic', dice: 'classic' }, gold: 0, owned: [], fastBots: false, killFx: 'full', undos: 2, undoWait: true, achieved: [], autoReview: true, shareStats: false };
 
 function load(): Settings {
   try {

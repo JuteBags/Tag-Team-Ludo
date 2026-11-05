@@ -273,6 +273,8 @@ export interface PastGame {
   place: number;
   /** A review stored by an older build inside the entry; reviews now live under their own key (loadReview). */
   review?: StoredReview;
+  /** Pinned (#97): it never rolls off the KEEP_GAMES list, nor does its review. */
+  pinned?: true;
 }
 
 export interface StoredReview {
@@ -296,6 +298,8 @@ export interface StoredReview {
 const GAMES = 'ludo-games';
 /** How many finished games are kept, newest first. */
 export const KEEP_GAMES = 20;
+/** How many games can be pinned (#97): kept beyond KEEP_GAMES. */
+export const MAX_PINS = 10;
 export const loadPastGames = () => read<PastGame[]>(GAMES).then((g) => (Array.isArray(g) ? g : []));
 
 /**
@@ -325,17 +329,51 @@ const serial = <T>(f: () => Promise<T>): Promise<T> => {
   return next;
 };
 
-/** Adds a finished game, dropping the oldest past KEEP_GAMES (and their reviews and summaries). */
+/** The games kept: the newest KEEP_GAMES unpinned ones and every pinned one, newest first; and the rest. */
+function keepOf(all: PastGame[]): { kept: PastGame[]; gone: PastGame[] } {
+  const kept: PastGame[] = [];
+  const gone: PastGame[] = [];
+  let unpinned = 0;
+  for (const g of all) {
+    if (g.pinned || unpinned++ < KEEP_GAMES) kept.push(g);
+    else gone.push(g);
+  }
+  return { kept, gone };
+}
+
+/** Writes the games kept and drops the reviews and summaries of the rest. */
+async function writeGames(all: PastGame[]) {
+  const { kept, gone: old } = keepOf(all);
+  await write(GAMES, kept);
+  const gone = old.map((x) => reviewKey(x.rec));
+  for (const k of gone) await drop(k);
+  if (gone.length) {
+    const index = await loadSummaries();
+    if (gone.some((k) => k in index)) await write(INDEX, Object.fromEntries(Object.entries(index).filter(([k]) => !gone.includes(k))));
+  }
+}
+
+/** Adds a finished game, dropping the oldest unpinned past KEEP_GAMES (and their reviews and summaries). */
 export function savePastGame(g: PastGame): Promise<void> {
+  return serial(async () => writeGames([g, ...(await loadPastGames())]));
+}
+
+/**
+ * Pins or unpins a past game (#97). Pinning when MAX_PINS are pinned already does nothing and says false.
+ * An unpinned game past the newest KEEP_GAMES unpinned ones rolls off when the next game is saved.
+ */
+export function pinGame(rec: GameRecord, on: boolean): Promise<boolean> {
   return serial(async () => {
-    const all = [g, ...(await loadPastGames())];
-    await write(GAMES, all.slice(0, KEEP_GAMES));
-    const gone = all.slice(KEEP_GAMES).map((old) => reviewKey(old.rec));
-    for (const k of gone) await drop(k);
-    if (gone.length) {
-      const index = await loadSummaries();
-      if (gone.some((k) => k in index)) await write(INDEX, Object.fromEntries(Object.entries(index).filter(([k]) => !gone.includes(k))));
-    }
+    const all = await loadPastGames();
+    const key = keyOf(rec);
+    const g = all.find((x) => keyOf(x.rec) === key);
+    if (!g) return false;
+    if (on && !g.pinned && all.filter((x) => x.pinned).length >= MAX_PINS) return false;
+    if (on) g.pinned = true;
+    else delete g.pinned;
+    // Written as it is: an unpinned old game stays on the list until the next game is saved.
+    await write(GAMES, all);
+    return true;
   });
 }
 

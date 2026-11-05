@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { createGame, move, replay, roll, rollEvent, moveEvent, seeded, seededDie, SEATS, type GameRecord, type Seat } from '../src/engine';
 import { chooseBotMove } from '../src/engine/ai/levels';
 import type { MoveReview, RollLuck } from '../src/engine/ai/review';
-import { KEEP_GAMES, type PastGame, type StoredReview } from '../src/ui/store';
+import { KEEP_GAMES, MAX_PINS, type PastGame, type StoredReview } from '../src/ui/store';
 
 function game(seed: number, players: 2 | 4): GameRecord {
   const seats: Seat[] = SEATS[players].map((color, owner) => ({ color, owner, bot: owner !== 0, level: 'hard' }));
@@ -62,5 +62,16 @@ describe('past games (measured)', () => {
     const avg = (xs: number[]) => +(xs.reduce((a, x) => a + x, 0) / xs.length).toFixed(1);
     console.log(`${KEEP_GAMES} kept records: ${kb(list)} kB JSON, parse ${listMs.toFixed(2)} ms | one full review: 2p avg ${avg(r2)} kB, 4p avg ${avg(r4)} kB, largest ${kb(big)} kB, parse ${reviewMs.toFixed(2)} ms | all ${KEEP_GAMES} reviews ${avg(reviews.map(kb)) * KEEP_GAMES} kB`);
     expect(list.length).toBeGreaterThan(0);
+  }, 60_000);
+
+  it("with every pin used (#97): KEEP_GAMES + MAX_PINS games and their reviews stay well under the web's 5 MB", () => {
+    const n = KEEP_GAMES + MAX_PINS;
+    const games: PastGame[] = Array.from({ length: n }, (_, i) => ({ rec: game(200 + i, i % 2 ? 4 : 2), at: i, mode: 'pvc', place: 1, ...(i < MAX_PINS ? { pinned: true as const } : {}) }));
+    const list = JSON.stringify(games);
+    const reviews = games.map((g) => JSON.stringify(fullReview(g.rec)).length).reduce((a, x) => a + x, 0);
+    const total = list.length + reviews;
+    console.log(`${n} games (${MAX_PINS} pinned): list ${kb(list)} kB, reviews ${(reviews / 1024).toFixed(1)} kB, all ${(total / 1024).toFixed(1)} kB`);
+    // localStorage (the web build) holds about 5 MB; leave most of it for the rest.
+    expect(total).toBeLessThan(1.5 * 1024 * 1024);
   }, 60_000);
 });
