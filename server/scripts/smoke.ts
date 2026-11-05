@@ -1,12 +1,12 @@
 // End-to-end check of a running room server (default: `npm run dev` on this computer). Two players create and
 // join a room over real WebSockets; the host starts it; each keeps the game with the engine (as the app does)
 // and plays a random legal move on its turn, until the game is over. Bots take ~1 s per step on the server.
-// Run: npm run smoke -- [ws://localhost:8787] [houses 2-4] [easy|normal|hard]
+// Run: npm run smoke -- [ws://localhost:8787] [ffa|1v1|duo|2v2] [easy|normal|hard]
 import { STOP_EVENT, applyEvent, createGame, moveEvent, type GameState } from '../../src/engine';
-import { PROTOCOL, type ServerMsg } from '../../src/net/protocol';
+import { PROTOCOL, modeSlots, type GameMode, type GameSetup, type ServerMsg } from '../../src/net/protocol';
 
 const base = process.argv[2] ?? 'ws://localhost:8787';
-const players = Number(process.argv[3] ?? 2) as 2 | 3 | 4;
+const mode = (process.argv[3] ?? '1v1') as GameMode;
 const botLevel = process.argv[4] ?? 'normal';
 const hex = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -15,6 +15,7 @@ class Player {
   ws: WebSocket;
   token = hex();
   state: GameState | null = null;
+  setup: GameSetup | null = null;
   events: string[] = [];
   you = -1;
   code = '';
@@ -33,6 +34,7 @@ class Player {
     if (m.t === 'lobby') ((this.code = m.code), (this.you = m.you), (this.members = m.members.length));
     else if (m.t === 'game') {
       this.you = m.you;
+      this.setup = m.setup;
       this.events = [...m.events];
       this.state = createGame(m.setup.seats, m.setup.first, m.setup.singles);
       for (const ev of m.events) if (ev !== STOP_EVENT) this.state = applyEvent(this.state, ev);
@@ -49,7 +51,7 @@ class Player {
     const s = this.state;
     if (!s || s.phase === 'over' || this.over) return;
     const p = s.players[s.current]!;
-    if (p.bot || p.owner !== this.you) return;
+    if (this.setup?.control[p.color] !== this.you) return;
     const seq = this.events.length;
     setTimeout(() => {
       if (this.events.length !== seq) return;
@@ -63,11 +65,11 @@ const until = async (f: () => boolean, ms = 15_000) => {
   for (const t0 = Date.now(); !f(); await wait(20)) if (Date.now() - t0 > ms) throw new Error('timed out');
 };
 
-const a = new Player('Asha', `${base}/ws?create=${encodeURIComponent(JSON.stringify({ players, singles: false, botLevel }))}`);
+const a = new Player('Asha', `${base}/ws?create=${encodeURIComponent(JSON.stringify({ mode, pairing: 'opposite', singles: false, botLevel }))}`);
 await until(() => !!a.code);
 const b = new Player('Bilal', `${base}/ws?code=${a.code.toLowerCase()}`);
 await until(() => a.members === 2);
-console.log(`room ${a.code}: 2 people, ${players - 2} bots`);
+console.log(`room ${a.code}: ${mode}, 2 people, ${modeSlots(mode).length - 2} bot slots`);
 const t0 = Date.now();
 a.send({ t: 'start' });
 await until(() => !!a.state && !!b.state);

@@ -5,9 +5,9 @@
 // tie-break drawn from the game's seed exactly as offline (so the review rebuilds every roll's chances from
 // the seed, revealed when the game ends); the face itself is drawn from the server's crypto RNG. Knowing or
 // brute-forcing the 32-bit seed therefore never tells anyone the next face.
-import { SEATS, STOP_EVENT, applyEvent, createGame, diceWeights, isDone, mixSeed, move, moveEvent, positionKey, roll, rollEvent, sampleFace, seeded, type GameState, type Rng, type Seat } from '../../src/engine';
+import { STOP_EVENT, applyEvent, ownerRanking, createGame, diceWeights, isDone, mixSeed, move, moveEvent, positionKey, roll, rollEvent, sampleFace, seeded, type Color, type GameState, type Rng, type Seat } from '../../src/engine';
 import { chooseRuleMove } from '../../src/engine/ai/choose';
-import { MAX_NAME, ONLINE_LEVELS, PROTOCOL, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ServerMsg, type Turn } from '../../src/net/protocol';
+import { GAME_MODES, MAX_NAME, ONLINE_LEVELS, PROTOCOL, modeSlots, type GameMode, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ServerMsg, type Turn } from '../../src/net/protocol';
 
 /** A person's time to roll or move before the server plays for them. */
 export const TURN_MS = 30_000;
@@ -41,6 +41,19 @@ export interface RoomIO {
   destroy(): void;
   /** Uniform in [0, 1) from a CSPRNG (the faces) and a 32-bit random seed. */
   random: Rng;
+  /** Ranked: rates the finished game (the accounts store), answering each account's rating before and after. */
+  rate?(report: RateReport): Promise<Record<string, RatedPerson>>;
+}
+
+/** A finished ranked game for the accounts store: each side's people (accounts) or bots (their rating), by place. */
+export interface RateReport {
+  mode: GameMode;
+  sides: { members: ({ account: string } | { bot: number })[]; place: number }[];
+}
+export interface RatedPerson {
+  before: number;
+  after: number;
+  games: number;
 }
 
 interface MemberData {
@@ -50,6 +63,8 @@ interface MemberData {
   left: boolean;
   /** Timeouts in a row. */
   timeouts: number;
+  /** Ranked: their account. */
+  account?: string;
 }
 
 /** Everything the room keeps between wake-ups. The game state is rebuilt from `events`. */
@@ -69,15 +84,46 @@ export interface RoomData {
   touched: number;
   /** When the lobby's wait ends (LOBBY_MS after the room was made). */
   lobbyEnds: number;
+  /** Ranked: the rating its bots play at, and whether the result has been rated. */
+  ranked?: { botRating: number; rated: boolean; results?: Record<string, RatedPerson> };
 }
 
 export const cleanName = (s: unknown) =>
   (typeof s === 'string' ? s : '').replace(/[\u0000-\u001f\u007f<>&"]/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_NAME) || 'Player';
 
 export const validOptions = (o: Partial<RoomOptions> | undefined): RoomOptions | null =>
-  o && (o.players === 2 || o.players === 3 || o.players === 4) && typeof o.singles === 'boolean' && ONLINE_LEVELS.includes(o.botLevel!)
-    ? { players: o.players, singles: o.singles, botLevel: o.botLevel! }
+  o && GAME_MODES.includes(o.mode!) && (o.pairing === undefined || o.pairing === 'opposite' || o.pairing === 'adjacent') && typeof o.singles === 'boolean' && ONLINE_LEVELS.includes(o.botLevel!)
+    ? { mode: o.mode!, pairing: o.pairing ?? 'opposite', singles: o.singles, botLevel: o.botLevel! }
     : null;
+
+/** People a room of these options takes (bots fill the rest when it starts). */
+export const capacity = (o: RoomOptions) => modeSlots(o.mode, o.pairing).length;
+
+/**
+ * The game's setup for these options: `people` has one entry per slot (modeSlots order), the member index and
+ * name of whoever plays it, or null for a bot (also for slots past its end). It gives the seats, who
+ * controls each colour, and each side's name ("A & B" for a team of two people).
+ */
+export function setupFor(o: RoomOptions, people: ({ member: number; name: string } | null)[], first: Color, ranked = false): GameSetup {
+  const slots = modeSlots(o.mode, o.pairing);
+  const seats: Seat[] = [];
+  const control: Partial<Record<Color, number>> = {};
+  slots.forEach((slot, i) => {
+    const who = people[i] ?? null;
+    for (const color of slot.colors) {
+      seats.push(who ? { color, owner: slot.side, bot: false } : { color, owner: slot.side, bot: true, level: o.botLevel });
+      control[color] = who ? who.member : -1;
+    }
+  });
+  const sides = [...new Set(slots.map((x) => x.side))].sort((a, b) => a - b);
+  const sideNames = sides.map((side) => slots.flatMap((x, i) => (x.side === side && people[i] ? [people[i]!.name] : [])).join(' & '));
+  const names: string[] = [];
+  for (const p of people) if (p) names[p.member] = p.name;
+  return { mode: o.mode, seats, first, singles: o.singles, names: sideNames, control, people: names, ...(ranked ? { ranked: true } : {}) };
+}
+
+/** A lobby's people: member i plays slot i. */
+const lobbyPeople = (names: string[]) => names.map((name, member) => ({ member, name }));
 
 export class RoomCore {
   private state: GameState | null = null;
@@ -90,6 +136,28 @@ export class RoomCore {
 
   static create(code: string, options: RoomOptions, io: RoomIO): RoomCore {
     const room = new RoomCore({ v: 1, code, options, phase: 'lobby', members: [], seed: null, setup: null, events: [], deadline: null, botAt: null, touched: io.now(), lobbyEnds: io.now() + LOBBY_MS }, io);
+    room.commit();
+    return room;
+  }
+
+  /**
+   * A ranked game, matched by the queue: its people are known (each with the token the queue gave them, by
+   * slot; null slots are ranked bots at `botRating`), so it starts at once, with no lobby.
+   */
+  static ranked(code: string, options: RoomOptions, slots: ({ token: string; name: string; account: string } | null)[], botRating: number, io: RoomIO): RoomCore {
+    const now = io.now();
+    const members: MemberData[] = [];
+    const people = slots.map((x) => {
+      if (!x) return null;
+      members.push({ token: x.token, name: cleanName(x.name), left: false, timeouts: 0, account: x.account });
+      return { member: members.length - 1, name: members[members.length - 1]!.name };
+    });
+    const colors = modeSlots(options.mode, options.pairing).flatMap((x) => x.colors);
+    const first = colors[Math.floor(io.random() * colors.length)]!;
+    const setup = setupFor(options, people, first, true);
+    const data: RoomData = { v: 1, code, options, phase: 'playing', members, seed: Math.floor(io.random() * 4294967296) >>> 0, setup, events: [], deadline: null, botAt: null, touched: now, lobbyEnds: now, ranked: { botRating, rated: false } };
+    const room = new RoomCore(data, io);
+    room.schedule();
     room.commit();
     return room;
   }
@@ -107,7 +175,7 @@ export class RoomCore {
     let m = d.members.find((x) => x.token === token);
     if (!m) {
       if (d.phase !== 'lobby') return 'started';
-      if (d.members.length >= d.options.players) return 'full';
+      if (d.members.length >= capacity(d.options)) return 'full';
       m = { token, name: cleanName(msg.name), left: false, timeouts: 0 };
       d.members.push(m);
     } else if (d.phase === 'lobby') m.name = cleanName(msg.name);
@@ -161,7 +229,7 @@ export class RoomCore {
         const s = this.state;
         if (d.phase !== 'playing' || !s) return 'not-your-turn';
         if (msg.seq !== d.events.length) return 'stale';
-        if (s.players[s.current]!.owner !== me || s.players[s.current]!.bot) return 'not-your-turn';
+        if (this.controller(s.players[s.current]!.color) !== me) return 'not-your-turn';
         if (msg.t === 'roll') {
           if (s.phase !== 'roll') return 'illegal';
           d.members[me]!.timeouts = 0;
@@ -200,7 +268,7 @@ export class RoomCore {
     if (d.botAt !== null && now >= d.botAt) this.botStep();
     else if (d.deadline !== null && now >= d.deadline) {
       const s = this.state!;
-      const m = d.members[s.players[s.current]!.owner]!;
+      const m = d.members[this.controller(s.players[s.current]!.color)]!;
       m.timeouts++;
       this.botStep();
     } else if (now >= d.touched + IDLE_MS) return this.io.destroy();
@@ -211,12 +279,10 @@ export class RoomCore {
 
   private start() {
     const d = this.data;
-    const people = d.members.length;
-    const seats: Seat[] = SEATS[d.options.players].map((color, owner) =>
-      owner < people ? { color, owner, bot: false } : { color, owner, bot: true, level: d.options.botLevel },
-    );
-    const first = seats[Math.floor(this.io.random() * seats.length)]!.color;
-    d.setup = { seats, first, singles: d.options.singles, names: seats.map((s) => (s.bot ? '' : d.members[s.owner]!.name)) };
+    const colors = modeSlots(d.options.mode, d.options.pairing).flatMap((x) => x.colors);
+    const first = colors[Math.floor(this.io.random() * colors.length)]!;
+    d.setup = setupFor(d.options, lobbyPeople(d.members.map((m) => m.name)), first);
+    const seats = d.setup.seats;
     d.seed = Math.floor(this.io.random() * 4294967296) >>> 0;
     d.events = [];
     d.phase = 'playing';
@@ -231,8 +297,68 @@ export class RoomCore {
     const s = this.state!;
     const p = s.players[s.current]!;
     if (p.bot) return true;
-    const m = this.data.members[p.owner]!;
+    const m = this.data.members[this.controller(p.color)]!;
     return m.left || m.timeouts >= MAX_TIMEOUTS;
+  }
+
+  /**
+   * Ranked: the result for the accounts store, then each person's rating change. Places are the sides' final
+   * ranking, except that a side with a person who left ranks last (leaving is losing).
+   */
+  async rateGame() {
+    const d = this.data;
+    if (!d.ranked || d.ranked.rated || !this.io.rate || !this.state || !d.setup) return;
+    d.ranked.rated = true;
+    this.commit();
+    const s = this.state;
+    const sides = ownerRanking(s);
+    const quit = (side: number) => s.players.some((p) => p.owner === side && !p.bot && d.members[this.controller(p.color)]!.left);
+    const order = [...sides.filter((x) => !quit(x)), ...sides.filter(quit)];
+    const report: RateReport = {
+      mode: d.options.mode,
+      sides: order.map((side, place) => {
+        const members: RateReport['sides'][number]['members'] = [];
+        const seen = new Set<number>();
+        for (const p of s.players.filter((q) => q.owner === side)) {
+          const who = this.controller(p.color);
+          if (who < 0) members.push({ bot: d.ranked!.botRating });
+          else if (!seen.has(who)) {
+            seen.add(who);
+            members.push({ account: d.members[who]!.account! });
+          }
+        }
+        return { members, place };
+      }),
+    };
+    let rated: Record<string, RatedPerson>;
+    try {
+      rated = await this.io.rate(report);
+    } catch {
+      return; // The store couldn't be reached: the game stands, unrated.
+    }
+    d.ranked!.results = rated;
+    this.commit();
+    for (const m of d.members) {
+      const r = m.account ? rated[m.account] : undefined;
+      if (r) this.io.send(m.token, { t: 'rated', mode: d.options.mode, before: r.before, after: r.after, games: r.games });
+    }
+  }
+
+  /** The member (slot) who plays `c`, or -1 for a bot. */
+  private controller(c: Color): number {
+    return this.data.setup?.control[c] ?? -1;
+  }
+
+  /**
+   * A side with a person still in it (not left) hasn't finished: the game goes on. With only bots' sides (or
+   * finished ones) left, nobody is watching for the rest of the places.
+   */
+  private peopleStillPlaying(): boolean {
+    const s = this.state!;
+    const d = this.data;
+    const present = (side: number) => s.players.some((q) => q.owner === side && !q.bot && !d.members[this.controller(q.color)]!.left);
+    const done = (side: number) => s.players.filter((q) => q.owner === side).every(isDone);
+    return s.players.some((p) => present(p.owner) && !done(p.owner));
   }
 
   private rollNow() {
@@ -265,7 +391,7 @@ export class RoomCore {
     const d = this.data;
     const s = this.state!;
     // Every person is done (or gone) and only bots still play: the game ends with the places as they stand.
-    const stopped = s.phase !== 'over' && !s.players.some((p) => !p.bot && !isDone(p) && !d.members[p.owner]!.left);
+    const stopped = s.phase !== 'over' && !this.peopleStillPlaying();
     if (s.phase === 'over' || stopped) {
       d.phase = 'over';
       d.deadline = d.botAt = null;
@@ -279,6 +405,7 @@ export class RoomCore {
       }
       this.schedule();
       this.commit();
+      void this.rateGame();
       return;
     }
     this.schedule();
@@ -325,8 +452,7 @@ export class RoomCore {
       this.online.delete(token);
       if (d.phase === 'playing') {
         const s = this.state!;
-        const stillPeople = s.players.some((p) => !p.bot && !isDone(p) && !d.members[p.owner]!.left);
-        if (!stillPeople) {
+        if (!this.peopleStillPlaying()) {
           // The last person still playing left: the game ends here.
           d.events.push(STOP_EVENT);
           d.phase = 'over';
@@ -337,6 +463,7 @@ export class RoomCore {
             this.io.send(m.token, { t: 'ev', seq, ev: STOP_EVENT, turn: null });
             this.io.send(m.token, { t: 'over', seed: d.seed!, stopped: true });
           }
+          void this.rateGame();
         }
         this.schedule();
       }
@@ -360,7 +487,13 @@ export class RoomCore {
     if (d.phase === 'lobby') this.io.send(token, { t: 'lobby', code: d.code, options: d.options, members: this.members(), you, endsIn: Math.max(0, d.lobbyEnds - this.io.now()) });
     else {
       this.io.send(token, { t: 'game', code: d.code, setup: d.setup!, events: [...d.events], members: this.members(), you, turn: this.turn() });
-      if (d.phase === 'over') this.io.send(token, { t: 'over', seed: d.seed!, stopped: d.events[d.events.length - 1] === STOP_EVENT });
+      if (d.phase === 'over') {
+        this.io.send(token, { t: 'over', seed: d.seed!, stopped: d.events[d.events.length - 1] === STOP_EVENT });
+        // Ranked: the rating change, for a phone that missed it.
+        const account = d.members[you]!.account;
+        const r = account ? d.ranked?.results?.[account] : undefined;
+        if (r) this.io.send(token, { t: 'rated', mode: d.options.mode, before: r.before, after: r.after, games: r.games });
+      }
     }
   }
 

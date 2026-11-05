@@ -1208,3 +1208,39 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .netbar{position:absolute;top:66px;left:50%;transform:translateX(-50%);z-index:20;padding:6px 14px;border-radius:12px;background:#5a1010;border:1.5px solid #ff9a90;font-weight:900;font-size:13px;white-space:nowrap}
 .lclock{margin-top:10px;text-align:center;font:900 15px Nunito,sans-serif;color:#ffd65a}
 .lclock.low{color:#ff9a90}
+.online .tg.grid2{display:grid;grid-template-columns:1fr 1fr}
+.seat.two .ra+.ra{margin-left:-14px;box-shadow:0 0 0 2px #0b1f4d}
+.seat em{white-space:nowrap}
+
+/* ---------- Ranked PvP ---------- */
+.ranked .wiz[data-step=modes]{bottom:20px}
+.rmodes{display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.rmode{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border-radius:18px;text-align:left;color:#fff;
+  background:linear-gradient(180deg,rgba(14,38,104,.95),rgba(7,21,64,.95));border:1.5px solid color-mix(in srgb,var(--tc) 70%,transparent);box-shadow:0 4px 0 rgba(0,0,0,.35)}
+.rmode:active{transform:translateY(2px)}
+.rbadge{width:50px;height:50px;flex:none;border-radius:50%;display:grid;place-items:center;align-content:center;font-size:24px;line-height:.9;color:#1b1030;
+  background:radial-gradient(circle at 35% 30%,#fff,var(--tc) 60%);box-shadow:inset 0 -3px 0 rgba(0,0,0,.2),0 0 0 3px rgba(255,255,255,.25)}
+.rbadge small{font-family:Nunito,sans-serif;font-weight:900;font-size:11px}
+.rtxt{flex:1;display:flex;flex-direction:column;min-width:0}
+.rtxt b{font-size:19px;line-height:1.05}
+.rtxt small{font-size:12px;font-weight:800;opacity:.75}
+.rtxt em{font-style:normal;font-size:13px;font-weight:900;color:var(--tc);margin-top:2px}
+.rplay{padding:8px 12px;border-radius:12px;font-size:16px;background:linear-gradient(180deg,#93f770,#24ad3c);box-shadow:inset 0 2px 0 rgba(255,255,255,.5),0 3px 0 #0e6d26}
+.rnote{margin-top:14px;font-size:12.5px;font-weight:700;opacity:.75;text-align:center;line-height:1.4}
+.sp.search{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:26px 16px}
+.selapsed{font-family:'Lilita One',sans-serif;font-weight:400;font-size:44px;color:#ffd65a}
+.sline{font-weight:900;font-size:15px}
+.sbots{font-weight:800;font-size:13px;opacity:.8}
+.spin{display:flex;gap:8px}
+.spin i{width:14px;height:14px;border-radius:50%;background:#5fd0ff;animation:rkdot 1.2s infinite ease-in-out}
+.spin i:nth-child(2){animation-delay:.15s;background:#93f770}.spin i:nth-child(3){animation-delay:.3s;background:#ffd23f}.spin i:nth-child(4){animation-delay:.45s;background:#ff6f6f}
+@keyframes rkdot{0%,100%{transform:translateY(0);opacity:.5}50%{transform:translateY(-10px);opacity:1}}
+@media (prefers-reduced-motion: reduce){.spin i{animation:none;opacity:1}}
+/* The result: the ranked change above the gold. */
+.rated{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0;padding:8px 14px;border-radius:14px;background:rgba(4,14,48,.7);border:1.5px solid rgba(255,214,90,.5);font-weight:900;font-size:14px}
+.rated b{font-family:'Lilita One',sans-serif;font-weight:400;font-size:22px}
+.rated b.up{color:#57ff98}.rated b.down{color:#ff8f8f}
+.rname{display:flex;align-items:center;gap:10px;margin:-6px 0 12px}
+.rname span{font-weight:900;font-size:13px;white-space:nowrap;opacity:.85}
+.ranked .rname .namein{height:42px;font-size:16px}
+.ranked .rmode{padding:8px 12px}

@@ -1,10 +1,10 @@
-// Play online: private rooms. Create a room (houses, doubles, how the bots play) or join one with its code,
-// then wait in the lobby until the host starts; houses nobody takes are played by the server's bots. The
+// With friends, online: private rooms. Create a room (the mode, doubles, how the bots play) or join one with its
+// code, then wait in the lobby until the host starts; slots nobody takes are played by the server's bots. The
 // game itself is the usual game screen, driven by the room (gameScreen.ts with a RoomLink).
-import { SEATS, type Color } from '../engine';
+import type { Color } from '../engine';
 import { PROFILES, avatarSVG, cssVars, icons } from './art';
 import { RoomLink, loadRoom, roomsUrl } from '../net/client';
-import { CODE_LEN, ONLINE_LEVELS, isCode, type GameSetup, type OnlineBotLevel, type RoomOptions } from '../net/protocol';
+import { CODE_LEN, GAME_MODES, MODE_LABEL, MODE_NOTE, ONLINE_LEVELS, isCode, modeSlots, type GameSetup, type OnlineBotLevel, type RoomOptions } from '../net/protocol';
 import { saveSetting, settings } from './settings';
 import { NAME_MAX, cleanName, type GameConfig } from './setup';
 import { sfx } from './sfx';
@@ -19,16 +19,29 @@ const LEVEL_NOTE: Record<OnlineBotLevel, string> = {
 /** A name for a bot's house in an online game (blue is always a person: the host). */
 const botName = (c: Color) => (c === 'blue' ? 'Bot' : PROFILES[c].name);
 
-/** The game screen's config for a room's game: names by seat, bots named after their colour. */
+/**
+ * The game screen's config for a room's game: each side's name (a person, a team "A & B", or a bot named after
+ * its colour), and the name of whoever plays each colour.
+ */
 export function onlineConfig(setup: GameSetup): GameConfig {
+  const sides = [...new Set(setup.seats.map((s) => s.owner))].sort((a, b) => a - b);
+  const colorNames: Partial<Record<Color, string>> = {};
+  for (const s of setup.seats) {
+    const who = setup.control[s.color] ?? -1;
+    colorNames[s.color] = who >= 0 ? (setup.people[who] ?? 'Player') : botName(s.color);
+  }
   return {
     mode: 'pvp',
     seats: setup.seats,
     first: setup.first,
     singles: setup.singles,
-    names: setup.seats.map((s) => (s.bot ? botName(s.color) : setup.names[s.owner] || 'Player')),
+    names: sides.map((side) => setup.names[side] || botName(setup.seats.find((s) => s.owner === side)!.color)),
+    colorNames,
   };
 }
+
+/** The tag over a slot in a 2v2 lobby: which team it's on. */
+const TEAM = ['TEAM A', 'TEAM B'];
 
 /**
  * `onGame`: the room's game started (or was already under way when rejoining): open the game screen with
@@ -38,7 +51,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   let step: Step = 'menu';
   let link: RoomLink | null = null;
   let off: (() => void) | null = null;
-  const opts: RoomOptions = { players: 4, singles: !settings.doubles, botLevel: settings.botLevel === 'easy' || settings.botLevel === 'hard' ? settings.botLevel : 'normal' };
+  const opts: RoomOptions = { mode: 'ffa', pairing: 'opposite', singles: !settings.doubles, botLevel: settings.botLevel === 'easy' || settings.botLevel === 'hard' ? settings.botLevel : 'normal' };
   const saved = loadRoom();
   const configured = !!roomsUrl();
 
@@ -61,7 +74,8 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     <section class="wiz" data-step="create">
       <h3 class="disp">New room</h3><p class="sub">You're the host: you start the game</p>
       <div class="mid"><div class="sp opts">
-        <div class="row2 q"><span class="lbl">How many colours in the game?</span>${tg('players', [['2', '2'], ['3', '3'], ['4', '4']], String(opts.players))}<small class="qh">Colours nobody takes are played by bots</small></div>
+        <div class="row2 q"><span class="lbl">Which game?</span>${tg('mode', GAME_MODES.map((m) => [m, MODE_LABEL[m]]), opts.mode).replace('class="tg"', 'class="tg grid2"')}<small class="qh mnote">${MODE_NOTE[opts.mode]}. Places nobody takes are played by bots</small></div>
+        <div class="row2 q pairq" hidden><span class="lbl">Where are your two colours?</span>${tg('pairing', [['opposite', 'Opposite'], ['adjacent', 'Side by side']], opts.pairing)}</div>
         <div class="row2 q"><span class="lbl">Doubles (pair moves)?</span>${tg('singles', [['false', 'On'], ['true', 'Off']], String(opts.singles))}</div>
         <div class="row2 q"><span class="lbl">How good are the bots?</span>${tg('level', ONLINE_LEVELS.map((l) => [l, cap(l)]), opts.botLevel)}<small class="qh lvlh">${LEVEL_NOTE[opts.botLevel]}</small></div>
       </div></div>
@@ -115,18 +129,22 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     }
     const n = link.members.length;
     const host = link.you === 0;
-    $('.lsub').textContent = link.status === 'open' ? `${n} of ${o.players} here · ${o.singles ? 'no doubles' : 'doubles on'} · ${cap(o.botLevel)} bots` : 'Connection lost. Reconnecting…';
-    $('.seats').innerHTML = SEATS[o.players]
-      .map((c, i) => {
+    const slots = modeSlots(o.mode, o.pairing);
+    const total = slots.length;
+    $('.lsub').textContent = link.status === 'open' ? `${MODE_LABEL[o.mode]} · ${n} of ${total} here · ${o.singles ? 'no doubles' : 'doubles'} · ${cap(o.botLevel)} bots` : 'Connection lost. Reconnecting…';
+    $('.seats').innerHTML = slots
+      .map((slot, i) => {
         const m = link!.members[i];
+        const c = slot.colors[0]!;
         const who = m ? `${m.name}${i === link!.you ? ' (you)' : ''}` : 'Waiting…';
-        const tag = m ? (m.host ? 'HOST' : !m.online ? 'OFFLINE' : '') : 'BOT IF EMPTY';
-        return `<div class="seat${m ? '' : ' empty'}" style="${cssVars(c)}"><span class="ra">${avatarSVG(c)}</span><b>${who}</b>${tag ? `<em>${tag}</em>` : ''}</div>`;
+        const tag = [o.mode === '2v2' ? TEAM[slot.side] : '', m ? (m.host ? 'HOST' : !m.online ? 'OFFLINE' : '') : 'BOT IF EMPTY'].filter(Boolean).join(' · ');
+        const faces = slot.colors.map((x) => `<span class="ra" style="${cssVars(x)}">${avatarSVG(x)}</span>`).join('');
+        return `<div class="seat${m ? '' : ' empty'}${slot.colors.length > 1 ? ' two' : ''}" style="${cssVars(c)}">${faces}<b>${who}</b>${tag ? `<em>${tag}</em>` : ''}</div>`;
       })
       .join('');
     const start = $<HTMLButtonElement>('[data-act=start]');
     start.disabled = !host || n < 2 || link.status !== 'open';
-    start.textContent = host ? (n < 2 ? 'WAITING FOR FRIENDS' : n < o.players ? `START WITH ${o.players - n} BOT${o.players - n > 1 ? 'S' : ''}` : 'START GAME') : 'WAITING FOR THE HOST';
+    start.textContent = host ? (n < 2 ? 'WAITING FOR FRIENDS' : n < total ? `START WITH ${total - n} BOT${total - n > 1 ? 'S' : ''}` : 'START GAME') : 'WAITING FOR THE HOST';
     $('.lnote').textContent = host ? 'Share the code. Start when everyone is in; empty colours get bots.' : 'The host starts the game when everyone is in.';
     tick();
   };
@@ -184,7 +202,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       const k = tb.parentElement!.dataset.k!;
       tb.parentElement!.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === tb));
       const v = tb.dataset.v!;
-      if (k === 'players') opts.players = Number(v) as 2 | 3 | 4;
+      if (k === 'mode') {
+        opts.mode = v as RoomOptions['mode'];
+        $('.mnote').textContent = `${MODE_NOTE[opts.mode]}. Places nobody takes are played by bots`;
+        $('.pairq').hidden = opts.mode !== 'duo';
+      }
+      if (k === 'pairing') opts.pairing = v as RoomOptions['pairing'];
       if (k === 'singles') opts.singles = v === 'true';
       if (k === 'level') {
         opts.botLevel = v as OnlineBotLevel;

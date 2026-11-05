@@ -51,8 +51,10 @@
 - Rolls and kills with feel: dice throws, kill finishers (full, short or off in Settings), banners, sounds and vibration, and the palace: each colour's tokens are welcomed home with a short cutscene.
 - Boards (Classic, Wooden, Dark, plus store boards), colour-blind symbols (● ▲ ■ ◆), fast bots, reduced motion respected, and an update prompt when a newer version is out.
 
-### Online (private rooms)
-- **Play online:** create a room and share its 5-character code; friends join on their own phones. Colours nobody takes are played by bots (Easy, Normal or Hard).
+### Online
+- **Four modes:** 1v1v1v1, 1v1, 1(x2) v 1(x2) (two colours each) and 2v2 (teams of two, partners opposite).
+- **With friends → Private room:** create a room and share its 5-character code; friends join on their own phones. Places nobody takes are played by bots.
+- **Ranked PvP:** matched with players near your rank, with a tier and points in each mode (Bronze to Diamond). After a minute, bots at your level fill empty places and the game still counts.
 - The server rolls the dice and checks every move. Each roll or move has a 30-second clock, and a dropped connection or a closed app can rejoin the game.
 
 ## Development

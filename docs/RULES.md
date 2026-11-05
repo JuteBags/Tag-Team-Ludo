@@ -83,16 +83,34 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole
 50. When your move ends your turn (or the game, or your last token home), there's a short moment (1.5 s) to undo before anyone rolls. Settings can turn that wait off.
 51. The game's record keeps only the moves that stood, so the replay and the review judge the moves you finally played.
 
-## K. Online: private rooms
+## K. Online: the four modes, private rooms and Ranked PvP
 
-52. **Play online → Create a room** picks the number of colours (2-4), doubles on or off, and how the bots play (Easy, Normal or Hard). The room gets a 5-character code; friends join with **Join a room** on their own phones. Up to one person per colour.
-53. The person who created the room is the host. The host starts the game once at least 2 people are in; colours nobody took are played by bots. The lobby waits at most **2 minutes**: then the game starts by itself with whoever is in, or, if nobody joined the host, the room closes. Each person plays one colour, in the order they joined (the host is Blue). Who plays first is drawn at random.
-54. The server rolls every die and checks every move; all the rules above apply unchanged, with the same dice as offline (rule 31).
-55. Each roll and each move has a **30-second clock**. When it runs out, the server plays that step for the person (as a Normal bot would). After two clocks in a row run out, a bot plays for them until they roll or move again.
-56. A person who loses the connection or closes the app can rejoin the same game (**Back to room** on the home screen); while they're away the clock keeps running for them.
-57. **Leave game** in the menu hands the colour to a bot for the rest of the game. When every person has finished or left, the game ends there (rule 34), without waiting for the bots.
-58. Online games always play on to the last place: there is no keep-playing vote (rule 41).
-59. There is no undo online (section J): a move the server has taken can't be taken back.
+52. Online games come in four modes, in private rooms and in Ranked alike:
+    - **1v1v1v1**: four players, one colour each, every one for themselves.
+    - **1v1**: two players, one colour each, in opposite corners.
+    - **1(x2) v 1(x2)**: two players with two colours each (section H), opposite or side by side.
+    - **2v2**: two teams of two people. Each person plays one colour; partners sit opposite and are one side (rule 39): they never capture or block each other, and a team is done when both its colours are home.
+53. The server rolls every die and checks every move; all the rules above apply unchanged, with the same dice as offline (rule 31). Who plays first is drawn at random.
+54. Each roll and each move has a **30-second clock**. When it runs out, the server plays that step for the person (as a Normal bot would). After two clocks in a row run out, a bot plays for them until they roll or move again.
+55. A person who loses the connection or closes the app can rejoin the same game; while they're away the clock keeps running for them.
+56. **Leave game** in the menu hands the colour to a bot for the rest of the game. When every side with a person in it has finished or left, the game ends there (rule 34), without waiting for the bots.
+57. Online games always play on to the last place: there is no keep-playing vote (rule 41).
+58. There is no undo online (section J): a move the server has taken can't be taken back.
+
+**Private rooms** (With friends → Private room)
+
+59. **Create a room** picks the mode, doubles on or off, and how the bots play (Easy, Normal or Hard). The room gets a 5-character code; friends join with **Join a room** on their own phones. People take the mode's places in the order they join (the host first: Blue).
+60. The host starts the game once at least 2 people are in; places nobody took are played by bots. The lobby waits at most **2 minutes**: then the game starts by itself with whoever is in, or, if nobody joined the host, the room closes.
+61. A room you're in can be rejoined from With friends (**Back to room**).
+
+**Ranked PvP**
+
+62. Ranked has its own rating in each mode. Everyone starts at 1000. A guest account is made on the phone's first Ranked visit and kept on that phone.
+63. People see a **tier and points**: Bronze (below 1000), Silver (1000-1299), Gold (1300-1599), Platinum (1600-1899) and Diamond (1900 and up). Each tier below Diamond has divisions III, II and I of 100 rating each; the points are the rating within the division (0-99). Diamond counts its points up from 1900.
+64. **Matchmaking:** you're matched with people whose rating is within 100 of yours, and that window widens by 10 for every second you wait. After **60 seconds**, ranked bots at your rating fill the places still empty, and the game counts like any other. Bots play Easy below 1000, Normal up to 1300 and Hard above.
+65. In 2v2 with four people, teams are made fair: the best and the weakest player are partners.
+66. **Rating change** (Elo): with two sides (1v1, 1(x2) v 1(x2), 2v2), a win or loss against the other side's average rating; both partners in 2v2 get the same change. In 1v1v1v1, each pair of players is one game won by the better place, averaged over the three. A person's first 10 games in a mode move their rating faster (K 40, then 24).
+67. **Leaving a ranked game counts as last place**, even though a bot finishes the game for you.
 
 ## Known risks (accepted for v1, revisit after playtests)
 

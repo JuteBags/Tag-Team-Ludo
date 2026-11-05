@@ -24,7 +24,8 @@ type Counters = { kills: number; pairs: number; sixes: number; lost: number };
 /** The Undo control (#143): a round icon (48 px to tap) with the undos left under it, "2/2". */
 const UNDO_BUTTON = `<button class="undobtn" data-act="undo" hidden aria-label="Undo your last move"><svg viewBox="0 0 40 40" aria-hidden="true"><circle class="ur-bg" cx="20" cy="20" r="17"/><circle class="ur" cx="20" cy="20" r="17"/><path d="M15 13 L10 18 L15 23 M10 18 H24 a6 6 0 0 1 0 12 H19" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><small></small></button>`;
 import type { RoomLink } from '../net/client';
-import type { ClientMsg } from '../net/protocol';
+import { MODE_LABEL, type ClientMsg } from '../net/protocol';
+import { tierOf } from '../net/rating';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
 const DIE = 38;
@@ -48,6 +49,12 @@ const flatDie = (n: number) =>
   `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#fff" stroke="rgba(0,0,0,.25)"/>${PIPS[n]!.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.4" fill="${n === 6 ? '#d2203c' : '#1b2a4a'}"/>`).join('')}</svg>`;
 
 export type Exit = 'home' | 'again' | 'replay' | 'review';
+
+/** "Gold II · 62 pts" for a ranked rating. */
+const tierText = (rating: number) => {
+  const t = tierOf(rating);
+  return `${t.label} · ${t.points} pts`;
+};
 
 /** The rules in a nutshell, for the pause menu. */
 const HOW_TO_PLAY = (singles: boolean) => `<h2>How to play</h2><ul class="howto">
@@ -156,7 +163,7 @@ export class GameScreen {
     this.calm = calmAfter(this.el);
     this.el.innerHTML = `
       <div class="gtop"><button class="rbtn" data-act="menu" aria-label="Menu">${icons.menu}</button>
-        <div class="mode"><small>${online ? `ONLINE · ROOM ${online.code}` : config.mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}${this.state.singles ? '' : ' · DOUBLES'}</small><b>${people} PLAYERS</b></div><span class="rbtn-space"></span></div>
+        <div class="mode"><small>${online ? (online.setup?.ranked ? `RANKED · ${MODE_LABEL[online.setup.mode]}` : `ONLINE · ROOM ${online.code}`) : config.mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}${this.state.singles ? '' : ' · DOUBLES'}</small><b>${people} PLAYERS</b></div><span class="rbtn-space"></span></div>
       ${this.state.players.map((p) => this.panelHTML(p.color, p.bot)).join('')}
       <div class="gboard"></div>
       <div class="hint"><span class="tw"></span><span><b></b><small></small></span></div>
@@ -190,7 +197,12 @@ export class GameScreen {
   /** Whether `c` is played on this device: online only the person's own colours, offline every person's. */
   private isMe(c: Color) {
     const p = this.state.players.find((x) => x.color === c)!;
-    return !p.bot && (!this.online || p.owner === this.online.you);
+    return !p.bot && (!this.online || this.controller(c) === this.online.you);
+  }
+
+  /** Online: the member who plays `c` (-1 for a bot). */
+  private controller(c: Color): number {
+    return this.online?.setup?.control[c] ?? -1;
   }
 
   private unwatch: (() => void) | null = null;
@@ -212,7 +224,7 @@ export class GameScreen {
     const members = () =>
       this.el.querySelectorAll<HTMLElement>('.pl').forEach((pl) => {
         const p = this.state.players.find((x) => x.color === pl.dataset.c)!;
-        const m = p.bot ? undefined : link.members[p.owner];
+        const m = p.bot ? undefined : link.members[this.controller(p.color)];
         const tag = pl.querySelector<HTMLElement>('.net')!;
         // Once the game is over, people leaving the room isn't news.
         const over = this.ended || this.state.phase === 'over';
@@ -286,7 +298,7 @@ export class GameScreen {
 
   /** The person's name for a colour. */
   private name(c: Color) {
-    return this.config.names[this.ownerOf(c)] ?? PROFILES[c].name;
+    return this.config.colorNames?.[c] ?? this.config.names[this.ownerOf(c)] ?? PROFILES[c].name;
   }
 
   /** vs Computer ends for you once all your houses are home; With friends plays on to the last place. */
@@ -530,7 +542,7 @@ export class GameScreen {
         ev = first.e;
       }
     } else {
-      if (!mine) this.setHint(c, `${this.name(c)} is playing…`, this.cur.bot ? 'Bot turn' : link.members[this.cur.owner]?.auto ? 'A bot plays for them' : 'Their turn');
+      if (!mine) this.setHint(c, `${this.name(c)} is playing…`, this.cur.bot ? 'Bot turn' : link.members[this.controller(c)]?.auto ? 'A bot plays for them' : 'Their turn');
       ev = await next;
     }
     if (this.disposed) return;
@@ -586,6 +598,8 @@ export class GameScreen {
       this.seed = link.over.seed;
       this.seedFromStart = true;
     }
+    // Ranked: the rating change follows the result in a moment.
+    if (link.setup?.ranked) for (let i = 0; i < 40 && !link.rated && link.status !== 'closed'; i++) await this.sleep(100);
   }
 
   private async doRoll(c: Color, face?: number) {
@@ -1079,7 +1093,8 @@ export class GameScreen {
     const order = ownerRanking(this.state);
     const pvp = this.config.mode === 'pvp';
     const colorsOf = (o: number) => this.state.players.filter((p) => p.owner === o);
-    const human = this.online ? this.online.you : (this.state.players.find((p) => !p.bot)?.owner ?? 0);
+    // Online, your side: the owner of a colour you play (in 2v2, your team).
+    const human = this.online ? (this.state.players.find((p) => this.isMe(p.color))?.owner ?? 0) : (this.state.players.find((p) => !p.bot)?.owner ?? 0);
     const place = order.indexOf(human) + 1;
     // Online, it's your own result; passing one phone, everyone's game.
     const won = this.online ? place === 1 : pvp || place === 1;
@@ -1134,7 +1149,10 @@ export class GameScreen {
       const price = goal?.unlock.kind === 'gold' ? goal.unlock.price : 0;
       return goal ? `<div class="goal${settings.gold >= price ? ' ready' : ''}"><span>${settings.gold >= price ? `You can unlock <b>${goal.name}</b> in the Store!` : `Next: <b>${goal.name}</b> ${goal.shelf}`}</span><i class="bar"><i style="width:${Math.min(100, (100 * settings.gold) / price)}%"></i></i><em>${Math.min(settings.gold, price)} / ${lockLabel(goal)}</em></div>` : '';
     };
-    const reward = `<div class="reward"><div class="rg"><i class="coin"></i><b class="disp">+<span class="cnt">0</span></b><small>${lines.map((l) => `${l.label} ${l.gold}`).join(' · ')}</small></div>
+    // Ranked: the new tier and points, and the change.
+    const r = this.online?.rated;
+    const rank = r ? `<div class="rated"><span>${MODE_LABEL[r.mode]} · ${tierText(r.after)}</span><b class="${r.after >= r.before ? 'up' : 'down'}">${r.after >= r.before ? '+' : '−'}${Math.abs(r.after - r.before)}</b></div>` : '';
+    const reward = `${rank}<div class="reward"><div class="rg"><i class="coin"></i><b class="disp">+<span class="cnt">0</span></b><small>${lines.map((l) => `${l.label} ${l.gold}`).join(' · ')}</small></div>
       <div class="achs"></div>${goalHTML()}</div>`;
     const card = order.map((o) => {
       const mine = colorsOf(o);
