@@ -121,9 +121,16 @@ describe('review queue', { timeout: 60_000 }, () => {
 
   it("starts from what the game's live review did: only the rest is reviewed, its luck chunks go to the luck pass (#176)", async () => {
     const a = game(12);
+    // Lets every decision through until the review finishes (never waiting out a call that won't come).
+    const drain = async () => {
+      while (!Q.progressOf(a)?.finished) {
+        await until(() => release.length > 0 || !!Q.progressOf(a)?.finished);
+        release.shift()?.();
+      }
+    };
     // The whole review once, for its verdicts.
     Q.follow(a, () => {}, { keep: false, open: true });
-    for (let i = 0; i < 400 && !Q.progressOf(a)?.finished; i++) await step();
+    await drain();
     const all = Q.progressOf(a)!.moves;
     expect(all.length).toBeGreaterThan(2);
     Q.resetQueue();
@@ -132,7 +139,7 @@ describe('review queue', { timeout: 60_000 }, () => {
     // The game hands off all but its last two verdicts, and one luck chunk.
     const part = { luck: [], chances: [[50, 50]] };
     Q.enqueue(a, { keep: false, live: { moves: all.slice(0, -2), skip: [], luckHave: [part] } });
-    for (let i = 0; i < 50 && !Q.progressOf(a)?.finished; i++) await step();
+    await drain();
     expect(Q.progressOf(a)?.finished).toBe(true);
     expect(calls.length).toBe(2);
     expect(Q.progressOf(a)!.moves.map((m) => m.at)).toEqual(all.map((m) => m.at));
