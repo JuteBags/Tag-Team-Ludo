@@ -38,7 +38,24 @@ try {
     };
     await page.goto(url, { waitUntil: 'load' });
     await home();
+    /** The live document by part: every element down to depth 4 with over 50 descendants, as tag.class: count. */
+    const parts = () =>
+      page.evaluate(() => {
+        const out = {};
+        const walk = (e, d, path) => {
+          for (const c of e.children) {
+            const n = c.querySelectorAll('*').length;
+            if (n < 50) continue;
+            const id = `${path} > ${c.tagName.toLowerCase()}${c.id ? '#' + c.id : ''}${typeof c.className === 'string' && c.className ? '.' + c.className.trim().split(/s+/).join('.') : ''}`;
+            out[id] = n;
+            if (d < 4) walk(c, d + 1, id);
+          }
+        };
+        walk(document.documentElement, 0, '');
+        return out;
+      });
     const before = await nodes();
+    const partsBefore = await parts();
     await page.evaluate((l) => (location.hash = '#game=' + l), link);
     await page.waitForSelector('[data-act=review]', { timeout: 30000 });
     await page.waitForTimeout(1000);
@@ -50,6 +67,8 @@ try {
     await page.click('[data-act=back]');
     await home();
     const after = await nodes();
+    const partsAfter = await parts();
+    const grewParts = Object.keys(partsAfter).map((k) => [k, partsAfter[k] - (partsBefore[k] ?? 0)]).filter(([, d]) => d >= 50).sort((a, b) => b[1] - a[1]).slice(0, 10);
 
     // The heap snapshot: detached elements, and the shortest strong path from the root to a few of them.
     const chunks = [];
@@ -87,7 +106,7 @@ try {
       const nm = name(i);
       if (!/^(Detached )?(HTML|SVG)\w*Element/.test(nm) && !/Element$/.test(nm)) continue;
       detached.set(nm, (detached.get(nm) ?? 0) + 1);
-      if (/SVGRectElement|HTMLDivElement/.test(nm) && examples.length < 400) examples.push(i);
+      if (/SVG(G|SVG|Rect)Element|HTMLDivElement/.test(nm) && examples.length < 400) examples.push(i);
     }
     // BFS from the root (node 0) over strong edges: the parent of each node on its shortest path.
     const parent = new Int32Array(N).fill(-1);
@@ -117,7 +136,7 @@ try {
       if (!paths.has(key)) paths.set(key, p);
       if (paths.size >= 4) break;
     }
-    rows.push({ path, before, after, detached: [...detached].sort((a, b) => b[1] - a[1]).slice(0, 8), paths: [...paths.values()] });
+    rows.push({ path, before, after, grewParts, detached: [...detached].sort((a, b) => b[1] - a[1]).slice(0, 8), paths: [...paths.values()] });
     console.log('LEAK ' + JSON.stringify(rows.at(-1)));
     await context.close();
   }
@@ -132,6 +151,11 @@ md('|---|---:|---|');
 for (const r of rows) md(`| ${r.path} | ${r.before} / ${r.after} | ${r.detached.map(([n, c]) => `${n} ${c}`).join(', ') || 'none'} |`);
 md('');
 for (const r of rows) {
+  md(`**${r.path}:** where the live DOM grew (elements)`);
+  md('');
+  for (const [k, d] of r.grewParts) md(`- \`${k}\` +${d}`);
+  if (!r.grewParts.length) md('- nowhere');
+  md('');
   md(`**${r.path}:** the shortest retaining paths from the GC roots`);
   md('');
   for (const p of r.paths) md(`- \`${p.replace(/`/g, "'")}\``);
