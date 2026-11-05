@@ -78,6 +78,40 @@ try {
           }),
         sel,
       );
+    /**
+     * The JS heap by kind, from a heap snapshot (after a GC): self size per node type, and per type:name for the
+     * biggest, so a difference says what stayed (code, closures, arrays, strings, objects by constructor).
+     */
+    const heapKinds = async () => {
+      await gc();
+      const chunks = [];
+      const onChunk = (c) => chunks.push(c.chunk);
+      cdp.on('HeapProfiler.addHeapSnapshotChunk', onChunk);
+      await cdp.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false });
+      cdp.off('HeapProfiler.addHeapSnapshotChunk', onChunk);
+      const snap = JSON.parse(chunks.join(''));
+      const f = snap.snapshot.meta.node_fields;
+      const types = snap.snapshot.meta.node_types[0];
+      const [ti, ni, si] = [f.indexOf('type'), f.indexOf('name'), f.indexOf('self_size')];
+      const byType = {};
+      const byName = {};
+      for (let i = 0; i < snap.nodes.length; i += f.length) {
+        const type = types[snap.nodes[i + ti]];
+        const size = snap.nodes[i + si];
+        byType[type] = (byType[type] ?? 0) + size;
+        const nm = type === 'object' || type === 'closure' || type === 'code' ? `${type}:${String(snap.strings[snap.nodes[i + ni]]).slice(0, 60)}` : type;
+        byName[nm] = (byName[nm] ?? 0) + size;
+      }
+      return { byType, byName };
+    };
+    /** What grew from `a` to `b`, in kB, biggest first. */
+    const grew = (a, b, n = 10) =>
+      Object.keys(b)
+        .map((k) => [k, (b[k] - (a[k] ?? 0)) / 1024])
+        .filter(([, kb]) => Math.abs(kb) >= 8)
+        .sort((x, y) => y[1] - x[1])
+        .slice(0, n)
+        .map(([k, kb]) => `${k} ${kb >= 0 ? '+' : ''}${kb.toFixed(0)} kB`);
     const row = { game: name };
 
     // The home screen first (its heap is what going back should return to), then the link's replay.
@@ -87,6 +121,7 @@ try {
     if (later) await later.click().catch(() => {});
     await page.waitForTimeout(1500);
     row.home = await heapMB();
+    const homeKinds = await heapKinds();
     const openReplay = async () => {
       await page.evaluate((l) => (location.hash = '#game=' + l), link);
       await page.waitForSelector('[data-act=review]', { timeout: 30000 });
@@ -109,12 +144,29 @@ try {
       watch();
       window.__t0 = performance.now();
     });
+    // Traced: where the main thread's time goes while it runs (self time per event, as screens.mjs does).
+    await browser.startTracing(page, { categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'disabled-by-default-devtools.timeline.frame', 'toplevel', 'blink', 'v8', 'cc'] });
     const m0 = await metrics();
     const t0 = Date.now();
     await page.click('[data-act=review]');
     await page.waitForFunction(() => /moves reviewed/.test(document.querySelector('.rvprog span')?.textContent ?? ''), null, { timeout: 30 * 60 * 1000, polling: 1000 });
     const runS = (Date.now() - t0) / 1000;
     const m1 = await metrics();
+    const trace = JSON.parse((await browser.stopTracing()).toString('utf8'));
+    const ev = trace.traceEvents ?? trace;
+    const mainTid = ev.find((e) => e.ph === 'M' && e.name === 'thread_name' && e.args?.name === 'CrRendererMain')?.tid;
+    const spans = ev.filter((e) => e.tid === mainTid && e.ph === 'X' && e.dur > 0).sort((x, y) => x.ts - y.ts || y.dur - x.dur);
+    const self = new Map();
+    const stack = [];
+    for (const e of spans) {
+      while (stack.length && stack[stack.length - 1].ts + stack[stack.length - 1].dur <= e.ts) stack.pop();
+      const parent = stack[stack.length - 1];
+      if (parent) self.set(parent.name, (self.get(parent.name) ?? 0) - e.dur);
+      self.set(e.name, (self.get(e.name) ?? 0) + e.dur);
+      stack.push(e);
+    }
+    const busiest = [...self].filter(([n]) => n !== 'RunTask' && n !== 'ThreadControllerImpl::RunTask').sort((x, y) => y[1] - x[1]).slice(0, 8).map(([n, us]) => `${n} ${(us / 1000 / runS).toFixed(0)}`);
+    const frames = ev.filter((e) => e.name === 'DrawFrame').length;
     const run = await page.evaluate(() => ({ draws: window.__draws, long: window.__long.length, longMax: Math.round(Math.max(0, ...window.__long)), longSum: Math.round(window.__long.reduce((a, b) => a + b, 0)) }));
     const d = (k) => 1000 * (m1[k] - m0[k]);
     row.running = {
@@ -129,6 +181,8 @@ try {
       longTasks: run.long,
       longMaxMs: run.longMax,
       longSumMs: run.longSum,
+      framesPerS: +(frames / runS).toFixed(1),
+      busiest: busiest.join(', '),
     };
 
     // Finished: the DOM and the heap, then 5 s idle.
@@ -163,6 +217,9 @@ try {
     await page.waitForTimeout(1500);
     row.afterBack = await heapMB();
     row.afterBack.heapOverHomeMB = +(row.afterBack.heapMB - row.home.heapMB).toFixed(2);
+    const backKinds = await heapKinds();
+    row.afterBack.byType = grew(homeKinds.byType, backKinds.byType, 8).join(', ');
+    row.afterBack.byName = grew(homeKinds.byName, backKinds.byName, 10).join(', ');
     // Reopen: the link's replay again, then the review (the queue has it).
     await openReplay();
     await page.waitForTimeout(1500);
@@ -219,6 +276,18 @@ for (const r of out) {
 }
 md('');
 md('For comparison (after a GC): ' + out.map((r) => `${r.game}: home ${r.home.nodes} nodes, ${r.home.heapMB} MB; the replay ${r.replay.nodes} nodes, ${r.replay.heapMB} MB`).join('; ') + '.');
+md('');
+md('**Where the main thread goes while the review runs** (self time per event, ms/s; frames drawn per second):');
+md('');
+md('| game | frames/s | busiest |');
+md('|---|---:|---|');
+for (const r of out) md(`| ${r.game} | ${r.running.framesPerS} | ${r.running.busiest} |`);
+md('');
+md('**What stays after Back** (heap snapshot at home after the review against home before it; by kind, then the biggest):');
+md('');
+md('| game | by kind | biggest |');
+md('|---|---|---|');
+for (const r of out) md(`| ${r.game} | ${r.afterBack.byType} | ${r.afterBack.byName} |`);
 md('');
 md('**Taps and opening** (to the next frame):');
 md('');
