@@ -1,4 +1,5 @@
-// Sound and haptics, all synthesised with Web Audio: no audio files, so the app stays small and offline.
+// Sound, all synthesised with Web Audio: no audio files, so the app stays small and offline. Haptics live in
+// haptics.ts (#73), with their own Vibration switch.
 // Browsers only allow audio after a user gesture, so the context is created on the first tap.
 
 let ctx: AudioContext | null = null;
@@ -96,15 +97,6 @@ function noise(dur: number, { vol = 0.25, at = 0, freq = 1800, q = 0.8, type = '
   playing(t + dur);
 }
 
-function buzz(pattern: number | number[]) {
-  if (muted) return;
-  try {
-    navigator.vibrate?.(pattern);
-  } catch {
-    // Not every WebView allows vibration.
-  }
-}
-
 export const sfx = {
   get muted() {
     return muted;
@@ -118,7 +110,7 @@ export const sfx = {
       // Not saved; it still applies for this session.
     }
   },
-  /** The Dice sounds switch (#184): off silences roll, shake and land only. Their buzzes stay (Vibration, #73). */
+  /** The Dice sounds switch (#184): off silences roll, shake and land only. */
   get diceMuted() {
     return diceMuted;
   },
@@ -140,7 +132,6 @@ export const sfx = {
   shake(ms: number) {
     const n = 9;
     if (!diceMuted) for (let i = 0; i < n; i++) noise(0.04, { vol: 0.2 + Math.random() * 0.08, at: ((i + Math.random() * 0.4) / n) * (ms / 1000), freq: 700 + Math.random() * 600, q: 3 });
-    buzz([12, 50, 12, 50, 12]);
   },
   /** The die landing; a six rings out. */
   land(face: number) {
@@ -148,11 +139,7 @@ export const sfx = {
       noise(0.08, { vol: 0.32, freq: 420, q: 1.2 });
       tone(150, 0.12, { type: 'triangle', vol: 0.22 });
     }
-    buzz(18);
-    if (face === 6) {
-      if (!diceMuted) [784, 988, 1319, 1568].forEach((f, i) => tone(f, 0.28, { type: 'triangle', vol: 0.13, at: 0.05 + i * 0.07 }));
-      buzz([20, 40, 30]);
-    }
+    if (face === 6 && !diceMuted) [784, 988, 1319, 1568].forEach((f, i) => tone(f, 0.28, { type: 'triangle', vol: 0.13, at: 0.05 + i * 0.07 }));
   },
   /** One square of movement. */
   hop() {
@@ -168,13 +155,11 @@ export const sfx = {
     noise(0.25, { vol: 0.45, at: 0.02, freq: 300, q: 0.7, type: 'lowpass' });
     tone(660, 0.45, { type: 'sawtooth', vol: 0.06, at: 0.12, slide: 0.35 });
     if (n > 1) tone(82, 0.5, { type: 'sine', vol: 0.45, at: 0.14, slide: 0.5 });
-    buzz(n > 1 ? [60, 40, 90] : [55, 30, 40]);
   },
   /** A token out of base. */
   release() {
     tone(392, 0.12, { type: 'triangle', vol: 0.14 });
     tone(784, 0.16, { type: 'triangle', vol: 0.12, at: 0.06 });
-    buzz(14);
   },
   /** Who plays first is decided: two quick notes up to a bright chord. */
   crown() {
@@ -184,7 +169,6 @@ export const sfx = {
   /** A token reaching the centre. */
   home() {
     [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.32, { type: 'triangle', vol: 0.14, at: i * 0.09 }));
-    buzz([25, 40, 25, 40, 50]);
   },
   // ---------- the palace cutscene ----------
   /** The palace gate swinging open: a low wooden creak and thud. */
@@ -197,7 +181,6 @@ export const sfx = {
   fanfare() {
     [523, 659, 784].forEach((f, i) => tone(f, 0.18, { type: 'square', vol: 0.05, at: i * 0.11 }));
     [784, 1047, 1319].forEach((f) => tone(f, 0.8, { type: 'triangle', vol: 0.1, at: 0.36 }));
-    buzz([30, 50, 30, 50, 80]);
   },
   /** Red: the guards' torches flaring up. */
   flare() {
@@ -224,7 +207,6 @@ export const sfx = {
     noise(0.9 * k, { vol: 0.45, freq: 140, q: 0.7, type: 'lowpass' });
     tone(55, 0.8 * k, { type: 'sine', vol: 0.45, slide: 0.7 });
     tone(38, 0.9 * k, { type: 'triangle', vol: 0.3, at: 0.08, slide: 0.8 });
-    buzz(big ? [90, 40, 120, 40, 90] : [70, 40, 90]);
   },
   /** Green's kill: the ground cracking open, a sharp split and a thud; doubled for a pair. */
   crack(big = false) {
@@ -238,10 +220,8 @@ export const sfx = {
   bust() {
     tone(330, 0.2, { type: 'square', vol: 0.07 });
     tone(220, 0.35, { type: 'square', vol: 0.07, at: 0.16, slide: 0.7 });
-    buzz(120);
   },
   win() {
     [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.5, { type: 'triangle', vol: 0.15, at: i * 0.12 }));
-    buzz([40, 60, 40, 60, 120]);
   },
 };

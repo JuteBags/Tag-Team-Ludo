@@ -1,12 +1,13 @@
 // Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
 // a person passing the device; a person with two houses plays both colours' turns.
-import { FINISHED, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type Rng, STOP_EVENT } from '../engine';
+import { FINISHED, createGame, isSafe, squareOf, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type Rng, STOP_EVENT } from '../engine';
 import { chooseBotMoveAsync, RolloutStopped, stopRolloutWorker } from '../engine/ai/levels';
 import { calmAfter } from './calm';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
 import { BoardView } from './boardView';
 import { dieMarkup, rollDie } from './dice';
 import { saveSetting, settings } from './settings';
+import { haptics } from './haptics';
 import { sfx } from './sfx';
 import { UNDO_WINDOW_MS, UndoBook, windowAfter, type UndoFrame } from './undo';
 import type { GameConfig } from './setup';
@@ -150,7 +151,10 @@ export class GameScreen {
     this.el.querySelector('[data-act=menu]')!.addEventListener('click', () => this.openMenu());
     this.el.querySelector('.dicebar')!.addEventListener('click', (e) => {
       const b = (e.target as Element).closest<HTMLElement>('.tdie');
-      if (b && !this.paused) this.trayPick?.(Number(b.dataset.r));
+      if (b && !this.paused && this.trayPick) {
+        haptics.feel('select');
+        this.trayPick(Number(b.dataset.r));
+      }
     });
     this.el.querySelector('.undobtn')!.addEventListener('click', () => {
       if (!this.paused) this.undoTap?.();
@@ -445,6 +449,11 @@ export class GameScreen {
     await rollDie(box, this.state.dice!, DIE, (this.cur.bot || this.state.players.find((p) => p.color === c)!.bot ? BOT_ROLL_MS / (settings.fastBots ? 2 : 1) : ROLL_MS) / this.speed);
     this.lastFace.set(c, this.state.dice!);
     const ev = this.state.event;
+    // Haptics (#73): only a person's own roll, never dice they watch.
+    if (!this.state.players.find((p) => p.color === c)!.bot) {
+      if (ev?.type === 'three-sixes') haptics.feel('bust');
+      else if (this.state.dice === 6) haptics.feel('six');
+    }
     if (this.state.dice === 6 && ev?.type !== 'three-sixes') {
       box.classList.remove('six');
       void box.offsetWidth; // restart the flare animation
@@ -509,13 +518,31 @@ export class GameScreen {
     // Kill finishers: the full scene when a person is involved, a short one between bots, or none.
     const people = [m.color, ...m.captures.map((c) => c.color)].some((c) => !this.state.players.find((p) => p.color === c)!.bot);
     const fx = settings.killFx === 'off' ? 0 : settings.killFx === 'short' || !people ? 420 : 1400;
-    await this.view.animateMove(m, this.state.players, this.speed, () => this.killBanner(m), m.captures.length ? fx : 0);
+    // Haptics (#73): a person's own move as it starts; a kill with its blow, felt by the hunter or the hunted.
+    const isHuman = (c: Color) => !this.state.players.find((p) => p.color === c)!.bot;
+    if (isHuman(m.color) && !m.captures.length && !m.finishes) {
+      if (m.kind === 'release') haptics.feel('release');
+      else if (m.tokens.length > 1) haptics.feel('pair');
+    }
+    const onHit = () => {
+      this.killBanner(m);
+      if (isHuman(m.color)) haptics.feel(m.captures.length > 1 ? 'killPair' : 'kill');
+      else if (m.captures.some((x) => isHuman(x.color))) haptics.feel('killed');
+    };
+    await this.view.animateMove(m, this.state.players, this.speed, onHit, m.captures.length ? fx : 0);
     const ev = this.state.event;
     const extra = ev?.type === 'moved' && ev.extraTurn;
     const player = this.state.players.find((p) => p.color === m.color)!;
     const human = !player.bot;
     // A kill's banner already landed with the blow (killBanner). A person's token reaching home is
     // welcomed into the palace; a bot's just gets the banner.
+    if (human && !m.captures.length) {
+      if (m.finishes) haptics.feel('home');
+      else if (m.kind !== 'release' && m.tokens.length === 1) {
+        const sq = squareOf(m.color, m.to);
+        if (sq !== null && isSafe(sq)) haptics.feel('safe');
+      }
+    }
     if (!m.captures.length && m.finishes) {
       if (human) {
         // The cutscene loads on first use (#98); if it can't, the token gets the banner instead.
@@ -720,6 +747,7 @@ export class GameScreen {
       const b = (e.target as HTMLElement).closest<HTMLElement>('.choice');
       if (!b) return;
       sfx.tick();
+      haptics.feel('select');
       this.view.pick(targets[Number(b.dataset.i)]!);
     });
     h.querySelector('span:not(.tw)')!.appendChild(row);
@@ -1028,7 +1056,10 @@ export class GameScreen {
           countUp(earned, earned + extra, 700);
         }, 1300 + fresh.length * 300);
     });
-    if (won) sfx.win();
+    if (won) {
+      sfx.win();
+      haptics.feel('win');
+    }
     // The gold counts up: this game's first, then the achievements' when they land.
     const cnt = ov.querySelector<HTMLElement>('.cnt')!;
     const countUp = (from: number, to: number, ms: number) => {
