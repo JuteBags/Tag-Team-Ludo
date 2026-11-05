@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { createGame, move, moveEvent, positionKey, replay, roll, seeded, seededDie, SEATS, type GameRecord, type GameState, type Seat } from '../src/engine';
 import { chooseBotMove } from '../src/engine/ai/levels';
-import { OWN_MARGIN, OWN_MAX_SE, ownPuzzles, type ReviewedGame } from '../src/engine/ai/ownPuzzles';
+import { OWN_MARGIN, OWN_MAX_SE, ownPuzzles, ownRollStrip, type ReviewedGame } from '../src/engine/ai/ownPuzzles';
 import { REVIEW_VERSION, type MoveReview } from '../src/engine/ai/review';
 
 /** A 2p Hard-bot game, seat 0 the person, the app's dice. */
@@ -86,5 +86,34 @@ describe('own puzzles (#99)', () => {
     const big = verdict(b!.at, 12);
     const out = ownPuzzles([{ id: 'new', rec, v: REVIEW_VERSION, moves: [small] }, { id: 'old', rec, v: REVIEW_VERSION, moves: [big] }]);
     expect(out.map((p) => p.id)).toEqual([`old:${b!.at}`, `new:${a!.at}`]);
+  });
+
+  it("works out the roll's strip when it opens (#194): the roll before it, the rolled face as the verdict's best", async () => {
+    // A decision straight after a roll.
+    const at = distinct.find(({ at }) => states[at - 1]?.phase === 'roll' && states[at - 1]!.current === states[at]!.current)!.at;
+    const [p] = ownPuzzles(one([verdict(at, 12)]));
+    expect(p!.rollFrom).not.toBe(null);
+    expect(positionKey(roll(p!.rollFrom!.pre, () => 0, p!.state.dice!))).toBe(positionKey(states[at]!));
+    // The faces: a stand-in for the worker (faceValues.ts runs there), each face its own value.
+    let asked: { face: number; chance: number } | undefined;
+    const strip = (await ownRollStrip(p!, (_pre, _n, _seed, rolled) => ((asked = rolled), Promise.resolve([0.3, 0.35, 0.4, 0.45, 0.5, 0.55]))))!;
+    expect(asked).toEqual({ face: p!.state.dice!, chance: p!.chances[p!.best]! / 100 });
+    expect(strip.face).toBe(p!.state.dice);
+    expect(strip.faces).toEqual([30, 35, 40, 45, 50, 55]);
+    // Before the roll: the faces weighted by the game's dice; the roll's effect is the rolled face's lead over it.
+    const w = strip.weights;
+    const sum = w.reduce((a, x) => a + x, 0);
+    expect(strip.before).toBeCloseTo(strip.faces.reduce((a, v, k) => a + (v * w[k]!) / sum, 0), 9);
+    expect(strip.effect).toBeCloseTo(strip.faces[strip.face - 1]! - strip.before, 9);
+    expect(sum).toBeCloseTo(100, 0);
+  });
+
+  it('has no strip for a decision in the middle of a turn (no roll right before it)', async () => {
+    const mid = states.findIndex((s, i) => i > 0 && s.phase === 'move' && s.current === 0 && s.moves.length >= 2 && states[i - 1]!.phase === 'move');
+    if (mid < 0) return;
+    const n = states[mid]!.moves.length;
+    const v: MoveReview = { at: mid, owner: 0, played: n - 1, best: 0, playedChance: 0.3, bestChance: 0.5, gap: 20, se: 1, label: 'blunder', gaps: states[mid]!.moves.map((_, i) => (i ? 20 : 0)) };
+    const out = ownPuzzles(one([v]));
+    for (const p of out) expect(p.rollFrom).toBe(null);
   });
 });

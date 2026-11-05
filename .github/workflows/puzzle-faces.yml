@@ -1,0 +1,59 @@
+# The roll's strip for every pool puzzle (#194, tools/ai/puzzle_faces.ts): each face's win chance with best
+# play at 1,024 playouts and its chance under the app's dice, from each puzzle's source game played again.
+# The generator's shards come from the runs that made the pool (puzzles.yml): 41893707591, 41901810812 and
+# 41912353721. Heavy: on its PR (the tool or this file) and by hand. The join is the `puzzle-faces` artifact,
+# which puzzles_merge.ts --faces writes into the pool (v4).
+name: Puzzle faces
+
+on:
+  pull_request:
+    paths:
+      - 'tools/ai/puzzle_faces.ts'
+      - '.github/workflows/puzzle-faces.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  faces:
+    name: faces ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: bash tools/ai/build.sh
+      - name: The generator's shards
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for run in 41893707591 41901810812 41912353721; do
+            gh run download $run -R ${{ github.repository }} -p 'puzzles-*' -D shards/$run
+          done
+          find shards -name 'puzzles-*.json' | sort
+      - run: node tools/ai/dist/puzzle_faces.mjs --pool src/engine/puzzle-pool.json $(find shards -name 'puzzles-*.json' | sort) --shard ${{ matrix.shard }} --shards 8 --out faces-${{ matrix.shard }}.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: faces-${{ matrix.shard }}
+          path: faces-${{ matrix.shard }}.json
+  join:
+    needs: faces
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: faces-*
+          merge-multiple: true
+      - run: node -e "const fs=require('fs');const all={};for(const f of fs.readdirSync('.').filter(f=>/^faces-\d+\.json$/.test(f)))Object.assign(all,JSON.parse(fs.readFileSync(f,'utf8')));fs.writeFileSync('puzzle-faces.json',JSON.stringify(all));const v=Object.values(all);console.log(v.length,'puzzles,',v.filter(Boolean).length,'with a strip')" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: puzzle-faces
+          path: puzzle-faces.json
