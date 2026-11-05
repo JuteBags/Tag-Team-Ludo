@@ -794,6 +794,12 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .pg{display:flex;align-items:stretch;border-radius:14px;background:rgba(0,0,0,.25)}
 .pg .pgmain{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:10px 12px;background:none;color:#fff;text-align:left}
 .pg .pgplay{flex:none;width:48px;border-left:1px solid rgba(255,255,255,.12);background:none;color:#fff;font-size:16px}
+/* Pin a game (#97): a 44px target at the row's right end; an outline pin, filled gold when pinned. */
+.pg .pgpin{flex:none;width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;border-left:1px solid rgba(255,255,255,.12);background:none;color:rgba(255,255,255,.7)}
+.pg .pgpin svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round}
+.pg .pgpin.on{color:#ffd65a}
+.pg .pgpin.on svg{fill:#ffd65a}
+.sheetnote{top:70px}
 .pg .pgr{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:#ffd65a}
 .pg .pgr.off{color:rgba(255,255,255,.55)}
 .pg .pgr{white-space:nowrap}
