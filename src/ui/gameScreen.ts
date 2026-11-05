@@ -870,6 +870,9 @@ export class GameScreen {
   dispose() {
     this.disposed = true;
     this.live?.stop();
+    // No game is played any more, however it was left (the result, Home, a shared link opened over it): the
+    // review queue, which waits during any game (#176), goes on.
+    setGame('none');
     this.calm?.stop();
     stopRolloutWorker();
     keepAwake(false);
