@@ -9,10 +9,11 @@
 //     when the first key verdict and the whole review are in, the luck pass's own time, and each worker's
 //     memory, with the pool size the app would use on this device.
 // The review queue waits while a test runs, so a past game's review doesn't share the phone's time.
-import { SEATS as TABLE, chooseMove, createGame, move, roll, seeded, seededDie, type Color, type GameRecord, type GameState, type Seat } from '../engine';
-import type { Label } from '../engine/ai/review';
+import { SEATS as TABLE, chooseMove, createGame, move, replay, roll, seeded, seededDie, type Color, type GameRecord, type GameState, type Seat } from '../engine';
+import { LUCK_CHUNK, REVIEW_VERSION, type Label } from '../engine/ai/review';
+import { LiveReview, livePoolSize, type LiveEngine } from './liveReview';
 import { setGame } from './reviewQueue';
-import { runReview } from './reviewRun';
+import { decisionsToReview, runReview } from './reviewRun';
 import { isMobile, MAX_POOL_DESKTOP, poolSize, ReviewPool } from '../engine/ai/review-worker';
 import { FORCE_PLAIN, wasmKind } from '../engine/ai/wasmModule';
 
@@ -403,4 +404,87 @@ async function reviewBench(_worker: Worker, say: (l: string) => void, hidden: ()
       pool.stop();
     }
   }
+  if (!hidden()) await liveBench(_worker, say, hidden, games);
+}
+
+/** How fast the live test plays the bench's games: an event every LIVE_PACE_MS (faster than people play). */
+const LIVE_PACE_MS = 150;
+
+/**
+ * The review while the game is played (#176), on this device's live pool (livePoolSize):
+ * - each bench game fed to it event by event at LIVE_PACE_MS, then handed off to the app's pool (poolSize) at
+ *   the game's end: the time from the end to the review finished, and what was left for the pool;
+ * - the live workers' wasm memory;
+ * - Extreme's think time (4p, 128 playouts) with no live review and with one busy (a whole game queued),
+ *   paused while the bot thinks, as the game screen does: p50 and p90.
+ */
+async function liveBench(worker: Worker, say: (l: string) => void, hidden: () => boolean, games: { layout: '2p' | '4p'; seed: number; rec: GameRecord }[]) {
+  const size = livePoolSize();
+  say(`live: the game's review uses ${size} worker${size === 1 ? '' : 's'} here during play`);
+  if (size < 1) return;
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const liveOn = (pool: ReviewPool): LiveEngine => ({ reviewer: pool.reviewer()!, parallel: size, luckPart: (r, c) => pool.luckPart(r, c)!, stop: () => pool.stop() });
+  // The review while the game is played reviews the people's moves: seat 0 plays as a person here.
+  const asPlayed = (rec: GameRecord): GameRecord => ({ ...rec, seats: rec.seats.map((x) => (x.owner === 0 ? { color: x.color, owner: 0, bot: false } : x)) });
+  for (const game of games) {
+    const g = { ...game, rec: asPlayed(game.rec) };
+    if (hidden()) return;
+    say(`playing the ${g.layout} game with its review running…`);
+    const pool = new ReviewPool(size);
+    const live = new LiveReview(() => liveOn(pool));
+    const states = replay(g.rec).states;
+    let i = 0;
+    const t0 = performance.now();
+    for (let k = 0; k + 1 < states.length; k++) {
+      if (hidden()) return pool.stop();
+      i += states[k]!.phase === 'move' ? 2 : 1;
+      live.update({ ...g.rec, events: g.rec.events.slice(0, i) });
+      await sleep(LIVE_PACE_MS);
+    }
+    const playMs = performance.now() - t0;
+    const mem = await pool.memory();
+    const h = live.handOff(g.rec);
+    const total = decisionsToReview(g.rec, states, [0]);
+    const chunks = Math.ceil(states.length / LUCK_CHUNK);
+    const app = new ReviewPool(poolSize());
+    const t1 = performance.now();
+    await new Promise<void>((done) =>
+      runReview(g.rec, { v: REVIEW_VERSION, moves: h.moves, luck: null, skip: h.skip.length ? h.skip : undefined }, (p) => p.finished && done(), false, app.reviewer(), [0], (r, st, y) => app.luck(r, st, y, h.luckHave)),
+    );
+    app.stop();
+    say(`live ${g.layout} game ${g.seed}: played in ${sec(playMs)} (${states.length - 1} events), at the end ${h.moves.length + h.skip.length} of ${total} decisions and ${h.luckHave.filter(Boolean).length} of ${chunks} luck chunks in; ready ${sec(performance.now() - t1)} after the end (on ${poolSize()} workers)`);
+    say(`memory, live, ${size} worker${size === 1 ? '' : 's'}: wasm ${mem.map((b) => `${(b / 1048576).toFixed(1)} MB`).join(' + ')}`);
+  }
+  // Extreme's think, alone and with the game's review busy (paused while it thinks).
+  const ask = (state: GameState, nmax: number, seed: number) =>
+    new Promise<number>((done, fail) => {
+      worker.onmessage = (m: MessageEvent<{ index?: number; error?: string }>) => (m.data.error ? fail(new Error(m.data.error)) : done(m.data.index ?? -1));
+      worker.onerror = () => fail(new Error('the worker failed to load'));
+      worker.postMessage({ id: 0, state, nmax, seed });
+    });
+  await ask(benchDecisions('4p', 1)[0]!, 16, 1);
+  const decisions = benchDecisions('4p', PER_ARM);
+  const pool = new ReviewPool(size);
+  const live = new LiveReview(() => liveOn(pool));
+  const busy = games.find((x) => x.layout === '4p') ?? games[0]!;
+  live.update(asPlayed(busy.rec));
+  const alone: number[] = [];
+  const withLive: number[] = [];
+  for (const [j, d] of decisions.entries()) {
+    if (hidden()) return pool.stop();
+    // Alternating, so a slow spell hits both.
+    for (const on of j % 2 ? [false, true] : [true, false]) {
+      if (on) live.thinking(true);
+      const t = performance.now();
+      await ask(d, 128, j + 1);
+      (on ? withLive : alone).push(performance.now() - t);
+      if (on) live.thinking(false);
+      // The review gets the time between thinks, as in a game.
+      await sleep(on ? 400 : 0);
+    }
+  }
+  pool.stop();
+  const a = stats(alone);
+  const w = stats(withLive);
+  say(`extreme think 4p race:128: alone p50 ${Math.round(a.p50)} ms, p90 ${Math.round(a.p90)} ms; with the game's review p50 ${Math.round(w.p50)} ms, p90 ${Math.round(w.p90)} ms (${alone.length} moves each)`);
 }

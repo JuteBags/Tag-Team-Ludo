@@ -28,6 +28,10 @@ const md = (line) => {
   if (summary) appendFileSync(summary, line + '\n');
 };
 const link = readFileSync(new URL('./game-seed24.link.txt', import.meta.url), 'utf8').trim();
+// --saved saved-games.json (tools/perf/savedgame.ts): continued games with their record, Hard and Extreme bots
+// (#176: the game's own review has the person's decisions so far). Without it, the old save (no record).
+const savedFile = flag('saved', '');
+const saves = savedFile ? JSON.parse(readFileSync(savedFile, 'utf8')) : null;
 
 /** A saved vs Computer game, 4 players, the person (blue) to roll with three tokens out, seeded: Continue opens it. */
 function savedGame() {
@@ -55,6 +59,10 @@ try {
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttle });
   await cdp.send('Performance.enable');
   const metrics = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]));
+  // The renderer process's CPU (its main thread, its workers and the compositor), from the browser: what the
+  // page's main-thread metrics miss, such as review workers (#176). Seconds.
+  const bcdp = await browser.newBrowserCDPSession();
+  const rendererCpu = async () => (await bcdp.send('SystemInfo.getProcessInfo')).processInfo.filter((x) => x.type === 'renderer').reduce((t, x) => t + x.cpuTime, 0);
   /** A trace's node (a backend node id) as tag.class#id, or '?' once it's gone. */
   const nodeName = async (backendId) => {
     try {
@@ -71,10 +79,12 @@ try {
   async function measure(name, settle = 1500) {
     await page.waitForTimeout(settle);
     const m0 = await metrics();
+    const c0 = await rendererCpu();
     await browser.startTracing(page, { categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline.frame', 'cc', 'disabled-by-default-devtools.timeline', 'toplevel', 'blink', 'v8'] });
     await page.waitForTimeout(idleMs);
     const trace = JSON.parse((await browser.stopTracing()).toString('utf8'));
     const m1 = await metrics();
+    const c1 = await rendererCpu();
     const ev = trace.traceEvents ?? trace;
     const count = (n) => ev.filter((e) => e.name === n).length;
     const per = (k) => (1000 * (m1[k] - m0[k])) / idleMs; // seconds of work per second -> ms per second
@@ -113,6 +123,7 @@ try {
       painted: painted.join(', '),
       busiest: busiest.join(', '),
       taskMsPerS: +(per('TaskDuration') * 1000).toFixed(1),
+      rendererCpuMsPerS: +(((c1 - c0) * 1000 * 1000) / idleMs).toFixed(1),
       scriptMsPerS: +(per('ScriptDuration') * 1000).toFixed(1),
       styleMsPerS: +(per('RecalcStyleDuration') * 1000).toFixed(1),
       layoutMsPerS: +(per('LayoutDuration') * 1000).toFixed(1),
@@ -151,7 +162,7 @@ try {
   await measure('setup');
 
   // 3. A game: the person to roll (the saved game, via Continue).
-  await page.evaluate((g) => localStorage.setItem('CapacitorStorage.ludo-save', JSON.stringify(g)), savedGame());
+  await page.evaluate((g) => localStorage.setItem('CapacitorStorage.ludo-save', JSON.stringify(g)), saves?.hard ?? savedGame());
   await page.goto(url, { waitUntil: 'load' });
   await dismiss();
   await page.click('[data-act=continue]');
@@ -171,6 +182,22 @@ try {
     const box = await ((await page.$('.mark')) ?? movable).boundingBox();
     if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     await measure("game, the bots' turns", 300);
+  }
+
+  // 5b. The same game against Extreme bots (#176: the game's review pauses while one thinks).
+  if (saves?.extreme) {
+    await page.evaluate((g) => localStorage.setItem('CapacitorStorage.ludo-save', JSON.stringify(g)), saves.extreme);
+    await page.goto(url, { waitUntil: 'load' });
+    await dismiss();
+    await page.$eval('[data-act=continue]', (b) => b.click());
+    await page.waitForSelector('[data-act=roll]:not([hidden])', { timeout: 30000 });
+    await page.$eval('[data-act=roll]', (b) => b.click());
+    const mv = await page.waitForSelector('.pawn.movable', { timeout: 30000 }).catch(() => null);
+    if (mv) {
+      const box = await ((await page.$('.mark')) ?? mv).boundingBox();
+      if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    }
+    await measure("game vs Extreme, the bots' turns", 300);
   }
 
   // 6. A replay (a shared game's link) and 7. its review.
@@ -213,9 +240,9 @@ md(`### The app's screens (#98): headless Chrome, 390×844, CPU throttled ${thro
 md('');
 if (cold) md(`**Cold start:** first contentful paint ${cold.fcpMs} ms, home interactive ${cold.homeInteractiveMs} ms (DOMContentLoaded ${cold.domContentLoadedMs} ms, load ${cold.loadMs} ms), ${(cold.bytes / 1024).toFixed(0)} kB fetched.`);
 md('');
-md('| screen | JS heap used / total (MB) | DOM nodes | frames/s | paints/s | paint ms/s | raster ms/s | main-thread task ms/s | script | style | layout |');
-md('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
-for (const r of rows) md(`| ${r.screen} | ${r.heapUsedMB} / ${r.heapTotalMB} | ${r.nodes} | ${r.framesPerS} | ${r.paintsPerS} | ${r.paintMsPerS} | ${r.rasterMsPerS} | ${r.taskMsPerS} | ${r.scriptMsPerS} | ${r.styleMsPerS} | ${r.layoutMsPerS} |`);
+md('| screen | JS heap used / total (MB) | DOM nodes | frames/s | paints/s | paint ms/s | raster ms/s | main-thread task ms/s | script | style | layout | renderer CPU ms/s |');
+md('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
+for (const r of rows) md(`| ${r.screen} | ${r.heapUsedMB} / ${r.heapTotalMB} | ${r.nodes} | ${r.framesPerS} | ${r.paintsPerS} | ${r.paintMsPerS} | ${r.rasterMsPerS} | ${r.taskMsPerS} | ${r.scriptMsPerS} | ${r.styleMsPerS} | ${r.layoutMsPerS} | ${r.rendererCpuMsPerS} |`);
 md('');
 md('| screen | the layers that repaint most |');
 md('|---|---|');
