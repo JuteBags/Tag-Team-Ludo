@@ -45,3 +45,28 @@ jobs:
         with:
           name: perf-screens
           path: perf-screens.json
+
+  # The review screen (#98 target 3): tools/perf/review.mjs on a 2p and a 4p game, next to the screens.
+  review:
+    name: perf review screen
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'performance') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.63.0
+      - name: Serve the build
+        run: |
+          npx vite preview --port 4173 --strictPort > preview.log 2>&1 &
+          for i in $(seq 60); do curl -sf http://localhost:4173/ > /dev/null && break; sleep 1; done
+      - run: echo "commit ${{ github.sha }}, $(nproc) vCPUs, $(google-chrome --version 2>/dev/null)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - run: node tools/perf/review.mjs http://localhost:4173/ "$(command -v google-chrome || command -v chromium)" --throttle ${{ inputs.throttle || '4' }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: perf-review
+          path: perf-review.json
