@@ -80,8 +80,29 @@ export class Matchmaker extends DurableObject<Env> {
     await this.tick();
   }
 
-  /** Starts every game that can start, tells everyone else how their search is going, and keeps the clock running. */
+  /** A pass is running (they await the rooms, so another could start mid-way and match someone twice). */
+  private busy = false;
+  private again = false;
+
+  /** One matching pass at a time; a call during one asks for another pass after it. */
   private async tick() {
+    if (this.busy) {
+      this.again = true;
+      return;
+    }
+    this.busy = true;
+    try {
+      do {
+        this.again = false;
+        await this.pass();
+      } while (this.again);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Starts every game that can start, tells everyone else how their search is going, and keeps the clock running. */
+  private async pass() {
     const now = Date.now();
     const open = this.ctx.getWebSockets().filter((ws) => (ws.deserializeAttachment() as Attachment | null)?.entry);
     if (!open.length) return void this.ctx.storage.deleteAlarm();
@@ -100,7 +121,9 @@ export class Matchmaker extends DurableObject<Env> {
       if (!code) continue; // Try again next second.
       m.slots.forEach((w, i) => {
         if (!w) return;
-        const ws = byId.get(w.id)!;
+        // If they cancelled while the room was made, the game goes on without them (they forfeit after a minute).
+        const ws = byId.get(w.id);
+        if (!ws) return;
         this.send(ws, { t: 'matched', code, token: tokens[i]!, mode });
         ws.serializeAttachment({ mode, entry: null } satisfies Attachment);
         ws.close(1000, 'matched');

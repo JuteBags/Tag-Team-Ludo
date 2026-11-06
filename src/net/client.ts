@@ -37,6 +37,8 @@ export interface SavedRoom {
   token: string;
   name: string;
   at: number;
+  /** A ranked game (rejoined from Ranked PvP, not With friends). */
+  ranked?: boolean;
 }
 const ROOM_KEY = 'ludo-online-room';
 export function loadRoom(): SavedRoom | null {
@@ -198,7 +200,7 @@ export class RoomLink {
         this.setTurn(m.turn);
         // Anything missed while away; what we have is always the start of the server's list.
         for (let i = this.events.length; i < m.events.length; i++) this.push(m.events[i]!);
-        saveRoom({ code: m.code, token: this.token, name: this.name, at: Date.now() });
+        saveRoom({ code: m.code, token: this.token, name: this.name, at: Date.now(), ...(m.setup.ranked ? { ranked: true } : {}) });
         break;
       case 'ev':
         if (m.seq < this.events.length) return; // seen already
@@ -259,6 +261,11 @@ export class RoomLink {
   next(): Promise<string> {
     if (this.consumed < this.events.length) return Promise.resolve(this.events[this.consumed++]!);
     return new Promise((r) => (this.waiting = r));
+  }
+
+  /** Every event handed out so far, in order (a game screen that lost track rebuilds the game from these). */
+  played(): string[] {
+    return this.events.slice(0, this.consumed);
   }
 
   /** Events received but not handed out yet: the game screen hurries its animations when it falls behind. */

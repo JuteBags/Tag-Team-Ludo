@@ -34,8 +34,10 @@ const HERO: PlayerState[] = [
 export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, onPlay: (mode: Mode) => void, saved: SavedGame | null, onContinue: () => void, onStore: () => void, onReplay: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void, puzzle?: PuzzleBadge, onPuzzle?: () => void, online?: { room: (rejoin: boolean) => void; ranked?: () => void }): HTMLElement {
   const el = document.createElement('div');
   el.className = `screen home${saved ? ' has-save' : ''}${online?.ranked ? ' has-ranked' : ''}`;
-  /** An online room this device is in (it can be rejoined). */
-  const room = loadRoom();
+  /** An online game this device is in (it can be rejoined): a private room (With friends), or a ranked game. */
+  const saved0 = loadRoom();
+  const room = saved0 && !saved0.ranked ? saved0 : null;
+  const rankedGame = saved0?.ranked ? saved0 : null;
   const dots = (n: number) => COLORS.slice(0, n).map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
   const people = saved ? saved.config.names.length : 0;
   // Continue says how far you've got: your tokens home in the saved game.
@@ -58,7 +60,7 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
       <button class="mcard pvc" data-mode="pvc"><span class="ci">${icons.robot}</span><b class="disp">VS COMPUTER</b><small>You against bots</small></button>
       <button class="mcard pvp" data-mode="pvp"><span class="ci">${icons.friends}</span><b class="disp">WITH FRIENDS</b><small>${room ? `Back to room ${room.code}` : online ? 'This phone or online' : 'Pass the phone'}</small></button>
     </div>
-    ${online?.ranked ? `<button class="onrow" data-act="ranked"><span class="gl">${icons.globe}</span><span><b class="disp">RANKED PVP</b><small>Matched with players at your level</small></span><em class="chev" aria-hidden="true">${icons.next}</em></button>` : ''}
+    ${online?.ranked ? `<button class="onrow" data-act="ranked"><span class="gl">${icons.globe}</span><span><b class="disp">${rankedGame ? 'BACK TO RANKED GAME' : 'RANKED PVP'}</b><small>${rankedGame ? 'Your game goes on: jump back in' : 'Matched with players at your level'}</small></span><em class="chev" aria-hidden="true">${icons.next}</em></button>` : ''}
     ${puzzle && onPuzzle
       ? `<button class="storerow half" data-act="store" aria-label="Store, ${settings.gold} gold"><span class="sp3">${pawnSVG('blue')}${pawnSVG('red')}${pawnSVG('yellow')}</span><span><b class="disp">STORE</b><em class="gp"><i class="coin"></i>${settings.gold}</em></span></button>
     <button class="pzrow${puzzle.done ? ' done' : ''}" data-act="puzzle" aria-label="Daily puzzle, ${puzzle.done ? 'done today' : BAND[puzzle.band]}, ${puzzle.streak} ${puzzle.streak === 1 ? 'day' : 'days'} in a row"><span class="pi">${puzzle.done ? PUZZLE_DONE : PUZZLE_ICON}</span><span><b class="disp">PUZZLE</b><small>${puzzle.done ? 'Done' : BAND[puzzle.band]}${puzzle.streak ? ` · ★ ${puzzle.streak}` : ''}</small></span></button>`
@@ -117,7 +119,7 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
   el.querySelector('[data-act=continue]')?.addEventListener('click', onContinue);
   el.querySelector('[data-act=store]')!.addEventListener('click', onStore);
   el.querySelector('[data-act=puzzle]')?.addEventListener('click', () => onPuzzle?.());
-  el.querySelector('[data-act=ranked]')?.addEventListener('click', () => online?.ranked?.());
+  el.querySelector('[data-act=ranked]')?.addEventListener('click', () => (rankedGame ? online?.room(true) : online?.ranked?.()));
   el.querySelector('[data-act=stats]')!.addEventListener('click', () => void statsSheet(el, onReplay, onReview));
   // Colour-blind symbols live in Settings; nothing on this screen depends on them.
   el.querySelector('[data-act=settings]')!.addEventListener('click', () => settingsSheet(el, () => undefined));

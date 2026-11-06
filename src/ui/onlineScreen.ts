@@ -65,7 +65,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       <h3 class="disp">Private room</h3><p class="sub">Friends play on their own phones</p>
       <div class="mid"><div class="sp">
         <label class="row2 q"><span class="lbl">Your name</span><input class="namein" maxlength="${NAME_MAX}" autocomplete="nickname" spellcheck="false" placeholder="Your name"></label>
-        ${saved ? `<button class="row2 q rejoin" data-act="rejoin"><span class="lbl">Back to room ${saved.code}</span><small class="qh">Your game goes on without you; jump back in</small><em class="chev" aria-hidden="true">${icons.next}</em></button>` : ''}
+        ${saved && !saved.ranked ? `<button class="row2 q rejoin" data-act="rejoin"><span class="lbl">Back to room ${saved.code}</span><small class="qh">Your game goes on without you; jump back in</small><em class="chev" aria-hidden="true">${icons.next}</em></button>` : ''}
         <p class="oerr" role="alert" hidden></p>
       </div></div>
       <button class="b3 blue disp go2" data-act="to-join">JOIN A ROOM</button>

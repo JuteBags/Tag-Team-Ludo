@@ -34,7 +34,7 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       <label class="rname"><span>Your name</span><input class="namein" maxlength="${NAME_MAX}" autocomplete="nickname" spellcheck="false" placeholder="Your name"></label>
       <div class="rmodes"></div>
       <p class="oerr" role="alert" hidden></p>
-      <p class="rnote">Matched with players near your rank. After a minute, bots at your level fill empty places, and the game still counts. Leaving a game counts as last place.</p>
+      <p class="rnote">Matched with players near your rank. After a minute, bots at your level fill empty places, and the game still counts. Leaving a game forfeits: it counts as last place.</p>
     </section>
     <section class="wiz" data-step="search" hidden>
       <h3 class="disp smode"></h3><p class="sub stier"></p>
