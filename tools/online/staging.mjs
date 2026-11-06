@@ -25,18 +25,19 @@ const browser = await chromium.launch(exe ? { executablePath: exe } : {});
 const results = [];
 const summary = process.env.GITHUB_STEP_SUMMARY;
 
-async function player(name) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+/** A player. `phone`: a 360 dp phone at 2x (for frames). `decline`: Not now on the first-launch terms. */
+async function player(name, { phone = false, decline = false } = {}) {
+  const ctx = await browser.newContext(phone ? { viewport: { width: 360, height: 780 }, deviceScaleFactor: 2 } : { viewport: { width: 390, height: 844 } });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => log(name, 'PAGEERROR', String(e).slice(0, 200)));
   await page.goto(URL, { waitUntil: 'load' });
-  await home(page);
+  await home(page, decline);
   return { name, ctx, page, termsAtConnect: false };
 }
-async function home(page) {
+async function home(page, decline = false) {
   await page.locator('[data-mode=pvc]').waitFor({ timeout: 30000 });
-  // First launch: the terms (#208), accepted once.
-  const t = page.locator('.terms-ov [data-act=accept]');
+  // First launch: the terms (#208), accepted once (or Not now).
+  const t = page.locator(`.terms-ov [data-act=${decline ? 'later' : 'accept'}]`);
   if (await t.isVisible({ timeout: 2500 }).catch(() => false)) await t.click();
   await page.locator('.menu-ov [data-act=later]').click({ timeout: 2000 }).catch(() => {});
 }
@@ -193,6 +194,65 @@ try {
     await shots('end', host);
     report('60 s disconnect forfeits (1v1)', r.over?.length === 1 && hr.startsWith('WON') && s >= 50, `host sees ${hr} after ${s} s`);
     await close(host);
+  } else if (test === 'frames') {
+    // The PR's frames (#215), at 360 dp, on a server with chat: With friends, creating a room, joining, the
+    // "Play online" terms, the lobby, the game's top bar with chat, the chat sheet, and the result of a forfeit.
+    const shot = async (p, label) => {
+      await p.page.waitForTimeout(700);
+      await p.page.screenshot({ path: `${OUT}/frame-${label}.png` });
+      log('frame', label);
+    };
+    const host = await player('Asha', { phone: true });
+    const guest = await player('Leo', { phone: true, decline: true });
+    await tap(host.page, '[data-mode=pvp]');
+    await host.page.locator('.friends-ov').waitFor();
+    await shot(host, '1-with-friends');
+    await tap(host.page, '.friends-ov [data-act=room]');
+    await host.page.locator('.namein').fill('Asha');
+    await tap(host.page, '[data-act=to-create]');
+    await tap(host.page, '[data-k=mode] [data-v="1v1"]');
+    await shot(host, '2-create-room');
+    await tap(host.page, '[data-act=create]');
+    await host.page.waitForFunction(() => /^[A-Z0-9]{5}$/.test(document.querySelector('.wiz[data-step=lobby] .code')?.textContent?.trim() ?? ''), null, { timeout: 30000 });
+    const code = (await host.page.textContent('.wiz[data-step=lobby] .code')).trim();
+    await shot(host, '3-room-created');
+    await openRooms(guest);
+    await guest.page.locator('.namein').fill('Leo');
+    await tap(guest.page, '[data-act=to-join]');
+    await guest.page.locator('.codein').fill(code);
+    await shot(guest, '4-join');
+    await tap(guest.page, '[data-act=join]');
+    // Not now at launch: online asks first.
+    await guest.page.locator('.terms-ov').waitFor({ timeout: 10000 });
+    await shot(guest, '5-play-online-terms');
+    await tap(guest.page, '.terms-ov [data-act=accept]');
+    await guest.page.waitForFunction((c) => document.querySelector('.wiz[data-step=lobby] .code')?.textContent?.trim() === c, code, { timeout: 30000 });
+    await host.page.waitForFunction(() => !document.querySelector('[data-act=start]')?.disabled, null, { timeout: 30000 });
+    await shot(host, '6-lobby');
+    await start(host, guest);
+    await play([host, guest], { until: (n) => n >= 8 });
+    await tap(host.page, '.chatbtn');
+    await host.page.locator('.sheet.chat').waitFor();
+    await tap(host.page, '.sheet.chat [data-quick="0"]');
+    await host.page.waitForTimeout(1200);
+    await host.page.locator('.sheet.chat .ctext input').fill('good luck, Leo!');
+    await host.page.evaluate(() => document.querySelector('.sheet.chat .ctext').requestSubmit());
+    await tap(host.page, '.sheet.chat [data-act=close]');
+    await guest.page.waitForTimeout(600);
+    await shot(guest, '7-game-chat-bubble');
+    await tap(guest.page, '.chatbtn');
+    await guest.page.locator('.sheet.chat').waitFor();
+    await shot(guest, '8-chat-sheet');
+    await tap(guest.page, '.sheet.chat [data-act=close]');
+    await tap(guest.page, '[data-act=menu]');
+    await guest.page.locator('.menu-ov [data-act=quit]').waitFor();
+    await tap(guest.page, '.menu-ov [data-act=quit]');
+    await shot(guest, '9-leave-warning');
+    await tap(guest.page, '.menu-ov [data-act=quit]');
+    await play([host], { maxMs: 60000 });
+    await shot(host, '10-result-after-forfeit');
+    report('frames', true, 'frame-*.png in the artifact');
+    await close(host, guest);
   } else if (test === 'chat') {
     // Chat (#212), against a server with chat: a quick phrase, an emoji, free text with a rude word, a mute, a report.
     const { host, guest } = await pair('1v1');
