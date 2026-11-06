@@ -11,7 +11,7 @@ import { isComplete, isQueued, onReviewChange, progressOf, setAutoReview } from 
 import { peopleOf } from './reviewRun';
 import { accuracyText, trendOf } from './reviewWords';
 import { THEMES, setSymbols, setTheme, usableThemes } from './themes';
-import { legalLinks, wireLegalLinks } from './legal';
+import { legalAbout, wireLegalAbout } from './legal';
 
 const GROUPS: AchievementGroup[] = ['Ladder', 'Extreme', 'Milestones', 'Everyday'];
 
@@ -83,10 +83,10 @@ export function settingsSheet(host: HTMLElement, changed: () => void) {
     <div class="set"><span>Undos per game</span>${tg('undos', [['0', 'Off', settings.undos === 0], ['1', '1', settings.undos === 1], ['2', '2', (settings.undos ?? 2) === 2]])}</div>
     <div class="set">${sw('undowait', 'Wait for Undo when my turn ends', settings.undoWait !== false)}<small class="qh">A moment to take back a mis-touch before the next player rolls</small></div>
     <div class="set">${sw('autoreview', 'Review my games automatically', settings.autoReview !== false)}<small class="qh">Off: a review starts when you open it.</small></div>
-    <div class="set about"><span>About</span>${legalLinks()}</div>`,
+    ${legalAbout()}`,
   );
   // #208: the Privacy note and Terms of use, over Settings.
-  wireLegalLinks(ov.querySelector('.about')!, host);
+  wireLegalAbout(ov.querySelector('.about')!, host);
   ov.querySelector('.themes')!.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLButtonElement>('.th');
     if (!b) return;
