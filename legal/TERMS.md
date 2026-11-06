@@ -5,7 +5,7 @@ Version 1 · 6 November 2026
 By using Tag Team Ludo you agree to these terms. They're short on purpose.
 
 ## 1. The game
-Tag Team Ludo is a free game, provided by [OWNER NAME] ("we"). We may change, improve or remove features, including online play, at any time.
+Tag Team Ludo is a free game, provided by JuteBags ("we"). We may change, improve or remove features, including online play, at any time.
 
 ## 2. Fair play
 - Play honestly. Don't cheat, use bots or scripts in online games, exploit bugs, or attack or overload our servers.
@@ -28,6 +28,6 @@ How we handle data is in the Privacy note, which is part of these terms.
 If these terms change, the app will show them again and ask you to accept the new version before playing online.
 
 ## 8. Contact
-Open an issue at https://github.com/JuteBags/Tag-Team-Ludo/issues, or write to [CONTACT EMAIL].
+Open an issue at https://github.com/JuteBags/Tag-Team-Ludo/issues, or write to shaurya.sharthak.work@gmail.com.
 
-These terms are governed by the laws of [JURISDICTION].
+These terms are governed by the laws of India.
