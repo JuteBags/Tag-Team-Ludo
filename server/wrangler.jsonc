@@ -35,6 +35,20 @@
         ]
       },
       "vars": { "ALLOWED_ORIGINS": "http://localhost:5173,https://localhost,capacitor://localhost,https://jutebags.github.io" }
+    },
+    // The server the released game uses: the website (GitHub Pages), the Android app (https://localhost) and the
+    // Windows app (a file:// page, whose Origin header is "null"). Its address goes into the repository variable
+    // ROOMS_URL (build.yml). It serves no game files.
+    "production": {
+      "name": "tag-team-ludo-rooms",
+      "durable_objects": {
+        "bindings": [
+          { "name": "ROOMS", "class_name": "Room" },
+          { "name": "MATCH", "class_name": "Matchmaker" },
+          { "name": "ACCOUNTS", "class_name": "Accounts" }
+        ]
+      },
+      "vars": { "ALLOWED_ORIGINS": "https://jutebags.github.io,https://localhost,capacitor://localhost,null" }
     }
   }
 }

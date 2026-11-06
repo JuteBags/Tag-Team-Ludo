@@ -14,7 +14,7 @@ import { decodeRecord, type GameRecord } from '../engine';
 import { linkPayload } from './replay';
 import { bootReviews, setGame } from './reviewQueue';
 import { prefetchAtIdle, screens, setScreen, show } from './lazy';
-import type { RoomLink } from '../net/client';
+import { roomsUrl, type RoomLink } from '../net/client';
 
 const W = 390;
 const H = 844;
@@ -39,7 +39,7 @@ export function mountApp(root: HTMLElement) {
     setGame('none');
     const [saved, log] = await Promise.all([loadGame(), loadPuzzleLog()]);
     if (game) return; // a game started while the save was loading
-    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle(), { room: (rejoin) => void online(rejoin), ranked: () => void ranked() });
+    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle(), roomsUrl() ? { room: (rejoin) => void online(rejoin), ranked: () => void ranked() } : undefined);
     setScreen(stage, screen);
     // On the home screen only, never during a game: a newer version on the site, then today's check-in.
     void offerUpdate(screen).then(() => offerCheckIn(screen));
