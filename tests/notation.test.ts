@@ -141,3 +141,21 @@ describe("docs/NOTATION.md's board (#164)", () => {
     expect(doc).toContain('```\n' + boardDiagram() + '\n```');
   });
 });
+
+describe('the notation and a side resigning (#204)', () => {
+  it("refuses a record with a resign ('q', online play) cleanly, and a resign written into the text", () => {
+    const base = game('4p', 7, false, 60);
+    // The same game with Leo (owner 1) resigning where it stopped: a whole, replayable record.
+    const rec: GameRecord = { ...base, events: base.events.slice(0, -1) + 'q1' + STOP_EVENT };
+    const rep = replay(rec);
+    expect(rep.ok).toBe(true);
+    expect(rep.states.at(-1)!.out).toEqual([1]);
+    expect(toNotation(rec, { app: 'test', date: '2026-11-07', names: ['Asha', 'Leo', 'Mira', 'Kabir'] })).toBeNull();
+    // The same game without the resign still writes, and a resign typed into its text is refused, not thrown.
+    const text = toNotation(base, { app: 'test', date: '2026-11-07', names: ['Asha', 'Leo', 'Mira', 'Kabir'] })!;
+    expect(text).not.toBeNull();
+    const edited = text.replace(/^1\. (\S+)/m, '1. $1 q1');
+    expect(() => parseNotation(edited)).not.toThrow();
+    expect(parseNotation(edited).ok).toBe(false);
+  });
+});

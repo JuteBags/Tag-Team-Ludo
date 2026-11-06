@@ -281,12 +281,14 @@ const quote = (v: string) => '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 
 /**
  * The game as notation (docs/NOTATION.md): the header tags, the legend, then a numbered line per round of
- * turns, with a position line every SNAPSHOT_EVERY rounds. Null if the record doesn't replay.
+ * turns, with a position line every SNAPSHOT_EVERY rounds. Null if the record doesn't replay, or has a side
+ * resigning ('q', online play): the notation has no way to write one yet.
  */
 export function toNotation(r: GameRecord, info: NotationInfo): string | null {
   const rep = replay(r);
   if (!rep.ok) return null;
   const states = rep.states;
+  if (states[states.length - 1]!.out?.length) return null;
   const owners = [...new Set(r.seats.map((x) => x.owner))].sort((a, b) => a - b);
   const name = (o: number) => info.names[o] || NOTATION_NAME[r.seats.find((x) => x.owner === o)!.color];
   // The colour tags in owner order (then colour order): reading them back numbers the owners the same.

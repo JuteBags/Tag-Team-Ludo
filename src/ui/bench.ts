@@ -9,7 +9,7 @@
 //     when the first key verdict and the whole review are in, the luck pass's own time, and each worker's
 //     memory, with the pool size the app would use on this device.
 // The review queue waits while a test runs, so a past game's review doesn't share the phone's time.
-import { SEATS as TABLE, chooseMove, createGame, move, replay, roll, seeded, seededDie, type Color, type GameRecord, type GameState, type Seat } from '../engine';
+import { SEATS as TABLE, chooseMove, createGame, eventLength, move, replay, roll, seeded, seededDie, type Color, type GameRecord, type GameState, type Seat } from '../engine';
 import { LUCK_CHUNK, REVIEW_VERSION, type Label } from '../engine/ai/review';
 import { LiveReview, livePoolSize, type LiveEngine } from './liveReview';
 import { setGame } from './reviewQueue';
@@ -462,7 +462,7 @@ async function liveBench(worker: Worker, say: (l: string) => void, hidden: () =>
     const t0 = performance.now();
     for (let k = 0; k + 1 < states.length; k++) {
       if (hidden()) return pool.stop();
-      i += states[k]!.phase === 'move' ? 2 : 1;
+      i += eventLength(g.rec.events, i, states[k]!);
       live.update({ ...g.rec, events: g.rec.events.slice(0, i) });
       await sleep(LIVE_PACE_MS);
     }
