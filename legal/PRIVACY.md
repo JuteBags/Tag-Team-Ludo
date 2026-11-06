@@ -1,6 +1,6 @@
 # Tag Team Ludo: Privacy note
 
-Version 1 · 6 November 2026
+Version 2 · 7 November 2026
 
 Tag Team Ludo is made to collect as little as possible. Here is everything we touch, in plain words.
 
@@ -23,8 +23,11 @@ Online play needs a small amount of data on our game server:
 
 - **Deleting your online data:** ask us (see Contact) and we'll delete your guest account, name and ratings. Deleting the app alone doesn't remove the server copy.
 
+## Chat
+In an online game you can send quick phrases, emoji and, in private rooms, short messages. Our server only passes each message on to the players in that game: **it doesn't store chat**. If you tap **Report** on a message, that one message, who sent it, who reported it and the room's code go to our server's log, so we can review it.
+
 ## Children
-The game is suitable for everyone. Online play shows only a chosen display name, has no chat, and asks for no personal details. Please don't use your real full name as your display name.
+The game is suitable for everyone. Online play shows only a chosen display name and asks for no personal details. Free-text chat is only in private rooms, with a word filter, and anyone can be muted or reported. Please don't use your real full name as your display name, or share personal details in chat.
 
 ## Changes
 If this note changes, the app will show it again and ask you to accept the new version.

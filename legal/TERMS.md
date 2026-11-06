@@ -1,6 +1,6 @@
 # Tag Team Ludo: Terms of use
 
-Version 1 · 6 November 2026
+Version 2 · 7 November 2026
 
 By using Tag Team Ludo you agree to these terms. They're short on purpose.
 
@@ -12,8 +12,8 @@ Tag Team Ludo is a free game, provided by JuteBags ("we"). We may change, improv
 - Leaving an online game counts as a forfeit, as the rules in the app describe.
 - We may reset ratings, remove Gems or block a guest account that breaks these rules.
 
-## 3. Your display name
-Choose a name that isn't offensive, hateful, or someone else's identity. We may change or remove names that break this rule.
+## 3. Your display name and chat
+Choose a name that isn't offensive, hateful, or someone else's identity. In chat, be kind: no insults, hate, threats or personal details. We may change or remove names, and block a guest account, that break this rule.
 
 ## 4. Gold, Gems and skins
 Gold and Gems are in-game items with **no money value**. They can't be bought with or exchanged for real money, and they can't be transferred. Local gold lives on your device; if you delete the app or its data, it's gone. Online Gems and ratings may be reset if online play changes.
