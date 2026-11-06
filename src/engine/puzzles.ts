@@ -13,8 +13,8 @@
 // 301-420, 4p with a Normal player, 8 x 15): 19.0 kB gzip in all. expertFrom is set by the 3.5.0 release.
 // Pool.v changes with every regeneration or re-merge: a cached entry is decoded only against its own version.
 import { FINISHED, SEATS, type Color } from './board';
-import { createGame, move, roll, trayMoves } from './game';
-import { moveEvent } from './record';
+import { createGame, move, resign, roll, trayMoves } from './game';
+import { RESIGN, moveEvent } from './record';
 import type { GameState } from './types';
 
 export type Band = 'easy' | 'medium' | 'hard';
@@ -164,7 +164,14 @@ export function lineStates(p: Puzzle, wrong = false): GameState[] | null {
   const states = [s];
   for (let i = 0; i < e.length; i++) {
     if (s.phase === 'over') return null;
-    if (s.phase === 'roll') {
+    if (e[i] === RESIGN) {
+      try {
+        s = resign(s, Number(e[i + 1]));
+      } catch {
+        return null;
+      }
+      i++;
+    } else if (s.phase === 'roll') {
       const face = Number(e[i]);
       if (!(face >= 1 && face <= 6)) return null;
       s = roll(s, () => 0, face);
