@@ -79,7 +79,15 @@ npm run dev        # room server at ws://localhost:8787 (no Cloudflare account n
 npm run smoke      # optional: two scripted players play a whole game against it
 ```
 
-The game in `npm run dev` connects to it by itself. Open two browser windows (one private) to be two players. A build for phones needs the server's address: `VITE_ROOMS_URL=wss://<your-worker>.workers.dev npm run build`.
+The game in `npm run dev` connects to it by itself. Open two browser windows (one private) to be two players.
+
+**The released game and its server.** The website, the APK and the Windows `.exe` all come from one build in `build.yml`, which takes the server's address from the repository variable **`ROOMS_URL`** (Settings → Secrets and variables → Actions → Variables). Without it, online play is hidden and the game is offline only, as before. To turn it on:
+
+1. Deploy the production server from `server/` (a Cloudflare account; the free plan is enough to start): `npx wrangler login`, then `npm run deploy:production`. It prints the address, e.g. `https://tag-team-ludo-rooms.<account>.workers.dev`.
+2. Set `ROOMS_URL` to that address with `wss://` in front: `wss://tag-team-ludo-rooms.<account>.workers.dev`.
+3. Release as usual: the next build connects to it.
+
+The production server accepts the website (`https://jutebags.github.io`), the Android app (`https://localhost`) and the Windows app (a `file://` page, origin `null`): `ALLOWED_ORIGINS` in `server/wrangler.jsonc`. `npm run deploy:staging` deploys a separate test copy that also serves the game itself, for trying changes without touching players.
 
 To open the Android project in Android Studio: `npm run build`, then `npx cap sync android`, then open `android/`.
 

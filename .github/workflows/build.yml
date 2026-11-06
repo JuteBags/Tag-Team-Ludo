@@ -152,7 +152,12 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm test
+      # The online server's address (rooms and Ranked), from the repository variable ROOMS_URL
+      # (Settings → Secrets and variables → Actions → Variables), e.g. wss://tag-team-ludo-rooms.<account>.workers.dev.
+      # This one build is the website, the APK and the Windows .exe. Without it, online play is hidden.
       - run: npm run build
+        env:
+          VITE_ROOMS_URL: ${{ vars.ROOMS_URL }}
       - uses: actions/upload-artifact@v7
         with:
           name: web
