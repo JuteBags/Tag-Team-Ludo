@@ -722,6 +722,9 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 /* Sheets (settings, stats) and the keep-playing vote, in the pause menu's style. */
 .menu-ov .sub{font-weight:800;font-size:13px;opacity:.8;margin:6px 0 4px}
 .sheet .box{width:330px}
+/* A sheet taller than the stage (Settings grew past 844 px) scrolls inside its box, so its top and bottom stay
+   reachable: 20 px clear of the stage's edges. */
+.sheet .box{max-height:804px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.35) transparent}
 .set{display:flex;flex-direction:column;gap:6px;margin-top:14px;text-align:left}
 .set>span{font-weight:800;font-size:13px;opacity:.85;display:flex;align-items:center;gap:8px}
 .set .tg button{flex:1}
