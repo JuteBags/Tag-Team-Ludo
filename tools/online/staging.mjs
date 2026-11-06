@@ -3,7 +3,8 @@
 // reload + rejoin, Leave game, a 60 s disconnect, three timeouts in a row. Each player accepts the first-launch
 // terms (#208) and must not be asked again at connect time.
 //   node tools/online/staging.mjs <test> [chrome path] [--url http://localhost:5173/] [--out staging-out]
-//   tests: mode:<ffa|1v1|duo|2v2> | modes (all four) | rejoin | leave | disconnect | timeouts
+//   tests: mode:<ffa|1v1|duo|2v2> | modes (all four) | rejoin | leave | disconnect | timeouts | chat (a server with chat)
+// RESULT_PREFIX (env) is put before each result's name (e.g. "local · ").
 // .github/workflows/pvp-staging.yml runs each test as its own job, with the dev server pointed at the server by
 // VITE_ROOMS_URL. Writes <out>/<test>.json (pass or fail and the details), screenshots, and a summary line.
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -126,7 +127,8 @@ const pair = async (mode, pairing) => {
   return { host, guest, code };
 };
 const close = async (...ps) => { for (const p of ps) await p.ctx.close().catch(() => {}); };
-const report = (name, pass, detail) => {
+const report = (name0, pass, detail) => {
+  const name = `${process.env.RESULT_PREFIX ?? ''}${name0}`;
   log(`RESULT ${name}: ${pass ? 'PASS' : 'FAIL'} — ${detail}`);
   results.push({ name, pass, detail });
   if (summary) appendFileSync(summary, `| ${name} | ${pass ? 'PASS' : '**FAIL**'} | ${detail.replaceAll('|', '/')} |\n`);
@@ -191,6 +193,36 @@ try {
     await shots('end', host);
     report('60 s disconnect forfeits (1v1)', r.over?.length === 1 && hr.startsWith('WON') && s >= 50, `host sees ${hr} after ${s} s`);
     await close(host);
+  } else if (test === 'chat') {
+    // Chat (#212), against a server with chat: a quick phrase, an emoji, free text with a rude word, a mute, a report.
+    const { host, guest } = await pair('1v1');
+    const hasBtn = await host.page.locator('.chatbtn').isVisible({ timeout: 5000 }).catch(() => false);
+    const openChat = async (p) => {
+      await tap(p.page, '.chatbtn');
+      await p.page.locator('.sheet.chat').waitFor({ timeout: 5000 });
+    };
+    await openChat(host);
+    await tap(host.page, '.sheet.chat [data-quick="0"]');
+    await host.page.waitForTimeout(1200);
+    await tap(host.page, '.sheet.chat [data-emoji="0"]');
+    await host.page.waitForTimeout(1200);
+    await host.page.locator('.sheet.chat .ctext input').fill('well that was shit luck');
+    await host.page.evaluate(() => document.querySelector('.sheet.chat .ctext').requestSubmit());
+    await guest.page.waitForTimeout(1500);
+    const bubbles = await guest.page.evaluate(() => [...document.querySelectorAll('.chattoast .cb')].map((b) => b.textContent));
+    await openChat(guest);
+    const log = await guest.page.evaluate(() => [...document.querySelectorAll('.sheet.chat .cl')].map((l) => l.querySelector('span')?.textContent));
+    await shots('sheet', guest);
+    // Report the text line, then mute the host: their lines disappear from the guest's log.
+    await tap(guest.page, '.sheet.chat .crep');
+    await guest.page.waitForTimeout(800);
+    const reported = await guest.page.evaluate(() => document.querySelector('.sheet.chat .crep')?.textContent);
+    await tap(guest.page, '.sheet.chat .cmute');
+    const afterMute = await guest.page.evaluate(() => document.querySelectorAll('.sheet.chat .cl').length);
+    await shots('end', host, guest);
+    const textOk = log.includes('well that was s*** luck');
+    report('chat: quick, emoji, filtered text, report, mute', hasBtn && log.length === 3 && textOk && reported === 'Reported' && afterMute === 0, `button ${hasBtn}; guest's bubbles ${JSON.stringify(bubbles)}; guest's log ${JSON.stringify(log)}; report ${reported}; lines after muting the host ${afterMute}`);
+    await close(host, guest);
   } else if (test === 'timeouts') {
     const { host, guest } = await pair('1v1');
     await play([host, guest], { until: (n) => n >= 20 });
