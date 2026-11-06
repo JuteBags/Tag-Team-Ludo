@@ -19,7 +19,7 @@ Online play needs a small amount of data on our game server:
 - **The games you play online,** while they're being played (the server rolls the dice and checks the moves), so a game can survive a dropped connection.
 - **Connection data:** our server runs on Cloudflare. Like any internet service, it sees your IP address while you're connected, and Cloudflare may keep short-lived logs for security.
 
-We use this data **only** to run the games, match players and keep ratings fair. We don't sell it, share it with advertisers, or use it for anything else.
+**We don't sell it.** We use it to run online play: matching players, keeping ratings and keeping games fair.
 
 - **Deleting your online data:** ask us (see Contact) and we'll delete your guest account, name and ratings. Deleting the app alone doesn't remove the server copy.
 
@@ -27,7 +27,7 @@ We use this data **only** to run the games, match players and keep ratings fair.
 The game is suitable for everyone. Online play shows only a chosen display name, has no chat, and asks for no personal details. Please don't use your real full name as your display name.
 
 ## Changes
-If this note changes, the app will show it again and ask you to accept the new version before playing online.
+If this note changes, the app will show it again and ask you to accept the new version.
 
 ## Contact
 Questions or deletion requests: open an issue at https://github.com/JuteBags/Tag-Team-Ludo/issues, or write to shaurya.sharthak.work@gmail.com.

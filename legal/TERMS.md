@@ -25,7 +25,7 @@ The game is provided "as is". We do our best, but we can't promise it will alway
 How we handle data is in the Privacy note, which is part of these terms.
 
 ## 7. Changes
-If these terms change, the app will show them again and ask you to accept the new version before playing online.
+If these terms change, the app will show them again and ask you to accept the new version.
 
 ## 8. Contact
 Open an issue at https://github.com/JuteBags/Tag-Team-Ludo/issues, or write to shaurya.sharthak.work@gmail.com.
