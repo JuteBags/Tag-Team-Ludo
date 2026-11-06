@@ -1053,7 +1053,7 @@ export class GameScreen {
           if (!b.classList.contains('sure')) {
             b.classList.add('sure');
             b.textContent = 'TAP AGAIN TO LEAVE';
-            b.after(Object.assign(document.createElement('p'), { className: 'sub warn', textContent: this.online && this.state.players.some((p) => this.isMe(p.color) && !isDone(p)) ? 'You forfeit: you lose this game (in Ranked, last place).' : 'You can’t come back to this game.' }));
+            b.after(Object.assign(document.createElement('p'), { className: 'sub warn', textContent: this.online && this.state.players.some((p) => this.isMe(p.color) && !isDone(p)) ? 'You forfeit: you lose this game.' : 'You can’t come back to this game.' }));
             return;
           }
           const link = this.online;

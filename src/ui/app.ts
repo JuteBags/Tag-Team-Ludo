@@ -17,6 +17,9 @@ import { bootReviews, setGame } from './reviewQueue';
 import { prefetchAtIdle, screens, setScreen, show } from './lazy';
 import { roomsUrl, type RoomLink } from '../net/client';
 
+/** Ranked PvP is switched off for now (#204): its code stays, the home screen doesn't offer it. It comes back with no bots. */
+const RANKED = false;
+
 const W = 390;
 const H = 844;
 
@@ -40,7 +43,7 @@ export function mountApp(root: HTMLElement) {
     setGame('none');
     const [saved, log] = await Promise.all([loadGame(), loadPuzzleLog()]);
     if (game) return; // a game started while the save was loading
-    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle(), roomsUrl() ? { room: (rejoin) => void online(rejoin), ranked: () => void ranked() } : undefined);
+    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle(), roomsUrl() ? { room: (rejoin) => void online(rejoin), ...(RANKED ? { ranked: () => void ranked() } : {}) } : undefined);
     setScreen(stage, screen);
     // On the home screen only, never during a game: the Privacy note and Terms of use until they're accepted
     // (#208: first launch, and again when they change), then a newer version on the site, then today's check-in.

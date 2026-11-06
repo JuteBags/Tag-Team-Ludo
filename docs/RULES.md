@@ -107,7 +107,7 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole
 60. The host starts the game once at least 2 people are in; places nobody took are played by bots. The lobby waits at most **2 minutes**: then the game starts by itself with whoever is in, or, if nobody joined the host, the room closes.
 61. A room you're in can be rejoined from With friends (**Back to room**).
 
-**Ranked PvP**
+**Ranked PvP** (switched off for now: it comes back later, without bots, and these rules will change with it)
 
 62. Ranked has its own rating in each mode. Everyone starts at 1000. A guest account is made on the phone's first Ranked visit and kept on that phone.
 63. People see a **tier and points**: Bronze (below 1000), Silver (1000-1299), Gold (1300-1599), Platinum (1600-1899) and Diamond (1900 and up). Each tier below Diamond has divisions III, II and I of 100 rating each; the points are the rating within the division (0-99). Diamond counts its points up from 1900.
