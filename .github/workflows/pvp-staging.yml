@@ -1,0 +1,90 @@
+# PvP custom against a room server (#204, #215): tools/online/staging.mjs plays two players (browser contexts) on
+# the game's dev build, on the runner at http://localhost:5173 (the staging server's ALLOWED_ORIGINS accepts it),
+# one test per job: each mode to the end, reload + rejoin, Leave game, a 60 s disconnect, three timeouts.
+# The summary is a pass/fail table; logs, results and screenshots are artifacts. It never deploys anything.
+# By hand (once on main), or on a PR when the label pvp-staging is added.
+name: PvP staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      tests:
+        description: 'Tests (JSON list), e.g. ["mode:1v1","leave"]'
+        required: false
+        default: '["mode:ffa","mode:1v1","mode:duo","mode:2v2","rejoin","leave","disconnect","timeouts"]'
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pvp-staging-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The room server: the repository variable ROOMS_STAGING_URL, else the staging server #204 was built against.
+  VITE_ROOMS_URL: ${{ vars.ROOMS_STAGING_URL || 'wss://tag-team-ludo-rooms-staging.tag-team-ludo-server.workers.dev' }}
+
+jobs:
+  test:
+    name: ${{ matrix.test }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'pvp-staging' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        test: ${{ fromJSON(inputs.tests || '["mode:ffa","mode:1v1","mode:duo","mode:2v2","rejoin","leave","disconnect","timeouts"]') }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.63.0
+      - name: The server is up
+        run: |
+          health="${VITE_ROOMS_URL/wss:/https:}"; health="${health/ws:/http:}/health"
+          curl -sf --max-time 20 "$health" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The game's dev server on :5173
+        run: |
+          npx vite --port 5173 --strictPort > vite.log 2>&1 &
+          for i in $(seq 60); do curl -sf http://localhost:5173/ > /dev/null && break; sleep 1; done
+      - name: Play
+        run: |
+          slug=$(echo "${{ matrix.test }}" | tr -c 'a-zA-Z0-9\n' '-')
+          echo "SLUG=$slug" >> "$GITHUB_ENV"
+          node tools/online/staging.mjs "${{ matrix.test }}" "$(command -v google-chrome || command -v chromium)" --out staging-out 2>&1 | tee "staging-out-$slug.log"
+          exit "${PIPESTATUS[0]}"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: staging-${{ env.SLUG }}
+          path: |
+            staging-out/
+            staging-out-*.log
+            vite.log
+
+  summary:
+    name: summary
+    needs: test
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event.label.name == 'pvp-staging') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: staging-*
+          path: all
+      - name: The table
+        run: |
+          {
+            echo "## PvP staging (#215)"
+            echo ""
+            echo "| test | result | details |"
+            echo "|---|---|---|"
+            for f in all/*/staging-out/*.json; do
+              node -e 'for (const r of JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))) console.log(`| ${r.name} | ${r.pass ? "PASS" : "**FAIL**"} | ${r.detail.replaceAll("|", "/")} |`)' "$f"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
