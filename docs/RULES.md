@@ -83,6 +83,31 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole
 50. When your move ends your turn (or the game, or your last token home), there's a short moment (1.5 s) to undo before anyone rolls. Settings can turn that wait off.
 51. The game's record keeps only the moves that stood, so the replay and the review judge the moves you finally played.
 
+## K. Online: the four modes and private rooms
+
+52. Online games come in four modes:
+    - **1v1v1v1**: four players, one colour each, every one for themselves.
+    - **1v1**: two players, one colour each, in opposite corners.
+    - **1(x2) v 1(x2)**: two players with two colours each (section H), opposite or side by side.
+    - **2v2**: two teams of two people. Each person plays one colour; partners sit opposite and are one side (rule 39): they never capture or block each other, and a team is done when both its colours are home.
+53. The server rolls every die and checks every move; all the rules above apply unchanged, with the same dice as offline (rule 31). Who plays first is drawn at random.
+54. Each roll and each move has a **30-second clock**. When it runs out, the server plays that one step for the person (as a Normal bot would), so the game doesn't stall. A reconnect doesn't restart anyone's clock.
+55. A person who loses the connection or closes the app can rejoin the same game within a minute; while they're away their clock keeps running.
+56. **Leaving forfeits** (no bot takes over): tapping **Leave game**, being disconnected for **60 seconds**, or letting the clock run out **3 times in a row**. The person's side resigns: its tokens not yet home leave the board and it takes no more turns, ranked last (the first to leave ranks lowest).
+    - **1v1** and **1(x2) v 1(x2)**: the other player wins at once.
+    - **2v2**: the team forfeits together, and the other team wins. A person whose own colour is already home can leave without forfeiting.
+    - **1v1v1v1**: the others play on; when only one is left, they win.
+    - Bots that filled empty places from the start stay in the game. When every side with a person in it has finished or left, the game ends there (rule 34), without waiting for the bots.
+57. Online games always play on to the last place: there is no keep-playing vote (rule 41).
+58. There is no undo online (section J): a move the server has taken can't be taken back.
+
+**Private rooms** (With friends → Private room)
+
+59. **Create a room** picks the mode, doubles on or off, and how the bots play (Easy, Normal or Hard). The room gets a 5-character code; friends join with **Join a room** on their own phones. People take the mode's places in the order they join (the host first: Blue).
+60. The host starts the game once at least 2 people are in; places nobody took are played by bots. The lobby waits at most **2 minutes**: then the game starts by itself with whoever is in, or, if nobody joined the host, the room closes.
+61. A room you're in can be rejoined from With friends (**Back to room**).
+
+
 ## Known risks (accepted for v1, revisit after playtests)
 
 - A pair parked on a normal square holds back enemy singles until they land on it exactly, and a locked pair can sit stuck through a run of odd rolls.

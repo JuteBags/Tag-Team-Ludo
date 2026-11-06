@@ -13,6 +13,8 @@ export interface GameConfig {
   first: Color;
   /** Name of each person, by owner index. */
   names: string[];
+  /** Online: the name of whoever plays each colour (a 2v2 team's side has two people). */
+  colorNames?: Partial<Record<Color, string>>;
   /** Doubles are off for this game (the Settings choice when it was set up). */
   singles?: boolean;
 }

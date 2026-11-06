@@ -6,15 +6,12 @@
 //   Extreme  the rollout player (rollout.ts, WebAssembly in a worker): every move played out on shared
 //            dice, the playout rules (playout-rules.ts) at every seat, the trained value net (extreme-net.json) scoring
 //            where the playouts stop. Without workers it plans its turn with the net alone.
-import { chooseMove } from '../bot';
 import type { GameState, Move, Rng } from '../types';
-import { HARD_RULES } from './hard-rules';
-import { LinearRules } from './linear';
+import { chooseRuleMove } from './choose';
 import { Net } from './net';
 import { decodeNet } from './netbin';
-import { chooseExtreme, chooseGreedy } from './search';
+import { chooseExtreme } from './search';
 
-const hard = new LinearRules(HARD_RULES);
 let extreme: Net | null = null;
 
 /** Loads Extreme's net (once). Until it is loaded, Extreme plays like Hard. */
@@ -28,9 +25,7 @@ export async function loadExtreme(): Promise<void> {
 export function chooseBotMove(state: GameState, rng: Rng): Move {
   const level = state.players[state.current]!.level ?? 'normal';
   if (level === 'extreme' && extreme) return chooseExtreme(extreme, state, rng, { depth: 1 });
-  if (level === 'hard' || level === 'extreme') return chooseExtreme(hard, state, rng, { depth: 1 });
-  if (level === 'normal') return chooseGreedy(hard, state, rng);
-  return chooseMove(state, rng, 'hard');
+  return chooseRuleMove(state, rng, level);
 }
 
 /** Playouts per candidate move, at most (the race stops clear decisions far earlier). */

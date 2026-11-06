@@ -1,6 +1,6 @@
 // Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
 // a person passing the device; a person with two houses plays both colours' turns.
-import { FINISHED, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type Rng, STOP_EVENT } from '../engine';
+import { FINISHED, RESIGN, applyEvent, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type Rng, STOP_EVENT } from '../engine';
 import { chooseBotMoveAsync, RolloutStopped, stopRolloutWorker } from '../engine/ai/levels';
 import { calmAfter } from './calm';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
@@ -23,6 +23,8 @@ import { LiveReview } from './liveReview';
 type Counters = { kills: number; pairs: number; sixes: number; lost: number };
 /** The Undo control (#143): a round icon (48 px to tap) with the undos left under it, "2/2". */
 const UNDO_BUTTON = `<button class="undobtn" data-act="undo" hidden aria-label="Undo your last move"><svg viewBox="0 0 40 40" aria-hidden="true"><circle class="ur-bg" cx="20" cy="20" r="17"/><circle class="ur" cx="20" cy="20" r="17"/><path d="M15 13 L10 18 L15 23 M10 18 H24 a6 6 0 0 1 0 12 H19" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><small></small></button>`;
+import type { RoomLink } from '../net/client';
+import { MODE_LABEL, type ClientMsg } from '../net/protocol';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
 const DIE = 38;
@@ -101,7 +103,8 @@ export class GameScreen {
   /** Pauses the game and saves it when the app goes to the background. */
   private onHidden = () => {
     this.live?.hidden(document.visibilityState === 'hidden');
-    if (document.visibilityState !== 'hidden' || this.disposed) return;
+    // Online, the game goes on on the server; coming back catches up (RoomLink reconnects).
+    if (document.visibilityState !== 'hidden' || this.disposed || this.online) return;
     // Extreme's worker goes too (#98): Android may end a hidden app anyway, and it frees its engine and net.
     stopRolloutWorker();
     this.save();
@@ -122,30 +125,44 @@ export class GameScreen {
   /** Every die came from `seed` (not a game continued from a save made before seeds). */
   private seedFromStart: boolean;
 
-  /** Starts a game from `config`, or picks up `saved`. `rng` replaces the position-seeded dice (tests). */
-  constructor(readonly config: GameConfig, private exit: (to: Exit) => void, private fixedRng?: Rng, saved?: SavedGame) {
+  /**
+   * Starts a game from `config`, or picks up `saved`. `rng` replaces the position-seeded dice (tests).
+   * `online`: a private room's game (src/net/client.ts). The server rolls and checks every move; this screen
+   * sends its person's rolls and moves and plays out the server's events, everyone's alike.
+   */
+  constructor(readonly config: GameConfig, private exit: (to: Exit) => void, private fixedRng?: Rng, saved?: SavedGame, private online?: RoomLink) {
     this.state = saved?.state ?? createGame(config.seats, config.first, config.singles);
     this.seed = saved?.seed ?? crypto.getRandomValues(new Uint32Array(1))[0]!;
     this.log = saved ? (saved.log ?? null) : '';
     // Test dice (fixedRng) don't come from the seed. A dev forced die from an earlier session is lost on resume
-    // (dev only), so such a record may claim a seed it doesn't match.
-    this.seedFromStart = !fixedRng && (!saved || (saved.seed !== undefined && saved.log !== undefined));
+    // (dev only), so such a record may claim a seed it doesn't match. Online, the seed comes when the game ends.
+    this.seedFromStart = !online && !fixedRng && (!saved || (saved.seed !== undefined && saved.log !== undefined));
+    // Joining a game already under way (a reconnect): catch up without animating.
+    if (online)
+      for (const ev of online.drain()) {
+        if (ev === STOP_EVENT) this.ended = true;
+        else {
+          this.state = applyEvent(this.state, ev);
+          this.log += ev;
+        }
+      }
     this.kills = saved?.kills ?? 0;
     this.pairs = saved?.pairs ?? 0;
-    this.undo = new UndoBook<Counters>(settings.undos ?? 2, [...new Set(config.seats.filter((x) => !x.bot).map((x) => x.owner))], saved?.undos ?? {});
+    // No undo online (RULES.md rule 59): the server has taken the move.
+    this.undo = new UndoBook<Counters>(online ? 0 : (settings.undos ?? 2), [...new Set(config.seats.filter((x) => !x.bot).map((x) => x.owner))], saved?.undos ?? {});
     for (const [c, f] of saved?.faces ?? []) this.lastFace.set(c, f);
     const people = config.names.length;
     this.el.className = 'screen game';
     this.calm = calmAfter(this.el);
     this.el.innerHTML = `
       <div class="gtop"><button class="rbtn" data-act="menu" aria-label="Menu">${icons.menu}</button>
-        <div class="mode"><small>${config.mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}${this.state.singles ? '' : ' · DOUBLES'}</small><b>${people} PLAYERS</b></div><span class="rbtn-space"></span></div>
+        <div class="mode"><small>${online ? `ONLINE · ROOM ${online.code}` : config.mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}${this.state.singles ? '' : ' · DOUBLES'}</small><b>${people} PLAYERS</b></div><span class="rbtn-space"></span></div>
       ${this.state.players.map((p) => this.panelHTML(p.color, p.bot)).join('')}
       <div class="gboard"></div>
       <div class="hint"><span class="tw"></span><span><b></b><small></small></span></div>
       <div class="act"><div class="dicebar" aria-label="Dice this turn"></div><button class="rollbtn disp" data-act="roll" hidden>${icons.play}<span>ROLL</span></button>${UNDO_BUTTON}</div>
-      <div class="toasts"></div>`;
-    this.view = new BoardView(this.state.players, 370, this.state.players.filter((p) => !p.bot).map((p) => p.color), !!this.state.singles, true);
+      <div class="toasts"></div>${online ? '<div class="netbar" hidden role="status"></div>' : ''}`;
+    this.view = new BoardView(this.state.players, 370, this.state.players.filter((p) => this.isMe(p.color)).map((p) => p.color), !!this.state.singles, true);
     this.el.querySelector('.gboard')!.appendChild(this.view.el);
     this.el.querySelector('[data-act=menu]')!.addEventListener('click', () => this.openMenu());
     this.el.querySelector('.dicebar')!.addEventListener('click', (e) => {
@@ -166,7 +183,63 @@ export class GameScreen {
       this.live = new LiveReview();
       this.liveUpdate();
     }
+    if (online) this.watchRoom(online);
     void this.run();
+  }
+
+  /** Whether `c` is played on this device: online only the person's own colours, offline every person's. */
+  private isMe(c: Color) {
+    const p = this.state.players.find((x) => x.color === c)!;
+    return !p.bot && (!this.online || this.controller(c) === this.online.you);
+  }
+
+  /** Online: the member who plays `c` (-1 for a bot). */
+  private controller(c: Color): number {
+    return this.online?.setup?.control[c] ?? -1;
+  }
+
+  private unwatch: (() => void) | null = null;
+
+  /** Online: the turn clock on the active player's panel, who is offline or played by a bot for now, and the connection. */
+  private watchRoom(link: RoomLink) {
+    const tick = () => {
+      const s = link.secondsLeft();
+      this.el.querySelectorAll<HTMLElement>('.pl').forEach((pl) => {
+        const clk = pl.querySelector<HTMLElement>('.clk')!;
+        const on = s !== null && link.turn?.color === pl.dataset.c && !this.ended;
+        clk.hidden = !on;
+        if (on) {
+          clk.textContent = `${s}s`;
+          clk.classList.toggle('low', s! <= 10);
+        }
+      });
+    };
+    const members = () =>
+      this.el.querySelectorAll<HTMLElement>('.pl').forEach((pl) => {
+        const p = this.state.players.find((x) => x.color === pl.dataset.c)!;
+        const m = p.bot ? undefined : link.members[this.controller(p.color)];
+        const tag = pl.querySelector<HTMLElement>('.net')!;
+        // Once the game is over, people leaving the room isn't news.
+        const over = this.ended || this.state.phase === 'over';
+        const text = !m || over ? '' : m.left ? 'LEFT' : !m.online ? 'OFFLINE' : '';
+        tag.hidden = !text;
+        tag.textContent = text;
+      });
+    const net = this.el.querySelector<HTMLElement>('.netbar')!;
+    const status = () => {
+      net.hidden = link.status === 'open' || link.status === 'closed';
+      net.textContent = 'Connection lost. Reconnecting…';
+    };
+    const timer = setInterval(tick, 250);
+    const off = link.on((m) => {
+      if (m.t === 'members' || m.t === 'game') members();
+      if (m.t === 'status') status();
+    });
+    members();
+    this.unwatch = () => {
+      clearInterval(timer);
+      off();
+    };
   }
 
   /** The generator for this position's roll or bot move. */
@@ -181,7 +254,8 @@ export class GameScreen {
 
   /** Saves the game so it can be continued after the app closes. Done at the start of every turn. */
   private save() {
-    if (this.disposed || this.ended || this.state.phase !== 'roll') return;
+    // An online game lives on the server: the room is rejoined instead (net/client.ts saveRoom).
+    if (this.online || this.disposed || this.ended || this.state.phase !== 'roll') return;
     void saveGame(this.snapshot());
   }
 
@@ -201,7 +275,7 @@ export class GameScreen {
 
   private panelHTML(c: Color, bot: boolean) {
     return `<div class="pl ${SEAT_CLASS[c]} idle" data-c="${c}" style="${cssVars(c)}">
-      <div class="who"><div class="av">${avatarSVG(c)}</div><span class="nm">${this.name(c)}</span>${bot ? '<span class="bot">BOT</span>' : ''}<span class="ptr"></span>
+      <div class="who"><div class="av">${avatarSVG(c)}</div><span class="nm">${this.name(c)}</span>${bot ? '<span class="bot">BOT</span>' : ''}<span class="ptr"></span><span class="net" hidden></span><span class="clk" hidden></span>
         <svg class="psym sym" viewBox="-11 -11 22 22" aria-hidden="true"><circle r="10.5" fill="#fff"/><path d="${symbolPath(c, 6.5)}" fill="${PALETTE[c].m}" stroke="${PALETTE[c].d}" stroke-width="1.2" stroke-linejoin="round"/></svg></div>
       <button class="dbox" aria-label="Roll dice"><span class="qdie disp">?</span></button></div>`;
   }
@@ -217,7 +291,7 @@ export class GameScreen {
 
   /** The person's name for a colour. */
   private name(c: Color) {
-    return this.config.names[this.ownerOf(c)] ?? PROFILES[c].name;
+    return this.config.colorNames?.[c] ?? this.config.names[this.ownerOf(c)] ?? PROFILES[c].name;
   }
 
   /** vs Computer ends for you once all your houses are home; With friends plays on to the last place. */
@@ -234,9 +308,12 @@ export class GameScreen {
       this.save();
       const p = this.cur;
       this.markActive(p.color);
-      if (p.bot) await this.botTurn(p.color);
+      if (this.online) await this.onlineStep(p.color, this.online);
+      else if (p.bot) await this.botTurn(p.color);
       else await this.humanTurn(p.color);
     }
+    if (this.disposed) return;
+    if (this.online) await this.onlineOver(this.online);
     if (this.disposed) return;
     // No more bot moves in this game: Extreme's worker can go (#98).
     stopRolloutWorker();
@@ -432,18 +509,139 @@ export class GameScreen {
     return false;
   }
 
-  private async doRoll(c: Color) {
+  // ---------- online ----------
+
+  /**
+   * One online step: the server's next event, played out like any other. On this person's own turn they
+   * also get the roll button or the move markers; what they pick goes to the server, and the event that comes
+   * back (theirs, or the server's own when their clock ran out first) is what gets played.
+   */
+  private async onlineStep(c: Color, link: RoomLink) {
+    // Behind the server (after a pause or a slow animation): hurry until caught up.
+    this.speed = link.backlog() > 2 ? 6 : 1;
+    const mine = this.isMe(c);
+    const ready = link.backlog() > 0;
+    const next = link.next();
+    let ev: string;
+    if (mine && !ready) {
+      const offer = this.offerOnline(c, link.seq);
+      const first = await Promise.race([next.then((e) => ({ e })), offer.pick.then((a) => ({ a }))]);
+      if ('a' in first) {
+        link.send(first.a);
+        this.setHint(c, 'Your turn', 'Sending…');
+        ev = await next;
+      } else {
+        offer.cancel();
+        ev = first.e;
+      }
+    } else {
+      const who = link.members[this.controller(c)];
+      if (!mine) this.setHint(c, `${this.name(c)} is playing…`, this.cur.bot ? 'Bot turn' : who && !who.online ? 'Offline: waiting for them to come back' : 'Their turn');
+      ev = await next;
+    }
+    if (this.disposed) return;
+    // doRoll and doMove write the log; the stop marker is added by showResult (the game isn't over).
+    if (ev === STOP_EVENT) {
+      this.ended = true;
+      return;
+    }
+    if (ev[0] === RESIGN) return this.onlineResign(Number(ev[1]), ev);
+    // An event that doesn't fit this screen's game (it lost track somehow): rebuild the game from the server's events.
+    const fits = this.state.phase === 'roll' ? /^[1-6]$/.test(ev) : this.state.moves.some((x) => moveEvent(x) === ev);
+    if (!fits) return this.onlineResync(link);
+    if (this.state.phase === 'roll') return this.doRoll(c, Number(ev));
+    const m = this.state.moves.find((x) => moveEvent(x) === ev)!;
+    if (!mine) {
+      // Light up the die being played, as for bots.
+      this.drawTrays(m.roll);
+      await this.sleep(150);
+    }
+    await this.doMove(m);
+  }
+
+  /** A side left the game (its person forfeited): its tokens leave the board, and it's out (RULES.md section K). */
+  private async onlineResign(owner: number, ev: string) {
+    const name = this.config.names[owner] ?? 'A player';
+    const color = this.state.players.find((p) => p.owner === owner)!.color;
+    this.state = applyEvent(this.state, ev);
+    if (this.log !== null) this.log += ev;
+    this.view.layout(this.state.players);
+    this.drawTrays();
+    this.liveUpdate();
+    const mine = this.state.players.some((p) => p.owner === owner && this.isMe(p.color));
+    this.toast(mine ? 'Your team forfeited' : `${name} left`, color);
+    if (this.state.phase === 'over') this.setHint(color, `${name} left the game`, mine ? 'Your partner left: your team forfeits' : 'They forfeit: the game is yours');
+    await this.sleep(1200);
+  }
+
+  /** Rebuilds the game from the room's events (after an event that didn't fit), then carries on. */
+  private onlineResync(link: RoomLink) {
+    let s = createGame(this.config.seats, this.config.first, this.config.singles);
+    let log = '';
+    for (const ev of link.played()) {
+      if (ev === STOP_EVENT) {
+        this.ended = true;
+        break;
+      }
+      s = applyEvent(s, ev);
+      log += ev;
+    }
+    this.state = s;
+    this.log = log;
+    this.view.layout(s.players);
+    this.drawTrays();
+  }
+
+  /** This person's roll or move, as the message for the server, and a way to take the offer back. */
+  private offerOnline(c: Color, seq: number): { pick: Promise<ClientMsg>; cancel: () => void } {
+    let cancel = () => {};
+    const pick = (async (): Promise<ClientMsg> => {
+      if (this.state.phase === 'roll') {
+        const again = this.state.rolls.length > 0;
+        if (again) this.setHint(c, 'Roll again', `Your ${this.state.rolls.join(' · ')} wait below. Tap ROLL AGAIN`);
+        else this.setHint(c, 'Your turn', 'Tap ROLL');
+        const tap = this.waitRollTap(c);
+        cancel = () => this.cancelRoll?.();
+        await tap;
+        return { t: 'roll', seq };
+      }
+      const all = moveTargets(this.state.players, this.state.moves);
+      if (all.length === 1) {
+        this.drawTrays(all[0]!.move.roll);
+        await this.sleep(250);
+        return { t: 'move', seq, ev: moveEvent(all[0]!.move) };
+      }
+      cancel = () => {
+        this.view.clearMovable();
+        this.trayPick = null;
+        this.setChoices([]);
+      };
+      return { t: 'move', seq, ev: moveEvent(await this.pickMove(c, 'You')) };
+    })();
+    return { pick, cancel: () => cancel() };
+  }
+
+  /** The game is over on the server: wait (briefly) for its result, which reveals the dice seed for the review. */
+  private async onlineOver(link: RoomLink) {
+    for (let i = 0; i < 40 && !link.over && link.status !== 'closed'; i++) await this.sleep(100);
+    if (link.over) {
+      this.seed = link.over.seed;
+      this.seedFromStart = true;
+    }
+  }
+
+  private async doRoll(c: Color, face?: number) {
     // New dice: nothing before them can be undone any more (#143).
     this.undo.clear();
     this.showUndo(null);
     const kept = this.state.rolls;
-    const forced = this.forced.shift();
-    if (forced !== undefined) this.seedFromStart = false;
+    const forced = face ?? this.forced.shift();
+    if (face === undefined && forced !== undefined) this.seedFromStart = false;
     this.state = roll(this.state, this.rngFor('dice'), forced);
     if (this.log !== null) this.log += rollEvent(this.state.dice!);
     this.liveUpdate();
     const box = this.diceBox(c);
-    await rollDie(box, this.state.dice!, DIE, (this.cur.bot || this.state.players.find((p) => p.color === c)!.bot ? BOT_ROLL_MS / (settings.fastBots ? 2 : 1) : ROLL_MS) / this.speed);
+    await rollDie(box, this.state.dice!, DIE, (this.cur.bot || !this.isMe(c) ? BOT_ROLL_MS / (settings.fastBots ? 2 : 1) : ROLL_MS) / this.speed);
     this.lastFace.set(c, this.state.dice!);
     const ev = this.state.event;
     if (this.state.dice === 6 && ev?.type !== 'three-sixes') {
@@ -451,7 +649,7 @@ export class GameScreen {
       void box.offsetWidth; // restart the flare animation
       box.classList.add('six');
       this.toast('SIX! Roll again', c, 'six');
-      const human = !this.state.players.find((p) => p.color === c)!.bot;
+      const human = this.isMe(c);
       if (human && this.config.mode === 'pvc') this.sixes++;
       if (human) this.firstTip();
     }
@@ -536,7 +734,8 @@ export class GameScreen {
     if (human && windowAfter(before, this.state, player.owner, this.undo.canUndo(player.owner)) && (await this.undoWindow(player.owner, m.color, m.roll))) return;
     // Someone just finished: the people still playing decide whether to play on for the next place.
     const fresh = this.doneOwners().filter((o) => !doneBefore.includes(o));
-    if (fresh.length && this.state.phase !== 'over' && !this.humanDone()) {
+    // Online games always play on to the last place (the server ends them when only bots are left).
+    if (fresh.length && !this.online && this.state.phase !== 'over' && !this.humanDone()) {
       const voters = [...new Set(this.state.players.filter((p) => !p.bot && !isDone(p)).map((p) => p.owner))].filter((o) => !this.doneOwners().includes(o));
       // Only bots left: nobody is watching for the rest of the places.
       if (!voters.length || !(await this.vote(fresh[0]!, this.doneOwners().length, voters))) this.ended = true;
@@ -628,6 +827,7 @@ export class GameScreen {
       btn.addEventListener('click', on);
     });
   }
+
 
   /**
    * With friends, when the phone changes hands: a card asks the next person to take it, and their turn
@@ -811,7 +1011,7 @@ export class GameScreen {
     this.paused = true;
     const ov = document.createElement('div');
     ov.className = 'menu-ov';
-    ov.innerHTML = `<div class="box"><h2>Paused</h2><button class="b3 green disp" data-act="resume">RESUME</button><button class="b3 blue disp" data-act="face">${faceLabel()}</button><button class="b3 blue disp" data-act="sound">${sfx.muted ? 'SOUND: OFF' : 'SOUND: ON'}</button><button class="b3 blue disp" data-act="help">HOW TO PLAY</button><button class="b3 blue disp" data-act="quit">QUIT TO HOME</button></div>`;
+    ov.innerHTML = `<div class="box"><h2>${this.online ? 'Menu' : 'Paused'}</h2><button class="b3 green disp" data-act="resume">RESUME</button><button class="b3 blue disp" data-act="face">${faceLabel()}</button><button class="b3 blue disp" data-act="sound">${sfx.muted ? 'SOUND: OFF' : 'SOUND: ON'}</button><button class="b3 blue disp" data-act="help">HOW TO PLAY</button><button class="b3 blue disp" data-act="quit">${this.online ? 'LEAVE GAME' : 'QUIT TO HOME'}</button></div>`;
     ov.addEventListener('click', async (e) => {
       const act = (e.target as Element).closest('button')?.dataset.act;
       if (act === 'resume') {
@@ -839,6 +1039,21 @@ export class GameScreen {
         // Quitting gives the game up, so it takes a second tap.
         const b = (e.target as Element).closest('button')!;
         if (this.disposed) return;
+        // Online: a bot plays on for them; it doesn't count as a loss.
+        if (this.online) {
+          if (!b.classList.contains('sure')) {
+            b.classList.add('sure');
+            b.textContent = 'TAP AGAIN TO LEAVE';
+            b.after(Object.assign(document.createElement('p'), { className: 'sub warn', textContent: this.online && this.state.players.some((p) => this.isMe(p.color) && !isDone(p)) ? 'You forfeit: you lose this game (in Ranked, last place).' : 'You can’t come back to this game.' }));
+            return;
+          }
+          const link = this.online;
+          this.online = undefined;
+          link.leave();
+          this.dispose();
+          this.exit('home');
+          return;
+        }
         const loses = givingUpLoses({ config: this.config, state: this.state });
         if (!b.classList.contains('sure')) {
           b.classList.add('sure');
@@ -874,6 +1089,8 @@ export class GameScreen {
     // No game is played any more, however it was left (the result, Home, a shared link opened over it): the
     // review queue, which waits during any game (#176), goes on.
     setGame('none');
+    this.unwatch?.();
+    this.online?.close();
     this.calm?.stop();
     stopRolloutWorker();
     keepAwake(false);
@@ -895,7 +1112,7 @@ export class GameScreen {
   record(): GameRecord | null {
     if (this.log === null) return null;
     const c = this.config;
-    return { v: 1, seats: c.seats, first: c.first, ...(c.singles ? { singles: true } : {}), ...(this.seedFromStart ? { seed: this.seed } : {}), meta: { mode: c.mode, names: c.names, ...(Object.keys(this.undo.usedCounts()).length ? { undos: this.undo.usedCounts() } : {}) }, events: this.log };
+    return { v: 1, seats: c.seats, first: c.first, ...(c.singles ? { singles: true } : {}), ...(this.seedFromStart ? { seed: this.seed } : {}), meta: { mode: c.mode, names: c.names, ...(this.online ? { online: true } : {}), ...(Object.keys(this.undo.usedCounts()).length ? { undos: this.undo.usedCounts() } : {}) }, events: this.log };
   }
 
   private showResult() {
@@ -904,9 +1121,11 @@ export class GameScreen {
     const order = ownerRanking(this.state);
     const pvp = this.config.mode === 'pvp';
     const colorsOf = (o: number) => this.state.players.filter((p) => p.owner === o);
-    const human = this.state.players.find((p) => !p.bot)?.owner ?? 0;
+    // Online, your side: the owner of a colour you play (in 2v2, your team).
+    const human = this.online ? (this.state.players.find((p) => this.isMe(p.color))?.owner ?? 0) : (this.state.players.find((p) => !p.bot)?.owner ?? 0);
     const place = order.indexOf(human) + 1;
-    const won = pvp || place === 1;
+    // Online, it's your own result; passing one phone, everyone's game.
+    const won = this.online ? place === 1 : pvp || place === 1;
     // The game's record joins the past games (for the replay and the review, #65). A game that ends before
     // its last place is played out (a vote to stop, no people left, or you finished vs Computer) ends with
     // STOP_EVENT, so a replay knows its result is the position's ownerRanking, as here.
@@ -926,7 +1145,7 @@ export class GameScreen {
         const mine = colorsOf(o);
         const c = mine[0]!.color;
         const bot = mine[0]!.bot;
-        const sub = i === 0 ? 'Winner' : bot ? 'Bot' : `${PLACES[i + 1]!.toLowerCase()} place`;
+        const sub = this.state.out?.includes(o) ? 'Left the game' : i === 0 ? 'Winner' : bot ? 'Bot' : `${PLACES[i + 1]!.toLowerCase()} place`;
         const home = mine.reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
         const pct = Math.round((100 * mine.reduce((a, p) => a + p.tokens.reduce((x, t) => x + Math.max(t, 0), 0), 0)) / (FINISHED * 4 * mine.length));
         return `<div class="row${i === 0 ? ' first' : ''}${bot ? '' : ' me'}"><span class="medal m${i + 1}">${i + 1}</span>
@@ -935,7 +1154,7 @@ export class GameScreen {
       })
       .join('');
     const winner = this.config.names[order[0]!]!;
-    const title = pvp ? `${winner.toUpperCase()} WINS!` : won ? 'YOU WIN!' : `${PLACES[place]} PLACE`;
+    const title = this.online ? (won ? 'YOU WIN!' : `${PLACES[place]} PLACE`) : pvp ? `${winner.toUpperCase()} WINS!` : won ? 'YOU WIN!' : `${PLACES[place]} PLACE`;
     // Achievements need the new totals, so they join the reward panel when the stats are saved.
     const level = levelOf(this.state), layout = layoutOf(this.state);
     const facts: GameFacts = { mode: this.config.mode, place, lost: this.lost, level, layout, singles: !!this.state.singles };
