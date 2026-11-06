@@ -46,8 +46,8 @@ interface Settings {
   autoReview: boolean;
   /** Your accuracy and luck on the result's share card, vs Computer (#97). Off by default. */
   shareStats: boolean;
-  /** The Privacy note and Terms of use accepted (#208): which version, and when (ms). Null until accepted. */
-  legal: { version: number; at: number } | null;
+  /** The Privacy note and Terms of use accepted (#208): which version, when (ms), and `declined` for Not now. Null until answered. */
+  legal: { version: number; at: number; declined?: boolean } | null;
 }
 
 export type Theme = 'classic' | 'wood' | 'dark' | 'metal' | 'tron' | 'halloween';

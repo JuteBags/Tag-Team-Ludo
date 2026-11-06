@@ -1,9 +1,9 @@
-// The Privacy note and Terms of use (#208): accepted once on first launch, asked again when the version goes up,
-// checked before online play, and the website's pages the same text and version as the app's.
+// The Privacy note and Terms of use (#208): asked once on first launch (Accept or Not now), again when the version
+// goes up; online play needs Accept, and the website's pages the same text and version as the app's.
 import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error: the project has no @types/node; Vitest runs on Node.
 import { readFileSync } from 'node:fs';
-import { acceptedFor, acceptTerms, hasAcceptedTerms, LEGAL_MD, LEGAL_VERSION, requireTerms } from '../src/ui/legal';
+import { acceptedFor, acceptTerms, answeredFor, answeredTerms, declineTerms, hasAcceptedTerms, LEGAL_MD, LEGAL_VERSION, offerTerms, requireTerms } from '../src/ui/legal';
 import { legalHtml, legalVersionOf } from '../src/ui/legalText';
 import { settings } from '../src/ui/settings';
 // @ts-expect-error: a Node script (tools/), not typechecked.
@@ -15,41 +15,67 @@ afterEach(() => {
 });
 
 describe('the Privacy note and Terms of use (#208)', () => {
-  it('first launch shows the sheet, and Accept stores { version, at }', async () => {
-    settings.legal = null;
-    expect(hasAcceptedTerms()).toBe(false);
-    let shown = 0;
-    let accept = () => {};
-    const done = requireTerms(host, (_h, onAccept) => {
-      shown++;
-      accept = () => {
-        acceptTerms(1234);
-        onAccept();
-      };
-    });
-    expect(shown).toBe(1);
-    accept();
-    await done;
+  /** A stand-in for the sheet: counts the times it's shown and answers as told (it records, as the sheet does). */
+  const sheet = (answer: 'accept' | 'later' | null) => {
+    const seen: boolean[] = [];
+    const show = (_h: HTMLElement, onAnswer: (ok: boolean) => void, online = false) => {
+      seen.push(online);
+      if (answer === 'accept') acceptTerms(1234);
+      if (answer === 'later') declineTerms(1234);
+      if (answer) onAnswer(answer === 'accept');
+    };
+    return { seen, show };
+  };
+
+  it('first launch asks, and Accept stores { version, at }: never asked again, online or at launch', async () => {
+    const s1 = sheet('accept');
+    await offerTerms(host, s1.show);
+    expect(s1.seen).toEqual([false]);
     expect(settings.legal).toEqual({ version: LEGAL_VERSION, at: 1234 });
     expect(hasAcceptedTerms()).toBe(true);
-    // Accepted: the next launch (and online play) doesn't ask.
-    await requireTerms(host, () => {
-      shown++;
-    });
-    expect(shown).toBe(1);
+    const s2 = sheet(null);
+    await offerTerms(host, s2.show);
+    expect(await requireTerms(host, s2.show)).toBe(true);
+    expect(s2.seen).toEqual([]);
   });
 
-  it('asks again when the version goes up, and for an older acceptance', () => {
-    expect(acceptedFor({ version: LEGAL_VERSION })).toBe(true);
-    expect(acceptedFor({ version: LEGAL_VERSION }, LEGAL_VERSION + 1)).toBe(false);
-    expect(acceptedFor(null)).toBe(false);
-    settings.legal = { version: LEGAL_VERSION - 1, at: 1 };
+  it('Not now: offline play goes on, the launch sheet stops asking, and online play is blocked until Accept', async () => {
+    const s1 = sheet('later');
+    await offerTerms(host, s1.show); // resolves: offline play needs nothing
+    expect(settings.legal).toEqual({ version: LEGAL_VERSION, at: 1234, declined: true });
     expect(hasAcceptedTerms()).toBe(false);
-    let shown = false;
-    void requireTerms(host, () => {
-      shown = true;
-    });
-    expect(shown).toBe(true);
+    expect(answeredTerms()).toBe(true);
+    // The next launch doesn't nag.
+    const s2 = sheet(null);
+    await offerTerms(host, s2.show);
+    expect(s2.seen).toEqual([]);
+    // Online asks (the online sheet), and Not now there keeps it blocked.
+    const s3 = sheet('later');
+    expect(await requireTerms(host, s3.show)).toBe(false);
+    expect(s3.seen).toEqual([true]);
+    expect(hasAcceptedTerms()).toBe(false);
+    // Accept there lets it connect, and it stays accepted.
+    const s4 = sheet('accept');
+    expect(await requireTerms(host, s4.show)).toBe(true);
+    expect(hasAcceptedTerms()).toBe(true);
+    const s5 = sheet(null);
+    expect(await requireTerms(host, s5.show)).toBe(true);
+    expect(s5.seen).toEqual([]);
+  });
+
+  it('asks again when the version goes up, whether the old one was accepted or declined', async () => {
+    expect(acceptedFor({ version: LEGAL_VERSION, at: 1 })).toBe(true);
+    expect(acceptedFor({ version: LEGAL_VERSION, at: 1 }, LEGAL_VERSION + 1)).toBe(false);
+    expect(acceptedFor({ version: LEGAL_VERSION, at: 1, declined: true })).toBe(false);
+    expect(answeredFor({ version: LEGAL_VERSION, at: 1, declined: true })).toBe(true);
+    expect(answeredFor({ version: LEGAL_VERSION, at: 1 }, LEGAL_VERSION + 1)).toBe(false);
+    expect(acceptedFor(null)).toBe(false);
+    for (const old of [{ version: LEGAL_VERSION - 1, at: 1 }, { version: LEGAL_VERSION - 1, at: 1, declined: true }]) {
+      settings.legal = old;
+      const s1 = sheet('accept');
+      await offerTerms(host, s1.show);
+      expect(s1.seen).toEqual([false]);
+    }
   });
 
   it('hasAcceptedTerms follows what is stored', () => {

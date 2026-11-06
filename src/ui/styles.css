@@ -1244,3 +1244,6 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .rname span{font-weight:900;font-size:13px;white-space:nowrap;opacity:.85}
 .ranked .rname .namein{height:42px;font-size:16px}
 .ranked .rmode{padding:8px 12px}
+.terms-ov .later{display:block;margin:10px auto 0;min-height:40px;padding:0 14px;background:none;color:#fff;font-weight:900;font-size:14px;opacity:.8}
+.set.about .legalstate{display:flex;flex-direction:column;gap:8px}
+.set.about .legalstate .b3{width:100%;font-size:17px}
