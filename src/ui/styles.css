@@ -1127,3 +1127,21 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .pzask .roll{display:flex;flex-direction:column;gap:6px}
 .pzask .rh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:13px;font-weight:900}
 .pzask .rh em{font-style:normal;opacity:.9}
+
+/* The Privacy note and Terms of use (#208): the first-launch sheet, the links, and the text in a sheet. */
+.terms-ov .box{width:300px}
+.terms-ov .sub{font-size:14px;line-height:1.4;opacity:.9;margin:8px 0 2px}
+.terms-ov .b3{margin-top:10px}
+.legallinks{display:flex;justify-content:center;align-items:center;gap:8px;margin:6px 0 2px}
+.legallinks button{min-height:44px;padding:0 4px;background:none;color:#ffd65a;font-weight:900;font-size:14px;text-decoration:underline;text-underline-offset:3px}
+.legallinks i{font-style:normal;opacity:.6}
+.set.about .legallinks{justify-content:flex-start;margin:0}
+.sheet.legal .box{width:340px}
+.legaltext{text-align:left;font-size:13.5px;font-weight:700;line-height:1.45}
+.legaltext h3{font-family:'Lilita One';font-weight:400;font-size:18px;color:#ffd65a;margin:14px 0 4px}
+.legaltext p{margin:6px 0}
+.legaltext p,.legaltext li{color:rgba(232,240,255,.82)}
+.legaltext ul{margin:4px 0 6px;padding-left:18px}
+.legaltext li{margin:4px 0}
+.legaltext a{color:#ffd65a;word-break:break-all}
+.legaltext b{font-weight:900;color:#fff}

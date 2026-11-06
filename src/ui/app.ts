@@ -10,6 +10,7 @@ import { puzzleBadge } from './puzzleDay';
 import { applyLook } from './themes';
 import { offerUpdate } from './update';
 import { offerCheckIn } from './checkin';
+import { requireTerms } from './legal';
 import { decodeRecord, type GameRecord } from '../engine';
 import { linkPayload } from './replay';
 import { bootReviews, setGame } from './reviewQueue';
@@ -40,8 +41,11 @@ export function mountApp(root: HTMLElement) {
     if (game) return; // a game started while the save was loading
     const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle());
     setScreen(stage, screen);
-    // On the home screen only, never during a game: a newer version on the site, then today's check-in.
-    void offerUpdate(screen).then(() => offerCheckIn(screen));
+    // On the home screen only, never during a game: the Privacy note and Terms of use until they're accepted
+    // (#208: first launch, and again when they change), then a newer version on the site, then today's check-in.
+    void requireTerms(screen)
+      .then(() => offerUpdate(screen))
+      .then(() => offerCheckIn(screen));
   };
   // Home -> setup (houses, roll for order, pick houses) -> game. Play again keeps the same houses.
   const setup = (mode: Mode, houses: 1 | 2 = 1) =>
@@ -90,7 +94,8 @@ export function mountApp(root: HTMLElement) {
   // Back: an open sheet closes; in a game it pauses and resumes; in setup it goes a step back; on the
   // home screen the update prompt or the check-in card closes, and after that the app closes.
   handleBack(() => {
-    const sheet = stage.querySelector('.sheet');
+    // The top one: a text opened over Settings (#208) closes before Settings.
+    const sheet = [...stage.querySelectorAll('.sheet')].at(-1);
     if (sheet) {
       sheet.remove();
       return true;
