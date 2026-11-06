@@ -79,7 +79,7 @@ npm run dev        # room server at ws://localhost:8787 (no Cloudflare account n
 npm run smoke      # optional: two scripted players play a whole game against it
 ```
 
-The game in `npm run dev` connects to it by itself. Open two browser windows (one private) to be two players.
+**The server's address:** set `ROOMS_URL` (the CI repository variable, or your local environment); the build exposes it as `VITE_ROOMS_URL`, the only place the game reads it. Without it, online play is hidden. For the local server above, start the game with `VITE_ROOMS_URL=ws://localhost:8787 npm run dev`. Don't commit a `.env` with an address. Open two browser windows (one private) to be two players.
 
 **The released game and its server.** The website, the APK and the Windows `.exe` all come from one build in `build.yml`, which takes the server's address from the repository variable **`ROOMS_URL`** (Settings → Secrets and variables → Actions → Variables). Without it, online play is hidden and the game is offline only, as before. To turn it on:
 

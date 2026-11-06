@@ -8,16 +8,12 @@
 import { PROTOCOL, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ServerMsg, type Turn } from './protocol';
 
 /**
- * The room server's address: VITE_ROOMS_URL at build time; this computer's `wrangler dev` while developing;
- * otherwise the site the game was loaded from, when that's the room server itself (the staging Worker
- * serves the game too). In the APK (https://localhost) without VITE_ROOMS_URL, online play is off.
+ * The room server's address: VITE_ROOMS_URL, and only that. Set ROOMS_URL (the CI repository variable, or the
+ * local environment); the build exposes it as VITE_ROOMS_URL. Without it, online play is hidden.
  */
 export function roomsUrl(): string {
   const set = (import.meta.env.VITE_ROOMS_URL as string | undefined)?.trim();
-  if (set) return set.replace(/\/+$/, '');
-  if (import.meta.env.DEV) return `ws://${location.hostname || 'localhost'}:8787`;
-  if (location.protocol === 'https:' && location.hostname.endsWith('.workers.dev')) return `wss://${location.host}`;
-  return '';
+  return set ? set.replace(/\/+$/, '') : '';
 }
 
 /** A fresh secret id for this person in one room (32 hex characters). */
