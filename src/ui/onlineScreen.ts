@@ -4,7 +4,9 @@
 import type { Color } from '../engine';
 import { PROFILES, avatarSVG, cssVars, icons } from './art';
 import { RoomLink, loadRoom, roomsUrl } from '../net/client';
-import { CODE_LEN, GAME_MODES, MODE_LABEL, MODE_NOTE, ONLINE_LEVELS, isCode, modeSlots, type GameSetup, type OnlineBotLevel, type RoomOptions } from '../net/protocol';
+import { requireTerms } from './legal';
+import { modePicker } from './modePicker';
+import { CODE_LEN, MODE_LABEL, ONLINE_LEVELS, isCode, modeSlots, type GameSetup, type OnlineBotLevel, type RoomOptions } from '../net/protocol';
 import { saveSetting, settings } from './settings';
 import { NAME_MAX, cleanName, type GameConfig } from './setup';
 import { sfx } from './sfx';
@@ -74,8 +76,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     <section class="wiz" data-step="create">
       <h3 class="disp">New room</h3><p class="sub">You're the host: you start the game</p>
       <div class="mid"><div class="sp opts">
-        <div class="row2 q"><span class="lbl">Which game?</span>${tg('mode', GAME_MODES.map((m) => [m, MODE_LABEL[m]]), opts.mode).replace('class="tg"', 'class="tg grid2"')}<small class="qh mnote">${MODE_NOTE[opts.mode]}. Places nobody takes are played by bots</small></div>
-        <div class="row2 q pairq" hidden><span class="lbl">Where are your two colours?</span>${tg('pairing', [['opposite', 'Opposite'], ['adjacent', 'Side by side']], opts.pairing)}</div>
+        <i data-slot="modes"></i>
         <div class="row2 q"><span class="lbl">Doubles (pair moves)?</span>${tg('singles', [['false', 'On'], ['true', 'Off']], String(opts.singles))}</div>
         <div class="row2 q"><span class="lbl">How good are the bots?</span>${tg('level', ONLINE_LEVELS.map((l) => [l, cap(l)]), opts.botLevel)}<small class="qh lvlh">${LEVEL_NOTE[opts.botLevel]}</small></div>
       </div></div>
@@ -99,6 +100,13 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       </div></div>
       <button class="b3 green disp go" data-act="start" disabled>START GAME</button>
     </section>`;
+  // The mode picker is its own piece (modePicker.ts), so its design (#210) can change without this screen.
+  el.querySelector('[data-slot=modes]')!.replaceWith(
+    modePicker({ mode: opts.mode, pairing: opts.pairing }, (c) => {
+      opts.mode = c.mode;
+      opts.pairing = c.pairing;
+    }),
+  );
 
   const $ = <T extends HTMLElement>(q: string) => el.querySelector<T>(q)!;
   const nameIn = $<HTMLInputElement>('.namein');
@@ -160,6 +168,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   };
   const clockTimer = setInterval(() => (el.isConnected ? tick() : clearInterval(clockTimer)), 500);
 
+  /**
+   * Connects only once the Privacy note and Terms of use are accepted (#208): accepted once on this device, it
+   * never asks again; the sheet shows only if they weren't accepted, or a newer version came out. Declined: no
+   * connection.
+   */
+  const connect = (make: () => RoomLink) => void requireTerms(el).then((ok) => ok && attach(make()));
   const attach = (l: RoomLink) => {
     off?.();
     link = l;
@@ -197,17 +211,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   el.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLElement>('[data-act]');
     const tb = (e.target as Element).closest<HTMLButtonElement>('.tg button');
-    if (tb) {
+    // The mode picker (modePicker.ts) handles its own taps.
+    if (tb && !tb.closest('[data-k=mode], [data-k=pairing]')) {
       sfx.tick();
       const k = tb.parentElement!.dataset.k!;
       tb.parentElement!.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === tb));
       const v = tb.dataset.v!;
-      if (k === 'mode') {
-        opts.mode = v as RoomOptions['mode'];
-        $('.mnote').textContent = `${MODE_NOTE[opts.mode]}. Places nobody takes are played by bots`;
-        $('.pairq').hidden = opts.mode !== 'duo';
-      }
-      if (k === 'pairing') opts.pairing = v as RoomOptions['pairing'];
       if (k === 'singles') opts.singles = v === 'true';
       if (k === 'level') {
         opts.botLevel = v as OnlineBotLevel;
@@ -236,12 +245,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       show('join');
       setTimeout(() => codeIn.focus(), 50);
     } else if (act === 'create') {
-      attach(RoomLink.create({ ...opts }, myName()));
+      connect(() => RoomLink.create({ ...opts }, myName()));
     } else if (act === 'join') {
-      attach(RoomLink.join(codeIn.value, myName()));
+      connect(() => RoomLink.join(codeIn.value, myName()));
     } else if (act === 'rejoin') {
       const r = loadRoom();
-      if (r) attach(RoomLink.join(r.code, r.name, r.token));
+      if (r) connect(() => RoomLink.join(r.code, r.name, r.token));
     } else if (act === 'start') {
       link?.send({ t: 'start' });
     } else if (act === 'share' && link?.code) {
@@ -268,6 +277,6 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   nameIn.addEventListener('change', keepName);
 
   show('menu');
-  if (rejoin && saved && configured) attach(RoomLink.join(saved.code, saved.name, saved.token));
+  if (rejoin && saved && configured) connect(() => RoomLink.join(saved.code, saved.name, saved.token));
   return el;
 }

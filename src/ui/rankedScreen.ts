@@ -6,6 +6,7 @@ import { RoomLink, roomsUrl } from '../net/client';
 import { GAME_MODES, MODE_LABEL, MODE_NOTE, type AccountReply, type GameMode } from '../net/protocol';
 import { QueueLink, loadAccount } from '../net/ranked';
 import { tierOf } from '../net/rating';
+import { requireTerms } from './legal';
 import { onlineConfig } from './onlineScreen';
 import { saveSetting, settings } from './settings';
 import { NAME_MAX, cleanName, type GameConfig } from './setup';
@@ -85,6 +86,8 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
 
   const load = async () => {
     if (!roomsUrl()) return error('Online play isn’t set up in this version of the app.');
+    // Nothing goes to the server (not even the guest account) until the terms are accepted (#208).
+    if (!(await requireTerms(el))) return error('Online play needs your OK to the Privacy note and Terms of use.');
     try {
       account = await loadAccount(myName());
       error('');
