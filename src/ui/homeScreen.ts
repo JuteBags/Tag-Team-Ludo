@@ -4,9 +4,8 @@ import { BoardView } from './boardView';
 import { dieMarkup } from './dice';
 import { settings } from './settings';
 import type { Mode } from './setup';
-import { settingsSheet, statsSheet, symbolRow } from './sheets';
+import { settingsSheet, statsSheet } from './sheets';
 import { giveUpNote, givingUpLoses, levelOf, loadStats, type SavedGame } from './store';
-import { setSymbols } from './themes';
 import type { PuzzleBadge } from './puzzleDay';
 
 /** "just now", "12 min ago", "3 h ago", "2 days ago": when a saved game was last played. */
@@ -60,7 +59,6 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
       ? `<button class="storerow half" data-act="store" aria-label="Store, ${settings.gold} gold"><span class="sp3">${pawnSVG('blue')}${pawnSVG('red')}${pawnSVG('yellow')}</span><span><b class="disp">STORE</b><em class="gp"><i class="coin"></i>${settings.gold}</em></span></button>
     <button class="pzrow${puzzle.done ? ' done' : ''}" data-act="puzzle" aria-label="Daily puzzle, ${puzzle.done ? 'done today' : BAND[puzzle.band]}, ${puzzle.streak} ${puzzle.streak === 1 ? 'day' : 'days'} in a row"><span class="pi">${puzzle.done ? PUZZLE_DONE : PUZZLE_ICON}</span><span><b class="disp">PUZZLE</b><small>${puzzle.done ? 'Done' : BAND[puzzle.band]}${puzzle.streak ? ` · ★ ${puzzle.streak}` : ''}</small></span></button>`
       : `<button class="storerow" data-act="store"><span class="sp3">${pawnSVG('blue')}${pawnSVG('red')}${pawnSVG('yellow')}</span><span><b class="disp">STORE</b><small>Pawns, dice and boards</small></span><em class="gp"><i class="coin"></i>${settings.gold}</em></button>`}
-    <button class="cbrow" data-act="symbols" role="switch" aria-checked="${settings.symbols}"><span>Colour-blind symbols</span>${symbolRow()}<em class="swl">${settings.symbols ? 'On' : 'Off'}</em><i class="sw"></i></button>
     <div class="foot">Both modes play offline · Online play and private rooms coming soon · v${__APP_VERSION__}<small>Avatars: Fun Emoji by Davis Uche, CC BY 4.0</small></div>`;
   el.querySelector('.tilt')!.appendChild(new BoardView(HERO, 286).el);
   // A new game replaces the saved one. When that counts as a loss, ask first.
@@ -89,20 +87,11 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
       onCount(Number(b.dataset.n) as 2 | 3 | 4);
     }),
   );
-  // The colour-blind switch is right on the home screen, so it's easy to find.
-  const cb = el.querySelector<HTMLElement>('.cbrow')!;
-  const sync = () => {
-    cb.setAttribute('aria-checked', String(settings.symbols));
-    cb.querySelector('.swl')!.textContent = settings.symbols ? 'On' : 'Off';
-  };
-  cb.addEventListener('click', () => {
-    setSymbols(!settings.symbols);
-    sync();
-  });
   el.querySelector('[data-act=continue]')?.addEventListener('click', onContinue);
   el.querySelector('[data-act=store]')!.addEventListener('click', onStore);
   el.querySelector('[data-act=puzzle]')?.addEventListener('click', () => onPuzzle?.());
   el.querySelector('[data-act=stats]')!.addEventListener('click', () => void statsSheet(el, onReplay, onReview));
-  el.querySelector('[data-act=settings]')!.addEventListener('click', () => settingsSheet(el, sync));
+  // Colour-blind symbols live in Settings; nothing on this screen depends on them.
+  el.querySelector('[data-act=settings]')!.addEventListener('click', () => settingsSheet(el, () => undefined));
   return el;
 }
