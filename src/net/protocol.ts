@@ -9,7 +9,7 @@
 import type { BotLevel, Color, Seat } from '../engine';
 
 /** Bumped on any change the other side can't read: an app and a server with different versions don't play. */
-export const PROTOCOL = 2;
+export const PROTOCOL = 3;
 
 /** Room codes: no 0/O or 1/I, so a code read out loud or copied by hand is right. */
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -82,8 +82,8 @@ export interface Member {
   /** Connected right now. */
   online: boolean;
   host: boolean;
-  /** A bot plays for them (they left, or let the clock run out too often). */
-  auto: boolean;
+  /** Left the game (they forfeited: Leave game, gone too long, or too many timeouts). */
+  left: boolean;
 }
 
 /** A game as the app needs it to start: the record's setup, who plays each colour, and names. */

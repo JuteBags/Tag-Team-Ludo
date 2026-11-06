@@ -5,7 +5,7 @@
 //   2nd-best gap − 2·se ≥ 3·f + 0.5, and se ≤ 1.5 (f: the layout's scale, THRESHOLDS_BY_LAYOUT)
 // Moves with a gap of 0 must reach the best's position (the same candidate), or it's a tie: no puzzle. The
 // reveal's line is the real game: the played move and what followed, to the end of the mover's next turn.
-import { mixSeed, move, moveEvent, positionKey, replay, roll, seeded, type GameRecord, type GameState } from '..';
+import { eventLength, mixSeed, move, moveEvent, positionKey, replay, roll, seeded, type GameRecord, type GameState } from '..';
 import { rollStrip, type Puzzle, type RollStrip } from '../puzzles';
 import { chooseBotMove } from './levels';
 import { faceChances, layoutKey, REVIEW_VERSION, THRESHOLDS_BY_LAYOUT, type MoveReview } from './review';
@@ -44,7 +44,7 @@ function followed(rec: GameRecord, states: GameState[], at: number): string {
   let i = 0;
   for (let k = 0; k + 1 < states.length; k++) {
     offsets.push(i);
-    i += states[k]!.phase === 'move' ? 2 : 1;
+    i += eventLength(rec.events, i, states[k]!);
   }
   const mover = states[at]!.current;
   let stage = 0;

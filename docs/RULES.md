@@ -91,9 +91,13 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole
     - **1(x2) v 1(x2)**: two players with two colours each (section H), opposite or side by side.
     - **2v2**: two teams of two people. Each person plays one colour; partners sit opposite and are one side (rule 39): they never capture or block each other, and a team is done when both its colours are home.
 53. The server rolls every die and checks every move; all the rules above apply unchanged, with the same dice as offline (rule 31). Who plays first is drawn at random.
-54. Each roll and each move has a **30-second clock**. When it runs out, the server plays that step for the person (as a Normal bot would). After two clocks in a row run out, a bot plays for them until they roll or move again.
-55. A person who loses the connection or closes the app can rejoin the same game; while they're away the clock keeps running for them.
-56. **Leave game** in the menu hands the colour to a bot for the rest of the game. When every side with a person in it has finished or left, the game ends there (rule 34), without waiting for the bots.
+54. Each roll and each move has a **30-second clock**. When it runs out, the server plays that one step for the person (as a Normal bot would), so the game doesn't stall. A reconnect doesn't restart anyone's clock.
+55. A person who loses the connection or closes the app can rejoin the same game within a minute; while they're away their clock keeps running.
+56. **Leaving forfeits** (no bot takes over): tapping **Leave game**, being disconnected for **60 seconds**, or letting the clock run out **3 times in a row**. The person's side resigns: its tokens not yet home leave the board and it takes no more turns, ranked last (the first to leave ranks lowest).
+    - **1v1** and **1(x2) v 1(x2)**: the other player wins at once.
+    - **2v2**: the team forfeits together, and the other team wins. A person whose own colour is already home can leave without forfeiting.
+    - **1v1v1v1**: the others play on; when only one is left, they win.
+    - Bots that filled empty places from the start stay in the game. When every side with a person in it has finished or left, the game ends there (rule 34), without waiting for the bots.
 57. Online games always play on to the last place: there is no keep-playing vote (rule 41).
 58. There is no undo online (section J): a move the server has taken can't be taken back.
 
@@ -110,7 +114,7 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole
 64. **Matchmaking:** you're matched with people whose rating is within 100 of yours, and that window widens by 10 for every second you wait. After **60 seconds**, ranked bots at your rating fill the places still empty, and the game counts like any other. Bots play Easy below 1000, Normal up to 1300 and Hard above.
 65. In 2v2 with four people, teams are made fair: the best and the weakest player are partners.
 66. **Rating change** (Elo): with two sides (1v1, 1(x2) v 1(x2), 2v2), a win or loss against the other side's average rating; both partners in 2v2 get the same change. In 1v1v1v1, each pair of players is one game won by the better place, averaged over the three. A person's first 10 games in a mode move their rating faster (K 40, then 24).
-67. **Leaving a ranked game counts as last place**, even though a bot finishes the game for you.
+67. **Leaving a ranked game is a forfeit** (rule 56): it counts as last place.
 
 ## Known risks (accepted for v1, revisit after playtests)
 

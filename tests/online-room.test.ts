@@ -1,9 +1,9 @@
 // The online room (server/src/room-core.ts) with a fake clock and fake phones: each phone keeps the game the
 // way the app will, by applying the server's events with the engine, and plays a legal move on its turn.
 import { describe, expect, it } from 'vitest';
-import { STOP_EVENT, applyEvent, createGame, moveEvent, replay, seeded, type GameState } from '../src/engine';
+import { STOP_EVENT, applyEvent, createGame, moveEvent, ownerRanking, replay, seeded, type GameState } from '../src/engine';
 import { PROTOCOL, type ClientMsg, type GameSetup, type RoomOptions, type ServerMsg } from '../src/net/protocol';
-import { BOT_MOVE_MS, LOBBY_MS, MAX_TIMEOUTS, OVER_MS, RoomCore, setupFor, type RateReport, TURN_MS, type RoomData, type RoomIO } from '../server/src/room-core';
+import { LOBBY_MS, OVER_MS, RoomCore, setupFor, type RateReport, TURN_MS, type RoomData, type RoomIO } from '../server/src/room-core';
 
 const OPTS: RoomOptions = { mode: 'ffa', pairing: 'opposite', singles: false, botLevel: 'normal' };
 const ppl = (names: string[]) => names.map((name, member) => ({ member, name }));
@@ -225,23 +225,24 @@ describe('online room: a game', () => {
     expect(await room.handle(mover.token, { t: 'roll', seq: 0 })).toBe('stale');
   });
 
-  it('plays for someone whose time runs out, and a bot takes over after repeated timeouts', async () => {
-    const w = world(9);
-    const room = RoomCore.create('ABCDE', { ...OPTS, mode: '1v1' }, w.io);
-    room.hello(tok(1), hello(1));
-    room.hello(tok(2), hello(2));
+  /** A started room of `opts` with people 1..n connected, and their phones. */
+  async function started(opts: RoomOptions, n: number, seed: number) {
+    const w = world(seed);
+    const room = RoomCore.create('ABCDE', opts, w.io);
+    for (let i = 1; i <= n; i++) room.hello(tok(i), hello(i));
     await room.handle(tok(1), { t: 'start' });
-    const phones = [new Phone(tok(1), w), new Phone(tok(2), w)];
+    const phones = Array.from({ length: n }, (_, i) => new Phone(tok(i + 1), w));
     phones.forEach((p) => p.sync());
-    // Whoever plays first never acts: their clock runs out on each action.
+    return { w, room, phones };
+  }
+
+  it('plays the step for someone whose time runs out, twice; the third time in a row they forfeit', async () => {
+    const { w, room, phones } = await started({ ...OPTS, mode: '1v1' }, 2, 9);
     const idle = phones.findIndex((p) => p.myTurn());
+    const side = room.snapshot.setup!.seats.find((s) => room.snapshot.setup!.control[s.color] === idle)!.owner;
     expect(w.alarm).toBe(w.t + TURN_MS);
-    const before = room.snapshot.events.length;
-    w.t += TURN_MS;
-    room.alarm();
-    expect(room.snapshot.events.length).toBe(before + 1);
-    // Keep going until the bot stands in for them, then the game still finishes.
-    for (let i = 0; i < 50 && !room.members()[idle]!.auto; i++) {
+    // The idle person's clock runs out each time it's their step; the other plays on their turns.
+    for (let i = 0; i < 400 && room.snapshot.phase === 'playing'; i++) {
       phones.forEach((p) => p.sync());
       const mover = phones.find((p, j) => j !== idle && p.myTurn());
       if (mover) await room.handle(mover.token, mover.action(seeded(i)));
@@ -250,11 +251,74 @@ describe('online room: a game', () => {
         room.alarm();
       }
     }
-    expect(room.members()[idle]!.auto).toBe(true);
-    expect(room.snapshot.members[idle]!.timeouts).toBeGreaterThanOrEqual(MAX_TIMEOUTS);
-    await playOut(room, w, phones, seeded(4), new Set([idle]));
-    // Bot steps are paced, not instant.
-    expect(BOT_MOVE_MS).toBeGreaterThan(0);
+    expect(room.snapshot.phase).toBe('over');
+    expect(room.snapshot.events.at(-1)).toBe(`q${side}`);
+    phones.forEach((p) => p.sync());
+    // Both phones' games end the same way: the other side won.
+    for (const p of phones) expect(ownerRanking(p.state!)).toEqual([1 - side, side]);
+    expect(room.members()[idle]!.left).toBe(true);
+  });
+
+  it('1v1: Leave game forfeits at once, and the other player wins', async () => {
+    const { room, phones } = await started({ ...OPTS, mode: '1v1' }, 2, 13);
+    await room.handle(tok(2), { t: 'leave' });
+    expect(room.snapshot.phase).toBe('over');
+    expect(room.snapshot.events.at(-1)).toBe('q1');
+    phones[0]!.sync();
+    expect(phones[0]!.over).not.toBeNull();
+    expect(ownerRanking(phones[0]!.state!)).toEqual([0, 1]);
+  });
+
+  it('a minute offline forfeits; coming back sooner keeps the seat, and a reconnect never resets the clock', async () => {
+    const { w, room, phones } = await started({ ...OPTS, mode: '1v1' }, 2, 21);
+    const deadline = room.snapshot.deadline!;
+    // Person 2 drops and comes back 50 s later: still in, and the current clock wasn't restarted.
+    room.disconnected(tok(2));
+    expect(room.members()[1]!.online).toBe(false);
+    w.t += 20_000;
+    room.hello(tok(2), hello(2));
+    expect(room.snapshot.deadline).toBe(deadline);
+    // Gone for good this time.
+    room.disconnected(tok(2));
+    for (let i = 0; i < 200 && room.snapshot.phase === 'playing'; i++) {
+      phones[0]!.sync();
+      if (phones[0]!.myTurn()) await room.handle(tok(1), phones[0]!.action(seeded(i)));
+      else {
+        w.t = w.alarm!;
+        room.alarm();
+      }
+    }
+    expect(room.snapshot.phase).toBe('over');
+    expect(room.snapshot.events.at(-1)).toBe('q1');
+  });
+
+  it('1v1v1v1: someone who leaves is out, and the rest play on to the end', async () => {
+    const { w, room, phones } = await started(OPTS, 4, 5);
+    await room.handle(tok(3), { t: 'leave' });
+    expect(room.snapshot.phase).toBe('playing');
+    expect(room.snapshot.events.at(-1)).toBe('q2');
+    await playOut(room, w, phones.filter((_, i) => i !== 2), seeded(6));
+    phones.forEach((p) => p.sync());
+    expect(ownerRanking(phones[0]!.state!).at(-1)).toBe(2);
+  });
+
+  it('2v2: a partner leaving forfeits the team; someone whose colour is already home can go', async () => {
+    const { room } = await started({ ...OPTS, mode: '2v2' }, 4, 7);
+    // Person 3 (red, team A with person 1) leaves: team A forfeits.
+    await room.handle(tok(3), { t: 'leave' });
+    expect(room.snapshot.phase).toBe('over');
+    expect(room.snapshot.events.at(-1)).toBe('q0');
+
+    // A person whose colour is home leaves: no forfeit (they had nothing left to play).
+    const w2 = world(8);
+    const r2 = RoomCore.create('FGHJK', { ...OPTS, mode: '2v2' }, w2.io);
+    for (let i = 1; i <= 4; i++) r2.hello(tok(i), hello(i));
+    await r2.handle(tok(1), { t: 'start' });
+    const internal = r2 as unknown as { state: GameState };
+    internal.state = { ...internal.state, players: internal.state.players.map((p) => (p.color === 'blue' ? { ...p, tokens: [56, 56, 56, 56] } : p)) };
+    await r2.handle(tok(1), { t: 'leave' });
+    expect(r2.snapshot.phase).toBe('playing');
+    expect(r2.snapshot.events.some((e) => e[0] === 'q')).toBe(false);
   });
 
   it('ends the game when the last person still playing leaves', async () => {

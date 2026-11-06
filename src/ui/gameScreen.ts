@@ -1,6 +1,6 @@
 // Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
 // a person passing the device; a person with two houses plays both colours' turns.
-import { FINISHED, applyEvent, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type Rng, STOP_EVENT } from '../engine';
+import { FINISHED, RESIGN, applyEvent, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type Rng, STOP_EVENT } from '../engine';
 import { chooseBotMoveAsync, RolloutStopped, stopRolloutWorker } from '../engine/ai/levels';
 import { calmAfter } from './calm';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
@@ -228,7 +228,7 @@ export class GameScreen {
         const tag = pl.querySelector<HTMLElement>('.net')!;
         // Once the game is over, people leaving the room isn't news.
         const over = this.ended || this.state.phase === 'over';
-        const text = !m || over ? '' : !m.online ? 'OFFLINE' : m.auto ? 'AUTO' : '';
+        const text = !m || over ? '' : m.left ? 'LEFT' : !m.online ? 'OFFLINE' : '';
         tag.hidden = !text;
         tag.textContent = text;
       });
@@ -542,7 +542,8 @@ export class GameScreen {
         ev = first.e;
       }
     } else {
-      if (!mine) this.setHint(c, `${this.name(c)} is playing…`, this.cur.bot ? 'Bot turn' : link.members[this.controller(c)]?.auto ? 'A bot plays for them' : 'Their turn');
+      const who = link.members[this.controller(c)];
+      if (!mine) this.setHint(c, `${this.name(c)} is playing…`, this.cur.bot ? 'Bot turn' : who && !who.online ? 'Offline: waiting for them to come back' : 'Their turn');
       ev = await next;
     }
     if (this.disposed) return;
@@ -551,15 +552,51 @@ export class GameScreen {
       this.ended = true;
       return;
     }
+    if (ev[0] === RESIGN) return this.onlineResign(Number(ev[1]), ev);
+    // An event that doesn't fit this screen's game (it lost track somehow): rebuild the game from the server's events.
+    const fits = this.state.phase === 'roll' ? /^[1-6]$/.test(ev) : this.state.moves.some((x) => moveEvent(x) === ev);
+    if (!fits) return this.onlineResync(link);
     if (this.state.phase === 'roll') return this.doRoll(c, Number(ev));
-    const m = this.state.moves.find((x) => moveEvent(x) === ev);
-    if (!m) throw new Error(`online: the server's move ${ev} isn't legal here`);
+    const m = this.state.moves.find((x) => moveEvent(x) === ev)!;
     if (!mine) {
       // Light up the die being played, as for bots.
       this.drawTrays(m.roll);
       await this.sleep(150);
     }
     await this.doMove(m);
+  }
+
+  /** A side left the game (its person forfeited): its tokens leave the board, and it's out (RULES.md section K). */
+  private async onlineResign(owner: number, ev: string) {
+    const name = this.config.names[owner] ?? 'A player';
+    const color = this.state.players.find((p) => p.owner === owner)!.color;
+    this.state = applyEvent(this.state, ev);
+    if (this.log !== null) this.log += ev;
+    this.view.layout(this.state.players);
+    this.drawTrays();
+    this.liveUpdate();
+    const mine = this.state.players.some((p) => p.owner === owner && this.isMe(p.color));
+    this.toast(mine ? 'Your team forfeited' : `${name} left`, color);
+    if (this.state.phase === 'over') this.setHint(color, `${name} left the game`, mine ? 'Your partner left: your team forfeits' : 'They forfeit: the game is yours');
+    await this.sleep(1200);
+  }
+
+  /** Rebuilds the game from the room's events (after an event that didn't fit), then carries on. */
+  private onlineResync(link: RoomLink) {
+    let s = createGame(this.config.seats, this.config.first, this.config.singles);
+    let log = '';
+    for (const ev of link.played()) {
+      if (ev === STOP_EVENT) {
+        this.ended = true;
+        break;
+      }
+      s = applyEvent(s, ev);
+      log += ev;
+    }
+    this.state = s;
+    this.log = log;
+    this.view.layout(s.players);
+    this.drawTrays();
   }
 
   /** This person's roll or move, as the message for the server, and a way to take the offer back. */
@@ -1016,7 +1053,7 @@ export class GameScreen {
           if (!b.classList.contains('sure')) {
             b.classList.add('sure');
             b.textContent = 'TAP AGAIN TO LEAVE';
-            b.after(Object.assign(document.createElement('p'), { className: 'sub warn', textContent: 'A bot plays on for you. You can’t come back to this game.' }));
+            b.after(Object.assign(document.createElement('p'), { className: 'sub warn', textContent: this.online && this.state.players.some((p) => this.isMe(p.color) && !isDone(p)) ? 'You forfeit: you lose this game (in Ranked, last place).' : 'You can’t come back to this game.' }));
             return;
           }
           const link = this.online;
@@ -1117,7 +1154,7 @@ export class GameScreen {
         const mine = colorsOf(o);
         const c = mine[0]!.color;
         const bot = mine[0]!.bot;
-        const sub = i === 0 ? 'Winner' : bot ? 'Bot' : `${PLACES[i + 1]!.toLowerCase()} place`;
+        const sub = this.state.out?.includes(o) ? 'Left the game' : i === 0 ? 'Winner' : bot ? 'Bot' : `${PLACES[i + 1]!.toLowerCase()} place`;
         const home = mine.reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
         const pct = Math.round((100 * mine.reduce((a, p) => a + p.tokens.reduce((x, t) => x + Math.max(t, 0), 0), 0)) / (FINISHED * 4 * mine.length));
         return `<div class="row${i === 0 ? ' first' : ''}${bot ? '' : ' me'}"><span class="medal m${i + 1}">${i + 1}</span>

@@ -51,6 +51,12 @@ export type Reviewer = (state: GameState, n: number, seed: number, ask?: ReviewA
 export type Label = 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder';
 
 /**
+ * A decision the review judges: one of `who`'s, with a real choice. Not after a side resigned (online: someone
+ * left a 1v1v1v1 game): the playout engine (sim-wasm) doesn't know a side can be out, so it would misjudge them.
+ */
+export const isReviewDecision = (s: GameState, who: number[]) => s.phase === 'move' && s.moves.length > 1 && who.includes(s.players[s.current]!.owner) && !s.out?.length;
+
+/**
  * A label cut set, in points of win probability given up (0-100), for 2p; other layouts are scaled by
  * THRESHOLDS_BY_LAYOUT, none under `floor`. "Best" up to `best` (or within one standard error: a coin flip
  * isn't a mistake), then the top of each label (tools/ai/REVIEW_CALIB.md, #138).
@@ -273,7 +279,7 @@ export async function reviewMoves(rec: GameRecord, states: GameState[], who: num
   const todo: number[] = [];
   for (let i = 0; i + 1 < states.length; i++) {
     const s = states[i]!;
-    if (s.phase === 'move' && who.includes(s.players[s.current]!.owner) && s.moves.length > 1) todo.push(i);
+    if (isReviewDecision(s, who)) todo.push(i);
   }
   // For the stakes order, the net screen of every decision first (no seed: it plays nothing out); a reviewer
   // without it answers with something else and the order stays the game's. Otherwise the race screens.
