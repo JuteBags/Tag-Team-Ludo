@@ -5,7 +5,7 @@
 // The server's event list only ever grows, so the link keeps every event it has seen and hands them to the
 // game screen one at a time (next()). A `game` message (on every reconnect) fills in anything missed; an `ev`
 // already seen is ignored; an `ev` past a gap forces a reconnect, whose `game` message fills the gap.
-import { PROTOCOL, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ServerMsg, type Turn } from './protocol';
+import { PROTOCOL, type ChatFeatures, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ServerMsg, type Turn } from './protocol';
 
 /**
  * The room server's address: VITE_ROOMS_URL, and only that. Set ROOMS_URL (the CI repository variable, or the
@@ -64,6 +64,8 @@ export class RoomLink {
   lobbyEnds = 0;
   members: Member[] = [];
   setup: GameSetup | null = null;
+  /** What the room's chat allows (#212), or null: the server has no chat. */
+  chat: ChatFeatures | null = null;
   turn: Turn | null = null;
   /** When `turn` was received (performance.now), to count its time down. */
   turnAt = 0;
@@ -185,6 +187,7 @@ export class RoomLink {
         this.you = m.you;
         this.options = m.options;
         this.members = m.members;
+        this.chat = m.chat ?? null;
         this.lobbyEnds = performance.now() + m.endsIn;
         saveRoom({ code: m.code, token: this.token, name: this.name, at: Date.now() });
         break;
@@ -193,6 +196,7 @@ export class RoomLink {
         this.you = m.you;
         this.setup = m.setup;
         this.members = m.members;
+        this.chat = m.chat ?? null;
         this.setTurn(m.turn);
         // Anything missed while away; what we have is always the start of the server's list.
         for (let i = this.events.length; i < m.events.length; i++) this.push(m.events[i]!);
@@ -272,6 +276,16 @@ export class RoomLink {
   /** Events handed out so far: the sequence number of the next action. */
   get seq(): number {
     return this.consumed;
+  }
+
+  /** A chat line (#212): one of QUICK_CHAT or CHAT_EMOJI by index, or free text. The server relays it. */
+  say(line: { quick: number } | { emoji: number } | { text: string }) {
+    if (this.chat) this.send({ t: 'chat', ...line });
+  }
+
+  /** Reports a chat line: member `from` said `text`. */
+  report(from: number, text: string) {
+    this.send({ t: 'report', from, text });
   }
 
   send(m: ClientMsg) {

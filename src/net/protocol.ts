@@ -119,6 +119,10 @@ export type ClientMsg =
   | { t: 'move'; seq: number; ev: string }
   /** Leave the room: from the lobby the seat frees up; in a game a bot plays on for you. */
   | { t: 'leave' }
+  /** Chat (#212): one of QUICK_CHAT, one of CHAT_EMOJI, or free text (private rooms only). */
+  | { t: 'chat'; quick?: number; emoji?: number; text?: string }
+  /** Report a chat line: who said it (member index) and what it said. The server keeps nothing else. */
+  | { t: 'report'; from: number; text: string }
   | { t: 'ping' };
 
 export type ServerMsg =
@@ -126,9 +130,9 @@ export type ServerMsg =
    * The room before its game: on joining, and whenever someone comes, goes or the host changes. `endsIn`: ms
    * until the wait ends (the game starts with bots, or the room closes if nobody joined).
    */
-  | { t: 'lobby'; code: string; options: RoomOptions; members: Member[]; you: number; endsIn: number }
+  | { t: 'lobby'; code: string; options: RoomOptions; members: Member[]; you: number; endsIn: number; chat?: ChatFeatures }
   /** The whole game so far: when it starts, and on every reconnect. The app replays `events` from `setup`. */
-  | { t: 'game'; code: string; setup: GameSetup; events: string[]; members: Member[]; you: number; turn: Turn | null }
+  | { t: 'game'; code: string; setup: GameSetup; events: string[]; members: Member[]; you: number; turn: Turn | null; chat?: ChatFeatures }
   /** One more event, at index `seq`; then whose turn it is. */
   | { t: 'ev'; seq: number; ev: string; turn: Turn | null }
   /** Someone connected, dropped, left, or got a bot playing for them. */
@@ -140,6 +144,10 @@ export type ServerMsg =
   | { t: 'over'; seed: number; stopped: boolean }
   /** Ranked: this person's rating in the game's mode, before and after the game (sent after `over`). */
   | { t: 'rated'; mode: GameMode; before: number; after: number; games: number }
+  /** A chat line from member `from` (relayed as it came, after the server's clean-up; stored nowhere). */
+  | { t: 'chat'; from: number; quick?: number; emoji?: number; text?: string; at: number }
+  /** The report reached the server. */
+  | { t: 'reported' }
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'pong' };
 
@@ -193,3 +201,29 @@ export type ErrorCode =
   | 'no-account' // the ranked account is unknown or its secret is wrong
   | 'in-queue' // this account is already searching
   | 'bad-message';
+
+// ---------- chat (#212) ----------
+// Quick phrases and emoji for everyone; free text in private rooms only. The server relays each line to the room
+// and stores none; a report sends that one line and the room's code to the server's log. A server without chat
+// (an older one) doesn't announce it, and the app shows no chat.
+
+/** What a room's chat allows (announced in `lobby` and `game`). */
+export interface ChatFeatures {
+  text: boolean;
+}
+export const QUICK_CHAT: readonly string[] = ['Nice move!', 'Your turn', 'Good luck!', 'So close!', 'Oops!', 'Thanks!', 'Well played', 'GG'];
+export const CHAT_EMOJI: readonly string[] = ['👍', '👏', '😂', '😮', '😢', '😡', '🎉', '🔥'];
+/** Longest free-text line, and the least time between two lines from one person. */
+export const CHAT_MAX = 120;
+export const CHAT_GAP_MS = 1000;
+
+/** Words the filter masks (whole words, any case): a short list, to grow from reports. */
+const BLOCKED = ['fuck', 'fucking', 'shit', 'bitch', 'bastard', 'asshole', 'cunt', 'dick', 'slut', 'whore', 'chutiya', 'madarchod', 'bhenchod', 'behenchod', 'gandu', 'randi'];
+const BLOCKED_RE = new RegExp(`\\b(${BLOCKED.join('|')})\\b`, 'gi');
+
+/** A free-text line as the room sees it: no control characters, spaces collapsed, CHAT_MAX at most, rude words masked. Empty: not sent. */
+export function cleanChat(text: unknown): string {
+  if (typeof text !== 'string') return '';
+  const t = text.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX);
+  return t.replace(BLOCKED_RE, (w) => w[0] + '*'.repeat(w.length - 1));
+}

@@ -149,6 +149,8 @@ export class Room extends DurableObject<Env> {
         void ctx.storage.deleteAll();
       },
       random: () => crypto.getRandomValues(new Uint32Array(1))[0]! / 4294967296,
+      // A reported chat line (#212), for review in the Worker's logs (observability is on). Chat keeps nothing else.
+      report: (r) => console.log(JSON.stringify({ type: 'chat-report', ...r })),
       rate: (report) => accounts(this.env).rate(report),
     };
   }

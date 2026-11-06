@@ -418,3 +418,78 @@ describe('online room: ranked', () => {
     expect(last.members).toEqual([{ account: 'a' }]);
   });
 });
+
+describe('online room: chat (#212)', () => {
+  const chats = (w: ReturnType<typeof world>, i: number) => (w.inbox.get(tok(i)) ?? []).filter((m) => m.t === 'chat');
+  const twoInRoom = (w: ReturnType<typeof world>) => {
+    const room = RoomCore.create('CHATS', { ...OPTS, mode: '1v1' }, w.io);
+    expect(room.hello(tok(1), hello(1, 'Asha'))).toBeNull();
+    expect(room.hello(tok(2), hello(2, 'Leo'))).toBeNull();
+    return room;
+  };
+
+  it('announces chat, relays quick phrases, emoji and text to everyone, and keeps none of it', async () => {
+    const w = world(21);
+    const room = twoInRoom(w);
+    const lobby = (w.inbox.get(tok(2)) ?? []).filter((m) => m.t === 'lobby').at(-1)!;
+    expect(lobby.t === 'lobby' && lobby.chat).toEqual({ text: true });
+    const before = JSON.stringify(room.snapshot);
+    expect(await room.handle(tok(1), { t: 'chat', quick: 0 })).toBeNull();
+    w.t += 1000;
+    expect(await room.handle(tok(2), { t: 'chat', emoji: 2 })).toBeNull();
+    w.t += 1000;
+    expect(await room.handle(tok(1), { t: 'chat', text: '  hello\u0007   there  ' })).toBeNull();
+    for (const i of [1, 2])
+      expect(chats(w, i).map((m) => m.t === 'chat' && { from: m.from, quick: m.quick, emoji: m.emoji, text: m.text })).toEqual([
+        { from: 0, quick: 0, emoji: undefined, text: undefined },
+        { from: 1, quick: undefined, emoji: 2, text: undefined },
+        { from: 0, quick: undefined, emoji: undefined, text: 'hello there' },
+      ]);
+    // Nothing of the chat is in the room's saved data (only the last-activity time moved).
+    const strip = (s: string) => s.replace(/"touched":\d+/, '');
+    expect(strip(JSON.stringify(room.snapshot))).toBe(strip(before));
+    expect(JSON.stringify(room.snapshot)).not.toContain('hello');
+  });
+
+  it('allows one line a second each, masks rude words, caps the length, and drops anything unknown', async () => {
+    const w = world(22);
+    const room = twoInRoom(w);
+    await room.handle(tok(1), { t: 'chat', quick: 1 });
+    await room.handle(tok(1), { t: 'chat', quick: 2 }); // too soon: dropped
+    w.t += 999;
+    await room.handle(tok(1), { t: 'chat', quick: 3 }); // still too soon
+    w.t += 1;
+    await room.handle(tok(1), { t: 'chat', text: `what the shit ${'x'.repeat(200)}` });
+    w.t += 1000;
+    await room.handle(tok(1), { t: 'chat', quick: 99 });
+    await room.handle(tok(1), { t: 'chat', text: '   ' });
+    const got = chats(w, 2);
+    expect(got).toHaveLength(2);
+    const text = got[1]!.t === 'chat' ? got[1]!.text! : '';
+    expect(text.startsWith('what the s*** ')).toBe(true);
+    expect(text.length).toBe(120);
+  });
+
+  it('a Ranked room has quick chat and emoji only: no free text', async () => {
+    const w = world(23);
+    const room = RoomCore.ranked('RANKC', { ...OPTS, mode: '1v1' }, [{ token: tok(1), name: 'A', account: 'a' }, { token: tok(2), name: 'B', account: 'b' }], 1000, w.io);
+    expect(room.hello(tok(1), hello(1))).toBeNull();
+    const game = (w.inbox.get(tok(1)) ?? []).find((m) => m.t === 'game')!;
+    expect(game.t === 'game' && game.chat).toEqual({ text: false });
+    await room.handle(tok(1), { t: 'chat', text: 'hi' });
+    w.t += 1000;
+    await room.handle(tok(1), { t: 'chat', emoji: 0 });
+    expect(chats(w, 1).map((m) => m.t === 'chat' && (m.text ?? m.emoji))).toEqual([0]);
+  });
+
+  it('a report goes to the server log with the room and the names, and the reporter hears back', async () => {
+    const w = world(24);
+    const reports: unknown[] = [];
+    w.io.report = (r) => reports.push(r);
+    const room = twoInRoom(w);
+    expect(await room.handle(tok(2), { t: 'report', from: 0, text: 'something rude' })).toBeNull();
+    expect(reports).toEqual([{ room: 'CHATS', reporter: 'Leo', from: 'Asha', text: 'something rude', at: w.t }]);
+    expect((w.inbox.get(tok(2)) ?? []).some((m) => m.t === 'reported')).toBe(true);
+    expect(await room.handle(tok(2), { t: 'report', from: 7, text: 'x' })).toBe('bad-message');
+  });
+});

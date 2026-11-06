@@ -7,7 +7,7 @@
 // brute-forcing the 32-bit seed therefore never tells anyone the next face.
 import { STOP_EVENT, applyEvent, ownerRanking, resign, resignEvent, createGame, diceWeights, isDone, mixSeed, move, moveEvent, positionKey, roll, rollEvent, sampleFace, seeded, type Color, type GameState, type Rng, type Seat } from '../../src/engine';
 import { chooseRuleMove } from '../../src/engine/ai/choose';
-import { GAME_MODES, MAX_NAME, ONLINE_LEVELS, PROTOCOL, modeSlots, type GameMode, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ServerMsg, type Turn } from '../../src/net/protocol';
+import { CHAT_EMOJI, CHAT_GAP_MS, CHAT_MAX, GAME_MODES, MAX_NAME, QUICK_CHAT, cleanChat, ONLINE_LEVELS, PROTOCOL, modeSlots, type GameMode, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ChatFeatures, type ServerMsg, type Turn } from '../../src/net/protocol';
 
 /** A person's time to roll or move before the server plays that step for them. */
 export const TURN_MS = 30_000;
@@ -46,6 +46,8 @@ export interface RoomIO {
   destroy(): void;
   /** Uniform in [0, 1) from a CSPRNG (the faces) and a 32-bit random seed. */
   random: Rng;
+  /** Chat (#212): a reported line, for review (the server's log). Nothing else from chat is kept anywhere. */
+  report?(r: ChatReport): void;
   /** Ranked: rates the finished game (the accounts store), answering each account's rating before and after. */
   rate?(report: RateReport): Promise<Record<string, RatedPerson>>;
 }
@@ -59,6 +61,15 @@ export interface RatedPerson {
   before: number;
   after: number;
   games: number;
+}
+
+/** A reported chat line: the room, who reported it, who said it and what (names as they were in the room). */
+export interface ChatReport {
+  room: string;
+  reporter: string;
+  from: string;
+  text: string;
+  at: number;
 }
 
 interface MemberData {
@@ -138,6 +149,8 @@ export class RoomCore {
   private state: GameState | null = null;
   /** Tokens with a connection open now (not persisted: the adapter re-adds them on wake). */
   private online = new Set<string>();
+  /** When each token last chatted (not persisted: chat keeps nothing). */
+  private chatAt = new Map<string, number>();
 
   constructor(private data: RoomData, private io: RoomIO) {
     if (data.setup) this.state = rebuild(data.setup, data.events);
@@ -259,9 +272,47 @@ export class RoomCore {
         this.afterEvent();
         return null;
       }
+      case 'chat':
+        this.chat(me, msg);
+        return null;
+      case 'report': {
+        const from = d.members[msg.from];
+        if (!from || typeof msg.text !== 'string') return 'bad-message';
+        this.io.report?.({ room: d.code, reporter: d.members[me]!.name, from: from.name, text: msg.text.slice(0, CHAT_MAX), at: this.io.now() });
+        this.io.send(token, { t: 'reported' });
+        return null;
+      }
       default:
         return 'bad-message';
     }
+  }
+
+  /** What this room's chat allows: free text only in private rooms (not Ranked). */
+  private chatFeatures(): ChatFeatures {
+    return { text: !this.data.setup?.ranked };
+  }
+
+  /**
+   * A chat line from member `me` (#212), relayed to everyone in the room and kept nowhere: one of QUICK_CHAT or
+   * CHAT_EMOJI, or free text (cleanChat) where it's allowed. At most one line per CHAT_GAP_MS each; extra lines
+   * and anything else are dropped without a word.
+   */
+  private chat(me: number, msg: Extract<ClientMsg, { t: 'chat' }>) {
+    const d = this.data;
+    const m = d.members[me]!;
+    if (m.left) return;
+    const now = this.io.now();
+    if (now - (this.chatAt.get(m.token) ?? -Infinity) < CHAT_GAP_MS) return;
+    let line: { quick?: number; emoji?: number; text?: string } | null = null;
+    if (Number.isInteger(msg.quick) && msg.quick! >= 0 && msg.quick! < QUICK_CHAT.length) line = { quick: msg.quick };
+    else if (Number.isInteger(msg.emoji) && msg.emoji! >= 0 && msg.emoji! < CHAT_EMOJI.length) line = { emoji: msg.emoji };
+    else if (this.chatFeatures().text) {
+      const text = cleanChat(msg.text);
+      if (text) line = { text };
+    }
+    if (!line) return;
+    this.chatAt.set(m.token, now);
+    for (const x of d.members) if (!x.left || x === m) this.io.send(x.token, { t: 'chat', from: me, ...line, at: now });
   }
 
   // ---------- the clock ----------
@@ -537,9 +588,9 @@ export class RoomCore {
     const d = this.data;
     const you = d.members.findIndex((m) => m.token === token);
     if (you < 0) return;
-    if (d.phase === 'lobby') this.io.send(token, { t: 'lobby', code: d.code, options: d.options, members: this.members(), you, endsIn: Math.max(0, d.lobbyEnds - this.io.now()) });
+    if (d.phase === 'lobby') this.io.send(token, { t: 'lobby', code: d.code, options: d.options, members: this.members(), you, endsIn: Math.max(0, d.lobbyEnds - this.io.now()), chat: this.chatFeatures() });
     else {
-      this.io.send(token, { t: 'game', code: d.code, setup: d.setup!, events: [...d.events], members: this.members(), you, turn: this.turn() });
+      this.io.send(token, { t: 'game', code: d.code, setup: d.setup!, events: [...d.events], members: this.members(), you, turn: this.turn(), chat: this.chatFeatures() });
       if (d.phase === 'over') {
         this.io.send(token, { t: 'over', seed: d.seed!, stopped: d.events[d.events.length - 1] === STOP_EVENT });
         // Ranked: the rating change, for a phone that missed it.

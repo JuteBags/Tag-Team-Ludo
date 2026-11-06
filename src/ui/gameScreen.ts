@@ -4,6 +4,7 @@ import { FINISHED, RESIGN, applyEvent, createGame, isDone, mixSeed, move, moveEv
 import { chooseBotMoveAsync, RolloutStopped, stopRolloutWorker } from '../engine/ai/levels';
 import { calmAfter } from './calm';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
+import { mountChat } from './chat';
 import { BoardView } from './boardView';
 import { dieMarkup, rollDie } from './dice';
 import { saveSetting, settings } from './settings';
@@ -243,9 +244,12 @@ export class GameScreen {
       if (m.t === 'status') status();
     });
     members();
+    // Chat (#212), when the room's server has it: in the top bar's empty right-hand slot.
+    const unchat = mountChat(this.el, link, this.el.querySelector('.gtop .rbtn-space'));
     this.unwatch = () => {
       clearInterval(timer);
       off();
+      unchat();
     };
   }
 

@@ -1247,3 +1247,32 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .terms-ov .later{display:block;margin:10px auto 0;min-height:40px;padding:0 14px;background:none;color:#fff;font-weight:900;font-size:14px;opacity:.8}
 .set.about .legalstate{display:flex;flex-direction:column;gap:8px}
 .set.about .legalstate .b3{width:100%;font-size:17px}
+
+/* Chat in an online game (#212): plain for now; the fuller design comes later. */
+.chatbtn{position:relative}
+.chatbtn svg{width:24px;height:24px}
+.chatbtn .dot{position:absolute;top:4px;right:4px;width:10px;height:10px;border-radius:50%;background:#ffd65a;box-shadow:0 0 0 2px #0b1d5c}
+.chattoast{position:absolute;top:66px;left:16px;right:16px;z-index:6;display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:none}
+.chattoast .cb{max-width:80%;padding:7px 12px;border-radius:14px 14px 4px 14px;background:rgba(5,20,70,.9);box-shadow:0 4px 10px rgba(0,0,0,.35);font-size:14px;font-weight:800;color:#fff;animation:cbin .2s ease-out}
+.chattoast .cb b{color:#ffd65a}
+@keyframes cbin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.chattoast .cb{animation:none}}
+.sheet.chat .box{width:330px;text-align:left}
+.sheet.chat h2{text-align:center}
+.clog{max-height:220px;overflow-y:auto;margin:8px 0;padding:8px;border-radius:14px;background:rgba(0,0,0,.22);display:flex;flex-direction:column;gap:6px}
+.cl{display:flex;align-items:baseline;gap:6px;font-size:14px;font-weight:700;line-height:1.3}
+.cl b{color:#ffd65a;flex:none}
+.cl span{flex:1;min-width:0;overflow-wrap:anywhere}
+.crep{flex:none;padding:2px 8px;border-radius:8px;background:rgba(255,255,255,.12);color:#fff;font-size:11.5px;font-weight:900}
+.crep:disabled{opacity:.5}
+.cnone{opacity:.7;font-size:13px;font-weight:700;text-align:center}
+.cquick{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.cquick button{padding:8px 10px;border-radius:12px;background:rgba(0,0,0,.25);color:#fff;font-size:13px;font-weight:900}
+.cemoji{display:flex;justify-content:space-between;margin-top:8px}
+.cemoji button{width:36px;height:40px;border-radius:10px;background:rgba(0,0,0,.2);font-size:22px}
+.ctext{display:flex;gap:8px;margin-top:10px}
+.ctext input{flex:1;min-width:0;height:44px;padding:0 12px;border-radius:12px;border:none;background:rgba(255,255,255,.92);font:800 15px Nunito,sans-serif;color:#0b1d5c}
+.ctext .b3{width:auto;padding:0 14px;font-size:16px;margin:0}
+.cpeople{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.cmute{padding:6px 10px;border-radius:10px;background:rgba(0,0,0,.2);color:#fff;font-size:12px;font-weight:900;opacity:.85}
+.cmute.on{background:rgba(238,53,53,.35)}
