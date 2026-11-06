@@ -33,7 +33,7 @@
   - `sfx.ts` sounds synthesised with Web Audio (no audio files) and vibration; mute is in the pause menu
   - `dice.ts` CSS 3D die and roll animation
   - `gameScreen.ts` turn loop (one roll or one move per step), bot pacing, the tray of dice beside the current player's dice (tap a die, then a token or its landing marker), banners, pause menu, the keep-playing vote when someone finishes (RULES.md rule 41), saving for Continue, stats, the result screen with Share. Going to the background pauses and saves
-  - `homeScreen.ts` home screen: VS COMPUTER and WITH FRIENDS (both offline), player count, CONTINUE GAME when a game is saved, the colour-blind symbols switch, Stats and Settings buttons in the top corners; Online/Private tiles are locked placeholders
+  - `homeScreen.ts` home screen: VS COMPUTER and WITH FRIENDS (both offline), player count, CONTINUE GAME when a game is saved, Stats and Settings buttons (the colour-blind switch is in Settings) in the top corners; Online/Private tiles are locked placeholders
   - `sheets.ts` the Settings sheet (board theme, doubles on/off, symbols, dice face, sound) and the Stats sheet (with a two-tap reset)
   - `themes.ts` board themes (Classic, Wooden, Dark) and the colour-blind symbols: both are CSS on `<html>` (`data-theme`, `.symbols`), and the board art reads CSS variables (`--b-*` at the top of `styles.css`), so switching is instant. A new theme is one more block of variables
   - `store.ts` device storage via Capacitor Preferences: the saved game (written at the start of every turn, removed when the game ends or you quit) and the stats
