@@ -5,6 +5,7 @@
 // of theirs gets its verdict in the caption, the board shows the move played and the best one ("Show best
 // move"), a win-chance bar shows everyone's chances as you step, the scrubber has ticks at their mistakes,
 // captures and the turning point, and the outer buttons jump between mistakes.
+import { copyText } from './clipboard';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { replay, type GameRecord, type GameState } from '../engine';
@@ -445,7 +446,7 @@ async function share(rec: GameRecord, label: HTMLElement) {
     if (Capacitor.isNativePlatform()) await Share.share({ title: 'Tag Team Ludo', text, url, dialogTitle: 'Share this game' });
     else if (navigator.share) await navigator.share({ title: 'Tag Team Ludo', text, url });
     else {
-      await navigator.clipboard.writeText(url);
+      if (!(await copyText(url))) return;
       label.textContent = 'LINK COPIED';
       setTimeout(() => (label.textContent = 'SHARE GAME'), 1800);
     }
