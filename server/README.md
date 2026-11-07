@@ -1,6 +1,6 @@
 # The room server
 
-A Cloudflare Worker with Durable Objects: private rooms, the Ranked queue and accounts, and friends. The game logic is in `src/room-core.ts`; `AGENTS.md` (at the repo root) describes every file. `npm run dev` runs it on this computer at http://localhost:8787.
+A Cloudflare Worker with Durable Objects: private rooms, the Ranked queue and accounts, and friends. The game logic is in `src/room-core.ts`; `AGENTS.md` (at the repo root) describes every file. `npm run dev` runs it on this computer at http://localhost:8787. It's deployed to the owner's account by hand from Actions: **Server deploy** (`.github/workflows/server-deploy.yml`), staging or production.
 
 ## Limits against abuse (#220)
 

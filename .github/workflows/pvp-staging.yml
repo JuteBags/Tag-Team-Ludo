@@ -23,8 +23,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The room server: the repository variable ROOMS_STAGING_URL, else the staging server #204 was built against.
-  VITE_ROOMS_URL: ${{ vars.ROOMS_STAGING_URL || 'wss://tag-team-ludo-rooms-staging.tag-team-ludo-server.workers.dev' }}
+  # The remote tests' room server: our staging on the owner's account (server-deploy.yml deploys it), or the
+  # repository variable STAGING_ROOMS_URL.
+  VITE_ROOMS_URL: ${{ vars.STAGING_ROOMS_URL || 'wss://tag-team-ludo-rooms-staging.tag-team-ludo.workers.dev' }}
 
 jobs:
   test:
