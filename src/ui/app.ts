@@ -14,7 +14,9 @@ import { offerCheckIn } from './checkin';
 import { hasAcceptedTerms, offerTerms } from './legal';
 import { settings } from './settings';
 import { decodeRecord, type GameRecord } from '../engine';
-import { linkAction, linkPayload, type LinkAction } from './replay';
+import { framesOf, linkAction, linkCode, linkPayload, sharedReview, type LinkAction } from './replay';
+import { fetchShare } from '../net/shares';
+import type { StoredReview } from './store';
 import { bootReviews, setGame } from './reviewQueue';
 import { prefetchAtIdle, screens, setScreen, show } from './lazy';
 import { roomsUrl, type RoomLink } from '../net/client';
@@ -70,14 +72,15 @@ export function mountApp(root: HTMLElement) {
   // `keep`: the game is one of the past games, so its review is stored (not for a game from a link).
   const storedReview = async (rec: GameRecord, keep: boolean) =>
     keep ? await loadReview(rec) : undefined;
-  const watch = async (rec: GameRecord, back: () => void, keep = true, startAt?: number, startCaption?: string, pov?: number) => {
-    const stored = await storedReview(rec, keep);
-    await show(stage, screens.replay, (m) => m.safeReplayScreen(rec, back, { startAt, startCaption, pov, keep, review: stored, onReview: (p) => void review(rec, back, keep, p) }), back);
+  // `given`: a review that came with the game (a short link's, #229), shown as if it were stored.
+  const watch = async (rec: GameRecord, back: () => void, keep = true, startAt?: number, startCaption?: string, pov?: number, given?: StoredReview) => {
+    const stored = given ?? (await storedReview(rec, keep));
+    await show(stage, screens.replay, (m) => m.safeReplayScreen(rec, back, { startAt, startCaption, pov, keep, review: stored, onReview: (p) => void review(rec, back, keep, p, given) }), back);
   };
   /** The game review of `rec` (it runs in the review queue); a tapped move opens the replay there, from the same side. */
-  const review = async (rec: GameRecord, back: () => void, keep = true, pov?: number) => {
-    const stored = await storedReview(rec, keep);
-    await show(stage, screens.review, (m) => m.reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p), keep, at, caption, p), keep, pov), back);
+  const review = async (rec: GameRecord, back: () => void, keep = true, pov?: number, given?: StoredReview) => {
+    const stored = given ?? (await storedReview(rec, keep));
+    await show(stage, screens.review, (m) => m.reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p, given), keep, at, caption, p, given), keep, pov), back);
   };
   /** With friends, online: the private-room screens, then the room's game (the server plays it; this screen shows it). */
   const online = async (rejoin = false, join?: string) => {
@@ -166,8 +169,9 @@ export function mountApp(root: HTMLElement) {
       return true;
     }
     const payload = linkPayload(location.hash);
+    const code = linkCode(location.hash);
     const bench = location.hash === '#bench';
-    if (payload === null && !bench) return false;
+    if (payload === null && code === null && !bench) return false;
     // A game in progress stops here; it was saved at the start of its turn, so Continue picks it up.
     if (game && stage.contains(game.el)) game.dispose();
     game = null;
@@ -177,6 +181,11 @@ export function mountApp(root: HTMLElement) {
     };
     // The hidden Extreme speed test (#62), for timing a real phone.
     if (bench) void show(stage, screens.bench, (m) => m.benchScreen(leave), leave);
+    // A short link (#229): the game (and the sharer's review, if it checks out) from our server.
+    else if (code)
+      void fetchShare(code).then((got) =>
+        got ? void watch(got.rec, leave, false, undefined, undefined, undefined, sharedReview(got.summary, framesOf(got.rec).frames.length)) : void show(stage, screens.replay, (m) => m.safeReplayScreen(null, leave), leave),
+      );
     else void decodeRecord(payload!).then((rec) => (rec ? void watch(rec, leave, false) : void show(stage, screens.replay, (m) => m.safeReplayScreen(null, leave), leave)));
     return true;
   };

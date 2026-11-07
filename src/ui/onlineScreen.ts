@@ -1,6 +1,7 @@
 // With friends, online: private rooms. Create a room (the mode, doubles, how the bots play) or join one with its
 // code, then wait in the lobby until the host starts; slots nobody takes are played by the server's bots. The
 // game itself is the usual game screen, driven by the room (gameScreen.ts with a RoomLink).
+import { copyText } from './clipboard';
 import type { Color } from '../engine';
 import { PROFILES, avatarSVG, cssVars, icons } from './art';
 import { RoomLink, loadRoom, roomsUrl } from '../net/client';
@@ -285,13 +286,11 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       link?.send({ t: 'start' });
     } else if (act === 'copy' && link?.code) {
       const label = b.querySelector('.copied')!;
-      void navigator.clipboard?.writeText(link.code).then(
-        () => {
-          label.textContent = 'Copied';
-          setTimeout(() => (label.textContent = 'Tap to copy'), 1600);
-        },
-        () => undefined,
-      );
+      void copyText(link.code).then((ok) => {
+        if (!ok) return;
+        label.textContent = 'Copied';
+        setTimeout(() => (label.textContent = 'Tap to copy'), 1600);
+      });
     } else if (act === 'share' && link?.code) {
       // #238: the room link, which opens the game (or the app) and joins.
       const url = roomLinkUrl(link.code, SITE);
@@ -303,7 +302,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
         setTimeout(() => (s.textContent = 'Tap to copy'), 1600);
       };
       if (nav.share) void nav.share({ text }).catch(() => undefined);
-      else void navigator.clipboard?.writeText(url).then(done, () => undefined);
+      else void copyText(url).then((ok) => ok && done());
     }
   });
   codeIn.addEventListener('input', () => {
