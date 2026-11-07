@@ -47,14 +47,16 @@ function hub(rooms: Record<string, Partial<Record<Color, string | null>>> = {}) 
   const last = (c: string) => got(c).at(-1);
   const lastOf = <T extends FriendServerMsg['t']>(c: string, t: T) => got(c).filter((m) => m.t === t).at(-1) as Extract<FriendServerMsg, { t: T }> | undefined;
   const me = (c: string) => got(c).find((m) => m.t === 'me') as Extract<FriendServerMsg, { t: 'me' }>;
-  return { core, s, got, last, lastOf, me, inbox, clock };
+  /** A hello from an app that knows requests (4.0.1); `old`: a 4.0.0 app. */
+  const hello = (conn: string, id: string, name: string, old = false) => core.hello(conn, id, name, false, !old);
+  return { core, hello, s, got, last, lastOf, me, inbox, clock };
 }
 
 /** A and B online, A has asked B by code; B's request id. */
 async function asked() {
   const h = hub();
-  h.core.hello('a1', 'A', 'Asha');
-  h.core.hello('b1', 'B', 'Leo');
+  h.hello('a1', 'A', 'Asha');
+  h.hello('b1', 'B', 'Leo');
   expect(await h.core.handle('a1', { t: 'add', code: h.me('b1').code })).toBeNull();
   return { h, id: h.lastOf('b1', 'request')!.from.id };
 }
@@ -62,8 +64,8 @@ async function asked() {
 describe('friends (#209)', () => {
   it('gives each account a code, and says who is online', async () => {
     const h = hub();
-    h.core.hello('a1', 'A', 'Asha');
-    h.core.hello('b1', 'B', 'Leo');
+    h.hello('a1', 'A', 'Asha');
+    h.hello('b1', 'B', 'Leo');
     const codeA = h.me('a1').code;
     expect(isFriendCode(codeA)).toBe(true);
     expect(h.me('b1').code).not.toBe(codeA);
@@ -74,7 +76,7 @@ describe('friends (#209)', () => {
     await h.core.handle('a1', { t: 'answer', id: h.lastOf('a1', 'request')!.from.id, accept: true });
     h.core.bye('b1');
     expect(h.last('a1')).toEqual({ t: 'friend', friend: { id: 'B', name: 'Leo', online: false } });
-    h.core.hello('b2', 'B', 'Leo');
+    h.hello('b2', 'B', 'Leo');
     expect(h.last('a1')).toEqual({ t: 'friend', friend: { id: 'B', name: 'Leo', online: true } });
     expect(h.me('b2').friends).toEqual([{ id: 'A', name: 'Asha', online: true }]);
     // An unknown code, your own code.
@@ -85,7 +87,7 @@ describe('friends (#209)', () => {
   it('online is any of an account’s connections; the last one closing makes it offline', async () => {
     const { h, id } = await asked();
     await h.core.handle('b1', { t: 'answer', id, accept: true });
-    h.core.hello('b2', 'B', 'Leo'); // a second tab
+    h.hello('b2', 'B', 'Leo'); // a second tab
     const before = h.got('a1').length;
     h.core.bye('b1');
     expect(h.got('a1').length).toBe(before); // still online on b2
@@ -95,7 +97,7 @@ describe('friends (#209)', () => {
 
   it('invites only an online friend into a room, and the answer goes back', async () => {
     const { h, id } = await asked();
-    h.core.hello('c1', 'C', 'Mira');
+    h.hello('c1', 'C', 'Mira');
     expect(await h.core.handle('a1', { t: 'invite', to: 'B', room: 'ABCDE' })).toBe('not-friends'); // only asked
     await h.core.handle('b1', { t: 'answer', id, accept: true });
     expect(await h.core.handle('a1', { t: 'invite', to: 'B', room: 'not a code' })).toBe('bad-message');
@@ -129,7 +131,7 @@ describe('friend requests (#237)', () => {
     // The id is the request's own, never an account id.
     expect(id).toMatch(/^[0-9a-f]{16}$/);
     // Someone coming online later finds it in hello.
-    h.core.hello('b2', 'B', 'Leo');
+    h.hello('b2', 'B', 'Leo');
     expect(h.me('b2').requests).toEqual([{ id, name: 'Asha', at: h.clock.t }]);
     expect(await h.core.handle('b1', { t: 'answer', id, accept: true })).toBeNull();
     expect(h.s.friendsOf('A')).toEqual(['B']);
@@ -168,10 +170,10 @@ describe('friend requests (#237)', () => {
 
   it('limits: so many requests an hour, and so many waiting', async () => {
     const h = hub();
-    h.core.hello('a1', 'A', 'Asha');
+    h.hello('a1', 'A', 'Asha');
     const codes: string[] = [];
     for (let i = 0; i < MAX_WAITING_OUT + 5; i++) {
-      h.core.hello(`p${i}`, `P${i}`, `P${i}`);
+      h.hello(`p${i}`, `P${i}`, `P${i}`);
       codes.push(h.me(`p${i}`).code);
     }
     let ok = 0;
@@ -185,8 +187,8 @@ describe('friend requests (#237)', () => {
 
   it('by seat after a game: only someone who was in the room, only a person with an account; partners too', async () => {
     const h = hub({ RMABC: { blue: 'A', green: 'B', red: 'C', yellow: null }, RMDEF: { blue: 'X', green: 'Y' } });
-    h.core.hello('a1', 'A', 'Asha');
-    h.core.hello('b1', 'B', 'Leo');
+    h.hello('a1', 'A', 'Asha');
+    h.hello('b1', 'B', 'Leo');
     // A asks whoever played green (B) and red (C, a teammate in 2v2: anyone in the room counts).
     expect(await h.core.handle('a1', { t: 'request', room: 'RMABC', color: 'green' })).toBeNull();
     expect(h.lastOf('b1', 'request')!.from.name).toBe('Asha');
@@ -201,10 +203,10 @@ describe('friend requests (#237)', () => {
 
   it('the room’s standing for the result screen: friend, requested, incoming, none, unavailable (no account ids)', async () => {
     const h = hub({ RMABC: { blue: 'A', green: 'B', red: 'C', yellow: null }, RMGHJ: { blue: 'D', green: 'A' } });
-    h.core.hello('a1', 'A', 'Asha');
-    h.core.hello('b1', 'B', 'Leo');
-    h.core.hello('c1', 'C', 'Mira');
-    h.core.hello('d1', 'D', 'Omar');
+    h.hello('a1', 'A', 'Asha');
+    h.hello('b1', 'B', 'Leo');
+    h.hello('c1', 'C', 'Mira');
+    h.hello('d1', 'D', 'Omar');
     await h.core.handle('a1', { t: 'request', room: 'RMABC', color: 'green' }); // A → B
     await h.core.handle('c1', { t: 'request', room: 'RMABC', color: 'blue' }); // C → A
     expect(await h.core.handle('a1', { t: 'room', code: 'RMABC' })).toBeNull();
@@ -222,8 +224,8 @@ describe('friend requests (#237)', () => {
 describe('friend links (#238)', () => {
   it('who: the name behind a friend code for the prompt; no one for an unknown code; your own is marked', async () => {
     const h = hub();
-    h.core.hello('a1', 'A', 'Asha');
-    h.core.hello('b1', 'B', 'Leo');
+    h.hello('a1', 'A', 'Asha');
+    h.hello('b1', 'B', 'Leo');
     const codeA = h.me('a1').code;
     expect(await h.core.handle('b1', { t: 'who', code: codeA.toLowerCase() })).toBeNull();
     expect(h.last('b1')).toEqual({ t: 'who', code: codeA, name: 'Asha' });
@@ -231,5 +233,39 @@ describe('friend links (#238)', () => {
     expect(h.last('b1')).toEqual({ t: 'who', code: 'ZZZZZZ', name: null });
     await h.core.handle('a1', { t: 'who', code: codeA });
     expect(h.last('a1')).toEqual({ t: 'who', code: codeA, name: null, self: true });
+
+describe('friends with 4.0.0 apps (#237: no requests there)', () => {
+  it('4.0.0 adds by code instantly, as before, and never gets request messages it can’t show', async () => {
+    const h = hub();
+    h.hello('old', 'O', 'Omar', true);
+    h.hello('b1', 'B', 'Leo');
+    expect(h.me('old')).not.toHaveProperty('requests');
+    expect(await h.core.handle('old', { t: 'add', code: h.me('b1').code })).toBeNull();
+    expect(h.s.friendsOf('O')).toEqual(['B']);
+    expect(h.lastOf('old', 'friend')).toEqual({ t: 'friend', friend: { id: 'B', name: 'Leo', online: true } });
+    expect(h.lastOf('b1', 'friend')).toEqual({ t: 'friend', friend: { id: 'O', name: 'Omar', online: true } });
+  });
+
+  it('a 4.0.1 request to someone on 4.0.0 waits quietly, and shows once they update', async () => {
+    const h = hub();
+    h.hello('old', 'O', 'Omar', true);
+    h.hello('b1', 'B', 'Leo');
+    expect(await h.core.handle('b1', { t: 'add', code: h.me('old').code })).toBeNull();
+    expect(h.got('old').some((m) => m.t === 'request' || m.t === 'requests')).toBe(false);
+    expect(h.s.reqs).toHaveLength(1);
+    h.core.bye('old');
+    h.hello('new', 'O', 'Omar'); // updated
+    expect(h.me('new').requests).toEqual([{ id: h.s.reqs[0]!.id, name: 'Leo', at: h.clock.t }]);
+  });
+
+  it('an old app adding someone who had asked them clears that request', async () => {
+    const h = hub();
+    h.hello('old', 'O', 'Omar', true);
+    h.hello('b1', 'B', 'Leo');
+    await h.core.handle('b1', { t: 'add', code: h.me('old').code });
+    await h.core.handle('old', { t: 'add', code: h.me('b1').code });
+    expect(h.s.friendsOf('B')).toEqual(['O']);
+    expect(h.s.reqs).toEqual([]);
+    expect(h.lastOf('b1', 'requests')!.out).toBe(0);
   });
 });

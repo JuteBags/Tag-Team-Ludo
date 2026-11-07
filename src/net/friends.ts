@@ -56,7 +56,7 @@ export class FriendsLink {
     this.ws = ws;
     ws.onopen = () => {
       this.tries = 0;
-      this.send({ t: 'hello', protocol: PROTOCOL, account: this.account, name: this.name });
+      this.send({ t: 'hello', protocol: PROTOCOL, account: this.account, name: this.name, requests: true });
       this.pingTimer = setInterval(() => this.send({ t: 'ping' }), PING_MS);
     };
     ws.onmessage = (e) => {
