@@ -6,6 +6,7 @@ import { GAME_MODES, type AccountKey, type AccountReply, type GameMode, type Mod
 import { PROVISIONAL, START_RATING, rate } from '../../src/net/rating';
 import type { RateReport, RatedPerson } from './room-core';
 import { cleanName } from './room-core';
+import { ACCOUNTS_PER_IP_HOUR, ROOMS_PER_IP_HOUR, Windows } from './limits';
 
 const fresh = (): Record<GameMode, ModeRating> => Object.fromEntries(GAME_MODES.map((m) => [m, { rating: START_RATING, games: 0, wins: 0 }])) as Record<GameMode, ModeRating>;
 const hex = (b: ArrayBuffer | Uint8Array) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
@@ -21,6 +22,10 @@ interface Row {
 }
 
 export class Accounts extends DurableObject {
+  /** #220: new accounts and new private rooms per IP this hour (kept in memory: lost if the object is evicted, which only forgives). */
+  private newAccounts = new Windows(ACCOUNTS_PER_IP_HOUR);
+  private newRooms = new Windows(ROOMS_PER_IP_HOUR);
+
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env as never);
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, secret TEXT NOT NULL, name TEXT NOT NULL, created INTEGER NOT NULL, ratings TEXT NOT NULL)');
@@ -44,8 +49,15 @@ export class Accounts extends DurableObject {
   }
 
   /** The account, made when `key` is null; the name is updated. Null for a key that doesn't check out. */
-  async account(key: AccountKey | null, name: string): Promise<AccountReply | null> {
+  /** #220: whether `ip` may make another private room this hour. */
+  async allowRoom(ip: string): Promise<boolean> {
+    return this.newRooms.hit(ip, Date.now());
+  }
+
+  /** The account for `key`, or a new one (null: the key is wrong; 'limited': too many new accounts from `ip`). */
+  async account(key: AccountKey | null, name: string, ip?: string): Promise<AccountReply | null | 'limited'> {
     const clean = cleanName(name);
+    if (!key && ip && !this.newAccounts.hit(ip, Date.now())) return 'limited';
     if (key) {
       const known = await this.check(key);
       if (!known) return null;
