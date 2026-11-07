@@ -2,8 +2,14 @@
 // this device's guest account (ranked.ts loadAccount: made on first use), then keeps the friend code and the
 // friends list (who's online) up to date, and carries invites into private rooms and their answers. It
 // reconnects with backoff and pings to stay up. Online play only, so it starts only after the terms (#208).
+//
+// Friend requests (#237): adding (by code, or by seat after a game) sends a request, which the other person
+// accepts or declines. After a game the result screen asks the hub where you stand with each seat (loadRoom), by
+// keys from RoomLink.addable: "<room>|<colour>" for a person; "<room>|bot|<colour>" for a ranked bot, which this
+// link never sends (it only shows as requested). The app never sees another person's account id.
 import { roomsUrl } from './client';
-import { PROTOCOL, type AccountKey, type Friend, type FriendClientMsg, type FriendServerMsg } from './protocol';
+import type { Color } from '../engine';
+import { PROTOCOL, type AccountKey, type Friend, type FriendClientMsg, type FriendRequest, type FriendServerMsg, type SeatState } from './protocol';
 import { loadAccount, savedKey } from './ranked';
 
 const PING_MS = 20_000;
@@ -14,6 +20,13 @@ export class FriendsLink {
   /** This account's friend code (once the hub has said). */
   code = '';
   friends: Friend[] = [];
+  /** #237: friend requests to you, newest first; and how many of yours wait for an answer. */
+  requests: FriendRequest[] = [];
+  out = 0;
+  /** #237: where you stand with each seat key (from loadRoom, and this app's own requests). */
+  private seats = new Map<string, SeatState>();
+  /** The last request sent, to put its seat back if the hub turns it down. */
+  private lastSent: { key: string; was: SeatState | undefined } | null = null;
   private ws: WebSocket | null = null;
   private listeners = new Set<(m: Event) => void>();
   private tries = 0;
@@ -69,7 +82,22 @@ export class FriendsLink {
     if (m.t === 'me') {
       this.code = m.code;
       this.friends = m.friends;
+      this.requests = m.requests ?? [];
+      this.out = m.out ?? 0;
       this.setStatus('open');
+    } else if (m.t === 'requests') {
+      this.requests = m.requests;
+      this.out = m.out;
+    } else if (m.t === 'room') {
+      for (const [color, state] of Object.entries(m.states)) this.seats.set(`${m.code}|${color}`, state);
+      this.emit({ t: 'status' });
+    } else if (m.t === 'error' && this.lastSent && ['limit', 'no-account', 'full', 'no-friend', 'bad-message'].includes(m.code)) {
+      // The last request didn't go: its button goes back.
+      const { key, was } = this.lastSent;
+      if (was === undefined) this.seats.delete(key);
+      else this.seats.set(key, was);
+      this.lastSent = null;
+      this.emit({ t: 'status' });
     } else if (m.t === 'friend') {
       const rest = this.friends.filter((f) => f.id !== m.friend.id);
       this.friends = m.gone ? rest : [...rest, m.friend];
@@ -81,8 +109,46 @@ export class FriendsLink {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(m));
   }
 
+  /** A friend request by friend code (#237: no longer an instant add). */
   add(code: string) {
     this.send({ t: 'add', code: code.trim().toUpperCase() });
+  }
+
+  // ---------- after a game (#237) ----------
+
+  /** Asks the hub where you stand with each person in room `code` (the result screen; a `{t:'status'}` event follows). */
+  loadRoom(code: string) {
+    this.send({ t: 'room', code });
+  }
+
+  /** Where you stand with a seat key from RoomLink.addable. 'loading' until loadRoom has answered (a bot's: 'none'). */
+  stateOf(key: string): SeatState | 'loading' {
+    const s = this.seats.get(key);
+    if (s) return s;
+    return key.split('|')[1] === 'bot' ? 'none' : 'loading';
+  }
+
+  /** A friend request to a seat. A ranked bot's only looks sent: nothing goes anywhere. */
+  request(key: string) {
+    const [room, a] = key.split('|');
+    const was = this.seats.get(key);
+    this.seats.set(key, 'requested');
+    this.emit({ t: 'status' });
+    if (a === 'bot' || !room) return;
+    this.lastSent = { key, was };
+    this.send({ t: 'request', room, color: a as Color });
+  }
+
+  /**
+   * Answers a request: by its id (the Requests list), or by a seat key whose state is 'incoming' (the result row's
+   * Accept, which asks them back: the hub takes that as a yes).
+   */
+  answer(idOrKey: string, accept: boolean) {
+    if (idOrKey.includes('|')) {
+      if (accept) this.request(idOrKey);
+      return;
+    }
+    this.send({ t: 'answer', id: idOrKey, accept });
   }
   remove(id: string) {
     this.send({ t: 'remove', id });

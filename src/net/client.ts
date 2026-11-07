@@ -10,7 +10,8 @@
 // the dice, and adds their events to the stream as if the server had sent them. They go to the server with this
 // person's next roll or move. When the server's version of a bot event differs, the link says so, takes the
 // server's, and counts a rewind: the game screen rebuilds from played().
-import { RESIGN, STOP_EVENT, applyEvent, type GameState } from '../engine';
+import { RESIGN, STOP_EVENT, applyEvent, type Color, type GameState } from '../engine';
+import { savedKey } from './ranked';
 import { BOT_VERSION, botPace, botStep, drawsUsed, isLocalBot, replayEvents, type Draws, type LocalBots } from './localBots';
 import { PROTOCOL, TURN_MS, type ChatFeatures, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ServerMsg, type Turn } from './protocol';
 
@@ -155,7 +156,9 @@ export class RoomLink {
     this.ws = ws;
     ws.onopen = () => {
       this.tries = 0;
-      ws.send(JSON.stringify({ t: 'hello', protocol: PROTOCOL, token: this.token, name: this.name, botVersion: BOT_VERSION } satisfies ClientMsg));
+      // The guest account, when this device has one (#237: friends by seat after the game; the room checks it).
+      const account = savedKey();
+      ws.send(JSON.stringify({ t: 'hello', protocol: PROTOCOL, token: this.token, name: this.name, botVersion: BOT_VERSION, ...(account ? { account } : {}) } satisfies ClientMsg));
       // Actions made while offline go now (the server turns down any that went stale meanwhile).
       for (const m of this.outbox.splice(0)) ws.send(JSON.stringify(m));
       this.setStatus('open');
@@ -383,6 +386,21 @@ export class RoomLink {
     if (this.asked === key) return;
     this.asked = key;
     this.send({ t: 'bots', seq: this.confirmed, bots: this.events.slice(this.confirmed) });
+  }
+
+  /**
+   * #237: the key for adding the person who played `color` as a friend (FriendsLink.request / stateOf), or null:
+   * your own colours, and private rooms' bots (shown as bots). One key per person (in duo, their first colour);
+   * partners have one too. A ranked bot gets one as well, which the friends link never sends.
+   */
+  addable(color: Color): string | null {
+    const s = this.setup;
+    if (!s || this.you < 0) return null;
+    const who = s.control[color] ?? -1;
+    if (who === this.you) return null;
+    if (who < 0) return this.bots && this.bots.levels[color] !== undefined && !this.bots.visible ? `${this.code}|bot|${color}` : null;
+    const first = s.seats.find((x) => s.control[x.color] === who)?.color ?? color;
+    return `${this.code}|${first}`;
   }
 
   /** Seconds left on the current turn's clock, or null (a bot's turn, or none). */
