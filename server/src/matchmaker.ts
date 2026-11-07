@@ -10,6 +10,10 @@ import { findMatches, type Waiting } from './queue';
 import type { Accounts } from './accounts';
 import type { Room } from './index';
 import { cleanName } from './room-core';
+import { SOCKETS_PER_IP_HUB, admit, clientIp } from './limits';
+
+/** #220: the queue's only message is small. */
+const MAX_MESSAGE = 1024;
 
 interface Env {
   ROOMS: DurableObjectNamespace<Room>;
@@ -19,6 +23,9 @@ interface Env {
 interface Attachment {
   mode: GameMode;
   entry: Waiting | null;
+  /** #220: the socket's IP, and when it opened (to close one that never says hello). */
+  ip?: string;
+  since?: number;
 }
 
 const hex = (n: number) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -29,9 +36,19 @@ export class Matchmaker extends DurableObject<Env> {
 
   async fetch(req: Request): Promise<Response> {
     const mode = new URL(req.url).searchParams.get('mode') as GameMode;
+    // #220: so many sockets per IP in the queue; sockets that never sent their search are closed.
+    const ip = clientIp(req);
+    const now = Date.now();
+    const open = this.ctx.getWebSockets();
+    const { ok, stale } = admit(open.map((ws) => {
+      const a = ws.deserializeAttachment() as Attachment | null;
+      return { ip: a?.ip ?? '', hello: !!a?.entry, since: a?.since ?? now };
+    }), ip, now, SOCKETS_PER_IP_HUB);
+    for (const i of stale) this.fail(open[i]!, 'bad-message', 'Say what to search for first.');
+    if (!ok) return new Response('too many connections', { status: 429 });
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ mode, entry: null } satisfies Attachment);
+    server.serializeAttachment({ mode, entry: null, ip, since: now } satisfies Attachment);
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -53,6 +70,8 @@ export class Matchmaker extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
+    // #220: one small message per socket (any other is turned away below, and the socket closed).
+    if (typeof raw !== 'string' || raw.length > MAX_MESSAGE) return this.fail(ws, 'bad-message', 'Message too large or not text.');
     let msg: QueueClientMsg;
     try {
       msg = JSON.parse(typeof raw === 'string' ? raw : '') as QueueClientMsg;
@@ -69,7 +88,7 @@ export class Matchmaker extends DurableObject<Env> {
     for (const other of this.ctx.getWebSockets())
       if (other !== ws && (other.deserializeAttachment() as Attachment).entry?.id === msg.account.id) this.fail(other, 'in-queue', 'You started searching somewhere else.');
     const entry: Waiting = { id: msg.account.id, name: cleanName(msg.name), rating: account.ratings[a.mode].rating, since: Date.now() };
-    ws.serializeAttachment({ mode: a.mode, entry } satisfies Attachment);
+    ws.serializeAttachment({ ...a, mode: a.mode, entry } satisfies Attachment);
     await this.tick();
   }
 

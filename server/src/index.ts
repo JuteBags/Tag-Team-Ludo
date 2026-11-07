@@ -13,6 +13,7 @@ import { CODE_ALPHABET, CODE_LEN, GAME_MODES, PROTOCOL, isCode, type AccountKey,
 import { Accounts } from './accounts';
 import { Friends } from './friends';
 import { testHooksAllowed } from './test-hooks';
+import { Bucket, SOCKETS_PER_IP_ROOM, admit, clientIp } from './limits';
 import { Matchmaker } from './matchmaker';
 import { RoomCore, validOptions, type RoomData, type RoomIO } from './room-core';
 
@@ -27,7 +28,31 @@ export interface Env {
   TEST_HOOKS?: string;
   /** Comma-separated origins allowed to open a WebSocket, or "*" (dev). Requests with no Origin (native) always pass. */
   ALLOWED_ORIGINS: string;
+  /**
+   * #220: "0" turns the Workers Rate Limiting binding off (it's on otherwise). Our own limits (limits.ts) stay on
+   * either way, so if the binding ever cost money, turning it off keeps the protection, only later in the request.
+   */
+  RATE_LIMIT_BINDING?: string;
+  /** #220: the Workers Rate Limiting bindings (wrangler.jsonc `ratelimits`): new sockets, and new accounts, per IP. */
+  RL_CONNECT?: RateLimit;
+  RL_ACCOUNT?: RateLimit;
 }
+
+/** The Workers Rate Limiting binding's API (only what we use). */
+interface RateLimit {
+  limit(o: { key: string }): Promise<{ success: boolean }>;
+}
+
+/** #220: false when the binding says `ip` is over its limit (always true with the binding off or missing). */
+async function bindingAllows(env: Env, binding: RateLimit | undefined, ip: string): Promise<boolean> {
+  if (env.RATE_LIMIT_BINDING === '0' || !binding) return true;
+  try {
+    return (await binding.limit({ key: ip })).success;
+  } catch {
+    return true; // never lock people out because the limiter failed
+  }
+}
+const tooMany = (what: string) => json({ error: `too many ${what}: try again in a minute` }, 429);
 
 const MAX_MESSAGE = 2048;
 const TOKEN = /^[0-9a-f]{32}$/;
@@ -62,7 +87,10 @@ async function account(req: Request, env: Env): Promise<Response> {
     return json({ error: 'bad body' }, 400);
   }
   const key: AccountKey | null = body.id && body.secret ? { id: body.id, secret: body.secret } : null;
-  const reply = await accounts(env).account(key, String(body.name ?? ''));
+  const ip = clientIp(req);
+  if (!key && !(await bindingAllows(env, env.RL_ACCOUNT, ip))) return tooMany('new accounts');
+  const reply = await accounts(env).account(key, String(body.name ?? ''), ip);
+  if (reply === 'limited') return tooMany('new accounts');
   return reply ? json(reply) : json({ error: 'no-account' }, 404);
 }
 
@@ -81,6 +109,9 @@ export default {
     if (url.pathname !== '/ws' && url.pathname !== '/mm' && url.pathname !== '/fr') return json({ error: 'not found' }, 404);
     if (req.headers.get('Upgrade') !== 'websocket') return json({ error: 'expected a WebSocket' }, 426);
     if (!originOk(req, env)) return json({ error: 'origin not allowed' }, 403);
+    // #220: new sockets per IP, in the Worker (before any object wakes up).
+    const ip = clientIp(req);
+    if (!(await bindingAllows(env, env.RL_CONNECT, ip))) return tooMany('connections');
     if (url.pathname === '/fr') return env.FRIENDS.get(env.FRIENDS.idFromName('global')).fetch(req);
     if (url.pathname === '/mm') {
       const mode = url.searchParams.get('mode') as GameMode;
@@ -97,6 +128,8 @@ export default {
         options = null;
       }
       if (!options) return json({ error: 'bad room options' }, 400);
+      // #220: new private rooms per IP per hour.
+      if (!(await accounts(env).allowRoom(ip))) return tooMany('new rooms');
       // A new code; on the rare clash with a live room, another one.
       for (let i = 0; i < 5; i++) {
         const code = newCode();
@@ -117,10 +150,15 @@ export default {
 
 interface Attachment {
   token: string | null;
+  /** #220: the socket's IP, and when it opened (to close one that never says hello). */
+  ip?: string;
+  since?: number;
 }
 
 export class Room extends DurableObject<Env> {
   private core: RoomCore | null = null;
+  /** #220: each socket's message budget (in memory: a socket woken from hibernation starts with a full one). */
+  private budgets = new WeakMap<WebSocket, Bucket>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -184,9 +222,20 @@ export class Room extends DurableObject<Env> {
       if (this.core) return new Response('taken', { status: 409 });
       this.core = RoomCore.create(code, validOptions(JSON.parse(create))!, this.io());
     }
+    // #220: so many sockets per IP in one room; sockets that never said hello are closed.
+    const ip = clientIp(req);
+    const now = Date.now();
+    const open = this.ctx.getWebSockets();
+    const seen = open.map((ws) => {
+      const a = ws.deserializeAttachment() as Attachment | null;
+      return { ip: a?.ip ?? '', hello: !!a?.token, since: a?.since ?? now };
+    });
+    const { ok, stale } = admit(seen, ip, now, SOCKETS_PER_IP_ROOM);
+    for (const i of stale) this.fail(open[i]!, 'bad-message', 'Say hello first.');
+    if (!ok) return new Response('too many connections', { status: 429 });
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ token: null } satisfies Attachment);
+    server.serializeAttachment({ token: null, ip, since: now } satisfies Attachment);
     // No such room: say so on the socket (a browser can't read an HTTP error from a failed WebSocket).
     if (!this.core) this.fail(server, 'no-room', 'There is no room with that code.');
     return new Response(null, { status: 101, webSocket: client });
@@ -203,6 +252,10 @@ export class Room extends DurableObject<Env> {
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
     if (typeof raw !== 'string' || raw.length > MAX_MESSAGE) return this.fail(ws, 'bad-message', 'Message too large or not text.');
+    // #220: a socket over its message budget is closed.
+    let budget = this.budgets.get(ws);
+    if (!budget) this.budgets.set(ws, (budget = new Bucket(undefined, undefined, Date.now())));
+    if (!budget.take(Date.now())) return this.fail(ws, 'rate-limited', ERRORS['rate-limited']);
     let msg: ClientMsg;
     try {
       msg = JSON.parse(raw) as ClientMsg;
@@ -214,12 +267,18 @@ export class Room extends DurableObject<Env> {
     if (!a.token) {
       if (msg?.t !== 'hello' || typeof msg.token !== 'string' || !TOKEN.test(msg.token)) return this.fail(ws, 'bad-message', 'Say hello first.');
       // Attach first, so the room's first messages (sent during hello) reach this connection.
-      ws.serializeAttachment({ token: msg.token } satisfies Attachment);
+      ws.serializeAttachment({ ...a, token: msg.token } satisfies Attachment);
       const err = this.core.hello(msg.token, msg);
       if (err) {
-        ws.serializeAttachment({ token: null } satisfies Attachment);
+        ws.serializeAttachment({ ...a, token: null } satisfies Attachment);
         return this.fail(ws, err, ERRORS[err]);
       }
+      // #220: one live socket per person: the new one replaces any older one.
+      for (const other of this.ctx.getWebSockets())
+        if (other !== ws && (other.deserializeAttachment() as Attachment | null)?.token === msg.token) {
+          other.serializeAttachment({ token: null } satisfies Attachment);
+          this.fail(other, 'replaced', ERRORS.replaced);
+        }
       return;
     }
     const err = await this.core.handle(a.token, msg);
@@ -263,4 +322,6 @@ const ERRORS: Record<ErrorCode, string> = {
   'no-friend': 'No one has that friend code.',
   'not-friends': 'You can only invite friends.',
   offline: 'They aren’t online right now.',
+  'rate-limited': 'Too many messages: the connection was closed. It reconnects by itself.',
+  replaced: 'This game was opened somewhere else.',
 };
