@@ -1181,7 +1181,7 @@ export class GameScreen {
     });
     // Gold for this game, then how close it brings you to the next skin.
     const mineHome = colorsOf(human).reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
-    const lines = goldFor({ mode: this.config.mode, place, kills: this.kills, home: mineHome, level });
+    const lines = goldFor({ mode: this.config.mode, place, kills: this.kills, home: mineHome, level, ranked: !!this.online?.setup?.ranked });
     const earned = total(lines);
     earn(earned);
     /** The next skin to buy and how close you are (redrawn when achievement gold lands). */

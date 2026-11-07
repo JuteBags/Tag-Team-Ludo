@@ -25,6 +25,9 @@ describe('gold for a game', () => {
   it('pays a flat amount with friends', () => {
     expect(total(goldFor({ mode: 'pvp', place: 3, kills: 9, home: 4 }))).toBe(15);
   });
+  it('names a ranked game as ranked, for the same amount', () => {
+    expect(goldFor({ mode: 'pvp', place: 1, kills: 0, home: 4, ranked: true })).toEqual([{ label: 'Ranked game', gold: 15 }]);
+  });
 });
 
 describe('spending gold', () => {
