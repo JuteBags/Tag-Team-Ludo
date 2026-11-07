@@ -125,7 +125,8 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     q.on((m) => {
       if (queue !== q) return;
       if (m.t === 'search') {
-        $('.sline').textContent = `Within ${m.window} rating of you · ${m.searching} searching`;
+        // No "N searching": alone, "1 searching" followed by a match would give the bot fill away (#218 review).
+        $('.sline').textContent = `Within ${m.window} rating of you`;
       } else if (m.t === 'matched') {
         sfx.tick();
         clearInterval(timer);
