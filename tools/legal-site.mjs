@@ -1,17 +1,21 @@
-// The website's Privacy note and Terms of use (#208): docs/privacy.html and docs/terms.html, made from
-// legal/PRIVACY.md and legal/TERMS.md with the app's own renderer (src/ui/legalText.ts), styled like
-// docs/index.html. After changing a text, run it and commit the pages (tests/legal.test.ts fails while they differ):
+// The website's Privacy & Terms (#208): docs/legal.html, made from legal/LEGAL.md with the app's own renderer
+// (src/ui/legalText.ts), styled like docs/index.html; docs/privacy.html and docs/terms.html redirect to its parts,
+// so older links keep working. After changing the text, run it and commit the pages (tests/legal.test.ts fails while
+// they differ):
 //   node tools/legal-site.mjs
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { legalHtml, legalTitle, legalVersionOf } from '../src/ui/legalText.ts';
+import { legalHtml, legalTitle, legalVersionOf, slug } from '../src/ui/legalText.ts';
 
 const root = new URL('../', import.meta.url);
 const read = (p) => readFileSync(new URL(p, root), 'utf8');
 
-const PAGES = [
-  { md: 'legal/PRIVACY.md', html: 'docs/privacy.html', name: 'Privacy note' },
-  { md: 'legal/TERMS.md', html: 'docs/terms.html', name: 'Terms of use' },
+const SOURCE = 'legal/LEGAL.md';
+const PAGE = 'docs/legal.html';
+/** The old pages, now redirects: each to its part of the one page. */
+const REDIRECTS = [
+  { html: 'docs/privacy.html', to: `legal.html#${slug('Privacy note')}`, name: 'Privacy note' },
+  { html: 'docs/terms.html', to: `legal.html#${slug('Terms of use')}`, name: 'Terms of use' },
 ];
 
 /** A page, from its Markdown. */
@@ -25,7 +29,7 @@ export function sitePage(md, name) {
 <!-- Made by tools/legal-site.mjs from legal/*.md: edit those and run it, not this page. -->
 <meta name="legal-version" content="${legalVersionOf(md)}">
 <title>${title}</title>
-<meta name="description" content="Tag Team Ludo: ${name.toLowerCase()}.">
+<meta name="description" content="Tag Team Ludo: ${name.toLowerCase().replace('&', '&amp;')}.">
 <meta name="theme-color" content="#0c2a74">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -65,7 +69,7 @@ footer a{color:#cfe0ff}
 <body>
 <header><nav class="wrap">
   <a class="brand disp" href="./"><img src="favicon.svg" alt="">TAG TEAM LUDO</a>
-  <div class="links"><a class="play" href="./#play">Play</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></div>
+  <div class="links"><a class="play" href="./#play">Play</a><a href="legal.html#${slug('Terms of use')}">Terms</a><a href="legal.html#${slug('Privacy note')}">Privacy</a></div>
 </nav></header>
 <main class="wrap">
 <article>
@@ -73,15 +77,37 @@ ${legalHtml(md, 2, true)}
 </article>
 </main>
 <footer class="wrap">
-  <p>Tag Team Ludo by JuteBags · <a href="privacy.html">Privacy note</a> · <a href="terms.html">Terms of use</a> · <a href="https://github.com/JuteBags/Tag-Team-Ludo">source on GitHub</a></p>
+  <p>Tag Team Ludo by JuteBags · <a href="legal.html">Privacy &amp; Terms</a> · <a href="https://github.com/JuteBags/Tag-Team-Ludo">source on GitHub</a></p>
 </footer>
 </body>
 </html>
 `;
 }
 
-/** Every page: its path and its HTML. */
-export const sitePages = () => PAGES.map((p) => ({ path: p.html, html: sitePage(read(p.md), p.name) }));
+/** An old address, now a redirect to its part of the one page (a meta refresh, a script, and a plain link). */
+export function redirectPage(to, name) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Made by tools/legal-site.mjs: the ${name} is part of Privacy & Terms now. -->
+<meta http-equiv="refresh" content="0; url=${to}">
+<link rel="canonical" href="${to}">
+<title>Tag Team Ludo: ${name}</title>
+<script>location.replace('${to}');</script>
+</head>
+<body>
+<p>The ${name} is now part of <a href="${to}">Privacy &amp; Terms</a>.</p>
+</body>
+</html>
+`;
+}
+
+/** Every page: its path and its HTML (the one page, then the redirects). */
+export const sitePages = () => [
+  { path: PAGE, html: sitePage(read(SOURCE), 'Privacy & Terms') },
+  ...REDIRECTS.map((r) => ({ path: r.html, html: redirectPage(r.to, r.name) })),
+];
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   for (const p of sitePages()) {

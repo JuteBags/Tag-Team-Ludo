@@ -1,8 +1,7 @@
-// The Privacy note and Terms of use as HTML (#208), from their Markdown in legal/: the app's sheets and the
-// website's pages (tools/legal-site.mjs) render the same text with this. Pure, with no imports, so Node runs it
-// as it is (node tools/legal-site.mjs).
-// The Markdown is the small part these texts use: "# " and "## " headings, "- " lists, **bold**, paragraphs,
-// and links written out in full (https://...).
+// Privacy & Terms as HTML (#208), from its Markdown, legal/LEGAL.md: the app's sheet and the website's page
+// (tools/legal-site.mjs) render the same text with this. Pure, with no imports, so Node runs it as it is.
+// The Markdown is the small part the text uses: "# ", "## " (with an id, its slug) and "### " headings, "- " lists,
+// **bold**, paragraphs, and links written out in full (https://...) or as email addresses.
 
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -13,6 +12,9 @@ function inline(s: string): string {
     .replace(/https?:\/\/[^\s<]+?(?=[.,)]?(\s|$))/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`)
     .replace(/(^|\s)([\w.+-]+@[\w-]+(\.[\w-]+)+?)(?=[.,)]?(\s|$))/g, (_m, pre: string, e: string) => `${pre}<a href="mailto:${e}">${e}</a>`);
 }
+
+/** A heading's anchor: "Terms of use" → "terms-of-use" (the site's redirects point at these). */
+export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 /** The text's title (its "# " line). */
 export function legalTitle(md: string): string {
@@ -25,8 +27,8 @@ export function legalVersionOf(md: string): number {
 }
 
 /**
- * The text as HTML. `top`: the heading level for "## " sections (the app's sheet has its own title, so its
- * sections are h3); the "# " title is left out unless `withTitle`.
+ * The text as HTML. `top`: the heading level for "## " parts ("### " sections are one below; the app's sheet has
+ * its own title, so its parts are h3); the "# " title is left out unless `withTitle`.
  */
 export function legalHtml(md: string, top: 2 | 3 = 2, withTitle = false): string {
   const out: string[] = [];
@@ -41,9 +43,12 @@ export function legalHtml(md: string, top: 2 | 3 = 2, withTitle = false): string
   for (const raw of md.replace(/\r\n/g, '\n').split('\n')) {
     const line = raw.trim();
     if (!line) flush();
-    else if (line.startsWith('## ')) {
+    else if (line.startsWith('### ')) {
       flush();
-      out.push(`<h${top}>${inline(line.slice(3))}</h${top}>`);
+      out.push(`<h${top + 1}>${inline(line.slice(4))}</h${top + 1}>`);
+    } else if (line.startsWith('## ')) {
+      flush();
+      out.push(`<h${top} id="${slug(line.slice(3))}">${inline(line.slice(3))}</h${top}>`);
     } else if (line.startsWith('# ')) {
       flush();
       if (withTitle) out.push(`<h${top - 1}>${inline(line.slice(2))}</h${top - 1}>`);
