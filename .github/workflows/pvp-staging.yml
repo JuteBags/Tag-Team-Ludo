@@ -78,7 +78,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: [chat, friends, 'mode:1v1', 'mode:ffa', 'mode:2v2', leave, ranked-pair, ranked-botfill, ranked-nobots, ranked-lower, abuse]
+        test: [chat, friends, 'mode:1v1', 'mode:ffa', 'mode:2v2', leave, ranked-pair, ranked-botfill, ranked-nobots, ranked-lower, abuse, share]
     env:
       VITE_ROOMS_URL: ws://localhost:8787
       WRANGLER_SEND_METRICS: 'false'

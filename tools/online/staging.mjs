@@ -5,7 +5,8 @@
 //   node tools/online/staging.mjs <test> [chrome path] [--url http://localhost:5173/] [--out staging-out]
 //   tests: mode:<ffa|1v1|duo|2v2> | modes (all four) | rejoin | leave | disconnect | timeouts | chat, friends,
 //          ranked-pair, ranked-botfill, ranked-nobots, ranked-lower (our server; ranked-* need TEST_HOOKS=1),
-//          abuse (our server: floods from one client are cut off while a game plays on, #220)
+//          abuse (our server: floods from one client are cut off while a game plays on, #220),
+//          share (our server: a game shared as a short link opens in another browser, #229)
 // RESULT_PREFIX (env) is put before each result's name (e.g. "local · ").
 // .github/workflows/pvp-staging.yml runs each test as its own job, with the dev server pointed at the server by
 // VITE_ROOMS_URL. Writes <out>/<test>.json (pass or fail and the details), screenshots, and a summary line.
@@ -451,6 +452,64 @@ try {
     report('a flood of new accounts is turned away', a.accountsRefused >= 10, `${a.accountsRefused} of 30 refused`);
     report('the game in progress plays on meanwhile', r.stopped && r.steps >= 30, `${r.steps} more steps in ${s} s`);
     await close(host, guest);
+  } else if (test === 'share') {
+    // #229: a game shared as a short link (kept on our server), opened in another browser; and the long link when
+    // the terms weren't accepted. Our server (wrangler dev) and the dev build (its modules load in the page).
+    /** Opens a replay of a short game (made in the page with the engine), ready to share. */
+    const openReplay = async (p) => {
+      await p.page.evaluate(async () => {
+        const e = await import('/src/engine/index.ts');
+        const seats = [{ color: 'blue', owner: 0, bot: false }, { color: 'green', owner: 1, bot: true, level: 'normal' }];
+        let s = e.createGame(seats, 'blue', false);
+        const rng = e.seeded(5);
+        let ev = '';
+        for (let i = 0; i < 80 && s.phase !== 'over'; i++) {
+          if (s.phase === 'roll') { s = e.roll(s, rng); ev += e.rollEvent(s.dice); }
+          else { const m = s.moves[0]; ev += e.moveEvent(m); s = e.move(s, m); }
+        }
+        const rec = { v: 1, seats, first: 'blue', meta: { mode: 'pvc', names: ['Asha', 'Bot'] }, events: ev };
+        location.hash = '#game=' + (await e.encodeRecord(rec));
+      });
+      await p.page.locator('.screen.replay [data-act=share]').waitFor({ timeout: 20000 });
+    };
+    /** Taps SHARE GAME and returns the link it shares (the share menu stubbed to catch it). */
+    const shareFrom = async (p) => {
+      await p.page.evaluate(() => { window.__shared = null; navigator.share = async (d) => { window.__shared = d.url; }; });
+      await tap(p.page, '.screen.replay [data-act=share]');
+      await p.page.waitForFunction(() => !!window.__shared, null, { timeout: 20000 });
+      return p.page.evaluate(() => window.__shared);
+    };
+    const a = await player('Asha', { phone: true });
+    await openReplay(a);
+    const url = await shareFrom(a);
+    const code = /#g=([A-Z0-9]{12})$/.exec(url)?.[1] ?? null;
+    report('share: a short link with a random code', !!code && url.length < 80, url);
+    // Someone else opens it: the replay, then the review.
+    const b = await player('Leo', { phone: true });
+    let seen = false;
+    let reviewed = false;
+    if (code) {
+      await b.page.goto(`${URL}#g=${code}`, { waitUntil: 'load' });
+      seen = await b.page.locator('.screen.replay [data-act=share]').waitFor({ timeout: 30000 }).then(() => true).catch(() => false);
+      await shots('opened', b);
+      if (seen) {
+        await tap(b.page, '.screen.replay [data-act=review]');
+        reviewed = await b.page.locator('.screen.review').waitFor({ timeout: 30000 }).then(() => true).catch(() => false);
+        await b.page.waitForTimeout(3000);
+        await shots('review', b);
+      }
+    }
+    report('share: the link opens the replay and the review in another browser', seen && reviewed, `replay ${seen}; review ${reviewed}`);
+    // An unknown code: the broken-link screen, not a crash.
+    await b.page.goto(`${URL}#g=ABCDEFGHJKLM`, { waitUntil: 'load' });
+    const broken = await b.page.locator('.screen.replay.broken').waitFor({ timeout: 30000 }).then(() => true).catch(() => false);
+    report('share: an unknown code shows "This link is broken"', broken, `broken screen ${broken}`);
+    // Terms not accepted: nothing goes to the server, the long link.
+    const c = await player('Mia', { phone: true, decline: true });
+    await openReplay(c);
+    const long = await shareFrom(c);
+    report('share: without the terms accepted, the long link (nothing uploaded)', long.includes('#game='), `${long.slice(0, 60)}… (${long.length} characters)`);
+    await close(a, b, c);
   } else if (test === 'timeouts') {
     const { host, guest } = await pair('1v1');
     await play([host, guest], { until: (n) => n >= 20 });

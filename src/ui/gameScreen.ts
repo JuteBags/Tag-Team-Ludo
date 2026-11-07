@@ -27,6 +27,7 @@ const UNDO_BUTTON = `<button class="undobtn" data-act="undo" hidden aria-label="
 import type { RoomLink } from '../net/client';
 import { MODE_LABEL, type ClientMsg } from '../net/protocol';
 import { tierOf } from '../net/rating';
+import { gameLink } from './gameLink';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
 const DIE = 38;
@@ -1226,7 +1227,8 @@ export class GameScreen {
         const text = pvp ? `${winner} won our game of Tag Team Ludo!` : won ? 'I won at Tag Team Ludo!' : `I came ${PLACES[place]!.toLowerCase()} at Tag Team Ludo!`;
         void screens
           .shareCard()
-          .then(({ drawCard, shareCard }) => drawCard(title, `${pvp ? 'WITH FRIENDS' : 'VS COMPUTER'} · ${order.length} PLAYERS`, card).then((png) => shareCard(png, text)))
+          // The card, with the game's link in its text (#229: a short link when it can go up to our server).
+          .then(({ drawCard, shareCard }) => Promise.all([drawCard(title, `${pvp ? 'WITH FRIENDS' : 'VS COMPUTER'} · ${order.length} PLAYERS`, card), rec ? gameLink(rec) : Promise.resolve(undefined)]).then(([png, url]) => shareCard(png, text, url)))
           .catch(() => undefined)
           .finally(() => (btn!.disabled = false));
       }
