@@ -7,6 +7,7 @@ import { PROVISIONAL, START_RATING, rate } from '../../src/net/rating';
 import type { RateReport, RatedPerson } from './room-core';
 import { cleanName } from './room-core';
 import { ACCOUNTS_PER_IP_HOUR, ROOMS_PER_IP_HOUR, Windows } from './limits';
+import { SHARES_PER_IP_HOUR } from './shares-core';
 
 const fresh = (): Record<GameMode, ModeRating> => Object.fromEntries(GAME_MODES.map((m) => [m, { rating: START_RATING, games: 0, wins: 0 }])) as Record<GameMode, ModeRating>;
 const hex = (b: ArrayBuffer | Uint8Array) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
@@ -25,6 +26,8 @@ export class Accounts extends DurableObject {
   /** #220: new accounts and new private rooms per IP this hour (kept in memory: lost if the object is evicted, which only forgives). */
   private newAccounts = new Windows(ACCOUNTS_PER_IP_HOUR);
   private newRooms = new Windows(ROOMS_PER_IP_HOUR);
+  /** #229: new shared games per IP this hour. */
+  private newShares = new Windows(SHARES_PER_IP_HOUR);
 
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env as never);
@@ -49,6 +52,11 @@ export class Accounts extends DurableObject {
   }
 
   /** The account, made when `key` is null; the name is updated. Null for a key that doesn't check out. */
+  /** #229: whether `ip` may share another game this hour. */
+  async allowShare(ip: string): Promise<boolean> {
+    return this.newShares.hit(ip, Date.now());
+  }
+
   /** #220: whether `ip` may make another private room this hour. */
   async allowRoom(ip: string): Promise<boolean> {
     return this.newRooms.hit(ip, Date.now());

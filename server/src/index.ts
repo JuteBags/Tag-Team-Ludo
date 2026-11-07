@@ -7,25 +7,30 @@
 //   GET /mm?mode=1v1                     ranked: search for a game (a WebSocket to that mode's Matchmaker)
 //   POST /api/account                    your guest account (ranked ratings, friends) (accounts.ts)
 //   GET /fr                              friends: your code, your friends online, invites (friends.ts)
+//   POST /api/share, GET /api/share/<c>  a shared game, as a short link (#229, shares-core.ts)
 // Then the app's first message is `hello` (src/net/protocol.ts), or `queue` on /mm.
 import { DurableObject } from 'cloudflare:workers';
 import type { Color } from '../../src/engine';
 import { CODE_ALPHABET, CODE_LEN, GAME_MODES, PROTOCOL, isCode, type AccountKey, type ClientMsg, type ErrorCode, type GameMode, type RoomOptions, type ServerMsg } from '../../src/net/protocol';
 import { Accounts } from './accounts';
 import { Friends } from './friends';
+import { Shares } from './shares';
+import { shareApi, shardOf } from './shares-core';
 import { testHooksAllowed } from './test-hooks';
 import { BOT_VERSION } from '../../src/net/localBots';
 import { Bucket, SOCKETS_PER_IP_ROOM, admit, clientIp } from './limits';
 import { Matchmaker } from './matchmaker';
 import { RoomCore, validOptions, type RoomData, type RoomIO } from './room-core';
 
-export { Accounts, Friends, Matchmaker };
+export { Accounts, Friends, Matchmaker, Shares };
 
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>;
   MATCH: DurableObjectNamespace<Matchmaker>;
   ACCOUNTS: DurableObjectNamespace<Accounts>;
   FRIENDS: DurableObjectNamespace<Friends>;
+  /** #229: shared games, one object per code's first character. */
+  SHARES: DurableObjectNamespace<Shares>;
   /** Tests only: "1" turns on POST /api/test/rating (CI passes it to wrangler dev; no environment sets it). */
   TEST_HOOKS?: string;
   /** Comma-separated origins allowed to open a WebSocket, or "*" (dev). Requests with no Origin (native) always pass. */
@@ -38,6 +43,8 @@ export interface Env {
   /** #220: the Workers Rate Limiting bindings (wrangler.jsonc `ratelimits`): new sockets, and new accounts, per IP. */
   RL_CONNECT?: RateLimit;
   RL_ACCOUNT?: RateLimit;
+  /** #229: new shared games per IP. */
+  RL_SHARE?: RateLimit;
 }
 
 /** The Workers Rate Limiting binding's API (only what we use). */
@@ -101,6 +108,16 @@ export default {
     const url = new URL(req.url);
     if (url.pathname === '/health') return json({ ok: true, protocol: PROTOCOL, bots: BOT_VERSION });
     if (url.pathname === '/api/account') return account(req, env);
+    // #229: shared games. New ones are limited per IP (the binding, then the hour's count in the Accounts object).
+    if (url.pathname === '/api/share' || url.pathname.startsWith('/api/share/')) {
+      const shard = (code: string) => env.SHARES.get(env.SHARES.idFromName(shardOf(code)));
+      return shareApi(req, clientIp(req), {
+        put: (code, share) => shard(code).put(code, share),
+        get: (code) => shard(code).get(code),
+        allow: async (ip) => (await bindingAllows(env, env.RL_SHARE, ip)) && (await accounts(env).allowShare(ip)),
+        random: () => crypto.getRandomValues(new Uint32Array(1))[0]! / 4294967296,
+      });
+    }
     // Tests only: off unless TEST_HOOKS=1 and the request is to localhost (test-hooks.ts); otherwise a plain 404.
     if (url.pathname === '/api/test/rating') {
       if (!testHooksAllowed(env, req.url) || req.method !== 'POST') return json({ error: 'not found' }, 404);
