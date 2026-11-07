@@ -294,7 +294,15 @@ try {
     const guest = await player('Leo', { phone: true });
     await guest.page.goto(`${URL}#join=${code}`, { waitUntil: 'load' });
     // No saved name: the link stops at the name (ludo-uiux), and JOIN A ROOM then joins that room.
-    const atName = await guest.page.waitForFunction(() => document.activeElement?.classList.contains('namein') && !document.querySelector('.wiz[data-step=menu]')?.hidden, null, { timeout: 30000 }).then(() => true).catch(() => false);
+    const atName = await guest.page
+      .waitForFunction((c) => {
+        const menu = document.querySelector('.wiz[data-step=menu]');
+        const go = menu?.querySelector('[data-act=to-join]');
+        const create = menu?.querySelector('[data-act=to-create]');
+        return document.activeElement?.classList.contains('namein') && !menu.hidden && menu.querySelector('h3')?.textContent?.includes(c) && go?.textContent?.includes(c) && create && getComputedStyle(create).display === 'none';
+      }, code, { timeout: 30000 })
+      .then(() => true)
+      .catch(() => false);
     await shots('room-link-name', guest);
     await guest.page.locator('.namein').fill('Leo');
     await tap(guest.page, '[data-act=to-join]');

@@ -236,6 +236,24 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   const keepName = () => saveSetting('myName', nameIn.value.trim() ? myName() : '');
   /** #238: a room link's code waiting for a name, and joining it from Join (where its errors show). */
   let linked = '';
+  /**
+   * The menu while a room link waits for the name (ludo-uiux, #241): the room in the title, JOIN <code> as the one
+   * green button, nothing else to tap. '' puts the usual menu back.
+   */
+  const linkView = (code: string) => {
+    linked = code;
+    const menu = $('.wiz[data-step=menu]');
+    menu.querySelector('h3')!.innerHTML = code ? `Join room <b class="disp">${code}</b>` : 'Private room';
+    menu.querySelector('.sub')!.textContent = code ? 'Your name first, so they know who’s joining.' : 'Friends play on their own phones';
+    const go = menu.querySelector<HTMLElement>('[data-act=to-join]')!;
+    go.textContent = code ? `JOIN ${code}` : 'JOIN A ROOM';
+    go.classList.toggle('green', !!code);
+    go.classList.toggle('blue', !code);
+    for (const q of ['[data-act=to-create]', '.frbtn', '.rejoin']) {
+      const b = menu.querySelector<HTMLElement>(q);
+      if (b) b.style.display = code ? 'none' : '';
+    }
+  };
   const joinLinked = (code: string) => {
     show('join');
     connect(() => RoomLink.join(code, myName()));
@@ -260,6 +278,11 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     const act = b.dataset.act;
     if (act !== 'back') sfx.tick();
     if (act === 'back') {
+      // Back from a room link waiting for the name: the link is dropped, the usual menu.
+      if (step === 'menu' && linked) {
+        linkView('');
+        return;
+      }
       if (step === 'menu') {
         leaveRoom();
         return onBack();
@@ -281,7 +304,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       // The room link waiting for a name (#238).
       keepName();
       const code = linked;
-      linked = '';
+      linkView('');
       joinLinked(code);
     } else if (act === 'to-join') {
       keepName();
@@ -339,7 +362,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     $<HTMLButtonElement>('[data-act=join]').disabled = !isCode(join);
     if (settings.myName?.trim()) joinLinked(join);
     else {
-      linked = join;
+      linkView(join);
       setTimeout(() => nameIn.focus(), 50);
     }
   }
