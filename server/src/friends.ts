@@ -4,11 +4,14 @@
 import { DurableObject } from 'cloudflare:workers';
 import { PROTOCOL, type FriendClientMsg, type FriendServerMsg } from '../../src/net/protocol';
 import type { Accounts } from './accounts';
+import type { Room } from './index';
 import { FriendsCore, type FriendStore } from './friends-core';
 import { Bucket, SOCKETS_PER_IP_HUB, admit, clientIp } from './limits';
 
 interface Env {
   ACCOUNTS: DurableObjectNamespace<Accounts>;
+  /** #237: the rooms, asked who played each colour (for a friend request by seat). */
+  ROOMS: DurableObjectNamespace<Room>;
 }
 interface Attachment {
   conn: string;
@@ -32,6 +35,11 @@ export class Friends extends DurableObject<Env> {
     const sql = ctx.storage.sql;
     sql.exec('CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, code TEXT UNIQUE, name TEXT)');
     sql.exec('CREATE TABLE IF NOT EXISTS links (a TEXT NOT NULL, b TEXT NOT NULL, PRIMARY KEY (a, b))');
+    // #237: friend requests (a asked b), and when each last asked another (kept after the answer: no repeat within a day).
+    sql.exec('CREATE TABLE IF NOT EXISTS requests (id TEXT PRIMARY KEY, a TEXT NOT NULL, b TEXT NOT NULL, at INTEGER NOT NULL)');
+    sql.exec('CREATE INDEX IF NOT EXISTS requests_b ON requests (b)');
+    sql.exec('CREATE INDEX IF NOT EXISTS requests_a ON requests (a)');
+    sql.exec('CREATE TABLE IF NOT EXISTS asked (a TEXT NOT NULL, b TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b))');
     const one = <T>(q: string, ...v: SqlStorageValue[]) => (sql.exec(q, ...v).toArray()[0] as T | undefined) ?? null;
     const upsert = (id: string) => sql.exec('INSERT OR IGNORE INTO people (id) VALUES (?)', id);
     const pair = (a: string, b: string) => (a < b ? [a, b] : [b, a]);
@@ -50,10 +58,19 @@ export class Friends extends DurableObject<Env> {
       friendsOf: (id) => sql.exec<{ f: string }>('SELECT b AS f FROM links WHERE a = ? UNION SELECT a AS f FROM links WHERE b = ?', id, id).toArray().map((r) => r.f),
       link: (a, b) => void sql.exec('INSERT OR IGNORE INTO links (a, b) VALUES (?, ?)', ...pair(a, b)),
       unlink: (a, b) => void sql.exec('DELETE FROM links WHERE a = ? AND b = ?', ...pair(a, b)),
+      // #237: requests, and when each person last asked another (for the day's no-repeat).
+      addRequest: (r) => void sql.exec('INSERT INTO requests (id, a, b, at) VALUES (?, ?, ?, ?)', r.id, r.from, r.to, r.at),
+      removeRequest: (id) => void sql.exec('DELETE FROM requests WHERE id = ?', id),
+      requestsTo: (id) => sql.exec<{ id: string; a: string; b: string; at: number }>('SELECT id, a, b, at FROM requests WHERE b = ?', id).toArray().map((r) => ({ id: r.id, from: r.a, to: r.b, at: r.at })),
+      requestsFrom: (id) => sql.exec<{ id: string; a: string; b: string; at: number }>('SELECT id, a, b, at FROM requests WHERE a = ?', id).toArray().map((r) => ({ id: r.id, from: r.a, to: r.b, at: r.at })),
+      lastAsked: (a, b) => one<{ at: number }>('SELECT at FROM asked WHERE a = ? AND b = ?', a, b)?.at ?? null,
+      setAsked: (a, b, at) => void sql.exec('INSERT INTO asked (a, b, at) VALUES (?, ?, ?) ON CONFLICT (a, b) DO UPDATE SET at = excluded.at', a, b, at),
     };
     this.core = new FriendsCore(store, {
       send: (conn, msg) => this.send(conn, msg),
       random: () => crypto.getRandomValues(new Uint32Array(1))[0]! / 4294967296,
+      now: () => Date.now(),
+      seatAccounts: (room, me) => this.env.ROOMS.get(this.env.ROOMS.idFromName(room)).seatAccounts(me),
     });
     // Keep-alive pings answered without waking the object.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(JSON.stringify({ t: 'ping' }), JSON.stringify({ t: 'pong' })));
@@ -135,7 +152,7 @@ export class Friends extends DurableObject<Env> {
       this.core.hello(a.conn, msg.account.id, msg.name);
       return;
     }
-    const err = this.core.handle(a.conn, msg);
+    const err = await this.core.handle(a.conn, msg);
     if (err) fail(err, MESSAGES[err] ?? 'That didn’t work.');
   }
 

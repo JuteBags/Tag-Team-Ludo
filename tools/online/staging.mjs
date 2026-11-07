@@ -138,6 +138,21 @@ const report = (name0, pass, detail) => {
 };
 /** The test's name as a file name. */
 const slug = test.replace(/\W+/g, '-');
+/**
+ * #237: accepts the first friend request this player gets (waiting up to 20 s for one), through the app's friends
+ * link (the dev build's module, the same one the app uses); whether one came.
+ */
+const acceptFirst = (p) =>
+  p.page
+    .evaluate(async () => {
+      const { friendsLink } = await import('/src/net/friends.ts');
+      const f = friendsLink();
+      for (let i = 0; i < 200 && !f?.requests.length; i++) await new Promise((r) => setTimeout(r, 100));
+      if (!f?.requests.length) return false;
+      f.answer(f.requests[0].id, true);
+      return true;
+    })
+    .catch(() => false);
 /** Screenshots of both phones (whatever they show now). */
 const shots = async (label, ...ps) => {
   for (const p of ps) await p.page.screenshot({ path: `${OUT}/${slug}-${label}-${p.name}.png` }).catch(() => {});
@@ -258,6 +273,53 @@ try {
     await shot(host, '10-result-after-forfeit');
     report('frames', true, 'frame-*.png in the artifact');
     await close(host, guest);
+  } else if (test === 'friends-after-game') {
+    // #237: two people who aren't friends finish a private room; A adds B from the game (by seat: the app never sees
+    // B's account), B accepts the request, and both see each other in Friends. Through the friends link (the dev
+    // build's module), until the result row's Add friend and the Requests list have their buttons.
+    const host = await player('Asha', { phone: true });
+    const guest = await player('Leo', { phone: true });
+    // Friends opened once: the guest account and the link, so the room knows each person's account.
+    for (const p of [host, guest]) {
+      await openRooms(p, 'friends');
+      await p.page.waitForFunction(() => /^[A-Z0-9]{6}$/.test(document.querySelector('.sheet.friends .fmine b')?.textContent ?? ''), null, { timeout: 30000 });
+      await tap(p.page, '.sheet.friends [data-act=close]');
+      await p.page.goto(URL, { waitUntil: 'load' });
+      await home(p.page);
+    }
+    const code = await create(host, '1v1');
+    await join(guest, code);
+    await start(host, guest);
+    const r = await play([host, guest]);
+    await shots('result', host, guest);
+    // The host: the guest's key from the game, the room's standing, then the request.
+    const before = await host.page.evaluate(async () => {
+      const { friendsLink } = await import('/src/net/friends.ts');
+      const link = window.__ludo.online;
+      const color = Object.keys(link.setup.control).find((c) => link.setup.control[c] !== link.you);
+      const key = link.addable(color);
+      const mine = link.addable(Object.keys(link.setup.control).find((c) => link.setup.control[c] === link.you));
+      const f = friendsLink();
+      f.loadRoom(link.code);
+      for (let i = 0; i < 100 && f.stateOf(key) === 'loading'; i++) await new Promise((res) => setTimeout(res, 100));
+      const was = f.stateOf(key);
+      f.request(key);
+      window.__key = key;
+      return { key, mine, was };
+    });
+    const accepted = await acceptFirst(guest);
+    const friendsOf = (p) => p.page.evaluate(async () => (await import('/src/net/friends.ts')).friendsLink().friends.map((x) => x.name));
+    await host.page.waitForTimeout(1500);
+    const hostFriends = await friendsOf(host);
+    const guestFriends = await friendsOf(guest);
+    const after = await host.page.evaluate(async () => {
+      const f = (await import('/src/net/friends.ts')).friendsLink();
+      f.loadRoom(window.__ludo.online.code);
+      await new Promise((res) => setTimeout(res, 1500));
+      return f.stateOf(window.__key);
+    });
+    report('friends after a game: add by seat, accept, both are friends', r.over?.length === 2 && !!before.key && before.mine === null && before.was === 'none' && accepted && hostFriends.includes('Leo') && guestFriends.includes('Asha') && after === 'friend', `game over ${r.over?.length === 2}; key ${before.key} (own: ${before.mine}); before ${before.was}; accepted ${accepted}; host's friends ${JSON.stringify(hostFriends)}; guest's ${JSON.stringify(guestFriends)}; after ${after}`);
+    await close(host, guest);
   } else if (test === 'friends') {
     // Friends (#209): add by code, see each other online, invite into a private room, join from the invite.
     const host = await player('Asha', { phone: true });
@@ -274,6 +336,8 @@ try {
     await openFriends(guest);
     await guest.page.locator('.sheet.friends .fadd input').fill(hostCode.toLowerCase());
     await guest.page.evaluate(() => document.querySelector('.sheet.friends .fadd').requestSubmit());
+    // #237: adding sends a request; the host accepts it (through the link, until the Requests list has its buttons).
+    await acceptFirst(host);
     const guestSees = await sees(guest, 'Asha');
     const hostSees = await sees(host, 'Leo');
     await shots('list', guest);

@@ -9,6 +9,7 @@
 //   GET /fr                              friends: your code, your friends online, invites (friends.ts)
 // Then the app's first message is `hello` (src/net/protocol.ts), or `queue` on /mm.
 import { DurableObject } from 'cloudflare:workers';
+import type { Color } from '../../src/engine';
 import { CODE_ALPHABET, CODE_LEN, GAME_MODES, PROTOCOL, isCode, type AccountKey, type ClientMsg, type ErrorCode, type GameMode, type RoomOptions, type ServerMsg } from '../../src/net/protocol';
 import { Accounts } from './accounts';
 import { Friends } from './friends';
@@ -211,6 +212,11 @@ export class Room extends DurableObject<Env> {
   }
 
   /** Ranked: the queue made this room (false when the code is already taken). It starts at once. */
+  /** #237: who played each colour, for a friend request by seat, asked by the Friends hub for account `me`. */
+  async seatAccounts(me: string): Promise<Partial<Record<Color, string | null>> | null> {
+    return this.core?.seatAccounts(me) ?? null;
+  }
+
   async createRanked(code: string, options: RoomOptions, slots: ({ token: string; name: string; account: string } | null)[], botRating: number): Promise<boolean> {
     if (this.core) return false;
     this.core = RoomCore.ranked(code, options, slots, botRating, this.io());
@@ -271,7 +277,10 @@ export class Room extends DurableObject<Env> {
       if (msg?.t !== 'hello' || typeof msg.token !== 'string' || !TOKEN.test(msg.token)) return this.fail(ws, 'bad-message', 'Say hello first.');
       // Attach first, so the room's first messages (sent during hello) reach this connection.
       ws.serializeAttachment({ ...a, token: msg.token } satisfies Attachment);
-      const err = this.core.hello(msg.token, msg);
+      // The guest account, if the app sent one, is checked before the room keeps it (#237: friends by seat).
+      const account = msg.account && typeof msg.account.id === 'string' && typeof msg.account.secret === 'string' ? ((await accounts(this.env).check(msg.account)) ? msg.account.id : undefined) : undefined;
+      if (!this.core) return this.fail(ws, 'no-room', ERRORS['no-room']);
+      const err = this.core.hello(msg.token, msg, account);
       if (err) {
         ws.serializeAttachment({ ...a, token: null } satisfies Attachment);
         return this.fail(ws, err, ERRORS[err]);

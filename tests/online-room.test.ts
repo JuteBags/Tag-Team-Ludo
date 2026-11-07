@@ -957,3 +957,30 @@ describe('online room: private rooms\u2019 bots played in the apps (#226)', () =
     console.log(['Billed requests per private game with bots (#226):', ...rows].join('\n  '));
   });
 });
+
+describe('online room: who played each colour, for friend requests (#237)', () => {
+  it('keeps a private room’s accounts from hello, and answers only someone who played in it', async () => {
+    const w = world(80);
+    const room = RoomCore.create('FRNDS', { ...OPTS, mode: '2v2' }, w.io);
+    expect(room.hello(tok(1), hello(1), 'acc-A')).toBeNull();
+    expect(room.hello(tok(2), hello(2))).toBeNull(); // no account
+    expect(room.hello(tok(3), hello(3), 'acc-C')).toBeNull();
+    expect(await room.handle(tok(1), { t: 'start' })).toBeNull();
+    const seats = room.seatAccounts('acc-A')!;
+    // 2v2 slots: blue (A), green (B, no account), red (C, A's partner), yellow (a bot).
+    expect(seats).toEqual({ blue: 'acc-A', green: null, red: 'acc-C', yellow: null });
+    expect(room.seatAccounts('acc-C')).toEqual(seats);
+    // Someone who wasn't in it learns nothing.
+    expect(room.seatAccounts('acc-X')).toBeNull();
+    // A later hello can't swap an account already kept.
+    room.disconnected(tok(1));
+    expect(room.hello(tok(1), hello(1), 'acc-Z')).toBeNull();
+    expect(room.seatAccounts('acc-A')!.blue).toBe('acc-A');
+  });
+
+  it('a ranked room has its accounts from the queue; its bots are null', () => {
+    const { room } = rankedRoom(81, 'ffa', [1, null, 2, null]);
+    expect(room.seatAccounts('acc1')).toEqual(expect.objectContaining({ blue: 'acc1' }));
+    expect(Object.values(room.seatAccounts('acc2')!).filter((x) => x === null)).toHaveLength(2);
+  });
+});
