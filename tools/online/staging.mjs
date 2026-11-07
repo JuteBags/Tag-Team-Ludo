@@ -302,7 +302,7 @@ try {
     const badRoom = await mia.page
       .waitForFunction(() => {
         const join = document.querySelector('.wiz[data-step=join]');
-        const e = document.querySelector('.oerr');
+        const e = document.querySelector('.wiz[data-step=join] .oerr');
         return !!join && !join.hidden && !!e && !e.hidden && (e.textContent ?? '').trim().length > 0 && document.querySelector('.codein')?.value === 'ZZZZZ';
       }, null, { timeout: 30000 })
       .then(() => true)
