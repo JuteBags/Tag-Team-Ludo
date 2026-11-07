@@ -233,6 +233,8 @@ describe('friend links (#238)', () => {
     expect(h.last('b1')).toEqual({ t: 'who', code: 'ZZZZZZ', name: null });
     await h.core.handle('a1', { t: 'who', code: codeA });
     expect(h.last('a1')).toEqual({ t: 'who', code: codeA, name: null, self: true });
+  });
+});
 
 describe('friends with 4.0.0 apps (#237: no requests there)', () => {
   it('4.0.0 adds by code instantly, as before, and never gets request messages it can’t show', async () => {
