@@ -1,10 +1,11 @@
 // Ranked matchmaking: one Durable Object per mode ("mm:<mode>") holding everyone searching, each on an open
 // WebSocket. Every second it groups people whose ratings are close enough (the window grows the longer they
-// wait); after BOT_FILL_MS, ranked bots at the person's rating fill whatever places are still empty. A group
+// wait), by the league rules (queue.ts, rating.ts canMatch); up to Gold III, after BOT_FILL_MS, bots at the
+// person's rating fill whatever places are still empty, looking like players (#216). A group
 // becomes a ranked room (Room.createRanked), and each person gets its code and their own token.
 import { DurableObject } from 'cloudflare:workers';
 import { PROTOCOL, type ErrorCode, type GameMode, type QueueClientMsg, type QueueServerMsg, type RoomOptions } from '../../src/net/protocol';
-import { BOT_FILL_MS, botLevelFor, matchWindow } from '../../src/net/rating';
+import { botLevelFor, matchWindow } from '../../src/net/rating';
 import { findMatches, type Waiting } from './queue';
 import type { Accounts } from './accounts';
 import type { Room } from './index';
@@ -132,7 +133,7 @@ export class Matchmaker extends DurableObject<Env> {
     }
     for (const ws of byId.values()) {
       const e = (ws.deserializeAttachment() as Attachment).entry!;
-      this.send(ws, { t: 'search', rating: e.rating, waited: now - e.since, window: matchWindow(now - e.since), searching: byId.size, botsAt: Math.max(0, BOT_FILL_MS - (now - e.since)) });
+      this.send(ws, { t: 'search', rating: e.rating, waited: now - e.since, window: matchWindow(now - e.since), searching: byId.size, botsAt: 0 /* bots fill silently (#216): no countdown */ });
     }
     if (byId.size) await this.ctx.storage.setAlarm(now + 1000);
     else await this.ctx.storage.deleteAlarm();

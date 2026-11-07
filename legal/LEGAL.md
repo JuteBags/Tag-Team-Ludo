@@ -14,6 +14,7 @@ Tag Team Ludo is a free game, provided by JuteBags ("we"). We may change, improv
 ### 2. Fair play
 - Play honestly. Don't cheat, use bots or scripts in online games, exploit bugs, or attack or overload our servers.
 - Leaving an online game counts as a forfeit, as the rules in the app describe.
+- When no one is found in time, Ranked games up to Gold III may include computer players of a similar strength; they count like any game.
 - We may reset ratings, remove Gems or block a guest account that breaks these rules.
 
 ### 3. Your display name and chat

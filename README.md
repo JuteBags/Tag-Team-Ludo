@@ -54,7 +54,7 @@
 ### Online
 - **Four modes:** 1v1v1v1, 1v1, 1(x2) v 1(x2) (two colours each) and 2v2 (teams of two, partners opposite).
 - **With friends → Private room:** create a room and share its 5-character code; friends join on their own phones. Places nobody takes are played by bots.
-- **Ranked PvP** (coming later; switched off for now): matched with players near your rank, with a tier and points in each mode (Bronze to Diamond). After a minute, bots at your level fill empty places and the game still counts.
+- **Ranked PvP:** matched with players near your rating in your league (then the league just below), with a tier and points in each mode (Bronze to Diamond) and 10 placement games. Up to Gold III, computer players of your strength fill empty places when no one is found in 45 seconds; from Gold II up, people only.
 - The server rolls the dice and checks every move. Each roll or move has a 30-second clock, and a dropped connection or a closed app can rejoin the game.
 
 ## Development

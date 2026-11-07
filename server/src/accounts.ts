@@ -59,6 +59,19 @@ export class Accounts extends DurableObject {
     return { id, secret, name: clean, ratings };
   }
 
+  /**
+   * Tests only (TEST_HOOKS, never set in wrangler.jsonc): sets an account's rating and games in one mode, so a
+   * test can search from any league. Null for a key that doesn't check out.
+   */
+  async testSetRating(key: AccountKey, mode: GameMode, rating: number, games: number): Promise<boolean> {
+    if (!GAME_MODES.includes(mode) || !(await this.check(key))) return false;
+    const row = this.row(key.id)!;
+    const ratings = this.ratingsOf(row);
+    ratings[mode] = { rating, games, wins: 0 };
+    this.ctx.storage.sql.exec('UPDATE players SET ratings = ? WHERE id = ?', JSON.stringify(ratings), key.id);
+    return true;
+  }
+
   /** Rates a finished ranked game: every account's new rating in its mode (bots aren't stored). */
   async rate(report: RateReport): Promise<Record<string, RatedPerson>> {
     const mode = report.mode;

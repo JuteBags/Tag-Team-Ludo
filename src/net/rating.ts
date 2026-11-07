@@ -79,8 +79,43 @@ export function rate(sides: RatedSide[]): number[][] {
 /** How far apart two people's ratings may be to be matched, after waiting `ms`: 100, growing 10 a second. */
 export const matchWindow = (ms: number) => 100 + Math.floor(ms / 1000) * 10;
 
-/** After this long in the queue, ranked bots at your rating fill the empty places, and the game counts. */
-export const BOT_FILL_MS = 60_000;
+// ---------- who can be matched (#216, the owner's rules) ----------
+// The search stays in your league (Bronze, Silver, Gold, Platinum, Diamond), the window widening as you wait;
+// after LOWER_LEAGUE_MS it may also take people from the league just below yours, never further, never above.
+// Up to Gold III (a rating under BOTS_BELOW), if no one is found in BOT_FILL_MS, bots of your strength fill the
+// empty places: they look like any player and the game counts fully. From Gold II up, people only.
+
+/** The league a rating is in: 0 Bronze, 1 Silver, 2 Gold, 3 Platinum, 4 Diamond. */
+export const leagueOf = (rating: number) => (rating < 1000 ? 0 : rating < 1300 ? 1 : rating < 1600 ? 2 : rating < 1900 ? 3 : 4);
+/** After this long, the search may also take people from the league just below. */
+export const LOWER_LEAGUE_MS = 20_000;
+/** After this long, bots fill the empty places, if everyone in the group is under BOTS_BELOW. */
+export const BOT_FILL_MS = 45_000;
+/** Bots only for ratings under this: Gold III (1300-1399) and below. */
+export const BOTS_BELOW = 1400;
+/** A hint after this long: playing with friends in a private room instead. */
+export const SEARCH_HINT_MS = 30_000;
+
+/** Someone in the queue: their rating and since when they've searched. */
+export interface Searcher {
+  rating: number;
+  since: number;
+}
+/**
+ * Whether `a` and `b` may play each other now: the same league, within the wider of their two windows; or
+ * neighbouring leagues, once the one in the higher league has searched LOWER_LEAGUE_MS (they widen downwards).
+ */
+export function canMatch(a: Searcher, b: Searcher, now: number): boolean {
+  const gap = Math.abs(a.rating - b.rating);
+  if (gap > Math.max(matchWindow(now - a.since), matchWindow(now - b.since))) return false;
+  const la = leagueOf(a.rating);
+  const lb = leagueOf(b.rating);
+  if (la === lb) return true;
+  if (Math.abs(la - lb) !== 1) return false;
+  return now - (la > lb ? a : b).since >= LOWER_LEAGUE_MS;
+}
+/** Whether bots may fill a group's empty places: everyone is under BOTS_BELOW (Gold III and below). */
+export const botsAllowed = (group: { rating: number }[]) => group.every((w) => w.rating < BOTS_BELOW);
 
 /** The level a ranked bot plays at for a rating. */
 export const botLevelFor = (rating: number): Exclude<BotLevel, 'extreme'> => (rating < 1000 ? 'easy' : rating < 1300 ? 'normal' : 'hard');

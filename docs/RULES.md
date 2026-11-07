@@ -107,14 +107,16 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole
 60. The host starts the game once at least 2 people are in; places nobody took are played by bots. The lobby waits at most **2 minutes**: then the game starts by itself with whoever is in, or, if nobody joined the host, the room closes.
 61. A room you're in can be rejoined from With friends (**Back to room**).
 
-**Ranked PvP** (switched off for now: it comes back later, without bots, and these rules will change with it)
+**Ranked PvP**
 
-62. Ranked has its own rating in each mode. Everyone starts at 1000. A guest account is made on the phone's first Ranked visit and kept on that phone.
+62. Ranked has its own rating in each mode (Elo). Everyone starts at 1000. A guest account is made on the phone's first Ranked visit and kept on that phone. Your first **10 games** in a mode are placement games: the rating moves faster (K 40, then 24) and shows as "Placement 3/10" until they're done.
 63. People see a **tier and points**: Bronze (below 1000), Silver (1000-1299), Gold (1300-1599), Platinum (1600-1899) and Diamond (1900 and up). Each tier below Diamond has divisions III, II and I of 100 rating each; the points are the rating within the division (0-99). Diamond counts its points up from 1900.
-64. **Matchmaking:** you're matched with people whose rating is within 100 of yours, and that window widens by 10 for every second you wait. After **60 seconds**, ranked bots at your rating fill the places still empty, and the game counts like any other. Bots play Easy below 1000, Normal up to 1300 and Hard above.
-65. In 2v2 with four people, teams are made fair: the best and the weakest player are partners.
-66. **Rating change** (Elo): with two sides (1v1, 1(x2) v 1(x2), 2v2), a win or loss against the other side's average rating; both partners in 2v2 get the same change. In 1v1v1v1, each pair of players is one game won by the better place, averaged over the three. A person's first 10 games in a mode move their rating faster (K 40, then 24).
-67. **Leaving a ranked game is a forfeit** (rule 56): it counts as last place.
+64. **Matchmaking** stays in your league, with people whose rating is within 100 of yours; that window widens by 10 for every second you wait. After **20 seconds** it may also take people from the **league just below** yours, never further and never above.
+65. **Up to Gold III** (a rating under 1400): if no one is found in **45 seconds**, computer players of your strength fill the places still empty, and the game counts like any other. **From Gold II up**, games are people only. Cancel is always there while you search, and after a while a hint offers a private room with friends instead.
+66. In 2v2 with four people, teams are made fair: the best and the weakest player are partners.
+67. **Rating change** (Elo): with two sides (1v1, 1(x2) v 1(x2), 2v2), a win or loss against the other side's average rating; both partners in 2v2 get the same change. In 1v1v1v1, each pair of players is one game won by the better place, averaged over the three. A person's first 10 games in a mode move their rating faster (K 40, then 24).
+68. **Leaving a ranked game is a forfeit** (rule 56): it counts as last place.
+69. Chat in Ranked is quick phrases and emoji only.
 
 ## Known risks (accepted for v1, revisit after playtests)
 

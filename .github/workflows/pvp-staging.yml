@@ -77,7 +77,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: [chat, friends, 'mode:1v1', leave]
+        test: [chat, friends, 'mode:1v1', leave, ranked-pair, ranked-botfill, ranked-nobots, ranked-lower]
     env:
       VITE_ROOMS_URL: ws://localhost:8787
       WRANGLER_SEND_METRICS: 'false'
@@ -94,7 +94,7 @@ jobs:
         working-directory: server
         run: |
           npm ci --no-audit --no-fund
-          npx wrangler dev --port 8787 --ip 127.0.0.1 > ../wrangler.log 2>&1 &
+          npx wrangler dev --port 8787 --ip 127.0.0.1 --var TEST_HOOKS:1 > ../wrangler.log 2>&1 &
           for i in $(seq 90); do curl -sf http://localhost:8787/health > /dev/null && break; sleep 1; done
           curl -sf http://localhost:8787/health | tee -a "$GITHUB_STEP_SUMMARY"
       - name: The game's dev server on :5173

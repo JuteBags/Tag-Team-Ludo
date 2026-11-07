@@ -12,6 +12,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { CODE_ALPHABET, CODE_LEN, GAME_MODES, PROTOCOL, isCode, type AccountKey, type ClientMsg, type ErrorCode, type GameMode, type RoomOptions, type ServerMsg } from '../../src/net/protocol';
 import { Accounts } from './accounts';
 import { Friends } from './friends';
+import { testHooksAllowed } from './test-hooks';
 import { Matchmaker } from './matchmaker';
 import { RoomCore, validOptions, type RoomData, type RoomIO } from './room-core';
 
@@ -22,6 +23,8 @@ export interface Env {
   MATCH: DurableObjectNamespace<Matchmaker>;
   ACCOUNTS: DurableObjectNamespace<Accounts>;
   FRIENDS: DurableObjectNamespace<Friends>;
+  /** Tests only: "1" turns on POST /api/test/rating (CI passes it to wrangler dev; no environment sets it). */
+  TEST_HOOKS?: string;
   /** Comma-separated origins allowed to open a WebSocket, or "*" (dev). Requests with no Origin (native) always pass. */
   ALLOWED_ORIGINS: string;
 }
@@ -68,6 +71,13 @@ export default {
     const url = new URL(req.url);
     if (url.pathname === '/health') return json({ ok: true, protocol: PROTOCOL });
     if (url.pathname === '/api/account') return account(req, env);
+    // Tests only: off unless TEST_HOOKS=1 and the request is to localhost (test-hooks.ts); otherwise a plain 404.
+    if (url.pathname === '/api/test/rating') {
+      if (!testHooksAllowed(env, req.url) || req.method !== 'POST') return json({ error: 'not found' }, 404);
+      const b = (await req.json().catch(() => null)) as { id?: string; secret?: string; mode?: GameMode; rating?: number; games?: number } | null;
+      const ok = !!b?.id && !!b.secret && (await accounts(env).testSetRating({ id: b.id, secret: b.secret }, b.mode!, Number(b.rating), Number(b.games ?? 20)));
+      return json({ ok }, ok ? 200 : 400);
+    }
     if (url.pathname !== '/ws' && url.pathname !== '/mm' && url.pathname !== '/fr') return json({ error: 'not found' }, 404);
     if (req.headers.get('Upgrade') !== 'websocket') return json({ error: 'expected a WebSocket' }, 426);
     if (!originOk(req, env)) return json({ error: 'origin not allowed' }, 403);

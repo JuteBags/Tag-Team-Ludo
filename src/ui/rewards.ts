@@ -23,8 +23,8 @@ const LEVEL_BONUS: Partial<Record<BotLevel, { label: string; share: number }>> =
 export const levelBonus = (level: BotLevel) => LEVEL_BONUS[level]?.share ?? 0;
 
 /** What a finished game earns, line by line. `home` is how many of your tokens got home. */
-export function goldFor(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; home: number; level?: BotLevel }): GoldLine[] {
-  if (g.mode === 'pvp') return [{ label: 'Game with friends', gold: 15 }];
+export function goldFor(g: { mode: 'pvc' | 'pvp'; place: number; kills: number; home: number; level?: BotLevel; ranked?: boolean }): GoldLine[] {
+  if (g.mode === 'pvp') return [{ label: g.ranked ? 'Ranked game' : 'Game with friends', gold: 15 }];
   const lines: GoldLine[] = [{ label: 'Game played', gold: 20 }];
   const placeGold = PLACE_GOLD[g.place] ?? 0;
   if (placeGold) lines.push({ label: g.place === 1 ? 'Win' : `${['', '1st', '2nd', '3rd', '4th'][g.place]} place`, gold: placeGold });
