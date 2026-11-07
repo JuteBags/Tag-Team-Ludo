@@ -131,13 +131,14 @@ try {
     rows.push(row);
     console.log('SCREEN ' + JSON.stringify(row));
   }
-  // The check-in card and the update prompt come up a moment after the home screen: wait a little for one,
-  // then close it (Later / Not now).
+  // The terms, the update prompt and the check-in card come up one after another after the home screen: close
+  // each (Later / Not now) until none comes for a moment.
   const dismiss = async () => {
-    const b = await page.waitForSelector('.menu-ov [data-act=later]', { state: 'visible', timeout: 3000 }).catch(() => null);
-    if (b) {
+    for (let i = 0; i < 4; i++) {
+      const b = await page.waitForSelector('.menu-ov [data-act=later], .terms-ov [data-act=later]', { state: 'visible', timeout: 3000 }).catch(() => null);
+      if (!b) return;
       await b.click().catch(() => {});
-      await page.waitForSelector('.menu-ov', { state: 'detached', timeout: 3000 }).catch(() => {});
+      await page.waitForSelector('.menu-ov, .terms-ov', { state: 'detached', timeout: 3000 }).catch(() => {});
     }
   };
 
