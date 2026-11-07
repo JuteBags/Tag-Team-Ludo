@@ -148,9 +148,9 @@ export async function friendLinkPrompt(stage: HTMLElement, code: string) {
   ov.className = 'menu-ov friendlink-ov';
   const ok = !!who?.name;
   ov.innerHTML = ok
-    ? `<div class="box"><h2>Add a friend?</h2><p class="sub">Send <b>${esc(who!.name!)}</b> a friend request? They'll see it and can accept.</p>
+    ? `<div class="box"><h2>Add <b>${esc(who!.name!)}</b> as a friend?</h2><p class="sub">They'll get a request to accept.</p>
         <button class="b3 green disp" data-act="add">ADD</button><button class="later" data-act="later">Not now</button></div>`
-    : `<div class="box"><h2>Friend link</h2><p class="sub">${who?.self ? 'That’s your own friend code.' : `No one has the friend code <b class="disp">${esc(code)}</b>. Check the link with your friend.`}</p>
+    : `<div class="box"><h2>Friend link</h2><p class="sub">${who?.self ? 'That’s your own friend link.' : `No one has the code <b class="disp">${esc(code)}</b>. Check the link with your friend.`}</p>
         <button class="later" data-act="later">OK</button></div>`;
   ov.addEventListener('click', (e) => {
     const act = (e.target as Element).closest<HTMLElement>('[data-act]')?.dataset.act;

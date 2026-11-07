@@ -13,8 +13,8 @@ export function openHere(stage: HTMLElement, action: LinkAction): Promise<boolea
   return new Promise((res) => {
     const ov = document.createElement('div');
     ov.className = 'menu-ov applink-ov';
-    const what = 'join' in action ? `room <b class="disp">${action.join}</b>` : 'your friend’s link';
-    ov.innerHTML = `<div class="box"><h2>Open in the app?</h2><p class="sub">Open ${what} in the Tag Team Ludo app, or play here in the browser.</p>
+    const sub = 'join' in action ? `Room <b class="disp">${action.join}</b> opens in the Tag Team Ludo app.` : 'Your friend’s link opens in the Tag Team Ludo app.';
+    ov.innerHTML = `<div class="box"><h2>Open in the app?</h2><p class="sub">${sub}</p>
       <a class="b3 green disp" data-act="app" href="${intentUrl(action, SITE)}">OPEN IN THE APP</a><button class="later" data-act="here">Play here</button></div>`;
     ov.addEventListener('click', (e) => {
       const act = (e.target as Element).closest<HTMLElement>('[data-act]')?.dataset.act;
