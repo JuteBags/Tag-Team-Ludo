@@ -7,6 +7,10 @@
 // someone who was in it (index.ts Room.seatAccounts). The app never sees another person's account id: requests
 // carry their own random id. Limits: so many requests an hour, so many waiting, and not the same person again
 // within a day of the last one.
+//
+// Apps from before requests (4.0.0) don't say `requests` in their hello: for them `add` stays the old instant add
+// (they have nothing to show or answer a request with), and request messages aren't sent to their connections. A
+// request to someone on 4.0.0 waits until they update.
 import type { Color } from '../../src/engine';
 import { CODE_ALPHABET, FRIEND_CODE_LEN, isCode, isFriendCode, type ErrorCode, type Friend, type FriendClientMsg, type FriendRequest, type FriendServerMsg, type SeatState } from '../../src/net/protocol';
 import { Windows } from './limits';
@@ -65,13 +69,15 @@ export class FriendsCore {
   /** Open connections: conn → account; and each account's connections. */
   private accountOf = new Map<string, string>();
   private conns = new Map<string, Set<string>>();
+  /** #237: connections whose app knows friend requests. */
+  private modern = new Set<string>();
   /** Requests sent this hour, per account (in memory: lost if the object is evicted, which only forgives). */
   private sent = new Windows(REQUESTS_PER_HOUR);
 
   constructor(private store: FriendStore, private io: FriendIO) {}
 
   /** A connection whose account the hub has checked says hello (also after waking: say it again for each). */
-  hello(conn: string, id: string, name: string, quiet = false) {
+  hello(conn: string, id: string, name: string, quiet = false, requests = false) {
     const clean = cleanName(name);
     if (this.store.nameOf(id) !== clean) this.store.setName(id, clean);
     let code = this.store.codeOf(id);
@@ -82,10 +88,11 @@ export class FriendsCore {
     }
     const wasOnline = this.online(id);
     this.accountOf.set(conn, id);
+    if (requests) this.modern.add(conn);
     if (!this.conns.has(id)) this.conns.set(id, new Set());
     this.conns.get(id)!.add(conn);
     if (quiet) return;
-    this.io.send(conn, { t: 'me', code, friends: this.store.friendsOf(id).map((f) => this.friend(f)), requests: this.incoming(id), out: this.store.requestsFrom(id).length });
+    this.io.send(conn, { t: 'me', code, friends: this.store.friendsOf(id).map((f) => this.friend(f)), ...(requests ? { requests: this.incoming(id), out: this.store.requestsFrom(id).length } : {}) });
     if (!wasOnline) this.tellFriends(id);
   }
 
@@ -94,6 +101,7 @@ export class FriendsCore {
     const id = this.accountOf.get(conn);
     if (!id) return;
     this.accountOf.delete(conn);
+    this.modern.delete(conn);
     const set = this.conns.get(id)!;
     set.delete(conn);
     if (set.size) return;
@@ -113,6 +121,15 @@ export class FriendsCore {
         const code = String(msg.code ?? '').toUpperCase();
         const them = isFriendCode(code) ? this.store.idOfCode(code) : null;
         if (!them || them === me) return 'no-friend';
+        // An app from before requests (4.0.0): the old instant add.
+        if (!this.modern.has(conn)) {
+          if (this.store.friendsOf(me).length >= MAX_FRIENDS || this.store.friendsOf(them).length >= MAX_FRIENDS) return 'full';
+          const theirs = this.store.requestsTo(me).find((r) => r.from === them);
+          if (theirs) this.store.removeRequest(theirs.id);
+          this.befriend(me, them);
+          if (theirs) this.tellRequests(them);
+          return null;
+        }
         return this.request(me, them);
       }
       case 'request': {
@@ -187,7 +204,7 @@ export class FriendsCore {
     const r: StoredRequest = { id: this.newId(), from: me, to: them, at: now };
     this.store.addRequest(r);
     this.store.setAsked(me, them, now);
-    this.toAll(them, { t: 'request', from: { id: r.id, name: this.store.nameOf(me) ?? 'Player', at: now } });
+    this.toModern(them, { t: 'request', from: { id: r.id, name: this.store.nameOf(me) ?? 'Player', at: now } });
     this.tellRequests(them);
     this.tellRequests(me);
     return null;
@@ -217,7 +234,11 @@ export class FriendsCore {
       .sort((a, b) => b.at - a.at)
       .map((r) => ({ id: r.id, name: this.store.nameOf(r.from) ?? 'Player', at: r.at }));
   private tellRequests(id: string) {
-    this.toAll(id, { t: 'requests', requests: this.incoming(id), out: this.store.requestsFrom(id).length });
+    this.toModern(id, { t: 'requests', requests: this.incoming(id), out: this.store.requestsFrom(id).length });
+  }
+  /** To `id`'s connections whose app knows requests (#237). */
+  private toModern(id: string, msg: FriendServerMsg) {
+    for (const c of this.conns.get(id) ?? []) if (this.modern.has(c)) this.io.send(c, msg);
   }
   private online = (id: string) => (this.conns.get(id)?.size ?? 0) > 0;
   private friend = (id: string): Friend => ({ id, name: this.store.nameOf(id) ?? 'Player', online: this.online(id) });

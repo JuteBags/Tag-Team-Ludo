@@ -283,7 +283,8 @@ export interface FriendRequest {
 export type SeatState = 'unavailable' | 'none' | 'requested' | 'incoming' | 'friend';
 
 export type FriendClientMsg =
-  | { t: 'hello'; protocol: number; account: AccountKey; name: string }
+  /** `requests` (#237): this app knows friend requests; without it (4.0.0) the hub keeps the old instant add. */
+  | { t: 'hello'; protocol: number; account: AccountKey; name: string; requests?: boolean }
   /** A friend request by friend code (#237: a request, no longer an instant add). */
   | { t: 'add'; code: string }
   /** #237: a friend request to whoever played `color` in room `room` (you must have been in that room too). */

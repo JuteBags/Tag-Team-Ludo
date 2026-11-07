@@ -21,6 +21,8 @@ interface Attachment {
   /** The account, once its hello checked out. */
   id: string | null;
   name: string;
+  /** #237: the app knows friend requests (4.0.0 doesn't). */
+  requests?: boolean;
 }
 
 const MAX_MESSAGE = 1024;
@@ -77,7 +79,7 @@ export class Friends extends DurableObject<Env> {
     // After hibernation: the connections still open are online again (quietly: nobody's status changed).
     for (const ws of ctx.getWebSockets()) {
       const a = ws.deserializeAttachment() as Attachment | null;
-      if (a?.id) this.core.hello(a.conn, a.id, a.name, true);
+      if (a?.id) this.core.hello(a.conn, a.id, a.name, true, !!a.requests);
     }
   }
 
@@ -148,8 +150,8 @@ export class Friends extends DurableObject<Env> {
           // Gone.
         }
       }
-      ws.serializeAttachment({ ...a, id: msg.account.id, name: msg.name } satisfies Attachment);
-      this.core.hello(a.conn, msg.account.id, msg.name);
+      ws.serializeAttachment({ ...a, id: msg.account.id, name: msg.name, requests: msg.requests === true } satisfies Attachment);
+      this.core.hello(a.conn, msg.account.id, msg.name, false, msg.requests === true);
       return;
     }
     const err = await this.core.handle(a.conn, msg);
