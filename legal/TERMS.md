@@ -1,6 +1,6 @@
 # Tag Team Ludo: Terms of use
 
-Version 2 · 7 November 2026
+Version 3 · 7 November 2026
 
 By using Tag Team Ludo you agree to these terms. They're short on purpose.
 
