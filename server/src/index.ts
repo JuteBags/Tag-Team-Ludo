@@ -5,20 +5,23 @@
 //   GET /ws?create={"mode":"ffa",...}    a new private room (the first message back is its lobby, with the code)
 //   GET /ws?code=ABCDE                   join a room (private, or the ranked game the queue matched you into)
 //   GET /mm?mode=1v1                     ranked: search for a game (a WebSocket to that mode's Matchmaker)
-//   POST /api/account                    ranked: your guest account and ratings (accounts.ts)
+//   POST /api/account                    your guest account (ranked ratings, friends) (accounts.ts)
+//   GET /fr                              friends: your code, your friends online, invites (friends.ts)
 // Then the app's first message is `hello` (src/net/protocol.ts), or `queue` on /mm.
 import { DurableObject } from 'cloudflare:workers';
 import { CODE_ALPHABET, CODE_LEN, GAME_MODES, PROTOCOL, isCode, type AccountKey, type ClientMsg, type ErrorCode, type GameMode, type RoomOptions, type ServerMsg } from '../../src/net/protocol';
 import { Accounts } from './accounts';
+import { Friends } from './friends';
 import { Matchmaker } from './matchmaker';
 import { RoomCore, validOptions, type RoomData, type RoomIO } from './room-core';
 
-export { Accounts, Matchmaker };
+export { Accounts, Friends, Matchmaker };
 
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>;
   MATCH: DurableObjectNamespace<Matchmaker>;
   ACCOUNTS: DurableObjectNamespace<Accounts>;
+  FRIENDS: DurableObjectNamespace<Friends>;
   /** Comma-separated origins allowed to open a WebSocket, or "*" (dev). Requests with no Origin (native) always pass. */
   ALLOWED_ORIGINS: string;
 }
@@ -65,9 +68,10 @@ export default {
     const url = new URL(req.url);
     if (url.pathname === '/health') return json({ ok: true, protocol: PROTOCOL });
     if (url.pathname === '/api/account') return account(req, env);
-    if (url.pathname !== '/ws' && url.pathname !== '/mm') return json({ error: 'not found' }, 404);
+    if (url.pathname !== '/ws' && url.pathname !== '/mm' && url.pathname !== '/fr') return json({ error: 'not found' }, 404);
     if (req.headers.get('Upgrade') !== 'websocket') return json({ error: 'expected a WebSocket' }, 426);
     if (!originOk(req, env)) return json({ error: 'origin not allowed' }, 403);
+    if (url.pathname === '/fr') return env.FRIENDS.get(env.FRIENDS.idFromName('global')).fetch(req);
     if (url.pathname === '/mm') {
       const mode = url.searchParams.get('mode') as GameMode;
       if (!GAME_MODES.includes(mode)) return json({ error: 'bad mode' }, 400);
@@ -246,4 +250,7 @@ const ERRORS: Record<ErrorCode, string> = {
   'in-queue': 'You started searching somewhere else.',
   illegal: 'That move isn’t allowed.',
   'bad-message': 'The app sent something the server didn’t understand.',
+  'no-friend': 'No one has that friend code.',
+  'not-friends': 'You can only invite friends.',
+  offline: 'They aren’t online right now.',
 };

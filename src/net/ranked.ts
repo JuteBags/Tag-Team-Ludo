@@ -8,7 +8,7 @@ import { PROTOCOL, type AccountKey, type AccountReply, type GameMode, type Queue
 
 const KEY = 'ludo-ranked-account';
 
-function savedKey(): AccountKey | null {
+export function savedKey(): AccountKey | null {
   try {
     const k = JSON.parse(localStorage.getItem(KEY) ?? 'null') as AccountKey | null;
     return k && typeof k.id === 'string' && typeof k.secret === 'string' ? k : null;

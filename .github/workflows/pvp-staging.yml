@@ -77,7 +77,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: [chat, 'mode:1v1', leave]
+        test: [chat, friends, 'mode:1v1', leave]
     env:
       VITE_ROOMS_URL: ws://localhost:8787
       WRANGLER_SEND_METRICS: 'false'

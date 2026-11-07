@@ -3,7 +3,7 @@
 // reload + rejoin, Leave game, a 60 s disconnect, three timeouts in a row. Each player accepts the first-launch
 // terms (#208) and must not be asked again at connect time.
 //   node tools/online/staging.mjs <test> [chrome path] [--url http://localhost:5173/] [--out staging-out]
-//   tests: mode:<ffa|1v1|duo|2v2> | modes (all four) | rejoin | leave | disconnect | timeouts | chat (a server with chat)
+//   tests: mode:<ffa|1v1|duo|2v2> | modes (all four) | rejoin | leave | disconnect | timeouts | chat, friends (our server)
 // RESULT_PREFIX (env) is put before each result's name (e.g. "local · ").
 // .github/workflows/pvp-staging.yml runs each test as its own job, with the dev server pointed at the server by
 // VITE_ROOMS_URL. Writes <out>/<test>.json (pass or fail and the details), screenshots, and a summary line.
@@ -252,6 +252,48 @@ try {
     await play([host], { maxMs: 60000 });
     await shot(host, '10-result-after-forfeit');
     report('frames', true, 'frame-*.png in the artifact');
+    await close(host, guest);
+  } else if (test === 'friends') {
+    // Friends (#209): add by code, see each other online, invite into a private room, join from the invite.
+    const host = await player('Asha', { phone: true });
+    const guest = await player('Leo', { phone: true });
+    const openFriends = async (p) => {
+      await openRooms(p);
+      await p.page.locator('.namein').fill(p.name);
+      await tap(p.page, '[data-act=friends]');
+      await p.page.waitForFunction(() => /^[A-Z0-9]{6}$/.test(document.querySelector('.sheet.friends .fmine b')?.textContent ?? ''), null, { timeout: 30000 });
+      return (await p.page.textContent('.sheet.friends .fmine b')).trim();
+    };
+    const sees = (p, name) => p.page.waitForFunction((n) => [...document.querySelectorAll('.sheet.friends .frow')].some((r) => r.querySelector('b')?.textContent === n && r.querySelector('.fdot.on')), name, { timeout: 20000 }).then(() => true).catch(() => false);
+    const hostCode = await openFriends(host);
+    await openFriends(guest);
+    await guest.page.locator('.sheet.friends .fadd input').fill(hostCode.toLowerCase());
+    await guest.page.evaluate(() => document.querySelector('.sheet.friends .fadd').requestSubmit());
+    const guestSees = await sees(guest, 'Asha');
+    const hostSees = await sees(host, 'Leo');
+    await shots('list', guest);
+    await tap(host.page, '.sheet.friends [data-act=close]');
+    await tap(guest.page, '.sheet.friends [data-act=close]');
+    // The host makes a room and invites Leo from the lobby.
+    await tap(host.page, '[data-act=to-create]');
+    await tap(host.page, '[data-k=mode] [data-v="1v1"]');
+    await tap(host.page, '[data-act=create]');
+    await host.page.waitForFunction(() => /^[A-Z0-9]{5}$/.test(document.querySelector('.wiz[data-step=lobby] .code')?.textContent?.trim() ?? ''), null, { timeout: 30000 });
+    const room = (await host.page.textContent('.wiz[data-step=lobby] .code')).trim();
+    await tap(host.page, '[data-act=invite-friends]');
+    await host.page.locator('.sheet.friends .finv').waitFor({ timeout: 20000 });
+    await shots('invite-button', host);
+    await tap(host.page, '.sheet.friends .finv');
+    const gotInvite = await guest.page.locator('.invite-ov').waitFor({ timeout: 20000 }).then(() => true).catch(() => false);
+    const inviteText = gotInvite ? await guest.page.textContent('.invite-ov .sub') : '';
+    await shots('invite', guest);
+    await tap(guest.page, '.invite-ov [data-act=join]');
+    const joined = await guest.page.waitForFunction((c) => document.querySelector('.wiz[data-step=lobby] .code')?.textContent?.trim() === c, room, { timeout: 30000 }).then(() => true).catch(() => false);
+    const hostHeard = await host.page.waitForFunction(() => document.querySelector('.sheet.friends .finv')?.textContent === 'Joining', null, { timeout: 15000 }).then(() => true).catch(() => false);
+    await tap(host.page, '.sheet.friends [data-act=close]');
+    const twoInLobby = await host.page.waitForFunction(() => !document.querySelector('[data-act=start]')?.disabled, null, { timeout: 20000 }).then(() => true).catch(() => false);
+    await shots('lobby', host, guest);
+    report('friends: add by code, online, invite, join', guestSees && hostSees && gotInvite && joined && hostHeard && twoInLobby, `guest sees Asha online ${guestSees}; host sees Leo online ${hostSees}; invite "${(inviteText ?? '').trim()}" ${gotInvite}; guest in room ${room} ${joined}; host heard "Joining" ${hostHeard}; start enabled ${twoInLobby}`);
     await close(host, guest);
   } else if (test === 'chat') {
     // Chat (#212), against a server with chat: a quick phrase, an emoji, free text with a rude word, a mute, a report.

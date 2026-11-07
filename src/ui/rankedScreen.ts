@@ -87,7 +87,7 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   const load = async () => {
     if (!roomsUrl()) return error('Online play isn’t set up in this version of the app.');
     // Nothing goes to the server (not even the guest account) until the terms are accepted (#208).
-    if (!(await requireTerms(el))) return error('Online play needs your OK to the Privacy note and Terms of use.');
+    if (!(await requireTerms(el))) return error('Online play needs your OK to Privacy & Terms.');
     try {
       account = await loadAccount(myName());
       error('');

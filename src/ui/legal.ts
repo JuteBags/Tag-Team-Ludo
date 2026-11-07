@@ -1,20 +1,23 @@
-// The Privacy note and Terms of use (#208): the texts bundled for offline reading, the first-launch sheet that
-// asks to accept them once (again only when LEGAL_VERSION goes up), and the check online play makes before it
-// connects. Accepting is stored with the settings as { version, at }. There's no reject path: playing on this
-// device needs nothing, so Accept only records it. The texts' source is legal/*.md; the website's
-// docs/privacy.html and docs/terms.html are made from them by tools/legal-site.mjs.
-import privacyMd from '../../legal/PRIVACY.md?raw';
-import termsMd from '../../legal/TERMS.md?raw';
+// Privacy & Terms (#208): one document (the terms of use, then the privacy note), bundled for offline reading;
+// the first-launch sheet that asks once (Accept or Not now; again only when LEGAL_VERSION goes up), and the check
+// online play makes before it connects (it needs Accept). The answer is stored with the settings as
+// { version, at, declined? }. The source is legal/LEGAL.md; the website's docs/legal.html is made from it by
+// tools/legal-site.mjs (docs/privacy.html and docs/terms.html redirect there).
+import legalMd from '../../legal/LEGAL.md?raw';
 import { legalHtml, legalTitle } from './legalText';
 import { saveSetting, settings } from './settings';
 
-/** The texts' version. Raise it (and the "Version N" line in both texts) to ask everyone to accept again. */
-export const LEGAL_VERSION = 2;
+/**
+ * The document's version (its "Version N" line says the same; tests/legal.test.ts checks). Everyone who accepted an
+ * older one is asked again, so bump it **at most once per release**, and only when the wording changed since the
+ * last *release* (not since the last commit). 1 is the first released text (the first release with online play:
+ * rooms, chat and friends).
+ */
+export const LEGAL_VERSION = 1;
 
-export type LegalDoc = 'privacy' | 'terms';
-export const LEGAL_MD: Record<LegalDoc, string> = { privacy: privacyMd, terms: termsMd };
-/** The names the links use. */
-export const LEGAL_NAME: Record<LegalDoc, string> = { privacy: 'Privacy note', terms: 'Terms of use' };
+export const LEGAL_MD = legalMd;
+/** What the link and the sheet are called. */
+export const LEGAL_NAME = 'Privacy & Terms';
 
 /** A stored answer: the version it was for, when, and `declined` for Not now. */
 export type LegalAnswer = { version: number; at: number; declined?: boolean };
@@ -24,7 +27,7 @@ export const acceptedFor = (stored: LegalAnswer | null | undefined, version = LE
 /** Whether `stored` answers `version` at all (accepted, or Not now): the launch sheet then doesn't ask again. */
 export const answeredFor = (stored: LegalAnswer | null | undefined, version = LEGAL_VERSION) => !!stored && stored.version >= version;
 
-/** Whether this device has accepted the current Privacy note and Terms of use (online play needs it). */
+/** Whether this device has accepted the current Privacy & Terms (online play needs it). */
 export const hasAcceptedTerms = () => acceptedFor(settings.legal);
 /** Whether this device has answered the current texts (accepted or Not now). */
 export const answeredTerms = () => answeredFor(settings.legal);
@@ -38,12 +41,12 @@ export function declineTerms(at = Date.now()) {
   saveSetting('legal', { version: LEGAL_VERSION, at, declined: true });
 }
 
-/** A text in a sheet: the scrolling settings-style sheet with its title, the text, and DONE. */
-export function legalSheet(host: HTMLElement, doc: LegalDoc): HTMLElement {
-  const md = LEGAL_MD[doc];
+/** Privacy & Terms in a sheet: the scrolling settings-style sheet with its title, the text, and DONE. */
+export function legalSheet(host: HTMLElement): HTMLElement {
+  const md = LEGAL_MD;
   const ov = document.createElement('div');
   ov.className = 'menu-ov sheet legal';
-  ov.innerHTML = `<div class="box"><button class="x" data-act="close" aria-label="Close">×</button><h2>${LEGAL_NAME[doc]}</h2><div class="legaltext">${legalHtml(md, 3)}</div><button class="b3 green disp" data-act="close">DONE</button></div>`;
+  ov.innerHTML = `<div class="box"><button class="x" data-act="close" aria-label="Close">×</button><h2>${LEGAL_NAME}</h2><div class="legaltext">${legalHtml(md, 3)}</div><button class="b3 green disp" data-act="close">DONE</button></div>`;
   ov.setAttribute('aria-label', legalTitle(md));
   ov.addEventListener('click', (e) => {
     if (e.target === ov || (e.target as Element).closest('[data-act=close]')) ov.remove();
@@ -52,15 +55,13 @@ export function legalSheet(host: HTMLElement, doc: LegalDoc): HTMLElement {
   return ov;
 }
 
-/** The two links, as buttons: tapping one opens its text over whatever is showing. */
-export const legalLinks = () =>
-  `<div class="legallinks"><button data-legal="privacy">${LEGAL_NAME.privacy}</button><i aria-hidden="true">·</i><button data-legal="terms">${LEGAL_NAME.terms}</button></div>`;
+/** The one link, as a button: tapping it opens Privacy & Terms over whatever is showing. */
+export const legalLinks = () => `<div class="legallinks"><button data-legal="all">${LEGAL_NAME}</button></div>`;
 
-/** Opens the text a [data-legal] button inside `root` names, over `host`. */
+/** Opens Privacy & Terms when a [data-legal] button inside `root` is tapped, over `host`. */
 export function wireLegalLinks(root: HTMLElement, host: HTMLElement) {
   root.addEventListener('click', (e) => {
-    const doc = (e.target as Element).closest<HTMLElement>('[data-legal]')?.dataset.legal as LegalDoc | undefined;
-    if (doc) legalSheet(host, doc);
+    if ((e.target as Element).closest('[data-legal]')) legalSheet(host);
   });
 }
 
@@ -73,7 +74,7 @@ export function termsSheet(host: HTMLElement, onAnswer: (accepted: boolean) => v
   const ov = document.createElement('div');
   ov.className = 'menu-ov terms-ov';
   ov.innerHTML = `<div class="box"><h2>${online ? 'Play online' : 'Before you play'}</h2>
-    <p class="sub">${online ? 'Online play needs your OK to the Privacy note and Terms of use: it uses a guest account with a name you choose.' : 'Offline play stays on your device. Online play uses a guest account with a name you choose.'}</p>
+    <p class="sub">${online ? 'Online play needs your OK to Privacy & Terms: it uses a guest account with a name you choose.' : 'Offline play stays on your device. Online play uses a guest account with a name you choose.'}</p>
     ${legalLinks()}
     <button class="b3 green disp" data-act="accept">ACCEPT</button><button class="later" data-act="later">Not now</button></div>`;
   wireLegalLinks(ov, host);

@@ -10,14 +10,17 @@
         "bindings": [
           { "name": "ROOMS", "class_name": "Room" },
           { "name": "MATCH", "class_name": "Matchmaker" },
-          { "name": "ACCOUNTS", "class_name": "Accounts" }
+          { "name": "ACCOUNTS", "class_name": "Accounts" },
+          { "name": "FRIENDS", "class_name": "Friends" }
         ]
       },
   // SQLite-backed Durable Objects: the only kind on the free plan.
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["Room"] },
     // Ranked: the queue (one per mode) and the accounts store.
-    { "tag": "v2", "new_sqlite_classes": ["Matchmaker", "Accounts"] }
+    { "tag": "v2", "new_sqlite_classes": ["Matchmaker", "Accounts"] },
+    // Friends (#209): codes, names and friends lists, and who's online.
+    { "tag": "v3", "new_sqlite_classes": ["Friends"] }
   ],
   "vars": { "ALLOWED_ORIGINS": "*" },
   "observability": { "enabled": true },
@@ -31,7 +34,8 @@
         "bindings": [
           { "name": "ROOMS", "class_name": "Room" },
           { "name": "MATCH", "class_name": "Matchmaker" },
-          { "name": "ACCOUNTS", "class_name": "Accounts" }
+          { "name": "ACCOUNTS", "class_name": "Accounts" },
+          { "name": "FRIENDS", "class_name": "Friends" }
         ]
       },
       "vars": { "ALLOWED_ORIGINS": "http://localhost:5173,https://localhost,capacitor://localhost,https://jutebags.github.io" }
@@ -45,7 +49,8 @@
         "bindings": [
           { "name": "ROOMS", "class_name": "Room" },
           { "name": "MATCH", "class_name": "Matchmaker" },
-          { "name": "ACCOUNTS", "class_name": "Accounts" }
+          { "name": "ACCOUNTS", "class_name": "Accounts" },
+          { "name": "FRIENDS", "class_name": "Friends" }
         ]
       },
       "vars": { "ALLOWED_ORIGINS": "https://jutebags.github.io,https://localhost,capacitor://localhost,null" }

@@ -86,29 +86,42 @@ describe('the Privacy note and Terms of use (#208)', () => {
     expect(Math.abs(settings.legal!.at - Date.now())).toBeLessThan(5000);
   });
 
-  it('the app, the texts and the website pages carry the same version and text', () => {
-    for (const md of Object.values(LEGAL_MD)) expect(legalVersionOf(md)).toBe(LEGAL_VERSION);
-    for (const page of sitePages()) {
+  it('one document, Privacy & Terms: the app, the text and the website carry the same version and text', () => {
+    expect(legalVersionOf(LEGAL_MD)).toBe(LEGAL_VERSION);
+    // The first released text is version 1; bump at most once per release (see LEGAL_VERSION).
+    expect(LEGAL_VERSION).toBe(1);
+    // Terms first, then Privacy, each a part with its anchor (the old pages redirect there).
+    expect(LEGAL_MD.indexOf('## Terms of use')).toBeGreaterThan(0);
+    expect(LEGAL_MD.indexOf('## Privacy note')).toBeGreaterThan(LEGAL_MD.indexOf('## Terms of use'));
+    const pages = sitePages();
+    expect(pages.map((p: { path: string }) => p.path)).toEqual(['docs/legal.html', 'docs/privacy.html', 'docs/terms.html']);
+    for (const page of pages) {
       const onDisk = (readFileSync(new URL(`../${page.path}`, import.meta.url), 'utf8') as string).replace(/\r\n/g, '\n');
       expect(onDisk, `${page.path} is out of date: run node tools/legal-site.mjs`).toBe(page.html);
-      expect(onDisk).toContain(`<meta name="legal-version" content="${LEGAL_VERSION}">`);
     }
+    expect(pages[0].html).toContain(`<meta name="legal-version" content="${LEGAL_VERSION}">`);
+    expect(pages[0].html).toContain('<h2 id="terms-of-use">');
+    expect(pages[0].html).toContain('<h2 id="privacy-note">');
+    expect(pages[1].html).toContain('url=legal.html#privacy-note');
+    expect(pages[2].html).toContain('url=legal.html#terms-of-use');
     // The owner's details are filled in, and no placeholder is left.
-    const all = Object.values(LEGAL_MD).join('\n');
+    const all = LEGAL_MD;
     for (const p of ['JuteBags ("we")', 'shaurya.sharthak.work@gmail.com', 'the laws of India']) expect(all).toContain(p);
     expect(all).not.toMatch(/\[[A-Z ]+\]/);
   });
 
   it('promises nothing about ads or tracking (the game may add them later, with a new version to accept)', () => {
     const sheetSource = readFileSync(new URL('../src/ui/legal.ts', import.meta.url), 'utf8') as string;
-    for (const text of [...Object.values(LEGAL_MD), ...sitePages().map((p: { html: string }) => p.html), sheetSource]) expect(text).not.toMatch(/no ads|no tracking|no advertising|no analytics/i);
-    expect(LEGAL_MD.privacy).toContain('**Ads and analytics:**');
+    for (const text of [LEGAL_MD, ...sitePages().map((p: { html: string }) => p.html), sheetSource]) expect(text).not.toMatch(/no ads|no tracking|no advertising|no analytics/i);
+    expect(LEGAL_MD).toContain('**Ads and analytics:**');
+    expect(LEGAL_MD).toContain("**We don't sell it.**");
   });
 
   it('renders the texts: headings, lists, bold and links', () => {
     const html = legalHtml('# Title\n\nVersion 1 · date\n\n## Part\n- **One** thing\n- Two: https://example.com/x, and more.\n\nA line\nwrapped.', 3);
     expect(html).not.toContain('Title');
-    expect(html).toContain('<h3>Part</h3>');
+    expect(html).toContain('<h3 id="part">Part</h3>');
+    expect(legalHtml('## Terms of use\n### 1. The game', 2)).toBe('<h2 id="terms-of-use">Terms of use</h2>\n<h3>1. The game</h3>');
     expect(html).toContain('<li><b>One</b> thing</li>');
     expect(html).toContain('<a href="https://example.com/x" target="_blank" rel="noopener">https://example.com/x</a>, and more.');
     expect(html).toContain('<p>A line wrapped.</p>');
