@@ -200,7 +200,10 @@ export type ErrorCode =
   | 'illegal'
   | 'no-account' // the ranked account is unknown or its secret is wrong
   | 'in-queue' // this account is already searching
-  | 'bad-message';
+  | 'bad-message'
+  | 'no-friend' // friends: no one has that friend code
+  | 'not-friends' // friends: invite or reply to someone who isn't a friend
+  | 'offline'; // friends: they aren't online to invite
 
 // ---------- chat (#212) ----------
 // Quick phrases and emoji for everyone; free text in private rooms only. The server relays each line to the room
@@ -227,3 +230,42 @@ export function cleanChat(text: unknown): string {
   const t = text.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX);
   return t.replace(BLOCKED_RE, (w) => w[0] + '*'.repeat(w.length - 1));
 }
+
+// ---------- friends (#209, a first version) ----------
+// One WebSocket per app to the server's friends hub (GET /fr): the guest account says hello, and gets its friend
+// code and its friends (who's online). Adding someone's code makes you friends both ways; a friend who's online
+// can be invited into a private room, and the answer goes back to the inviter. The server keeps each account's
+// code, name and friends; who's online is only the open connections.
+
+/** A friend code: 6 characters from CODE_ALPHABET (read out loud or copied by hand). */
+export const FRIEND_CODE_LEN = 6;
+export const isFriendCode = (s: string) => s.length === FRIEND_CODE_LEN && [...s].every((c) => CODE_ALPHABET.includes(c));
+
+/** A friend as the app shows them. `id` is their account id (to invite them). */
+export interface Friend {
+  id: string;
+  name: string;
+  online: boolean;
+}
+
+export type FriendClientMsg =
+  | { t: 'hello'; protocol: number; account: AccountKey; name: string }
+  | { t: 'add'; code: string }
+  | { t: 'remove'; id: string }
+  /** Invite friend `to` into private room `room`. */
+  | { t: 'invite'; to: string; room: string }
+  /** Answer `to`'s invite into `room`. */
+  | { t: 'reply'; to: string; room: string; accept: boolean }
+  | { t: 'ping' };
+
+export type FriendServerMsg =
+  /** After hello: your friend code and your friends. */
+  | { t: 'me'; code: string; friends: Friend[] }
+  /** A friend came online, went offline, or was added (`gone`: removed). */
+  | { t: 'friend'; friend: Friend; gone?: true }
+  /** `from` invites you into private room `room`. */
+  | { t: 'invite'; from: Friend; room: string }
+  /** `from` answered your invite into `room`. */
+  | { t: 'reply'; from: Friend; room: string; accept: boolean }
+  | { t: 'error'; code: ErrorCode; message: string }
+  | { t: 'pong' };

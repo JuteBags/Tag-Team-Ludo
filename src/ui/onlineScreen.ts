@@ -4,6 +4,7 @@
 import type { Color } from '../engine';
 import { PROFILES, avatarSVG, cssVars, icons } from './art';
 import { RoomLink, loadRoom, roomsUrl } from '../net/client';
+import { friendsSheet } from './friendsSheet';
 import { requireTerms } from './legal';
 import { modePicker } from './modePicker';
 import { CODE_LEN, MODE_LABEL, ONLINE_LEVELS, isCode, modeSlots, type GameSetup, type OnlineBotLevel, type RoomOptions } from '../net/protocol';
@@ -49,7 +50,7 @@ const TEAM = ['TEAM A', 'TEAM B'];
  * `onGame`: the room's game started (or was already under way when rejoining): open the game screen with
  * the link. `rejoin`: go straight back into the room this device was in.
  */
-export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, onBack: () => void, rejoin = false): HTMLElement {
+export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, onBack: () => void, rejoin = false, join?: string): HTMLElement {
   let step: Step = 'menu';
   let link: RoomLink | null = null;
   let off: (() => void) | null = null;
@@ -68,6 +69,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       <div class="mid"><div class="sp">
         <label class="row2 q"><span class="lbl">Your name</span><input class="namein" maxlength="${NAME_MAX}" autocomplete="nickname" spellcheck="false" placeholder="Your name"></label>
         ${saved && !saved.ranked ? `<button class="row2 q rejoin" data-act="rejoin"><span class="lbl">Back to room ${saved.code}</span><small class="qh">Your game goes on without you; jump back in</small><em class="chev" aria-hidden="true">${icons.next}</em></button>` : ''}
+        ${configured ? `<button class="row2 q frbtn" data-act="friends"><span class="lbl">Friends</span><small class="qh">Add friends by code, see who’s online, invite them</small><em class="chev" aria-hidden="true">${icons.next}</em></button>` : ''}
         <p class="oerr" role="alert" hidden></p>
       </div></div>
       <button class="b3 blue disp go2" data-act="to-join">JOIN A ROOM</button>
@@ -94,6 +96,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       <h3 class="disp">Room <span class="code"></span></h3><p class="sub lsub"></p>
       <div class="mid"><div class="sp">
         <button class="sharecode" data-act="share">${icons.share}<span>Share the code</span></button>
+        <button class="sharecode" data-act="invite-friends">${icons.friends}<span>Invite friends</span></button>
         <div class="seats"></div>
         <p class="lnote"></p>
         <p class="lclock" aria-live="off"></p>
@@ -237,6 +240,11 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       error('');
     } else if (!configured && (act === 'to-create' || act === 'to-join' || act === 'rejoin')) {
       error('Online play isn’t set up in this version of the app.');
+    } else if (act === 'friends') {
+      keepName();
+      void friendsSheet(el);
+    } else if (act === 'invite-friends') {
+      void friendsSheet(el, link?.code);
     } else if (act === 'to-create') {
       keepName();
       show('create');
@@ -278,5 +286,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
 
   show('menu');
   if (rejoin && saved && configured) connect(() => RoomLink.join(saved.code, saved.name, saved.token));
+  // An invite from a friend (#209): straight into their room.
+  else if (join && configured) connect(() => RoomLink.join(join, myName()));
   return el;
 }

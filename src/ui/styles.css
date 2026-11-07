@@ -1276,3 +1276,25 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 .cpeople{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .cmute{padding:6px 10px;border-radius:10px;background:rgba(0,0,0,.2);color:#fff;font-size:12px;font-weight:900;opacity:.85}
 .cmute.on{background:rgba(238,53,53,.35)}
+
+/* Friends (#209, a first version): plain for now; the design comes later. */
+.sheet.friends .box{width:330px;text-align:left}
+.sheet.friends h2{text-align:center}
+.fmine{margin:6px 0 10px;font-weight:800;font-size:14px;text-align:center}
+.fmine b{display:inline-block;margin-left:6px;padding:4px 10px;border-radius:10px;background:rgba(0,0,0,.25);font-size:22px;letter-spacing:2px;color:#ffd65a}
+.fadd{display:flex;gap:8px}
+.fadd input{flex:1;min-width:0;height:44px;padding:0 12px;border-radius:12px;border:none;background:rgba(255,255,255,.92);font:900 18px Nunito,sans-serif;letter-spacing:2px;text-transform:uppercase;color:#0b1d5c}
+.fadd .b3{width:auto;padding:0 16px;font-size:16px;margin:0}
+.ferr{margin:8px 0 0;color:#ffd0d0;font-weight:800;font-size:13px}
+.flist{margin:12px 0 4px;display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto}
+.frow{display:flex;align-items:center;gap:10px;min-height:46px;padding:0 6px 0 12px;border-radius:12px;background:rgba(0,0,0,.22)}
+.frow b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}
+.fdot{width:10px;height:10px;border-radius:50%;flex:none;background:rgba(255,255,255,.3)}
+.fdot.on{background:#57ff98;box-shadow:0 0 6px #57ff98}
+.finv{padding:7px 12px;border-radius:10px;background:linear-gradient(180deg,#93f770,#24ad3c);color:#fff;font-weight:900;font-size:13px}
+.finv:disabled{background:rgba(255,255,255,.15);opacity:.8}
+.frem{width:36px;height:36px;border-radius:10px;background:none;color:rgba(255,255,255,.6);font-size:20px}
+.fnone{opacity:.75;font-size:13px;font-weight:700;text-align:center;padding:8px}
+.invite-ov .box{width:300px}
+.invite-ov .sub{font-size:14px;line-height:1.4;margin:8px 0 4px}
+.invite-ov .later{display:block;margin:10px auto 0;min-height:40px;padding:0 14px;background:none;color:#fff;font-weight:900;font-size:14px;opacity:.8}

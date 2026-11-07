@@ -10,12 +10,15 @@ import { puzzleBadge } from './puzzleDay';
 import { applyLook } from './themes';
 import { offerUpdate } from './update';
 import { offerCheckIn } from './checkin';
-import { offerTerms } from './legal';
+import { hasAcceptedTerms, offerTerms } from './legal';
+import { settings } from './settings';
 import { decodeRecord, type GameRecord } from '../engine';
 import { linkPayload } from './replay';
 import { bootReviews, setGame } from './reviewQueue';
 import { prefetchAtIdle, screens, setScreen, show } from './lazy';
 import { roomsUrl, type RoomLink } from '../net/client';
+import { hasAccount, startFriends } from '../net/friends';
+import { watchInvites } from './friendsSheet';
 
 /** Ranked PvP is switched off for now (#204): its code stays, the home screen doesn't offer it. It comes back with no bots. */
 const RANKED = false;
@@ -76,8 +79,9 @@ export function mountApp(root: HTMLElement) {
     await show(stage, screens.review, (m) => m.reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p), keep, at, caption, p), keep, pov), back);
   };
   /** With friends, online: the private-room screens, then the room's game (the server plays it; this screen shows it). */
-  const online = async (rejoin = false) => {
-    await show(stage, screens.online, (m) => m.onlineScreen(playOnline, () => void home(), rejoin), () => void home());
+  const online = async (rejoin = false, join?: string) => {
+    if (game && stage.contains(game.el)) return; // never pulled out of a game by an invite
+    await show(stage, screens.online, (m) => m.onlineScreen(playOnline, () => void home(), rejoin, join), () => void home());
   };
   /** Ranked PvP: your ranks and the search, then the matched game. */
   const ranked = async () => {
@@ -160,6 +164,10 @@ export function mountApp(root: HTMLElement) {
   if (!openLink()) void home();
   // The newest unreviewed past games are reviewed while the app is open (#96).
   void bootReviews();
+  // Friends (#209): an invite opens the friend's room. The link starts by itself only for a device that already
+  // has a guest account and accepted the terms; otherwise it starts the first time Friends is opened.
+  watchInvites(stage, (room) => void online(false, room));
+  if (roomsUrl() && hasAccount() && hasAcceptedTerms()) void startFriends(settings.myName?.trim() || 'Player').catch(() => {});
   // The lazily loaded screens, fetched at idle so a web session that started online also works offline (#98).
   prefetchAtIdle();
 }
