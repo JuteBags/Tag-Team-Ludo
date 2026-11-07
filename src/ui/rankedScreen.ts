@@ -37,6 +37,7 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       <label class="rname"><span>Your name</span><input class="namein" maxlength="${NAME_MAX}" autocomplete="nickname" spellcheck="false" placeholder="Your name"></label>
       <div class="rmodes"></div>
       <p class="oerr" role="alert" hidden></p>
+      <button class="b3 blue disp retry" data-act="retry" hidden>TRY AGAIN</button>
       <p class="rnote">Matched with players near your rank. Leaving a game forfeits: it counts as last place.</p>
     </section>
     <section class="wiz" data-step="search" hidden>
@@ -96,13 +97,16 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     if (!roomsUrl()) return error('Online play isn’t set up in this version of the app.');
     // Nothing goes to the server (not even the guest account) until the terms are accepted (#208).
     if (!(await requireTerms(el))) return error('Online play needs your OK to Privacy & Terms.');
+    $<HTMLElement>('.retry').hidden = true;
+    $('.who').textContent = 'Loading your ranks…';
     try {
       account = await loadAccount(myName());
       error('');
       drawModes();
     } catch {
       $('.who').textContent = '';
-      error('Couldn’t reach the ranked server. Check your connection and try again.');
+      error('Couldn’t reach the ranked server. Check your connection.');
+      $<HTMLElement>('.retry').hidden = false;
     }
   };
 
@@ -172,6 +176,12 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     if (b.dataset.mode) {
       sfx.tick();
       return search(b.dataset.mode as GameMode);
+    }
+    if (b.dataset.act === 'retry') {
+      sfx.tick();
+      error('');
+      void load();
+      return;
     }
     if (b.dataset.act === 'private') {
       // The hint: stop searching and play with friends instead.

@@ -1389,3 +1389,4 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
 /* #232 the lobby offline: the line under the title becomes a banner. */
 .wiz[data-step=lobby].offline .lsub{display:inline-block;align-self:center;margin:6px auto 14px;padding:6px 14px;border-radius:14px;background:rgba(238,53,53,.22);border:1.5px solid rgba(255,140,140,.6);color:#ffe1e1}
 .online .wiz .lchips .lchip{display:inline-flex;flex-direction:row}
+.ranked .retry{width:100%;height:52px;margin-top:10px;font-size:19px}
