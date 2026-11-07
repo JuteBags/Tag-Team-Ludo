@@ -14,12 +14,12 @@ import { avatarSVG, cssVars, icons, PALETTE } from './art';
 import { BoardView } from './boardView';
 import { moveTargets } from './targets';
 import { dieMarkup } from './dice';
-import { framesOf, namesOf, shareLink, type Frame } from './replay';
+import { framesOf, namesOf, type Frame } from './replay';
+import { gameLink } from './gameLink';
 import { follow } from './reviewQueue';
 import { peopleOf, type ReviewProgress } from './reviewRun';
 import { KEY_LABELS, LABEL_LOOK, plainVerdict, turningPoint, type PlainVerdict } from './reviewText';
 import { whyFacts, whyLine, type WhyFact } from './reviewWhy';
-import { SITE } from './shareCard';
 import type { StoredReview } from './store';
 
 const STEP_MS = 900;
@@ -390,7 +390,7 @@ export function replayScreen(rec: GameRecord, onClose: () => void, opts: ReplayO
       else if (act === 'prevkey' || act === 'nextkey') {
         const i = keyFrame(act === 'prevkey' ? -1 : 1);
         if (i >= 0) await go(i);
-      } else if (act === 'share') await share(rec, q('[data-act=share] span'));
+      } else if (act === 'share') await share(rec, q('[data-act=share] span'), opts.review);
     }
   });
   scrub.addEventListener('input', () => {
@@ -438,9 +438,12 @@ export function safeReplayScreen(rec: GameRecord | null, onClose: () => void, op
   }
 }
 
-/** Shares the game as a link: the share menu on Android or the web, or copied to the clipboard. */
-async function share(rec: GameRecord, label: HTMLElement) {
-  const url = await shareLink(rec, SITE);
+/**
+ * Shares the game as a link: the share menu on Android or the web, or copied to the clipboard. A short link when the
+ * game can go up to our server (with its review), else the long one (#229).
+ */
+async function share(rec: GameRecord, label: HTMLElement, review?: StoredReview) {
+  const url = await gameLink(rec, review);
   const text = 'Watch my game of Tag Team Ludo';
   try {
     if (Capacitor.isNativePlatform()) await Share.share({ title: 'Tag Team Ludo', text, url, dialogTitle: 'Share this game' });

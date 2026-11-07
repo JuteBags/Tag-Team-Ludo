@@ -148,18 +148,23 @@ export async function drawCard(title: string, mode: string, rows: CardRow[]): Pr
   return cv.toDataURL('image/png');
 }
 
-/** Shares the card: the share menu on Android, the Web Share API, or a download. */
-export async function shareCard(png: string, text: string) {
+/** Shares the card: the share menu on Android, the Web Share API, or a download. `url` goes with the text (the game's link, #229). */
+export async function shareCard(png: string, text: string, url = SITE) {
   const base64 = png.slice(png.indexOf(',') + 1);
   if (Capacitor.isNativePlatform()) {
     const file = await Filesystem.writeFile({ path: 'tag-team-ludo-result.png', data: base64, directory: Directory.Cache });
-    await Share.share({ title: 'Tag Team Ludo', text: `${text} ${SITE}`, files: [file.uri], dialogTitle: 'Share your result' });
+    await Share.share({ title: 'Tag Team Ludo', text: `${text} ${url}`, files: [file.uri], dialogTitle: 'Share your result' });
     return;
   }
   const blob = await (await fetch(png)).blob();
   const file = new File([blob], 'tag-team-ludo-result.png', { type: 'image/png' });
   if (navigator.canShare?.({ files: [file] })) {
-    await navigator.share({ files: [file], title: 'Tag Team Ludo', text: `${text} ${SITE}` });
+    await navigator.share({ files: [file], title: 'Tag Team Ludo', text: `${text} ${url}` });
+    return;
+  }
+  // No file sharing here (most desktop browsers): the text and the game's link, if there's a share menu at all (#237).
+  if (url !== SITE && navigator.share) {
+    await navigator.share({ title: 'Tag Team Ludo', text, url });
     return;
   }
   const a = document.createElement('a');
