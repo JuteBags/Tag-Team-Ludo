@@ -147,6 +147,8 @@ export function mountApp(root: HTMLElement) {
   // for a link pasted into a tab that already has the game open.
   /** A room or friend link (#238): the room's Join, or the friend prompt; on Android's browser, the app first if wanted. */
   const followLink = async (action: LinkAction) => {
+    // One line in the console (logcat in the app): the Android CI job checks for it (android-links.yml).
+    console.info(`[ludo-link] follow ${JSON.stringify(action)}`);
     if (androidWeb() && !(await openHere(stage, action))) return;
     if ('join' in action) await online(false, action.join);
     else {
@@ -181,6 +183,7 @@ export function mountApp(root: HTMLElement) {
   addEventListener('hashchange', () => void openLink());
   // The Android app opened by a room or friend link (#238): the same as the link on the web.
   onAppLink((url) => {
+    console.info(`[ludo-link] opened by ${url}`);
     try {
       const u = new URL(url);
       const a = linkAction(u.hash, u.search);

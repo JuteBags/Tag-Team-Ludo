@@ -323,6 +323,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   // A room link (#238) shows the code on Join, so a full, started or unknown room says so there.
   else if (join && configured) {
     codeIn.value = join;
+    console.info(`[ludo-link] join step ${join}`);
     $<HTMLButtonElement>('[data-act=join]').disabled = !isCode(join);
     show('join');
     connect(() => RoomLink.join(join, myName()));
