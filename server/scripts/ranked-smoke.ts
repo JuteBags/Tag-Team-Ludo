@@ -1,8 +1,10 @@
 // End-to-end check of Ranked against a running server: guest accounts, the queue, the matched room and the
-// rating. With two players they're matched at once; with one (`solo`), bots fill the game after a minute.
+// rating. With two players they're matched at once; with one (`solo`), bots fill the game after the wait. The
+// bots are played here, as the app does (#221), at once instead of at a person's pace.
 // Run: npx esbuild scripts/ranked-smoke.ts --bundle --platform=node --format=esm --outfile=.wrangler/ranked.mjs
 //      node .wrangler/ranked.mjs [ws://localhost:8787] [ffa|1v1|duo|2v2] [solo]
 import { STOP_EVENT, applyEvent, createGame, moveEvent, type GameState } from '../../src/engine';
+import { BOT_VERSION, botStep, isLocalBot, type Draws, type LocalBots } from '../../src/net/localBots';
 import { PROTOCOL, type AccountReply, type GameMode, type GameSetup, type QueueServerMsg, type ServerMsg } from '../../src/net/protocol';
 
 const base = process.argv[2] ?? 'ws://localhost:8787';
@@ -29,11 +31,13 @@ class Player {
   matched: Extract<QueueServerMsg, { t: 'matched' }> | null = null;
   lastSearch: Extract<QueueServerMsg, { t: 'search' }> | null = null;
   room: WebSocket | null = null;
+  bots: LocalBots | null = null;
+  draws: Draws | null = null;
   constructor(readonly acc: AccountReply) {}
 
   queue() {
     const ws = new WebSocket(`${base}/mm?mode=${mode}`);
-    ws.onopen = () => ws.send(JSON.stringify({ t: 'queue', protocol: PROTOCOL, account: { id: this.acc.id, secret: this.acc.secret }, name: this.acc.name }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: 'queue', protocol: PROTOCOL, botVersion: BOT_VERSION, account: { id: this.acc.id, secret: this.acc.secret }, name: this.acc.name }));
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as QueueServerMsg;
       if (m.t === 'search') this.lastSearch = m;
@@ -48,7 +52,7 @@ class Player {
   join(code: string, token: string) {
     const ws = new WebSocket(`${base}/ws?code=${code}`);
     this.room = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', protocol: PROTOCOL, token, name: this.acc.name }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', protocol: PROTOCOL, botVersion: BOT_VERSION, token, name: this.acc.name }));
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as ServerMsg;
       if (m.t === 'game') {
@@ -57,10 +61,13 @@ class Player {
         this.events = [...m.events];
         this.state = createGame(m.setup.seats, m.setup.first, m.setup.singles);
         for (const ev of m.events) if (ev !== STOP_EVENT) this.state = applyEvent(this.state, ev);
+        this.bots = m.bots ?? null;
+        this.draws = m.draws ?? null;
         this.act();
       } else if (m.t === 'ev') {
         this.events.push(m.ev);
         if (m.ev !== STOP_EVENT) this.state = applyEvent(this.state!, m.ev);
+        if (m.draws) this.draws = m.draws;
         this.act();
       } else if (m.t === 'over') this.over = true;
       else if (m.t === 'rated') this.rated = m;
@@ -69,14 +76,30 @@ class Player {
   }
 
   act() {
-    const s = this.state;
+    let s = this.state;
     if (!s || s.phase === 'over' || this.over) return;
-    if (this.setup!.control[s.players[s.current]!.color] !== this.you) return;
+    // The bots' run waiting now, played here; it goes with this player's action (#221).
+    const bots: string[] = [];
+    const dr = this.draws;
+    if (isLocalBot(s, this.bots) && dr && dr.at === this.events.length) {
+      let used = 0;
+      while (isLocalBot(s, this.bots)) {
+        const step = botStep(s, this.bots!, dr.d, used);
+        if (!step) return; // out of draws: not handled in this smoke test
+        bots.push(step.ev);
+        s = step.next;
+        used = step.used;
+      }
+    }
     const seq = this.events.length;
+    const extra = bots.length ? { bots } : {};
+    if (s.phase === 'over') return void this.room!.send(JSON.stringify({ t: 'bots', seq, bots }));
+    if (this.setup!.control[s.players[s.current]!.color] !== this.you) return;
+    const now = s;
     setTimeout(() => {
       if (this.events.length !== seq) return;
-      if (s.phase === 'roll') this.room!.send(JSON.stringify({ t: 'roll', seq }));
-      else this.room!.send(JSON.stringify({ t: 'move', seq, ev: moveEvent(s.moves[Math.floor(Math.random() * s.moves.length)]!) }));
+      if (now.phase === 'roll') this.room!.send(JSON.stringify({ t: 'roll', seq, ...extra }));
+      else this.room!.send(JSON.stringify({ t: 'move', seq, ev: moveEvent(now.moves[Math.floor(Math.random() * now.moves.length)]!), ...extra }));
     }, 20);
   }
 }

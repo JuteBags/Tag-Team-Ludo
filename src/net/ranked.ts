@@ -4,6 +4,7 @@
 // device's storage. Losing them (clearing the app's data, reinstalling) means a new account; Google sign-in
 // will later tie an account to a person instead of a device.
 import { roomsUrl } from './client';
+import { BOT_VERSION } from './localBots';
 import { PROTOCOL, type AccountKey, type AccountReply, type GameMode, type QueueClientMsg, type QueueServerMsg } from './protocol';
 
 const KEY = 'ludo-ranked-account';
@@ -53,7 +54,7 @@ export class QueueLink {
 
   constructor(readonly mode: GameMode, account: AccountKey, name: string) {
     this.ws = new WebSocket(`${roomsUrl()}/mm?mode=${mode}`);
-    this.ws.onopen = () => this.ws.send(JSON.stringify({ t: 'queue', protocol: PROTOCOL, account: { id: account.id, secret: account.secret }, name } satisfies QueueClientMsg));
+    this.ws.onopen = () => this.ws.send(JSON.stringify({ t: 'queue', protocol: PROTOCOL, botVersion: BOT_VERSION, account: { id: account.id, secret: account.secret }, name } satisfies QueueClientMsg));
     this.ws.onmessage = (e) => {
       let m: QueueServerMsg;
       try {

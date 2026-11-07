@@ -1,12 +1,18 @@
 // The online protocol (private rooms): the messages between the app and the room server (server/), shared by
 // both. JSON over one WebSocket per player. The server owns the game: it rolls every die, checks every move
 // and plays the bots; the app sends what its person wants to do and animates what the server confirms.
+// Ranked bots are the exception (#221, localBots.ts): the apps play them, with the server's dice, and the
+// server checks what they send.
 //
 // A game travels as record events (engine/record.ts): a die is '1'..'6', a move is its token(s) and its die
 // ('a4', 'e6'). Every event has a sequence number (its index in the game's event list), so the app sees a
 // gap at once, and an action names the sequence number it was made at, so a stale tap (a double tap, a turn
 // the timer already played) is turned down instead of played twice.
 import type { BotLevel, Color, Seat } from '../engine';
+import type { Draws, LocalBots } from './localBots';
+
+/** A person's time to roll or move before the server plays that step for them. */
+export const TURN_MS = 30_000;
 
 /** Bumped on any change the other side can't read: an app and a server with different versions don't play. */
 export const PROTOCOL = 3;
@@ -110,13 +116,22 @@ export interface Turn {
 
 export type ClientMsg =
   /** First on every connection: who this is. `token` is the device's secret id for this room, kept across reconnects. */
-  | { t: 'hello'; protocol: number; token: string; name: string }
+  | { t: 'hello'; protocol: number; token: string; name: string; botVersion?: number }
   /** The host starts the game (bots take the empty seats). */
   | { t: 'start' }
-  /** Roll for the current colour, at event `seq`. */
-  | { t: 'roll'; seq: number }
-  /** Play this move (a record move event) at event `seq`. */
-  | { t: 'move'; seq: number; ev: string }
+  /**
+   * Roll for the current colour, at event `seq`. `bots` (#221): the bots' events this app played from `seq`, which
+   * come first (the person's turn follows the bots').
+   */
+  | { t: 'roll'; seq: number; bots?: string[] }
+  /** Play this move (a record move event) at event `seq`, after `bots` (as for roll). */
+  | { t: 'move'; seq: number; ev: string; bots?: string[] }
+  /** #221: the bots' events from `seq` when no person's turn follows them (the game ended in the bots' run). */
+  | { t: 'bots'; seq: number; bots: string[] }
+  /** #221: this app ran out of draws in the bots' run that started at event `at`. */
+  | { t: 'draws'; at: number }
+  /** #221: the server's event at `seq` differs from this app's bot event `ev` there (logged; the app takes the server's). */
+  | { t: 'mismatch'; seq: number; ev: string }
   /** Leave the room: from the lobby the seat frees up; in a game a bot plays on for you. */
   | { t: 'leave' }
   /** Chat (#212): one of QUICK_CHAT, one of CHAT_EMOJI, or free text (private rooms only). */
@@ -132,9 +147,11 @@ export type ServerMsg =
    */
   | { t: 'lobby'; code: string; options: RoomOptions; members: Member[]; you: number; endsIn: number; chat?: ChatFeatures }
   /** The whole game so far: when it starts, and on every reconnect. The app replays `events` from `setup`. */
-  | { t: 'game'; code: string; setup: GameSetup; events: string[]; members: Member[]; you: number; turn: Turn | null; chat?: ChatFeatures }
-  /** One more event, at index `seq`; then whose turn it is. */
-  | { t: 'ev'; seq: number; ev: string; turn: Turn | null }
+  | { t: 'game'; code: string; setup: GameSetup; events: string[]; members: Member[]; you: number; turn: Turn | null; chat?: ChatFeatures; bots?: LocalBots; draws?: Draws }
+  /** One more event, at index `seq`; then whose turn it is. `draws`: the draws for the bots' run that starts now (#221). */
+  | { t: 'ev'; seq: number; ev: string; turn: Turn | null; draws?: Draws }
+  /** #221: more draws for the bots' run that started at `at` (added after the ones sent). */
+  | { t: 'draws'; at: number; d: number[] }
   /** Someone connected, dropped, left, or got a bot playing for them. */
   | { t: 'members'; members: Member[] }
   /**
@@ -178,7 +195,7 @@ export interface AccountReply {
 }
 
 /** The queue, on GET /mm?mode=<mode> (a WebSocket): the first message, then the server's. */
-export type QueueClientMsg = { t: 'queue'; protocol: number; account: AccountKey; name: string } | { t: 'leave' };
+export type QueueClientMsg = { t: 'queue'; protocol: number; account: AccountKey; name: string; botVersion?: number } | { t: 'leave' };
 
 export type QueueServerMsg =
   /** In the queue: your rating, how long you've waited, the rating gap allowed now, and how many are searching. */

@@ -203,6 +203,8 @@ export class Room extends DurableObject<Env> {
       random: () => crypto.getRandomValues(new Uint32Array(1))[0]! / 4294967296,
       // A reported chat line (#212), for review in the Worker's logs (observability is on). Chat keeps nothing else.
       report: (r) => console.log(JSON.stringify({ type: 'chat-report', ...r })),
+      // #221: bots' runs the apps played differently, or that the server had to play itself.
+      log: (entry) => console.log(JSON.stringify(entry)),
       rate: (report) => accounts(this.env).rate(report),
     };
   }
