@@ -151,7 +151,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     const slots = modeSlots(o.mode, o.pairing);
     const total = slots.length;
     $('.lsub').textContent = net || `${n} of ${total} here`;
-    $('.lchips').innerHTML = `<span class="lchip mode">${seatPic(o.mode, o.pairing, 22)}${MODE_NAME[o.mode]}</span><span class="lchip">${o.singles ? 'No doubles' : 'Doubles'}</span><span class="lchip">${cap(o.botLevel)} bots</span>`;
+    $('.lchips').innerHTML = `<span class="lchip mode">${seatPic(o.mode, o.pairing, 22)}<span class="lname">${MODE_NAME[o.mode]}</span></span><span class="lchip">${o.singles ? 'No doubles' : 'Doubles'}</span><span class="lchip">${cap(o.botLevel)} bots</span>`;
     const seat = (i: number) => {
       const slot = slots[i]!;
       const m = link!.members[i];

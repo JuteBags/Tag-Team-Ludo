@@ -46,7 +46,7 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
         <span class="spic" aria-hidden="true"></span>
         <b class="selapsed" role="timer" aria-label="Searching">0:00</b>
         <p class="sline" aria-live="polite"></p>
-        <button class="shint" data-act="private" hidden><b>Taking a while?</b><span>Play friends in a private room</span></button>
+        <button class="shint" data-act="private" hidden><b>Taking a while?</b><span>Play with friends in a private room</span></button>
       </div></div>
       <button class="b3 blue disp go" data-act="cancel">CANCEL</button>
     </section>`;
