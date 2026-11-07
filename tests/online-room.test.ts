@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { STOP_EVENT, applyEvent, createGame, moveEvent, ownerRanking, replay, seeded, type GameState } from '../src/engine';
 import { PROTOCOL, type ClientMsg, type GameSetup, type RoomOptions, type ServerMsg } from '../src/net/protocol';
-import { LOBBY_MS, OVER_MS, RoomCore, setupFor, type RateReport, TURN_MS, type RoomData, type RoomIO } from '../server/src/room-core';
+import { BOT_NAMES, LOBBY_MS, OVER_MS, RoomCore, setupFor, type RateReport, TURN_MS, type RoomData, type RoomIO } from '../server/src/room-core';
 
 const OPTS: RoomOptions = { mode: 'ffa', pairing: 'opposite', singles: false, botLevel: 'normal' };
 const ppl = (names: string[]) => names.map((name, member) => ({ member, name }));
@@ -491,5 +491,35 @@ describe('online room: chat (#212)', () => {
     expect(reports).toEqual([{ room: 'CHATS', reporter: 'Leo', from: 'Asha', text: 'something rude', at: w.t }]);
     expect((w.inbox.get(tok(2)) ?? []).some((m) => m.t === 'reported')).toBe(true);
     expect(await room.handle(tok(2), { t: 'report', from: 7, text: 'x' })).toBe('bad-message');
+  });
+});
+
+describe('online room: Ranked bots look like players (#216)', () => {
+  it('a bot that fills a ranked game is seated, named and timed like a person, and the game counts', async () => {
+    const w = world(31);
+    const reports: RateReport[] = [];
+    w.io.rate = async (r) => {
+      reports.push(r);
+      return { acc1: { before: 1000, after: 1012, games: 1 } };
+    };
+    const room = RoomCore.ranked('RANKB', { ...OPTS, mode: '1v1' }, [{ token: tok(1), name: 'Asha', account: 'acc1' }, null], 1100, w.io);
+    // The server knows it's a bot.
+    expect(room.snapshot.setup!.seats.some((s) => s.bot)).toBe(true);
+    expect(room.hello(tok(1), hello(1, 'Asha'))).toBeNull();
+    const game = (w.inbox.get(tok(1)) ?? []).find((m) => m.t === 'game')!;
+    if (game.t !== 'game') throw new Error('no game');
+    // The player doesn't: no bot seat, a person's name, and a clock on its turn.
+    expect(game.setup.seats.every((s) => !s.bot && s.level === undefined)).toBe(true);
+    expect(BOT_NAMES).toContain(game.setup.names[1]);
+    expect(game.setup.names[0]).toBe('Asha');
+    const phone = new Phone(tok(1), w);
+    await playOut(room, w, [phone], seeded(7));
+    const turns = (w.inbox.get(tok(1)) ?? []).flatMap((m) => (m.t === 'ev' && m.turn && game.setup.control[m.turn.color] === -1 ? [m.turn.ms] : []));
+    expect(turns.length).toBeGreaterThan(0);
+    expect(turns.every((ms) => ms === TURN_MS)).toBe(true);
+    await new Promise((r) => setTimeout(r, 0));
+    // It counts: rated with the bot as a side at its rating.
+    expect(reports).toHaveLength(1);
+    expect(reports[0]!.sides.flatMap((s) => s.members)).toContainEqual({ bot: 1100 });
   });
 });

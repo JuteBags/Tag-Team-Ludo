@@ -22,6 +22,8 @@ export interface Env {
   MATCH: DurableObjectNamespace<Matchmaker>;
   ACCOUNTS: DurableObjectNamespace<Accounts>;
   FRIENDS: DurableObjectNamespace<Friends>;
+  /** Tests only: "1" turns on POST /api/test/rating (CI passes it to wrangler dev; no environment sets it). */
+  TEST_HOOKS?: string;
   /** Comma-separated origins allowed to open a WebSocket, or "*" (dev). Requests with no Origin (native) always pass. */
   ALLOWED_ORIGINS: string;
 }
@@ -68,6 +70,11 @@ export default {
     const url = new URL(req.url);
     if (url.pathname === '/health') return json({ ok: true, protocol: PROTOCOL });
     if (url.pathname === '/api/account') return account(req, env);
+    if (url.pathname === '/api/test/rating' && env.TEST_HOOKS === '1' && req.method === 'POST') {
+      const b = (await req.json().catch(() => null)) as { id?: string; secret?: string; mode?: GameMode; rating?: number; games?: number } | null;
+      const ok = !!b?.id && !!b.secret && (await accounts(env).testSetRating({ id: b.id, secret: b.secret }, b.mode!, Number(b.rating), Number(b.games ?? 20)));
+      return json({ ok }, ok ? 200 : 400);
+    }
     if (url.pathname !== '/ws' && url.pathname !== '/mm' && url.pathname !== '/fr') return json({ error: 'not found' }, 404);
     if (req.headers.get('Upgrade') !== 'websocket') return json({ error: 'expected a WebSocket' }, 426);
     if (!originOk(req, env)) return json({ error: 'origin not allowed' }, 403);

@@ -3,7 +3,8 @@
 // reload + rejoin, Leave game, a 60 s disconnect, three timeouts in a row. Each player accepts the first-launch
 // terms (#208) and must not be asked again at connect time.
 //   node tools/online/staging.mjs <test> [chrome path] [--url http://localhost:5173/] [--out staging-out]
-//   tests: mode:<ffa|1v1|duo|2v2> | modes (all four) | rejoin | leave | disconnect | timeouts | chat, friends (our server)
+//   tests: mode:<ffa|1v1|duo|2v2> | modes (all four) | rejoin | leave | disconnect | timeouts | chat, friends,
+//          ranked-pair, ranked-botfill, ranked-nobots, ranked-lower (our server; ranked-* need TEST_HOOKS=1)
 // RESULT_PREFIX (env) is put before each result's name (e.g. "local · ").
 // .github/workflows/pvp-staging.yml runs each test as its own job, with the dev server pointed at the server by
 // VITE_ROOMS_URL. Writes <out>/<test>.json (pass or fail and the details), screenshots, and a summary line.
@@ -295,6 +296,71 @@ try {
     await shots('lobby', host, guest);
     report('friends: add by code, online, invite, join', guestSees && hostSees && gotInvite && joined && hostHeard && twoInLobby, `guest sees Asha online ${guestSees}; host sees Leo online ${hostSees}; invite "${(inviteText ?? '').trim()}" ${gotInvite}; guest in room ${room} ${joined}; host heard "Joining" ${hostHeard}; start enabled ${twoInLobby}`);
     await close(host, guest);
+  } else if (test.startsWith('ranked')) {
+    // Ranked (#216), on our server started with TEST_HOOKS=1 (to put an account at a rating).
+    const http = (process.env.VITE_ROOMS_URL ?? 'ws://localhost:8787').replace(/^ws/, 'http');
+    const openRanked = async (p) => {
+      await p.page.goto(URL, { waitUntil: 'load' });
+      await home(p.page);
+      await tap(p.page, '[data-act=ranked]');
+      await p.page.locator('.rmode[data-mode="1v1"]').waitFor({ timeout: 30000 });
+    };
+    /** A player whose 1v1 rating is `rating` (20 games: past placement), on the Ranked screen. */
+    const ranked = async (name, rating) => {
+      const p = await player(name);
+      await openRanked(p);
+      const key = await p.page.evaluate(() => JSON.parse(localStorage.getItem('ludo-ranked-account') ?? 'null'));
+      const res = await fetch(`${http}/api/test/rating`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...key, mode: '1v1', rating, games: 20 }) });
+      if (!res.ok) throw new Error(`test hook: HTTP ${res.status} (is TEST_HOOKS on?)`);
+      await openRanked(p);
+      return p;
+    };
+    const search = (p) => tap(p.page, '.rmode[data-mode="1v1"]');
+    const inGame = (p, ms) => p.page.locator('.screen.game').waitFor({ timeout: ms }).then(() => true).catch(() => false);
+    const botText = (p) => p.page.evaluate(() => [...document.querySelectorAll('.pl')].some((pl) => /\bBOT\b/.test(pl.textContent ?? '')));
+    if (test === 'ranked-pair') {
+      const a = await ranked('Asha', 1000);
+      const b = await ranked('Leo', 1050);
+      await search(a);
+      await search(b);
+      const both = (await inGame(a, 30000)) && (await inGame(b, 30000));
+      const r = await play([a, b]);
+      const rated = await Promise.all([a, b].map((p) => p.page.waitForFunction(() => !!document.querySelector('.result .rated'), null, { timeout: 15000 }).then(() => p.page.textContent('.result .rated')).catch(() => null)));
+      await shots('end', a, b);
+      report('ranked: two people matched by rating, and the rating changes', both && r.over?.length === 2 && rated.every(Boolean), `matched ${both}; ${r.steps} steps to the end; rating lines ${JSON.stringify(rated)}`);
+      await close(a, b);
+    } else if (test === 'ranked-botfill') {
+      const a = await ranked('Asha', 1000);
+      const t = Date.now();
+      await search(a);
+      const started = await inGame(a, 90000);
+      const s = Math.round((Date.now() - t) / 1000);
+      await a.page.waitForTimeout(1500);
+      const names = await a.page.evaluate(() => [...document.querySelectorAll('.pl .nm')].map((n) => n.textContent));
+      const shown = await botText(a);
+      await shots('game', a);
+      report('ranked: up to Gold III, a bot fills after the timeout, looking like a person', started && s >= 40 && !shown, `game after ${s} s; names ${JSON.stringify(names)}; "BOT" shown ${shown}`);
+      await close(a);
+    } else if (test === 'ranked-nobots') {
+      const a = await ranked('Asha', 1500);
+      await search(a);
+      const started = await inGame(a, 75000);
+      const hint = await a.page.locator('.shint').isVisible().catch(() => false);
+      const cancel = await a.page.locator('[data-act=cancel]').isVisible().catch(() => false);
+      await shots('search', a);
+      report('ranked: from Gold II up, no bots (still searching after 75 s)', !started && hint && cancel, `game started ${started}; hint shown ${hint}; cancel shown ${cancel}`);
+      await close(a);
+    } else if (test === 'ranked-lower') {
+      const g = await ranked('Gold', 1320);
+      const s = await ranked('Silver', 1250);
+      const t = Date.now();
+      await search(g);
+      await search(s);
+      const both = (await inGame(g, 60000)) && (await inGame(s, 60000));
+      const secs = Math.round((Date.now() - t) / 1000);
+      report('ranked: Gold widens into Silver (the league below) after 20 s', both && secs >= 18, `matched ${both} after ${secs} s`);
+      await close(g, s);
+    }
   } else if (test === 'chat') {
     // Chat (#212), against a server with chat: a quick phrase, an emoji, free text with a rude word, a mute, a report.
     const { host, guest } = await pair('1v1');

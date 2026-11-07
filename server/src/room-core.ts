@@ -21,6 +21,10 @@ export const OFFLINE_MS = 60_000;
 /** The pause before each bot roll and bot move, so everyone can follow the bots. */
 export const BOT_ROLL_MS = 900;
 export const BOT_MOVE_MS = 1100;
+/** A ranked bot's step takes a person's time (#216): 1.2-2.6 s to roll, 1.5-3.5 s to move. */
+const humanPace = (phase: GameState['phase'], random: () => number) => Math.round(phase === 'roll' ? 1200 + 1400 * random() : 1500 + 2000 * random());
+/** Names for ranked bots: people's names, as anyone might choose. */
+export const BOT_NAMES = ['Aarav', 'Diya', 'Kabir', 'Meera', 'Rohan', 'Ananya', 'Ishaan', 'Saanvi', 'Arjun', 'Zoya', 'Vivaan', 'Nisha', 'Reyansh', 'Kiara', 'Leo', 'Maya', 'Omar', 'Lina', 'Sam', 'Ava', 'Noah', 'Mia', 'Ethan', 'Sofia'];
 /** A room nobody touches for this long is deleted (lobby or game). */
 export const IDLE_MS = 2 * 60 * 60_000;
 /** A finished room stays this long, so everyone can still get its result. */
@@ -105,7 +109,7 @@ export interface RoomData {
   /** When the lobby's wait ends (LOBBY_MS after the room was made). */
   lobbyEnds: number;
   /** Ranked: the rating its bots play at, and whether the result has been rated. */
-  ranked?: { botRating: number; rated: boolean; results?: Record<string, RatedPerson> };
+  ranked?: { botRating: number; rated: boolean; results?: Record<string, RatedPerson>; botNames?: Partial<Record<Color, string>> };
 }
 
 export const cleanName = (s: unknown) =>
@@ -178,7 +182,16 @@ export class RoomCore {
     const colors = modeSlots(options.mode, options.pairing).flatMap((x) => x.colors);
     const first = colors[Math.floor(io.random() * colors.length)]!;
     const setup = setupFor(options, people, first, true);
-    const data: RoomData = { v: 1, code, options, phase: 'playing', members, seed: Math.floor(io.random() * 4294967296) >>> 0, setup, events: [], deadline: null, botAt: null, touched: now, lobbyEnds: now, ranked: { botRating, rated: false } };
+    // Bots that fill a ranked game look like any player (#216): a person's name, not "Bot".
+    const taken = new Set(members.map((m) => m.name));
+    const botNames: Partial<Record<Color, string>> = {};
+    for (const seat of setup.seats.filter((x) => x.bot)) {
+      const free = BOT_NAMES.filter((n) => !taken.has(n));
+      const name = free[Math.floor(io.random() * free.length)] ?? 'Player';
+      taken.add(name);
+      botNames[seat.color] = name;
+    }
+    const data: RoomData = { v: 1, code, options, phase: 'playing', members, seed: Math.floor(io.random() * 4294967296) >>> 0, setup, events: [], deadline: null, botAt: null, touched: now, lobbyEnds: now, ranked: { botRating, rated: false, botNames } };
     const room = new RoomCore(data, io);
     room.schedule();
     room.commit();
@@ -527,10 +540,30 @@ export class RoomCore {
     this.commit();
   }
 
+  /**
+   * The game's setup as players get it. In a ranked game the bots that filled empty places (#216) are seated like
+   * people, with their names: nothing on the screen tells them apart. The server's own setup keeps them as bots.
+   */
+  private publicSetup(): GameSetup {
+    const d = this.data;
+    const s = d.setup!;
+    if (!d.ranked) return s;
+    const names = d.ranked.botNames ?? {};
+    const nameOf = (x: Seat) => (x.bot ? (names[x.color] ?? 'Player') : (s.people[s.control[x.color]!] ?? ''));
+    const sides = [...new Set(s.seats.map((x) => x.owner))].sort((a, b) => a - b);
+    return {
+      ...s,
+      seats: s.seats.map((x) => (x.bot ? { color: x.color, owner: x.owner, bot: false } : x)),
+      names: sides.map((side) => [...new Set(s.seats.filter((x) => x.owner === side).map(nameOf))].join(' & ')),
+    };
+  }
+
   private turn(): Turn | null {
     const d = this.data;
     if (d.phase !== 'playing' || !this.state) return null;
     const color = this.state.players[this.state.current]!.color;
+    // A ranked bot's turn shows a person's clock (#216).
+    if (d.deadline === null && d.ranked && this.state.players[this.state.current]!.bot) return { color, ms: TURN_MS };
     return { color, ms: d.deadline === null ? null : Math.max(0, d.deadline - this.io.now()) };
   }
 
@@ -543,7 +576,7 @@ export class RoomCore {
     else if (!pending) {
       // A new step: a fresh clock (a reconnect keeps the one running).
       d.deadline = d.botAt = null;
-      if (this.serverPlays()) d.botAt = now + (this.state.phase === 'roll' ? BOT_ROLL_MS : BOT_MOVE_MS);
+      if (this.serverPlays()) d.botAt = now + (d.ranked ? humanPace(this.state.phase, this.io.random) : this.state.phase === 'roll' ? BOT_ROLL_MS : BOT_MOVE_MS);
       else d.deadline = now + TURN_MS;
       d.pendingAt = d.events.length;
     }
@@ -590,7 +623,7 @@ export class RoomCore {
     if (you < 0) return;
     if (d.phase === 'lobby') this.io.send(token, { t: 'lobby', code: d.code, options: d.options, members: this.members(), you, endsIn: Math.max(0, d.lobbyEnds - this.io.now()), chat: this.chatFeatures() });
     else {
-      this.io.send(token, { t: 'game', code: d.code, setup: d.setup!, events: [...d.events], members: this.members(), you, turn: this.turn(), chat: this.chatFeatures() });
+      this.io.send(token, { t: 'game', code: d.code, setup: this.publicSetup(), events: [...d.events], members: this.members(), you, turn: this.turn(), chat: this.chatFeatures() });
       if (d.phase === 'over') {
         this.io.send(token, { t: 'over', seed: d.seed!, stopped: d.events[d.events.length - 1] === STOP_EVENT });
         // Ranked: the rating change, for a phone that missed it.

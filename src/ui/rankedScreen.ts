@@ -5,7 +5,7 @@ import { icons } from './art';
 import { RoomLink, roomsUrl } from '../net/client';
 import { GAME_MODES, MODE_LABEL, MODE_NOTE, type AccountReply, type GameMode } from '../net/protocol';
 import { QueueLink, loadAccount } from '../net/ranked';
-import { tierOf } from '../net/rating';
+import { PROVISIONAL, SEARCH_HINT_MS, tierOf } from '../net/rating';
 import { requireTerms } from './legal';
 import { onlineConfig } from './onlineScreen';
 import { saveSetting, settings } from './settings';
@@ -14,8 +14,9 @@ import { sfx } from './sfx';
 
 /** A tier's colour, for its badge. */
 export const TIER_COLOR: Record<string, string> = { Bronze: '#d08a4a', Silver: '#c9d3e6', Gold: '#ffd23f', Platinum: '#5fe3d0', Diamond: '#9fc2ff' };
-/** "Gold II · 62 pts". */
-export const tierText = (rating: number) => {
+/** "Gold II · 62 pts", or "Placement 3/10" for someone's first PROVISIONAL games in a mode (#216). */
+export const tierText = (rating: number, games = PROVISIONAL) => {
+  if (games < PROVISIONAL) return `Placement ${games}/${PROVISIONAL}`;
   const t = tierOf(rating);
   return `${t.label} · ${t.points} pts`;
 };
@@ -24,7 +25,7 @@ const clock = (ms: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, onBack: () => void): HTMLElement {
+export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, onBack: () => void, onPrivate?: () => void): HTMLElement {
   const el = document.createElement('div');
   el.className = 'screen setup online ranked';
   el.innerHTML = `
@@ -35,7 +36,7 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       <label class="rname"><span>Your name</span><input class="namein" maxlength="${NAME_MAX}" autocomplete="nickname" spellcheck="false" placeholder="Your name"></label>
       <div class="rmodes"></div>
       <p class="oerr" role="alert" hidden></p>
-      <p class="rnote">Matched with players near your rank. After a minute, bots at your level fill empty places, and the game still counts. Leaving a game forfeits: it counts as last place.</p>
+      <p class="rnote">Matched with players near your rank. Leaving a game forfeits: it counts as last place.</p>
     </section>
     <section class="wiz" data-step="search" hidden>
       <h3 class="disp smode"></h3><p class="sub stier"></p>
@@ -43,7 +44,7 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
         <div class="spin" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
         <b class="selapsed">0:00</b>
         <p class="sline"></p>
-        <p class="sbots"></p>
+        <button class="shint" data-act="private" hidden><span>Taking too long? Play with friends in a private room.</span></button>
       </div></div>
       <button class="b3 blue disp go" data-act="cancel">CANCEL</button>
     </section>`;
@@ -79,7 +80,7 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       const t = tierOf(r.rating);
       return `<button class="rmode" data-mode="${m}" style="--tc:${TIER_COLOR[t.tier]}">
         <span class="rbadge disp">${t.tier[0]}${t.division ? `<small>${t.division}</small>` : ''}</span>
-        <span class="rtxt"><b class="disp">${MODE_LABEL[m]}</b><small>${MODE_NOTE[m]}</small><em>${t.label} · ${t.points} pts${r.games ? ` · ${r.wins}/${r.games} won` : ''}</em></span>
+        <span class="rtxt"><b class="disp">${MODE_LABEL[m]}</b><small>${MODE_NOTE[m]}</small><em>${tierText(r.rating, r.games)}${r.games ? ` · ${r.wins}/${r.games} won` : ''}</em></span>
         <span class="rplay disp">PLAY</span></button>`;
     }).join('');
   };
@@ -109,24 +110,28 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     error('');
     show('search');
     $('.smode').textContent = MODE_LABEL[mode];
-    $('.stier').textContent = tierText(account.ratings[mode].rating);
+    $('.stier').textContent = tierText(account.ratings[mode].rating, account.ratings[mode].games);
     $('.sline').textContent = 'Finding players near your rank…';
-    $('.sbots').textContent = '';
+    $<HTMLElement>('.shint').hidden = true;
     started = performance.now();
-    timer = setInterval(() => ($('.selapsed').textContent = clock(performance.now() - started)), 250);
+    timer = setInterval(() => {
+      const waited = performance.now() - started;
+      $('.selapsed').textContent = clock(waited);
+      // After a while, a hint: friends in a private room (#216). Cancel stays right below.
+      if (onPrivate && waited >= SEARCH_HINT_MS) $<HTMLElement>('.shint').hidden = false;
+    }, 250);
     const q = new QueueLink(mode, account, myName());
     queue = q;
     q.on((m) => {
       if (queue !== q) return;
       if (m.t === 'search') {
         $('.sline').textContent = `Within ${m.window} rating of you · ${m.searching} searching`;
-        $('.sbots').textContent = m.botsAt > 0 ? `Bots fill empty places in ${clock(m.botsAt)}` : 'Filling empty places with bots…';
       } else if (m.t === 'matched') {
         sfx.tick();
         clearInterval(timer);
         queue = null;
         $('.sline').textContent = 'Match found! Joining…';
-        $('.sbots').textContent = '';
+        $<HTMLElement>('.shint').hidden = true;
         const l = RoomLink.join(m.code, myName(), m.token);
         link = l;
         const off = l.on((x) => {
@@ -155,6 +160,14 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     if (b.dataset.mode) {
       sfx.tick();
       return search(b.dataset.mode as GameMode);
+    }
+    if (b.dataset.act === 'private') {
+      // The hint: stop searching and play with friends instead.
+      stopSearch();
+      link?.close();
+      link = null;
+      onPrivate?.();
+      return;
     }
     if (b.dataset.act === 'cancel') {
       stopSearch();

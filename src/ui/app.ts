@@ -20,8 +20,8 @@ import { roomsUrl, type RoomLink } from '../net/client';
 import { hasAccount, startFriends } from '../net/friends';
 import { watchInvites } from './friendsSheet';
 
-/** Ranked PvP is switched off for now (#204): its code stays, the home screen doesn't offer it. It comes back with no bots. */
-const RANKED = false;
+/** Ranked PvP (#216): on. Turn it off here to hide it from the home screen. */
+const RANKED = true;
 
 const W = 390;
 const H = 844;
@@ -85,7 +85,7 @@ export function mountApp(root: HTMLElement) {
   };
   /** Ranked PvP: your ranks and the search, then the matched game. */
   const ranked = async () => {
-    await show(stage, screens.ranked, (m) => m.rankedScreen(playOnline, () => void home()), () => void home());
+    await show(stage, screens.ranked, (m) => m.rankedScreen(playOnline, () => void home(), () => void online()), () => void home());
   };
   const playOnline = (link: RoomLink, cfg: GameConfig) => {
     if (game && stage.contains(game.el)) game.dispose();
