@@ -544,6 +544,8 @@ export class GameScreen {
         link.send(first.a);
         this.setHint(c, 'Your turn', 'Sending…');
         ev = await next;
+        // The server has it: no longer sending (#234), also when it was the game's last move and no step follows.
+        this.setHint(c, 'Your turn', '');
       } else {
         offer.cancel();
         ev = first.e;

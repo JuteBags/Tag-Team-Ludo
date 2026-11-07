@@ -152,6 +152,9 @@ try {
       const hr = await result(host), gr = await result(guest);
       await shots(`${mode}-end`, host, guest);
       report(`mode ${mode}`, r.over?.length === 2, `${r.steps} steps in ${Math.round(r.ms / 1000)} s; host ${hr}; guest ${gr}; terms asked at connect: ${host.termsAtConnect || guest.termsAtConnect}`);
+      // #234: behind the result, nobody's hint is still "Sending…" (the last move was confirmed).
+      const pending = await Promise.all([host, guest].map((p) => p.page.evaluate(() => document.querySelector('.hint small')?.textContent ?? '')));
+      report(`mode ${mode}: no hint left at "Sending…" at the end`, pending.every((t) => !t.includes('Sending')), `hints: ${JSON.stringify(pending)}`);
       await close(host, guest);
     }
   } else if (test === 'rejoin') {
