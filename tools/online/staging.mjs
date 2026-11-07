@@ -293,12 +293,20 @@ try {
     const code = await create(host, '1v1');
     const guest = await player('Leo', { phone: true });
     await guest.page.goto(`${URL}#join=${code}`, { waitUntil: 'load' });
+    // No saved name: the link stops at the name (ludo-uiux), and JOIN A ROOM then joins that room.
+    const atName = await guest.page.waitForFunction(() => document.activeElement?.classList.contains('namein') && !document.querySelector('.wiz[data-step=menu]')?.hidden, null, { timeout: 30000 }).then(() => true).catch(() => false);
+    await shots('room-link-name', guest);
+    await guest.page.locator('.namein').fill('Leo');
+    await tap(guest.page, '[data-act=to-join]');
     const joined = await guest.page.waitForFunction((c) => document.querySelector('.wiz[data-step=lobby] .code')?.textContent?.trim() === c, code, { timeout: 30000 }).then(() => true).catch(() => false);
+    const named = await host.page.waitForFunction(() => /Leo/.test(document.querySelector('.wiz[data-step=lobby]')?.textContent ?? ''), null, { timeout: 15000 }).then(() => true).catch(() => false);
     const cleaned = await guest.page.evaluate(() => location.hash === '');
-    await shots('room-link', guest);
-    report('links: a room link joins the room (and the link is used once)', joined && cleaned, `guest in room ${code} ${joined}; address cleaned ${cleaned}`);
+    await shots('room-link', guest, host);
+    report('links: a room link (no saved name: the name first) joins the room, used once', atName && joined && named && cleaned, `stopped at the name ${atName}; guest in room ${code} ${joined}; host sees Leo ${named}; address cleaned ${cleaned}`);
     const mia = await player('Mia', { phone: true });
     await mia.page.goto(`${URL}#join=ZZZZZ`, { waitUntil: 'load' });
+    await mia.page.locator('.namein').fill('Mia');
+    await tap(mia.page, '[data-act=to-join]');
     const badRoom = await mia.page
       .waitForFunction(() => {
         const join = document.querySelector('.wiz[data-step=join]');

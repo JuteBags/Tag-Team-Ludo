@@ -234,6 +234,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
 
   // ---------- actions ----------
   const keepName = () => saveSetting('myName', nameIn.value.trim() ? myName() : '');
+  /** #238: a room link's code waiting for a name, and joining it from Join (where its errors show). */
+  let linked = '';
+  const joinLinked = (code: string) => {
+    show('join');
+    connect(() => RoomLink.join(code, myName()));
+  };
   el.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLElement>('[data-act]');
     const tb = (e.target as Element).closest<HTMLButtonElement>('.tg button');
@@ -271,6 +277,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     } else if (act === 'to-create') {
       keepName();
       show('create');
+    } else if (act === 'to-join' && linked) {
+      // The room link waiting for a name (#238).
+      keepName();
+      const code = linked;
+      linked = '';
+      joinLinked(code);
     } else if (act === 'to-join') {
       keepName();
       show('join');
@@ -319,13 +331,17 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   show('menu');
   if (rejoin && saved && configured) connect(() => RoomLink.join(saved.code, saved.name, saved.token));
   // An invite from a friend (#209): straight into their room.
-  // A room link (#238) shows the code on Join, so a full, started or unknown room says so there.
+  // A room link (#238) shows the code on Join, so a full, started or unknown room says so there. Without a saved name
+  // it stops at the name first (ludo-uiux): JOIN A ROOM then joins that room straight away.
   else if (join && configured) {
     codeIn.value = join;
     console.info(`[ludo-link] join step ${join}`);
     $<HTMLButtonElement>('[data-act=join]').disabled = !isCode(join);
-    show('join');
-    connect(() => RoomLink.join(join, myName()));
+    if (settings.myName?.trim()) joinLinked(join);
+    else {
+      linked = join;
+      setTimeout(() => nameIn.focus(), 50);
+    }
   }
   return el;
 }
