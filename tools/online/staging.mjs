@@ -369,6 +369,29 @@ try {
       const secs = Math.round((Date.now() - t) / 1000);
       report('ranked: Gold widens into Silver (the league below) after 20 s', both && secs >= 18, `matched ${both} after ${secs} s`);
       await close(g, s);
+    } else if (test === 'ranked-search') {
+      // Any server, no test hook (the live one): a new account searches 1v1; after 30 s the private-room hint shows,
+      // and Cancel (before the 45 s bot fill) goes back to the modes. A match with a real person meanwhile also passes.
+      const p = await player('Asha', { phone: true });
+      await openRanked(p);
+      await shots('modes', p);
+      await search(p);
+      const searching = await p.page.locator('.wiz[data-step=search]').isVisible({ timeout: 10000 }).catch(() => false);
+      await p.page.waitForTimeout(33000);
+      const matched = await p.page.locator('.screen.game').isVisible().catch(() => false);
+      const hint = await p.page.locator('.shint').isVisible().catch(() => false);
+      const clock = (await p.page.textContent('.selapsed').catch(() => '')) ?? '';
+      await shots('searching', p);
+      let back = false;
+      if (!matched) {
+        await tap(p.page, '[data-act=cancel]');
+        back = await p.page.locator('.wiz[data-step=modes]').isVisible({ timeout: 5000 }).catch(() => false);
+        // Still back after the bot fill's time: the search really stopped.
+        await p.page.waitForTimeout(15000);
+        back = back && !(await p.page.locator('.screen.game').isVisible().catch(() => false));
+      }
+      report('ranked: search, the hint after 30 s, and Cancel', matched || (searching && hint && back), matched ? 'matched a real person meanwhile' : `searching ${searching}; clock ${clock.trim()}; hint ${hint}; Cancel back to the modes, no game after 48 s: ${back}`);
+      await close(p);
     }
   } else if (test === 'chat') {
     // Chat (#212), against a server with chat: a quick phrase, an emoji, free text with a rude word, a mute, a report.
