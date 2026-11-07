@@ -19,7 +19,7 @@ export async function friendsSheet(host: HTMLElement, room?: string): Promise<vo
   const ov = document.createElement('div');
   ov.className = 'menu-ov sheet friends';
   ov.innerHTML = `<div class="box"><button class="x" data-act="close" aria-label="Close">×</button><h2>Friends</h2>
-    <p class="fmine">Your friend code: <b class="disp">…</b></p>
+    <p class="fmine">Your friend code<button class="fcode" type="button" data-act="copycode" aria-label="Your friend code. Tap to copy"><b class="disp">…</b><small>Tap to copy</small></button></p>
     <form class="fadd"><input maxlength="6" placeholder="Friend's code" aria-label="Friend's code" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="b3 green disp" type="submit">ADD</button></form>
     <p class="ferr" role="alert" hidden></p>
     <div class="flist"></div>
@@ -39,13 +39,13 @@ export async function friendsSheet(host: HTMLElement, room?: string): Promise<vo
   }
   const invited = new Map<string, string>();
   const row = (f: Friend) =>
-    `<div class="frow"><i class="fdot${f.online ? ' on' : ''}" aria-label="${f.online ? 'online' : 'offline'}"></i><b>${esc(f.name)}</b>${
+    `<div class="frow${f.online ? ' online' : ''}"><i class="fdot${f.online ? ' on' : ''}" aria-hidden="true"></i><span class="fwho"><b>${esc(f.name)}</b><small>${f.online ? 'Online' : 'Offline'}</small></span>${
       room && f.online ? `<button class="finv" data-invite="${f.id}"${invited.has(f.id) ? ' disabled' : ''}>${esc(invited.get(f.id) ?? 'Invite')}</button>` : ''
     }<button class="frem" data-remove="${f.id}" aria-label="Remove ${esc(f.name)}">×</button></div>`;
   const draw = () => {
     ov.querySelector('.fmine b')!.textContent = link.code || '…';
     const list = [...link.friends].sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
-    ov.querySelector('.flist')!.innerHTML = list.length ? list.map(row).join('') : '<p class="fnone">Add a friend with their code: they’ll show here, with who’s online.</p>';
+    ov.querySelector('.flist')!.innerHTML = list.length ? list.map(row).join('') : '<p class="fnone">No friends yet. Swap codes with a friend and add theirs.</p>';
   };
   draw();
   const off = link.on((m) => {
@@ -58,6 +58,18 @@ export async function friendsSheet(host: HTMLElement, room?: string): Promise<vo
     if (e.target === ov || t.closest('[data-act=close]')) {
       off();
       ov.remove();
+      return;
+    }
+    const copy = t.closest<HTMLElement>('[data-act=copycode]');
+    if (copy && link.code) {
+      const hint = copy.querySelector('small')!;
+      void navigator.clipboard?.writeText(link.code).then(
+        () => {
+          hint.textContent = 'Copied';
+          setTimeout(() => (hint.textContent = 'Tap to copy'), 1600);
+        },
+        () => undefined,
+      );
       return;
     }
     const inv = t.closest<HTMLElement>('[data-invite]')?.dataset.invite;

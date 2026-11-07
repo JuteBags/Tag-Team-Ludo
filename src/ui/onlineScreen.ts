@@ -81,6 +81,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
         <i data-slot="modes"></i>
         <div class="row2 q"><span class="lbl">Doubles (pair moves)?</span>${tg('singles', [['false', 'On'], ['true', 'Off']], String(opts.singles))}</div>
         <div class="row2 q"><span class="lbl">How good are the bots?</span>${tg('level', ONLINE_LEVELS.map((l) => [l, cap(l)]), opts.botLevel)}<small class="qh lvlh">${LEVEL_NOTE[opts.botLevel]}</small></div>
+        <p class="oerr" role="alert" hidden></p>
       </div></div>
       <button class="b3 green disp go" data-act="create">CREATE ROOM</button>
     </section>
@@ -184,7 +185,13 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
    * never asks again; the sheet shows only if they weren't accepted, or a newer version came out. Declined: no
    * connection.
    */
-  const connect = (make: () => RoomLink) => void requireTerms(el).then((ok) => ok && attach(make()));
+  // Where the connection was asked for: a room that can't be joined or made (a bad, full, started or expired
+  // code; the server down) says so there, with what was typed kept (#232), not on another screen.
+  let from: Step = 'menu';
+  const connect = (make: () => RoomLink) => {
+    from = step;
+    void requireTerms(el).then((ok) => ok && attach(make()));
+  };
   const attach = (l: RoomLink) => {
     off?.();
     link = l;
@@ -199,8 +206,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
         link = null;
         off?.();
         off = null;
-        show(step === 'lobby' ? 'menu' : step);
+        show(from === 'join' || from === 'create' ? from : 'menu');
         error(l.fatal.message);
+        if (from === 'join') {
+          codeIn.focus();
+          codeIn.select();
+        }
         return;
       }
       if (m.t === 'error') sfx.tick();
