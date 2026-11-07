@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { STOP_EVENT, applyEvent, createGame, moveEvent, ownerRanking, replay, seeded, type GameState } from '../src/engine';
 import { PROTOCOL, type ClientMsg, type GameSetup, type RoomOptions, type ServerMsg } from '../src/net/protocol';
 import { BOT_NAMES, LOBBY_MS, OVER_MS, RoomCore, setupFor, type RateReport, TURN_MS, type RoomData, type RoomIO } from '../server/src/room-core';
+import { testHooksAllowed } from '../server/src/test-hooks';
 
 const OPTS: RoomOptions = { mode: 'ffa', pairing: 'opposite', singles: false, botLevel: 'normal' };
 const ppl = (names: string[]) => names.map((name, member) => ({ member, name }));
@@ -521,5 +522,24 @@ describe('online room: Ranked bots look like players (#216)', () => {
     // It counts: rated with the bot as a side at its rating.
     expect(reports).toHaveLength(1);
     expect(reports[0]!.sides.flatMap((s) => s.members)).toContainEqual({ bot: 1100 });
+  });
+});
+
+describe('the test hook (#216) can’t exist in production', () => {
+  it('answers only with TEST_HOOKS=1 and on localhost', () => {
+    const u = 'http://localhost:8787/api/test/rating';
+    expect(testHooksAllowed({}, u)).toBe(false);
+    expect(testHooksAllowed({ TEST_HOOKS: '0' }, u)).toBe(false);
+    expect(testHooksAllowed({ TEST_HOOKS: '1' }, u)).toBe(true);
+    expect(testHooksAllowed({ TEST_HOOKS: '1' }, 'http://127.0.0.1:8787/api/test/rating')).toBe(true);
+    // A deployed Worker, even if someone set the variable there.
+    expect(testHooksAllowed({ TEST_HOOKS: '1' }, 'https://tag-team-ludo-rooms.example.workers.dev/api/test/rating')).toBe(false);
+    expect(testHooksAllowed({ TEST_HOOKS: '1' }, 'not a url')).toBe(false);
+  });
+
+  it('no environment in wrangler.jsonc sets TEST_HOOKS', async () => {
+    // @ts-expect-error: the project has no @types/node; Vitest runs on Node.
+    const { readFileSync } = await import('node:fs');
+    expect(readFileSync(new URL('../server/wrangler.jsonc', import.meta.url), 'utf8')).not.toContain('TEST_HOOKS');
   });
 });

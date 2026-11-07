@@ -306,9 +306,11 @@ try {
       await p.page.locator('.rmode[data-mode="1v1"]').waitFor({ timeout: 30000 });
     };
     /** A player whose 1v1 rating is `rating` (20 games: past placement), on the Ranked screen. */
-    const ranked = async (name, rating) => {
-      const p = await player(name);
+    const ranked = async (name, rating, placementShot = false) => {
+      const p = await player(name, { phone: true });
       await openRanked(p);
+      // A new account: every mode shows Placement 0/10.
+      if (placementShot) await shots('placement', p);
       const key = await p.page.evaluate(() => JSON.parse(localStorage.getItem('ludo-ranked-account') ?? 'null'));
       const res = await fetch(`${http}/api/test/rating`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...key, mode: '1v1', rating, games: 20 }) });
       if (!res.ok) throw new Error(`test hook: HTTP ${res.status} (is TEST_HOOKS on?)`);
@@ -342,9 +344,12 @@ try {
       report('ranked: up to Gold III, a bot fills after the timeout, looking like a person', started && s >= 40 && !shown, `game after ${s} s; names ${JSON.stringify(names)}; "BOT" shown ${shown}`);
       await close(a);
     } else if (test === 'ranked-nobots') {
-      const a = await ranked('Asha', 1500);
+      const a = await ranked('Asha', 1500, true);
       await search(a);
-      const started = await inGame(a, 75000);
+      // The search with its timer, Cancel and (after 30 s) the hint.
+      await a.page.waitForTimeout(36000);
+      await shots('searching', a);
+      const started = await inGame(a, 40000);
       const hint = await a.page.locator('.shint').isVisible().catch(() => false);
       const cancel = await a.page.locator('[data-act=cancel]').isVisible().catch(() => false);
       await shots('search', a);
