@@ -1,9 +1,10 @@
 // Friends (#209, a first version), plain on purpose (the design comes later from ludo-uiux): the Friends sheet
 // (your code, add a friend by code, your friends with who's online, and Invite when you're in a room), and the
 // invite that pops up wherever you are (Join or Decline). Online play only: the terms first (#208).
-import { copyText } from './clipboard';
+import { copyWithFeedback } from './clipboard';
+import { icons } from './art';
 import { friendsLink, onFriendsStart, startFriends, type FriendsLink } from '../net/friends';
-import type { Friend } from '../net/protocol';
+import type { Friend, FriendRequest } from '../net/protocol';
 import { requireTerms } from './legal';
 import { settings } from './settings';
 import { sfx } from './sfx';
@@ -20,9 +21,10 @@ export async function friendsSheet(host: HTMLElement, room?: string): Promise<vo
   const ov = document.createElement('div');
   ov.className = 'menu-ov sheet friends';
   ov.innerHTML = `<div class="box"><button class="x" data-act="close" aria-label="Close">×</button><h2>Friends</h2>
-    <p class="fmine">Your friend code<button class="fcode" type="button" data-act="copycode" aria-label="Your friend code. Tap to copy"><b class="disp">…</b><small>Tap to copy</small></button></p>
+    <div class="fmine"><span>Your friend code</span><div class="fcrow"><button class="fcode" type="button" data-act="copycode" aria-label="Your friend code. Tap to copy"><b class="disp">…</b><small aria-live="polite">Tap to copy</small></button><button class="rbtn cpbtn" type="button" data-act="copycode" aria-label="Copy your friend code">${icons.copy}</button><button class="rbtn shbtn" type="button" data-act="sharecode" aria-label="Share your friend code">${icons.share}</button></div></div>
     <form class="fadd"><input maxlength="6" placeholder="Friend's code" aria-label="Friend's code" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="b3 green disp" type="submit">ADD</button></form>
-    <p class="ferr" role="alert" hidden></p>
+    <p class="ferr" role="alert" hidden></p><p class="fsent" role="status" hidden></p>
+    <div class="freqs" hidden></div>
     <div class="flist"></div>
     <button class="b3 blue disp" data-act="close">DONE</button></div>`;
   host.appendChild(ov);
@@ -43,8 +45,17 @@ export async function friendsSheet(host: HTMLElement, room?: string): Promise<vo
     `<div class="frow${f.online ? ' online' : ''}"><i class="fdot${f.online ? ' on' : ''}" aria-hidden="true"></i><span class="fwho"><b>${esc(f.name)}</b><small>${f.online ? 'Online' : 'Offline'}</small></span>${
       room && f.online ? `<button class="finv" data-invite="${f.id}"${invited.has(f.id) ? ' disabled' : ''}>${esc(invited.get(f.id) ?? 'Invite')}</button>` : ''
     }<button class="frem" data-remove="${f.id}" aria-label="Remove ${esc(f.name)}">×</button></div>`;
+  // #237: requests to you (Accept, or × to decline), newest first; and how many of yours wait for an answer.
+  const req = (r: FriendRequest) =>
+    `<div class="frow freq"><span class="fwho"><b>${esc(r.name)}</b><small>Wants to be friends</small></span><button class="facc" data-accept="${r.id}" aria-label="Accept ${esc(r.name)}">Accept</button><button class="frem" data-decline="${r.id}" aria-label="Decline ${esc(r.name)}">×</button></div>`;
   const draw = () => {
     ov.querySelector('.fmine b')!.textContent = link.code || '…';
+    const reqs = ov.querySelector<HTMLElement>('.freqs')!;
+    reqs.hidden = !link.requests.length;
+    reqs.innerHTML = link.requests.length ? `<h3>Requests <em>${link.requests.length}</em></h3>${link.requests.map(req).join('')}` : '';
+    const sent = ov.querySelector<HTMLElement>('.fsent')!;
+    sent.hidden = !link.out;
+    sent.textContent = link.out ? `${link.out} sent, waiting for an answer` : '';
     const list = [...link.friends].sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
     ov.querySelector('.flist')!.innerHTML = list.length ? list.map(row).join('') : '<p class="fnone">No friends yet. Swap codes with a friend and add theirs.</p>';
   };
@@ -63,12 +74,21 @@ export async function friendsSheet(host: HTMLElement, room?: string): Promise<vo
     }
     const copy = t.closest<HTMLElement>('[data-act=copycode]');
     if (copy && link.code) {
-      const hint = copy.querySelector('small')!;
-      void copyText(link.code).then((ok) => {
-        if (!ok) return;
-        hint.textContent = 'Copied';
-        setTimeout(() => (hint.textContent = 'Tap to copy'), 1600);
-      });
+      copyWithFeedback(link.code, ov.querySelector('.fmine .cpbtn'), ov.querySelector('.fcode small'), 'Tap to copy', icons);
+      return;
+    }
+    if (t.closest('[data-act=sharecode]') && link.code) {
+      const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
+      const text = `Add me as a friend in Tag Team Ludo. My friend code: ${link.code}`;
+      if (nav.share) void nav.share({ text }).catch(() => undefined);
+      else copyWithFeedback(link.code, ov.querySelector('.fmine .cpbtn'), ov.querySelector('.fcode small'), 'Tap to copy', icons);
+      return;
+    }
+    const acc = t.closest<HTMLElement>('[data-accept]')?.dataset.accept;
+    const dec = t.closest<HTMLElement>('[data-decline]')?.dataset.decline;
+    if (acc || dec) {
+      sfx.tick();
+      link.answer((acc ?? dec)!, !!acc);
       return;
     }
     const inv = t.closest<HTMLElement>('[data-invite]')?.dataset.invite;
@@ -92,6 +112,8 @@ export async function friendsSheet(host: HTMLElement, room?: string): Promise<vo
     sfx.tick();
     link.add(input.value);
     input.value = '';
+    input.placeholder = 'Request sent';
+    setTimeout(() => (input.placeholder = "Friend's code"), 2400);
   });
 }
 
@@ -127,3 +149,38 @@ export function watchInvites(stage: HTMLElement, onJoin: (room: string) => void)
 
 /** Whether the friends link is up (for showing who's online without asking anything). */
 export const friendsOn = () => !!friendsLink();
+
+/**
+ * #237: a friend request while the app is open: a small card at the top ("Riya wants to be friends", Accept or
+ * Later), one at a time, gone after 8 s. The request stays in the Friends sheet either way.
+ */
+export function watchRequests(stage: HTMLElement): () => void {
+  let off = () => {};
+  const stop = onFriendsStart((link) => {
+    off = link.on((m) => {
+      if (m.t !== 'request') return;
+      stage.querySelector('.freq-ov')?.remove();
+      const card = document.createElement('div');
+      card.className = 'freq-ov';
+      card.setAttribute('role', 'alertdialog');
+      card.setAttribute('aria-label', `${m.from.name} wants to be friends`);
+      card.innerHTML = `<span class="fi" aria-hidden="true">${icons.friends}</span><span class="ft"><b>${esc(m.from.name)}</b><small>wants to be friends</small></span>
+        <button class="facc" data-act="accept">Accept</button><button class="flater" data-act="later">Later</button>`;
+      const close = () => card.remove();
+      const timer = setTimeout(close, 8000);
+      card.addEventListener('click', (e) => {
+        const act = (e.target as Element).closest<HTMLElement>('[data-act]')?.dataset.act;
+        if (!act) return;
+        clearTimeout(timer);
+        sfx.tick();
+        if (act === 'accept') link.answer(m.from.id, true);
+        close();
+      });
+      stage.appendChild(card);
+    });
+  });
+  return () => {
+    stop();
+    off();
+  };
+}

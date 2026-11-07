@@ -18,7 +18,7 @@ import { bootReviews, setGame } from './reviewQueue';
 import { prefetchAtIdle, screens, setScreen, show } from './lazy';
 import { roomsUrl, type RoomLink } from '../net/client';
 import { hasAccount, startFriends } from '../net/friends';
-import { watchInvites } from './friendsSheet';
+import { watchInvites, watchRequests } from './friendsSheet';
 
 /** Ranked PvP (#216): on. Turn it off here to hide it from the home screen. */
 const RANKED = true;
@@ -167,6 +167,7 @@ export function mountApp(root: HTMLElement) {
   // Friends (#209): an invite opens the friend's room. The link starts by itself only for a device that already
   // has a guest account and accepted the terms; otherwise it starts the first time Friends is opened.
   watchInvites(stage, (room) => void online(false, room));
+  watchRequests(stage);
   if (roomsUrl() && hasAccount() && hasAcceptedTerms()) void startFriends(settings.myName?.trim() || 'Player').catch(() => {});
   // The lazily loaded screens, fetched at idle so a web session that started online also works offline (#98).
   prefetchAtIdle();

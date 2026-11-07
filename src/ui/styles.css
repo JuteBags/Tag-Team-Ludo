@@ -1404,3 +1404,57 @@ body:has(.screen.game){background:radial-gradient(130% 90% at 50% 40%,transparen
   font-style:normal;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;gap:3px;box-shadow:0 2px 4px rgba(0,0,0,.3)}
 .fbadge::before{content:'';width:6px;height:6px;border-radius:3px;background:#04361a}
 .fbadge[hidden]{display:none}
+/* #237 the online result: a person a row, "2nd · 3 / 4 home", and the right slot for Add friend (Teams: a row a
+   team, a line a person). The slot keeps its width, so nothing moves while the friends link answers. */
+.result .row.on .rn b,.result .tline .rn b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.result .row.on .rn small,.result .tline .rn small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fslot{flex:none;width:84px;display:flex;justify-content:flex-end}
+.addf{position:relative;width:84px;height:36px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:4px;font-size:13px;font-weight:900;color:#fff;
+  background:linear-gradient(180deg,#ffa0c8,#f0558f 55%,#d23a74);box-shadow:inset 0 2px 0 rgba(255,255,255,.45),0 3px 0 #8f1f4c}
+.addf::after{content:'';position:absolute;inset:-5px -3px}
+.addf:active{transform:translateY(2px)}
+.addf svg{width:17px;height:17px;flex:none}
+.addf.acc{background:linear-gradient(180deg,#8ff08f,#3cc45a 55%,#23a043);box-shadow:inset 0 2px 0 rgba(255,255,255,.45),0 3px 0 #11662a;color:#06361a}
+.addf.req{background:rgba(255,255,255,.14);box-shadow:none;color:#e9ecff;font-weight:800}
+.row.first .addf.req{background:rgba(74,36,0,.16);color:#4a2400}
+.fok{width:84px;text-align:center;font-size:13px;font-weight:900;color:#bff0cc}
+.row.first .fok{color:#1d5a20}
+.fslot[data-st=loading]::before{content:'';width:84px;height:36px}
+.result .row.team{height:auto!important;padding-top:7px;padding-bottom:7px}
+.tm{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.tline{display:flex;align-items:center;gap:8px;min-width:0}
+.tline .ra{width:36px;height:36px}
+.tline .rn b{font-size:15px}
+.ferr2{margin:8px 4px 0;text-align:center;font-size:12.5px;font-weight:800;color:#ffd0c8}
+@media (prefers-reduced-motion: reduce){.addf:active{transform:none}}
+/* #237 copy: a copy button beside each code (and Share); the tick says it's copied. */
+.codecard .cpbtn,.codecard .shbtn{width:52px;height:auto;min-height:44px;border-radius:16px}
+.codecard .cpbtn svg,.fcrow .cpbtn svg{width:22px;height:22px}
+.cpbtn.done{background:linear-gradient(180deg,#8ff08f,#3cc45a 55%,#23a043);box-shadow:inset 0 2px 0 rgba(255,255,255,.45),0 4px 0 #11662a}
+.codebtn .code{letter-spacing:6px;margin-right:-6px}
+.fcrow{display:flex;gap:8px;align-items:stretch}
+.fcrow .cpbtn,.fcrow .shbtn{width:48px;height:auto;min-height:48px;border-radius:14px}
+.fcrow .shbtn svg{width:20px;height:20px}
+/* #237 requests: their own section above the friends; Accept in green, decline is the ×. */
+.freqs{margin:12px 0 0;display:flex;flex-direction:column;gap:6px}
+.freqs[hidden]{display:none}
+.freqs h3{margin:0 0 2px;font-size:12px;font-weight:900;letter-spacing:.8px;text-transform:uppercase;opacity:.85}
+.freqs h3 em{font-style:normal;margin-left:4px;padding:1px 7px;border-radius:9px;background:#f0558f;color:#fff}
+.frow.freq{background:rgba(240,85,143,.16);box-shadow:inset 0 0 0 1.5px rgba(255,160,200,.45)}
+.facc{min-width:72px;height:36px;padding:0 12px;border-radius:12px;font-weight:900;font-size:13px;color:#06361a;position:relative;
+  background:linear-gradient(180deg,#8ff08f,#3cc45a 55%,#23a043);box-shadow:inset 0 2px 0 rgba(255,255,255,.45),0 3px 0 #11662a}
+.facc::after{content:'';position:absolute;inset:-4px -2px}
+.fsent{margin:6px 0 0;font-size:12px;font-weight:800;opacity:.75;text-align:center}
+.fsent[hidden]{display:none}
+/* #237 a request while the app is open: a card at the top, out of the board's way. */
+.freq-ov{position:absolute;top:12px;left:12px;right:12px;z-index:60;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 12px;border-radius:18px;color:#fff;
+  background:linear-gradient(180deg,#2f66df,#1a3c9a);border:2px solid #ffa0c8;box-shadow:0 10px 24px rgba(0,0,0,.45);animation:freqin .32s cubic-bezier(.3,.8,.4,1.2)}
+.freq-ov .fi{width:34px;height:34px;flex:none}.freq-ov .fi svg{width:100%;height:100%}
+.freq-ov .ft{flex:1;min-width:0;display:flex;flex-direction:column}
+.freq-ov .ft b{font-size:15px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.freq-ov .ft small{font-size:12px;font-weight:800;opacity:.85}
+.freq-ov .flater{min-height:44px;padding:0 8px;background:none;color:#fff;font-weight:900;font-size:13px;opacity:.8}
+@keyframes freqin{from{transform:translateY(-120%);opacity:0}}
+@media (prefers-reduced-motion: reduce){.freq-ov{animation:none}}
+.fbadge.ask{background:#fff;color:#d23a74;border-color:#f0558f}
+.fbadge.ask::before{content:'+';width:auto;height:auto;background:none;font-size:13px;line-height:1}

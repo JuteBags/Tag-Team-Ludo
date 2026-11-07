@@ -130,10 +130,14 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
     const badge = fbtn.querySelector<HTMLElement>('.fbadge')!;
     const count = () => {
       const l = friendsLink();
-      const n = l?.status === 'open' ? l.friends.filter((f) => f.online).length : 0;
-      badge.hidden = !n;
-      badge.textContent = String(n);
-      fbtn.setAttribute('aria-label', n ? `Friends, ${n} online` : 'Friends');
+      const up = l?.status === 'open';
+      // Requests waiting for you come first (pink), else how many friends are online (green).
+      const asks = up ? l!.requests.length : 0;
+      const n = up ? l!.friends.filter((f) => f.online).length : 0;
+      badge.hidden = !asks && !n;
+      badge.classList.toggle('ask', !!asks);
+      badge.textContent = String(asks || n);
+      fbtn.setAttribute('aria-label', asks ? `Friends, ${asks} ${asks === 1 ? 'request' : 'requests'}` : n ? `Friends, ${n} online` : 'Friends');
     };
     let offLink = () => {};
     const offStart = onFriendsStart((l) => {

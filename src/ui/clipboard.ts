@@ -21,3 +21,20 @@ export async function copyText(s: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * #237: copies `s` and says so on a copy button: its icon turns to a tick and `label` reads "Copied" for a moment
+ * (or "Couldn't copy", when nothing was copied), then both go back.
+ */
+export function copyWithFeedback(s: string, btn: HTMLElement | null, label: HTMLElement | null, rest = 'Tap to copy', icons?: { copy: string; tick: string }): void {
+  void copyText(s).then((ok) => {
+    if (label) label.textContent = ok ? 'Copied' : 'Couldn’t copy';
+    if (btn && icons && ok) btn.innerHTML = icons.tick;
+    btn?.classList.toggle('done', ok);
+    setTimeout(() => {
+      if (label) label.textContent = rest;
+      if (btn && icons) btn.innerHTML = icons.copy;
+      btn?.classList.remove('done');
+    }, 1600);
+  });
+}

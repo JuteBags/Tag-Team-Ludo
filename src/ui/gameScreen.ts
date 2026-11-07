@@ -1,6 +1,6 @@
 // Game screen: runs the turn loop, drives bots, and takes people's taps. In "With friends" every seat is
 // a person passing the device; a person with two houses plays both colours' turns.
-import { FINISHED, RESIGN, applyEvent, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type Rng, STOP_EVENT } from '../engine';
+import { FINISHED, RESIGN, applyEvent, createGame, isDone, mixSeed, move, moveEvent, ownerRanking, positionKey, roll, rollEvent, seeded, type Color, type GameRecord, type GameState, type Move, type PlayerState, type Rng, STOP_EVENT } from '../engine';
 import { chooseBotMoveAsync, RolloutStopped, stopRolloutWorker } from '../engine/ai/levels';
 import { calmAfter } from './calm';
 import { PALETTE, PROFILES, avatarSVG, confettiHTML, cssVars, icons, medalSVG, pawnSVG, ribbonSVG, starBadge, symbolPath, trophySVG, twinsSVG } from './art';
@@ -25,6 +25,7 @@ type Counters = { kills: number; pairs: number; sixes: number; lost: number };
 /** The Undo control (#143): a round icon (48 px to tap) with the undos left under it, "2/2". */
 const UNDO_BUTTON = `<button class="undobtn" data-act="undo" hidden aria-label="Undo your last move"><svg viewBox="0 0 40 40" aria-hidden="true"><circle class="ur-bg" cx="20" cy="20" r="17"/><circle class="ur" cx="20" cy="20" r="17"/><path d="M15 13 L10 18 L15 23 M10 18 H24 a6 6 0 0 1 0 12 H19" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><small></small></button>`;
 import type { RoomLink } from '../net/client';
+import { startFriends, type FriendsLink } from '../net/friends';
 import type { ClientMsg } from '../net/protocol';
 import { MODE_NAME } from './modePicker';
 import { PROVISIONAL, tierOf } from '../net/rating';
@@ -35,6 +36,9 @@ const ROLL_MS = 1150;
 /** Bots roll quicker, so a 4-player game isn't mostly watching bot dice. */
 const BOT_ROLL_MS = 700;
 const PLACES = ['', '1ST', '2ND', '3RD', '4TH'];
+/** A person with a plus: Add friend (#237). */
+const ADD_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="4" fill="#fff"/><path d="M1.5 21c.5-5 3.6-7.5 7.5-7.5s7 2.5 7.5 7.5z" fill="#fff"/><path d="M19 7v8M15 11h8" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>';
+const esc = (t: string) => t.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
 const ORD = ['', '1st', '2nd', '3rd', '4th'];
 const faceLabel = () => (settings.diceFace === 'top' ? 'DICE: TOP FACE' : 'DICE: FRONT FACE');
 /** Pip spots on a 24-unit die face. */
@@ -1140,6 +1144,59 @@ export class GameScreen {
     return { v: 1, seats: c.seats, first: c.first, ...(c.singles ? { singles: true } : {}), ...(this.seedFromStart ? { seed: this.seed } : {}), meta: { mode: c.mode, names: c.names, ...(this.online ? { online: true } : {}), ...(Object.keys(this.undo.usedCounts()).length ? { undos: this.undo.usedCounts() } : {}) }, events: this.log };
   }
 
+  /**
+   * #237: the result rows' right slots: Add (a friend request), Requested, Accept (they asked you first), or
+   * ✓ Friend; empty while the friends link answers, and for anyone who can't be added. A ranked bot looks like
+   * a person (its request just never gets an answer).
+   */
+  private friendSlots(ov: HTMLElement, code: string) {
+    const slots = [...ov.querySelectorAll<HTMLElement>('.fslot[data-key]')];
+    if (!slots.length) return;
+    const err = document.createElement('p');
+    err.className = 'ferr2';
+    err.setAttribute('role', 'alert');
+    err.hidden = true;
+    ov.querySelector('.rank')!.after(err);
+    let fl: FriendsLink | null = null;
+    const draw = () => {
+      for (const el of slots) {
+        const key = el.dataset.key!, name = esc(el.dataset.name!);
+        const st = fl ? fl.stateOf(key) : 'loading';
+        el.dataset.st = st;
+        el.innerHTML =
+          st === 'none' ? `<button class="addf" data-add="${key}" aria-label="Add ${name} as a friend">${ADD_ICON}Add</button>`
+          : st === 'incoming' ? `<button class="addf acc" data-accept="${key}" aria-label="Accept ${name}'s friend request">Accept</button>`
+          : st === 'requested' ? `<span class="addf req" role="status" aria-label="Friend request sent to ${name}">Requested</span>`
+          : st === 'friend' ? `<span class="fok" aria-label="${name} is your friend">✓ Friend</span>`
+          : '';
+      }
+    };
+    draw();
+    ov.addEventListener('click', (e) => {
+      const b = (e.target as Element).closest<HTMLElement>('[data-add],[data-accept]');
+      if (!b || !fl) return;
+      sfx.tick();
+      err.hidden = true;
+      if (b.dataset.add) fl.request(b.dataset.add);
+      else fl.answer(b.dataset.accept!, true);
+    });
+    void startFriends(settings.myName?.trim() || 'Player')
+      .then((l) => {
+        fl = l;
+        const off = l.on((m) => {
+          if (!ov.isConnected) return off();
+          if (m.t === 'error' && m.code !== 'replaced') {
+            err.textContent = m.message;
+            err.hidden = false;
+          }
+          draw();
+        });
+        l.loadRoom(code);
+        draw();
+      })
+      .catch(() => undefined);
+  }
+
   private showResult() {
     this.dispose();
     void clearGame();
@@ -1165,15 +1222,42 @@ export class GameScreen {
       void savePastGame({ rec, at, mode: this.config.mode, place }).then(() => rec.seats.some((s) => !s.bot) && enqueue(rec, { pvp, at, live }));
     }
     this.finalRecord = rec;
+    // #237 online: Add friend beside every other person (partners too); the right slot follows the friends link.
+    const link = this.online;
+    const teams = link?.setup?.mode === '2v2';
+    const keyOf = (c: Color) => link?.addable(c) ?? null;
+    const homeOf = (ps: PlayerState[]) => ps.reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
+    const slot = (c: Color, name: string) => {
+      const k = keyOf(c);
+      return `<span class="fslot"${k ? ` data-key="${k}" data-name="${esc(name)}"` : ''}></span>`;
+    };
     const rows = order
       .map((o, i) => {
         const mine = colorsOf(o);
         const c = mine[0]!.color;
         const bot = mine[0]!.bot;
         const sub = this.state.out?.includes(o) ? 'Left the game' : i === 0 ? 'Winner' : bot ? 'Bot' : `${PLACES[i + 1]!.toLowerCase()} place`;
-        const home = mine.reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
+        const home = homeOf(mine);
         const pct = Math.round((100 * mine.reduce((a, p) => a + p.tokens.reduce((x, t) => x + Math.max(t, 0), 0), 0)) / (FINISHED * 4 * mine.length));
-        return `<div class="row${i === 0 ? ' first' : ''}${bot ? '' : ' me'}"><span class="medal m${i + 1}">${i + 1}</span>
+        const cls = `row${i === 0 ? ' first' : ''}${bot ? '' : ' me'}`;
+        if (link && teams) {
+          // Teams: one row per team (one place), a line per person; my partner's says so.
+          const line = (p: PlayerState) => {
+            const who = link.setup?.control[p.color] ?? -1;
+            const name = this.config.colorNames?.[p.color] ?? this.config.names[o]!;
+            const me = this.isMe(p.color);
+            const tag = me ? 'You · ' : o === human ? 'Partner · ' : who < 0 ? 'Bot · ' : '';
+            return `<div class="tline"><span class="ra" style="${cssVars(p.color)}">${avatarSVG(p.color)}</span><span class="rn"><b>${esc(name)}</b><small>${tag}${homeOf([p])} / 4 home</small></span>${slot(p.color, name)}</div>`;
+          };
+          return `<div class="${cls} team"><span class="medal m${i + 1}">${i + 1}</span><div class="tm">${mine.map(line).join('')}</div></div>`;
+        }
+        if (link) {
+          // One person a row: the place and the count in one line; the right slot for Add friend.
+          const short = this.state.out?.includes(o) ? 'Left' : i === 0 ? 'Winner' : bot ? 'Bot' : PLACES[i + 1]!.toLowerCase();
+          return `<div class="${cls} on"><span class="medal m${i + 1}">${i + 1}</span>
+          <span class="ra" style="${cssVars(c)}">${avatarSVG(c)}</span><span class="rn"><b>${esc(this.config.names[o]!)}</b><small>${short} · ${home} / ${4 * mine.length} home</small></span>${slot(c, this.config.names[o]!)}</div>`;
+        }
+        return `<div class="${cls}"><span class="medal m${i + 1}">${i + 1}</span>
           <span class="ra" style="${cssVars(c)}">${avatarSVG(c)}</span><span class="rn"><b>${this.config.names[o]}</b><small>${sub}</small></span>
           <span class="rv">${home} / ${4 * mine.length} home${home < 4 * mine.length ? `<small>${pct}% of the way</small>` : ''}</span></div>`;
       })
@@ -1236,6 +1320,7 @@ export class GameScreen {
       }
     });
     this.el.appendChild(ov);
+    if (link) this.friendSlots(ov, link.code);
     // The Review button follows the review running in the queue: "Reviewing 40%", then "Review ready" (#96).
     const rvb = ov.querySelector<HTMLElement>('[data-act=review]');
     if (rvb && rec) {
