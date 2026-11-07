@@ -405,7 +405,7 @@ try {
     // progress; it gets cut off, and the game plays on. Our server only (wrangler dev, local).
     const base = process.env.VITE_ROOMS_URL ?? 'ws://localhost:8787';
     const http = base.replace(/^ws/, 'http');
-    const { protocol } = await (await fetch(`${http}/health`)).json();
+    const { protocol, bots: botVersion } = await (await fetch(`${http}/health`)).json();
     const { host, guest, code } = await pair('1v1');
     await play([host, guest], { until: (n) => n >= 6 });
     const hex = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -428,7 +428,7 @@ try {
           own.ws.onmessage = (e) => { const m = JSON.parse(String(e.data)); if (m.t === 'error') cut = m.code; };
           own.ws.onclose = (e) => res(e.code);
         });
-        own.ws.send(JSON.stringify({ t: 'hello', protocol, token: hex(), name: 'Flood' }));
+        own.ws.send(JSON.stringify({ t: 'hello', protocol, botVersion, token: hex(), name: 'Flood' }));
         for (let i = 0; i < 200 && own.ws.readyState === 1; i++) own.ws.send(JSON.stringify({ t: 'chat', quick: 0 }));
         await Promise.race([closed, new Promise((r) => setTimeout(r, 5000))]);
       } else cut = `refused (${own.r})`;
