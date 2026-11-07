@@ -109,6 +109,21 @@ export class FriendsLink {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(m));
   }
 
+  /** #238: the name behind friend code `code` (a friend link's prompt); null when no one has it, `self` when it's yours. */
+  who(code: string): Promise<{ name: string | null; self: boolean } | null> {
+    const c = code.trim().toUpperCase();
+    return new Promise((res) => {
+      const t = setTimeout(() => (off(), res(null)), 10_000);
+      const off = this.on((m) => {
+        if (m.t !== 'who' || m.code !== c) return;
+        clearTimeout(t);
+        off();
+        res({ name: m.name, self: !!m.self });
+      });
+      this.send({ t: 'who', code: c });
+    });
+  }
+
   /** A friend request by friend code (#237: no longer an instant add). */
   add(code: string) {
     this.send({ t: 'add', code: code.trim().toUpperCase() });

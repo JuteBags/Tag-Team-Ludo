@@ -53,3 +53,15 @@ export function keepAwake(on: boolean) {
     lock = null;
   }
 }
+
+// ---------- links into the app (#238) ----------
+
+/**
+ * Calls `f` with each https link the app is opened by: the one it was launched with (a cold start) and any that
+ * arrive while it runs (Android's appUrlOpen). Nothing on the web.
+ */
+export function onAppLink(f: (url: string) => void) {
+  if (!Capacitor.isNativePlatform()) return;
+  void App.getLaunchUrl().then((l) => l?.url && f(l.url)).catch(() => undefined);
+  void App.addListener('appUrlOpen', (e) => f(e.url));
+}

@@ -11,6 +11,8 @@ import { CODE_LEN, MODE_LABEL, ONLINE_LEVELS, isCode, modeSlots, type GameSetup,
 import { saveSetting, settings } from './settings';
 import { NAME_MAX, cleanName, type GameConfig } from './setup';
 import { sfx } from './sfx';
+import { roomLinkUrl } from './replay';
+import { SITE } from './shareCard';
 
 type Step = 'menu' | 'create' | 'join' | 'lobby';
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
@@ -291,7 +293,9 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
         () => undefined,
       );
     } else if (act === 'share' && link?.code) {
-      const text = `Join my Tag Team Ludo room: ${link.code}`;
+      // #238: the room link, which opens the game (or the app) and joins.
+      const url = roomLinkUrl(link.code, SITE);
+      const text = `Join my Tag Team Ludo room ${link.code}: ${url}`;
       const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
       const done = () => {
         const s = el.querySelector('.codebtn .copied')!;
@@ -299,7 +303,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
         setTimeout(() => (s.textContent = 'Tap to copy'), 1600);
       };
       if (nav.share) void nav.share({ text }).catch(() => undefined);
-      else void navigator.clipboard?.writeText(link.code).then(done, () => undefined);
+      else void navigator.clipboard?.writeText(url).then(done, () => undefined);
     }
   });
   codeIn.addEventListener('input', () => {
@@ -316,6 +320,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   show('menu');
   if (rejoin && saved && configured) connect(() => RoomLink.join(saved.code, saved.name, saved.token));
   // An invite from a friend (#209): straight into their room.
-  else if (join && configured) connect(() => RoomLink.join(join, myName()));
+  // A room link (#238) shows the code on Join, so a full, started or unknown room says so there.
+  else if (join && configured) {
+    codeIn.value = join;
+    $<HTMLButtonElement>('[data-act=join]').disabled = !isCode(join);
+    show('join');
+    connect(() => RoomLink.join(join, myName()));
+  }
   return el;
 }

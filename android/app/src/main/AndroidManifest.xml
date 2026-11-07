@@ -23,6 +23,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Room and friend links (#238): https://jutebags.github.io/Tag-Team-Ludo/play/#join=… and #friend=…, and the
+                 web page's "Open in the app" (?join=… / ?friend=…). Not autoVerify yet: verified App Links wait for our
+                 own domain and its assetlinks.json. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="jutebags.github.io" android:pathPrefix="/Tag-Team-Ludo/play" />
+            </intent-filter>
+
         </activity>
 
         <provider

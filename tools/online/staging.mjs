@@ -273,6 +273,55 @@ try {
     await shot(host, '10-result-after-forfeit');
     report('frames', true, 'frame-*.png in the artifact');
     await close(host, guest);
+  } else if (test === 'links') {
+    // #238: room and friend links on the web. A room link joins the room; a bad one says so on Join. A friend link
+    // asks "Add <name>?" and sends a request; a code no one has says so.
+    const host = await player('Asha', { phone: true });
+    const code = await create(host, '1v1');
+    const guest = await player('Leo', { phone: true });
+    await guest.page.goto(`${URL}#join=${code}`, { waitUntil: 'load' });
+    const joined = await guest.page.waitForFunction((c) => document.querySelector('.wiz[data-step=lobby] .code')?.textContent?.trim() === c, code, { timeout: 30000 }).then(() => true).catch(() => false);
+    const cleaned = await guest.page.evaluate(() => location.hash === '');
+    await shots('room-link', guest);
+    report('links: a room link joins the room (and the link is used once)', joined && cleaned, `guest in room ${code} ${joined}; address cleaned ${cleaned}`);
+    const mia = await player('Mia', { phone: true });
+    await mia.page.goto(`${URL}#join=ZZZZZ`, { waitUntil: 'load' });
+    const badRoom = await mia.page
+      .waitForFunction(() => {
+        const join = document.querySelector('.wiz[data-step=join]');
+        const e = document.querySelector('.oerr');
+        return !!join && !join.hidden && !!e && !e.hidden && (e.textContent ?? '').trim().length > 0 && document.querySelector('.codein')?.value === 'ZZZZZ';
+      }, null, { timeout: 30000 })
+      .then(() => true)
+      .catch(() => false);
+    await shots('bad-room-link', mia);
+    report('links: an unknown room says so on Join, with the code kept', badRoom, `error on Join ${badRoom}`);
+    await close(host, guest, mia);
+    // A friend link: Omar's friend code, opened by Zoya.
+    const omar = await player('Omar', { phone: true });
+    await openRooms(omar);
+    await omar.page.locator('.namein').fill('Omar');
+    await tap(omar.page, '[data-act=friends]');
+    await omar.page.waitForFunction(() => /^[A-Z0-9]{6}$/.test(document.querySelector('.sheet.friends .fmine b')?.textContent ?? ''), null, { timeout: 30000 });
+    const fcode = (await omar.page.textContent('.sheet.friends .fmine b')).trim();
+    const zoya = await player('Zoya', { phone: true });
+    await zoya.page.goto(`${URL}#friend=${fcode}`, { waitUntil: 'load' });
+    const prompt = await zoya.page.locator('.friendlink-ov').waitFor({ timeout: 30000 }).then(() => zoya.page.textContent('.friendlink-ov')).catch(() => '');
+    await shots('friend-link', zoya);
+    await tap(zoya.page, '.friendlink-ov [data-act=add]');
+    const got = await omar.page
+      .evaluate(async () => {
+        const f = (await import('/src/net/friends.ts')).friendsLink();
+        for (let i = 0; i < 200 && !f?.requests.length; i++) await new Promise((r) => setTimeout(r, 100));
+        return f?.requests.map((r) => r.name) ?? [];
+      })
+      .catch(() => []);
+    const notFriendsYet = await zoya.page.evaluate(async () => (await import('/src/net/friends.ts')).friendsLink()?.friends.length ?? -1);
+    report('links: a friend link asks, then sends a request (not an instant friend)', (prompt ?? '').includes('Omar') && got.length === 1 && notFriendsYet === 0, `prompt "${(prompt ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)}"; Omar's requests ${JSON.stringify(got)}; Zoya's friends ${notFriendsYet}`);
+    await zoya.page.goto(`${URL}#friend=ZZZZZZ`, { waitUntil: 'load' });
+    const badFriend = await zoya.page.waitForFunction(() => /No one has/.test(document.querySelector('.friendlink-ov')?.textContent ?? ''), null, { timeout: 30000 }).then(() => true).catch(() => false);
+    report('links: a friend code no one has says so', badFriend, `says so ${badFriend}`);
+    await close(omar, zoya);
   } else if (test === 'friends-after-game') {
     // #237: two people who aren't friends finish a private room; A adds B from the game (by seat: the app never sees
     // B's account), B accepts the request, and both see each other in Friends. Through the friends link (the dev

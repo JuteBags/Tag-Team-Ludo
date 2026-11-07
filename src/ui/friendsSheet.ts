@@ -128,3 +128,38 @@ export function watchInvites(stage: HTMLElement, onJoin: (room: string) => void)
 
 /** Whether the friends link is up (for showing who's online without asking anything). */
 export const friendsOn = () => !!friendsLink();
+
+/**
+ * A friend link (#238): the terms if they aren't accepted yet, the friends link, then "Add <name> as a friend?". Add
+ * sends a friend request (#237), never an instant friend; Not now does nothing. A code no one has says so.
+ */
+export async function friendLinkPrompt(stage: HTMLElement, code: string) {
+  if (!(await requireTerms(stage))) return;
+  let link: FriendsLink;
+  try {
+    link = await startFriends(myName());
+  } catch {
+    return;
+  }
+  for (let i = 0; i < 100 && link.status !== 'open'; i++) await new Promise((r) => setTimeout(r, 100));
+  const who = await link.who(code);
+  stage.querySelector('.friendlink-ov')?.remove();
+  const ov = document.createElement('div');
+  ov.className = 'menu-ov friendlink-ov';
+  const ok = !!who?.name;
+  ov.innerHTML = ok
+    ? `<div class="box"><h2>Add a friend?</h2><p class="sub">Send <b>${esc(who!.name!)}</b> a friend request? They'll see it and can accept.</p>
+        <button class="b3 green disp" data-act="add">ADD</button><button class="later" data-act="later">Not now</button></div>`
+    : `<div class="box"><h2>Friend link</h2><p class="sub">${who?.self ? 'That’s your own friend code.' : `No one has the friend code <b class="disp">${esc(code)}</b>. Check the link with your friend.`}</p>
+        <button class="later" data-act="later">OK</button></div>`;
+  ov.addEventListener('click', (e) => {
+    const act = (e.target as Element).closest<HTMLElement>('[data-act]')?.dataset.act;
+    if (act !== 'add' && act !== 'later') return;
+    ov.remove();
+    if (act === 'add') {
+      sfx.tick();
+      link.add(code);
+    }
+  });
+  stage.appendChild(ov);
+}
