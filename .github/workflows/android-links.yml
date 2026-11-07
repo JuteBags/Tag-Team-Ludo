@@ -17,7 +17,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-links-${{ github.event.pull_request.number || github.ref }}
+  # By the label too: another label on the PR (pvp-staging…) starts a skipped run here, which mustn't cancel this one.
+  group: android-links-${{ github.event.pull_request.number || github.ref }}-${{ github.event.label.name || 'dispatch' }}
   cancel-in-progress: true
 
 jobs:

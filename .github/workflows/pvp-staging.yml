@@ -19,7 +19,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: pvp-staging-${{ github.event.pull_request.number || github.ref }}
+  # By the label too: adding another label (android-links, live-check…) starts a skipped run here, which mustn't
+  # cancel a real one.
+  group: pvp-staging-${{ github.event.pull_request.number || github.ref }}-${{ github.event.label.name || 'dispatch' }}
   cancel-in-progress: true
 
 env:
