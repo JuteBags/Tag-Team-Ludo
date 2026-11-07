@@ -1,0 +1,99 @@
+# Checks the released game, live (#231, 4.0.0): tools/online/staging.mjs plays on the website itself
+# (https://jutebags.github.io/Tag-Team-Ludo/play/) against the production server, in headless Chrome: a private
+# 1v1 room to the end, a Ranked search (the hint, then Cancel; no test hooks in production), and Friends (add by
+# code). Meanwhile `wrangler tail` records the production Worker's log, and the summary counts its errors.
+# By hand, or on a PR when the label live-check is added. It plays real games on the live server: run it sparingly.
+name: Live check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-check
+  cancel-in-progress: false
+
+env:
+  SITE: https://jutebags.github.io/Tag-Team-Ludo/play/
+  # For the harness's HTTP calls (none of these tests use a test hook).
+  VITE_ROOMS_URL: wss://tag-team-ludo-rooms.tag-team-ludo.workers.dev
+  WRANGLER_SEND_METRICS: 'false'
+
+jobs:
+  live:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'live-check' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-save --no-audit --no-fund playwright-core@1.63.0
+      - name: What's live
+        run: |
+          {
+            echo "### What's live"
+            echo '```'
+            curl -sf https://jutebags.github.io/Tag-Team-Ludo/download/version.json | head -c 300; echo
+            curl -sf https://tag-team-ludo-rooms.tag-team-ludo.workers.dev/health; echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: The production Worker's log (wrangler tail, in the background)
+        working-directory: server
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npm ci --no-audit --no-fund
+          nohup npx wrangler tail tag-team-ludo-rooms --format json > ../tail.log 2> ../tail.err &
+          sleep 15
+          echo "tail: $(wc -c < ../tail.log) bytes so far; $(head -c 300 ../tail.err)"
+      - name: Play on the live site
+        run: |
+          chrome="$(command -v google-chrome || command -v chromium)"
+          rc=0
+          for t in mode:1v1 ranked-search friends; do
+            slug=$(echo "$t" | tr -c 'a-zA-Z0-9\n' '-')
+            RESULT_PREFIX='live · ' node tools/online/staging.mjs "$t" "$chrome" --url "$SITE" --out live-out 2>&1 | tee "live-$slug.log" || rc=1
+          done
+          exit $rc
+      - name: The Worker's log, counted
+        if: always()
+        run: |
+          sleep 10; pkill -f "wrangler tail" || true
+          node -e '
+            const fs = require("fs");
+            const lines = fs.existsSync("tail.log") ? fs.readFileSync("tail.log", "utf8") : "";
+            // wrangler tail --format json prints one JSON object per event (pretty-printed): split on top-level braces.
+            const evs = []; let depth = 0, start = -1, str = false, esc = false;
+            for (let i = 0; i < lines.length; i++) {
+              const c = lines[i];
+              if (str) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === "\"") str = false; continue; }
+              if (c === "\"") str = true; else if (c === "{") { if (!depth++) start = i; } else if (c === "}" && !--depth) { try { evs.push(JSON.parse(lines.slice(start, i + 1))); } catch {} }
+            }
+            const bad = evs.filter((e) => (e.outcome && e.outcome !== "ok" && e.outcome !== "canceled") || (e.exceptions ?? []).length);
+            const errs = evs.flatMap((e) => (e.logs ?? []).filter((l) => l.level === "error"));
+            const out = [`### Production Worker log during the run`, ``, `${evs.length} events; ${bad.length} with an exception or a failed outcome; ${errs.length} error logs.`];
+            for (const e of bad.slice(0, 10)) out.push("- " + JSON.stringify({ outcome: e.outcome, url: e.event?.request?.url, exceptions: e.exceptions }).slice(0, 400));
+            for (const l of errs.slice(0, 10)) out.push("- error log: " + JSON.stringify(l.message).slice(0, 300));
+            const outcomes = {}; for (const e of evs) outcomes[e.outcome] = (outcomes[e.outcome] ?? 0) + 1;
+            out.push("", "Outcomes: " + JSON.stringify(outcomes));
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, out.join("\n") + "\n");
+            console.log(out.join("\n"));
+          '
+          echo "tail stderr: $(head -c 500 tail.err 2>/dev/null)"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: live-check
+          path: |
+            live-out/
+            live-*.log
+            tail.log
+            tail.err
