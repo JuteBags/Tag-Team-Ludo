@@ -4,7 +4,8 @@
 // terms (#208) and must not be asked again at connect time.
 //   node tools/online/staging.mjs <test> [chrome path] [--url http://localhost:5173/] [--out staging-out]
 //   tests: mode:<ffa|1v1|duo|2v2> | modes (all four) | rejoin | leave | disconnect | timeouts | chat, friends,
-//          ranked-pair, ranked-botfill, ranked-nobots, ranked-lower (our server; ranked-* need TEST_HOOKS=1)
+//          ranked-pair, ranked-botfill, ranked-nobots, ranked-lower (our server; ranked-* need TEST_HOOKS=1),
+//          abuse (our server: floods from one client are cut off while a game plays on, #220)
 // RESULT_PREFIX (env) is put before each result's name (e.g. "local · ").
 // .github/workflows/pvp-staging.yml runs each test as its own job, with the dev server pointed at the server by
 // VITE_ROOMS_URL. Writes <out>/<test>.json (pass or fail and the details), screenshots, and a summary line.
@@ -398,6 +399,57 @@ try {
     await shots('end', host, guest);
     const textOk = log.includes('well that was s*** luck');
     report('chat: quick, emoji, filtered text, report, mute', hasBtn && log.length === 3 && textOk && reported === 'Reported' && afterMute === 0, `button ${hasBtn}; guest's bubbles ${JSON.stringify(bubbles)}; guest's log ${JSON.stringify(log)}; report ${reported}; lines after muting the host ${afterMute}`);
+    await close(host, guest);
+  } else if (test === 'abuse') {
+    // #220: one client floods connections, messages, new rooms and new accounts from the same IP as a game in
+    // progress; it gets cut off, and the game plays on. Our server only (wrangler dev, local).
+    const base = process.env.VITE_ROOMS_URL ?? 'ws://localhost:8787';
+    const http = base.replace(/^ws/, 'http');
+    const { protocol } = await (await fetch(`${http}/health`)).json();
+    const { host, guest, code } = await pair('1v1');
+    await play([host, guest], { until: (n) => n >= 6 });
+    const hex = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    /** Opens a socket: 'open', or 'refused' (an error before opening: a 429 on the upgrade). */
+    const sock = (q) => new Promise((res) => {
+      const ws = new WebSocket(`${base}/ws?${q}`);
+      const t = setTimeout(() => res({ ws, r: 'timeout' }), 10000);
+      ws.onopen = () => { clearTimeout(t); res({ ws, r: 'open' }); };
+      ws.onerror = () => { clearTimeout(t); res({ ws, r: 'refused' }); };
+    });
+    const attack = (async () => {
+      // 1. 30 sockets into the game's room, none saying hello.
+      const conns = await Promise.all(Array.from({ length: 30 }, () => sock(`code=${code}`)));
+      const connRefused = conns.filter((c) => c.r !== 'open').length;
+      // 2. Its own room, then 200 messages at once.
+      const own = await sock(`create=${encodeURIComponent(JSON.stringify({ mode: '1v1', pairing: 'opposite', singles: true, botLevel: 'normal' }))}`);
+      let cut = 'still open';
+      if (own.r === 'open') {
+        const closed = new Promise((res) => {
+          own.ws.onmessage = (e) => { const m = JSON.parse(String(e.data)); if (m.t === 'error') cut = m.code; };
+          own.ws.onclose = (e) => res(e.code);
+        });
+        own.ws.send(JSON.stringify({ t: 'hello', protocol, token: hex(), name: 'Flood' }));
+        for (let i = 0; i < 200 && own.ws.readyState === 1; i++) own.ws.send(JSON.stringify({ t: 'chat', quick: 0 }));
+        await Promise.race([closed, new Promise((r) => setTimeout(r, 5000))]);
+      } else cut = `refused (${own.r})`;
+      // 3. 40 new rooms, and 4. 30 new accounts.
+      const rooms = await Promise.all(Array.from({ length: 40 }, () => sock(`create=${encodeURIComponent(JSON.stringify({ mode: '1v1', pairing: 'opposite', singles: true, botLevel: 'normal' }))}`)));
+      const roomsRefused = rooms.filter((c) => c.r !== 'open').length;
+      const accounts = await Promise.all(Array.from({ length: 30 }, () => fetch(`${http}/api/account`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Flood' }) }).then((r) => r.status)));
+      const accountsRefused = accounts.filter((s) => s === 429).length;
+      for (const c of [...conns, ...rooms, own]) try { c.ws.close(); } catch { /* gone */ }
+      return { connRefused, cut, roomsRefused, accountsRefused };
+    })();
+    // Meanwhile the game goes on.
+    const t = Date.now();
+    const [a, r] = await Promise.all([attack, play([host, guest], { until: (n) => n >= 30 })]);
+    const s = Math.round((Date.now() - t) / 1000);
+    log('abuse:', JSON.stringify(a));
+    report('a flood of connections into a room is turned away', a.connRefused >= 20, `${a.connRefused} of 30 refused (8 a room per IP, 2 of them the players')`);
+    report('a flood of messages closes that connection', a.cut === 'rate-limited', `the flooding connection: ${a.cut}`);
+    report('a flood of new rooms is turned away', a.roomsRefused >= 10, `${a.roomsRefused} of 40 refused`);
+    report('a flood of new accounts is turned away', a.accountsRefused >= 10, `${a.accountsRefused} of 30 refused`);
+    report('the game in progress plays on meanwhile', r.stopped && r.steps >= 30, `${r.steps} more steps in ${s} s`);
     await close(host, guest);
   } else if (test === 'timeouts') {
     const { host, guest } = await pair('1v1');

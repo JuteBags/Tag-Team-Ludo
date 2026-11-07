@@ -22,6 +22,12 @@
     // Friends (#209): codes, names and friends lists, and who's online.
     { "tag": "v3", "new_sqlite_classes": ["Friends"] }
   ],
+  // #220: the Workers Rate Limiting binding, per IP (src/limits.ts has our own limits, always on). Turn it off
+  // with the var RATE_LIMIT_BINDING "0" if it ever costs money. Bindings aren't inherited: each environment lists them.
+  "ratelimits": [
+    { "name": "RL_CONNECT", "namespace_id": "2201", "simple": { "limit": 60, "period": 60 } },
+    { "name": "RL_ACCOUNT", "namespace_id": "2202", "simple": { "limit": 10, "period": 60 } }
+  ],
   "vars": { "ALLOWED_ORIGINS": "*" },
   "observability": { "enabled": true },
   "env": {
@@ -38,6 +44,12 @@
           { "name": "FRIENDS", "class_name": "Friends" }
         ]
       },
+      // #220: the Workers Rate Limiting binding, per IP (src/limits.ts has our own limits, always on). Turn it off
+      // with the var RATE_LIMIT_BINDING "0" if it ever costs money. Bindings aren't inherited: each environment lists them.
+      "ratelimits": [
+        { "name": "RL_CONNECT", "namespace_id": "2201", "simple": { "limit": 60, "period": 60 } },
+        { "name": "RL_ACCOUNT", "namespace_id": "2202", "simple": { "limit": 10, "period": 60 } }
+      ],
       "vars": { "ALLOWED_ORIGINS": "http://localhost:5173,https://localhost,capacitor://localhost,https://jutebags.github.io" }
     },
     // The server the released game uses: the website (GitHub Pages), the Android app (https://localhost) and the
@@ -53,6 +65,12 @@
           { "name": "FRIENDS", "class_name": "Friends" }
         ]
       },
+      // #220: the Workers Rate Limiting binding, per IP (src/limits.ts has our own limits, always on). Turn it off
+      // with the var RATE_LIMIT_BINDING "0" if it ever costs money. Bindings aren't inherited: each environment lists them.
+      "ratelimits": [
+        { "name": "RL_CONNECT", "namespace_id": "2201", "simple": { "limit": 60, "period": 60 } },
+        { "name": "RL_ACCOUNT", "namespace_id": "2202", "simple": { "limit": 10, "period": 60 } }
+      ],
       "vars": { "ALLOWED_ORIGINS": "https://jutebags.github.io,https://localhost,capacitor://localhost,null" }
     }
   }

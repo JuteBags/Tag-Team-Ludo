@@ -163,6 +163,8 @@ export class RoomLink {
       this.pingTimer = setInterval(() => this.ping(), PING_MS);
     };
     ws.onmessage = (e) => {
+      // A socket this link has replaced (a reconnect) says nothing more: the server tells it 'replaced' (#220).
+      if (this.ws !== ws) return;
       let m: ServerMsg;
       try {
         m = JSON.parse(String(e.data)) as ServerMsg;
@@ -262,7 +264,11 @@ export class RoomLink {
         saveRoom(null);
         break;
       case 'error':
-        if (FATAL.includes(m.code)) {
+        // #220: this game is open on another connection now (another tab): this one stops, the room is kept.
+        if (m.code === 'replaced') {
+          this.fatal = { code: m.code, message: m.message };
+          this.close();
+        } else if (FATAL.includes(m.code)) {
           this.fatal = { code: m.code, message: m.message };
           saveRoom(null);
           this.close();

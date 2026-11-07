@@ -220,7 +220,9 @@ export type ErrorCode =
   | 'bad-message'
   | 'no-friend' // friends: no one has that friend code
   | 'not-friends' // friends: invite or reply to someone who isn't a friend
-  | 'offline'; // friends: they aren't online to invite
+  | 'offline' // friends: they aren't online to invite
+  | 'rate-limited' // #220: too many messages on this connection (it's closed; the app reconnects)
+  | 'replaced'; // #220: the same person opened this room (or friends) on another connection; this one is closed
 
 // ---------- chat (#212) ----------
 // Quick phrases and emoji for everyone; free text in private rooms only. The server relays each line to the room

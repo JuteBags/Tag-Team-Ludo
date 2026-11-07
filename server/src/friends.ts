@@ -5,12 +5,16 @@ import { DurableObject } from 'cloudflare:workers';
 import { PROTOCOL, type FriendClientMsg, type FriendServerMsg } from '../../src/net/protocol';
 import type { Accounts } from './accounts';
 import { FriendsCore, type FriendStore } from './friends-core';
+import { Bucket, SOCKETS_PER_IP_HUB, admit, clientIp } from './limits';
 
 interface Env {
   ACCOUNTS: DurableObjectNamespace<Accounts>;
 }
 interface Attachment {
   conn: string;
+  /** #220: the socket's IP, and when it opened (to close one that never says hello). */
+  ip?: string;
+  since?: number;
   /** The account, once its hello checked out. */
   id: string | null;
   name: string;
@@ -20,6 +24,8 @@ const MAX_MESSAGE = 1024;
 
 export class Friends extends DurableObject<Env> {
   private core: FriendsCore;
+  /** #220: each socket's message budget (in memory). */
+  private budgets = new WeakMap<WebSocket, Bucket>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -69,10 +75,20 @@ export class Friends extends DurableObject<Env> {
     }
   }
 
-  async fetch(): Promise<Response> {
+  async fetch(req: Request): Promise<Response> {
+    // #220: so many sockets per IP on the hub; sockets that never said hello are closed.
+    const ip = clientIp(req);
+    const now = Date.now();
+    const open = this.ctx.getWebSockets();
+    const { ok, stale } = admit(open.map((ws) => {
+      const a = ws.deserializeAttachment() as Attachment | null;
+      return { ip: a?.ip ?? '', hello: !!a?.id, since: a?.since ?? now };
+    }), ip, now, SOCKETS_PER_IP_HUB);
+    for (const i of stale) open[i]!.close(4000, 'bad-message');
+    if (!ok) return new Response('too many connections', { status: 429 });
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ conn: crypto.randomUUID(), id: null, name: '' } satisfies Attachment);
+    server.serializeAttachment({ conn: crypto.randomUUID(), id: null, name: '', ip, since: now } satisfies Attachment);
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -85,7 +101,11 @@ export class Friends extends DurableObject<Env> {
         // Gone.
       }
     };
-    if (typeof raw !== 'string' || raw.length > MAX_MESSAGE) return fail('bad-message', 'Message too large or not text.');
+    if (typeof raw !== 'string' || raw.length > MAX_MESSAGE) return fail('bad-message', 'Message too large or not text.', true);
+    // #220: a socket over its message budget is closed.
+    let budget = this.budgets.get(ws);
+    if (!budget) this.budgets.set(ws, (budget = new Bucket(undefined, undefined, Date.now())));
+    if (!budget.take(Date.now())) return fail('rate-limited', 'Too many messages: the connection was closed.', true);
     let msg: FriendClientMsg;
     try {
       msg = JSON.parse(raw) as FriendClientMsg;
@@ -98,7 +118,20 @@ export class Friends extends DurableObject<Env> {
       if (msg.protocol !== PROTOCOL) return fail('protocol', 'This app version can’t use friends on this server. Please update the app.', true);
       const known = await this.env.ACCOUNTS.get(this.env.ACCOUNTS.idFromName('global')).check(msg.account);
       if (!known) return fail('no-account', 'Your account wasn’t found. Try again.', true);
-      ws.serializeAttachment({ conn: a.conn, id: msg.account.id, name: msg.name } satisfies Attachment);
+      // #220: one live friends link per account: an older one gives way.
+      for (const other of this.ctx.getWebSockets()) {
+        const o = other.deserializeAttachment() as Attachment | null;
+        if (other === ws || o?.id !== msg.account.id) continue;
+        this.core.bye(o.conn);
+        other.serializeAttachment({ ...o, id: null } satisfies Attachment);
+        try {
+          other.send(JSON.stringify({ t: 'error', code: 'replaced', message: 'Friends opened somewhere else.' } satisfies FriendServerMsg));
+          other.close(4000, 'replaced');
+        } catch {
+          // Gone.
+        }
+      }
+      ws.serializeAttachment({ ...a, id: msg.account.id, name: msg.name } satisfies Attachment);
       this.core.hello(a.conn, msg.account.id, msg.name);
       return;
     }

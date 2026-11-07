@@ -64,6 +64,8 @@ export class FriendsLink {
   }
 
   private take(m: FriendServerMsg) {
+    // #220: friends opened on another connection (another tab): this one stops instead of taking it back.
+    if (m.t === 'error' && m.code === 'replaced') this.close();
     if (m.t === 'me') {
       this.code = m.code;
       this.friends = m.friends;
