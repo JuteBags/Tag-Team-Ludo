@@ -1,6 +1,7 @@
 // Friends (#209, a first version), plain on purpose (the design comes later from ludo-uiux): the Friends sheet
 // (your code, add a friend by code, your friends with who's online, and Invite when you're in a room), and the
 // invite that pops up wherever you are (Join or Decline). Online play only: the terms first (#208).
+import { copyText } from './clipboard';
 import { friendsLink, onFriendsStart, startFriends, type FriendsLink } from '../net/friends';
 import type { Friend } from '../net/protocol';
 import { requireTerms } from './legal';
@@ -63,13 +64,11 @@ export async function friendsSheet(host: HTMLElement, room?: string): Promise<vo
     const copy = t.closest<HTMLElement>('[data-act=copycode]');
     if (copy && link.code) {
       const hint = copy.querySelector('small')!;
-      void navigator.clipboard?.writeText(link.code).then(
-        () => {
-          hint.textContent = 'Copied';
-          setTimeout(() => (hint.textContent = 'Tap to copy'), 1600);
-        },
-        () => undefined,
-      );
+      void copyText(link.code).then((ok) => {
+        if (!ok) return;
+        hint.textContent = 'Copied';
+        setTimeout(() => (hint.textContent = 'Tap to copy'), 1600);
+      });
       return;
     }
     const inv = t.closest<HTMLElement>('[data-invite]')?.dataset.invite;
