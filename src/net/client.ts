@@ -290,7 +290,7 @@ export class RoomLink {
   }
 
   /**
-   * The clock to show. Without bots the server's. A bot's turn shows a person's TURN_MS (#216); after the bots'
+   * The clock to show. Without bots the server's. A ranked bot's turn shows a person's TURN_MS (#216), a shown bot's none; after the bots'
    * run this app played, the next person's clock is what's left of the server's, TURN_MS at most.
    */
   private showTurn(fresh = false) {
@@ -298,7 +298,8 @@ export class RoomLink {
     if (!this.bots || !s || s.phase === 'over') return this.setTurn(this.serverTurn);
     const color = s.players[s.current]!.color;
     if (isLocalBot(s, this.bots)) {
-      if (fresh || this.turn?.color !== color) this.setTurn({ color, ms: TURN_MS });
+      // A private room's bots are shown as bots: no clock on their turn (#226).
+      if (fresh || this.turn?.color !== color) this.setTurn({ color, ms: this.bots.visible ? null : TURN_MS });
       return;
     }
     if (this.events.length === this.confirmed) return this.setTurn(this.serverTurn);

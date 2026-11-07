@@ -6,8 +6,7 @@
 // the seed, revealed when the game ends); the face itself is drawn from the server's crypto RNG. Knowing or
 // brute-forcing the 32-bit seed therefore never tells anyone the next face.
 import { STOP_EVENT, applyEvent, ownerRanking, resign, resignEvent, createGame, diceWeights, isDone, mixSeed, move, moveEvent, positionKey, roll, rollEvent, sampleFace, seeded, type BotLevel, type Color, type GameState, type Rng, type Seat } from '../../src/engine';
-import { chooseRuleMove } from '../../src/engine/ai/choose';
-import { BOT_VERSION, DRAWS_PER_BOT, botFace, checkBotEvents, firstLegal, isLocalBot, type Draws, type LocalBots } from '../../src/net/localBots';
+import { BOT_MOVE_MS, BOT_ROLL_MS, BOT_VERSION, DRAWS_PER_BOT, botFace, checkBotEvents, firstLegal, isLocalBot, type Draws, type LocalBots } from '../../src/net/localBots';
 import { CHAT_EMOJI, CHAT_GAP_MS, CHAT_MAX, GAME_MODES, MAX_NAME, QUICK_CHAT, TURN_MS, cleanChat, ONLINE_LEVELS, PROTOCOL, modeSlots, type GameMode, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ChatFeatures, type ServerMsg, type Turn } from '../../src/net/protocol';
 
 /** A person's time to roll or move before the server plays that step for them. */
@@ -20,9 +19,8 @@ export { TURN_MS };
 export const FORFEIT_TIMEOUTS = 3;
 /** Disconnected this long without coming back counts as leaving: the person forfeits. */
 export const OFFLINE_MS = 60_000;
-/** The pause before each bot roll and bot move, so everyone can follow the bots. */
-export const BOT_ROLL_MS = 900;
-export const BOT_MOVE_MS = 1100;
+/** A shown bot's pause before each roll and move (private rooms; the apps play them, localBots.ts). */
+export { BOT_ROLL_MS, BOT_MOVE_MS };
 /**
  * Ranked bots are played in the apps (#221): the time a run of bot turns may take, per bot still playing, before
  * the next person's own TURN_MS starts. If no app has sent the run by then, the server plays it with each bot's
@@ -227,8 +225,8 @@ export class RoomCore {
   hello(token: string, msg: Extract<ClientMsg, { t: 'hello' }>): ErrorCode | null {
     if (msg.protocol !== PROTOCOL) return 'protocol';
     const d = this.data;
-    // A game whose bots the apps play: only an app with the same bots can play it (#221).
-    if (d.bots && msg.botVersion !== BOT_VERSION) return 'protocol';
+    // The apps play every game's bots (#221, #226): only an app with the same bots can play.
+    if (msg.botVersion !== BOT_VERSION) return 'protocol';
     let m = d.members.find((x) => x.token === token);
     if (!m) {
       if (d.phase !== 'lobby') return 'started';
@@ -421,6 +419,14 @@ export class RoomCore {
     d.events = [];
     d.phase = 'playing';
     this.state = createGame(seats, first, d.options.singles);
+    // The bots in the empty seats are played in the apps (#226), at the host's level, shown as bots.
+    const levels: Partial<Record<Color, BotLevel>> = {};
+    for (const seat of seats) if (seat.bot) levels[seat.color] = seat.level ?? 'normal';
+    if (Object.keys(levels).length) {
+      d.bots = { seed: Math.floor(this.io.random() * 4294967296) >>> 0, levels, visible: true };
+      d.run = null;
+      this.openRun();
+    }
     // Anyone not connected when it starts is on the offline clock from now.
     const now = this.io.now();
     for (const m of d.members) m.offlineSince = this.online.has(m.token) ? null : now;
@@ -640,16 +646,15 @@ export class RoomCore {
   }
 
   /**
-   * The server acts for the current colour: a roll, or a move. A private room's bot plays its rule bot's move; a
-   * person whose clock ran out gets their first legal move, in the engine's fixed order (the owner, #221: the
-   * server picks no one's move).
+   * The server acts for the current colour: a roll, or the first legal move in the engine's fixed order. For a
+   * person whose clock ran out (the owner, #221), and for a bot in a room saved before the apps played the bots
+   * (#226). The server picks no one's move: there is no rule bot on the server.
    */
   private botStep() {
     const s = this.state!;
     if (s.phase === 'roll') this.rollNow();
     else {
-      const p = s.players[s.current]!;
-      const m = p.bot ? chooseRuleMove(s, seeded(mixSeed(this.data.seed!, 'bot' + positionKey(s))), p.level ?? 'normal') : firstLegal(s);
+      const m = firstLegal(s);
       this.apply(moveEvent(m), move(s, m));
     }
     this.afterEvent();

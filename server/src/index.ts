@@ -1,7 +1,7 @@
 // The room server: a Cloudflare Worker that routes each WebSocket to its room, and the Room Durable Object
 // (one per room code) that runs it. All game logic is in room-core.ts; this file is only the wiring.
 //
-//   GET /health                          {"ok":true,"protocol":2}
+//   GET /health                          {"ok":true,"protocol":3,"bots":1} (the protocol and BOT_VERSION)
 //   GET /ws?create={"mode":"ffa",...}    a new private room (the first message back is its lobby, with the code)
 //   GET /ws?code=ABCDE                   join a room (private, or the ranked game the queue matched you into)
 //   GET /mm?mode=1v1                     ranked: search for a game (a WebSocket to that mode's Matchmaker)
@@ -13,6 +13,7 @@ import { CODE_ALPHABET, CODE_LEN, GAME_MODES, PROTOCOL, isCode, type AccountKey,
 import { Accounts } from './accounts';
 import { Friends } from './friends';
 import { testHooksAllowed } from './test-hooks';
+import { BOT_VERSION } from '../../src/net/localBots';
 import { Bucket, SOCKETS_PER_IP_ROOM, admit, clientIp } from './limits';
 import { Matchmaker } from './matchmaker';
 import { RoomCore, validOptions, type RoomData, type RoomIO } from './room-core';
@@ -97,7 +98,7 @@ async function account(req: Request, env: Env): Promise<Response> {
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-    if (url.pathname === '/health') return json({ ok: true, protocol: PROTOCOL });
+    if (url.pathname === '/health') return json({ ok: true, protocol: PROTOCOL, bots: BOT_VERSION });
     if (url.pathname === '/api/account') return account(req, env);
     // Tests only: off unless TEST_HOOKS=1 and the request is to localhost (test-hooks.ts); otherwise a plain 404.
     if (url.pathname === '/api/test/rating') {

@@ -1,8 +1,10 @@
 // End-to-end check of a running room server (default: `npm run dev` on this computer). Two players create and
 // join a room over real WebSockets; the host starts it; each keeps the game with the engine (as the app does)
-// and plays a random legal move on its turn, until the game is over. Bots take ~1 s per step on the server.
+// and plays a random legal move on its turn, until the game is over. The bots are played here, as the app does
+// (#226), at once, and their runs go with the players' moves.
 // Run: npm run smoke -- [ws://localhost:8787] [ffa|1v1|duo|2v2] [easy|normal|hard]
 import { STOP_EVENT, applyEvent, createGame, moveEvent, type GameState } from '../../src/engine';
+import { BOT_VERSION, botStep, isLocalBot, type Draws, type LocalBots } from '../../src/net/localBots';
 import { PROTOCOL, modeSlots, type GameMode, type GameSetup, type ServerMsg } from '../../src/net/protocol';
 
 const base = process.argv[2] ?? 'ws://localhost:8787';
@@ -22,9 +24,11 @@ class Player {
   members = 0;
   over: Extract<ServerMsg, { t: 'over' }> | null = null;
   errors: string[] = [];
+  bots: LocalBots | null = null;
+  draws: Draws | null = null;
   constructor(readonly name: string, url: string) {
     this.ws = new WebSocket(url);
-    this.ws.addEventListener('open', () => this.send({ t: 'hello', protocol: PROTOCOL, token: this.token, name }));
+    this.ws.addEventListener('open', () => this.send({ t: 'hello', protocol: PROTOCOL, botVersion: BOT_VERSION, token: this.token, name }));
     this.ws.addEventListener('message', (e) => this.on(JSON.parse(String(e.data)) as ServerMsg));
   }
   send(m: object) {
@@ -38,25 +42,45 @@ class Player {
       this.events = [...m.events];
       this.state = createGame(m.setup.seats, m.setup.first, m.setup.singles);
       for (const ev of m.events) if (ev !== STOP_EVENT) this.state = applyEvent(this.state, ev);
+      this.bots = m.bots ?? null;
+      this.draws = m.draws ?? null;
+      // The game may start with the bots: their run goes with our first move.
+      this.act();
     } else if (m.t === 'ev') {
       if (m.seq !== this.events.length) throw new Error(`${this.name}: gap at ${m.seq}`);
       this.events.push(m.ev);
       if (m.ev !== STOP_EVENT) this.state = applyEvent(this.state!, m.ev);
+      if (m.draws) this.draws = m.draws;
       this.act();
     } else if (m.t === 'over') this.over = m;
     else if (m.t === 'error') this.errors.push(m.code);
   }
-  /** On our turn: roll, or a random legal move, after a short "thinking" pause. */
+  /** On our turn (after the bots' run, played here): roll, or a random legal move, after a short "thinking" pause. */
   act() {
-    const s = this.state;
+    let s = this.state;
     if (!s || s.phase === 'over' || this.over) return;
+    const bots: string[] = [];
+    const dr = this.draws;
+    if (isLocalBot(s, this.bots) && dr && dr.at === this.events.length) {
+      let used = 0;
+      while (isLocalBot(s, this.bots)) {
+        const step = botStep(s, this.bots!, dr.d, used);
+        if (!step) return; // out of draws: not handled in this smoke test (the server plays the run later)
+        bots.push(step.ev);
+        s = step.next;
+        used = step.used;
+      }
+    }
+    const seq = this.events.length;
+    const extra = bots.length ? { bots } : {};
+    if (s.phase === 'over') return void this.send({ t: 'bots', seq, bots });
     const p = s.players[s.current]!;
     if (this.setup?.control[p.color] !== this.you) return;
-    const seq = this.events.length;
+    const now = s;
     setTimeout(() => {
       if (this.events.length !== seq) return;
-      if (s.phase === 'roll') this.send({ t: 'roll', seq });
-      else this.send({ t: 'move', seq, ev: moveEvent(s.moves[Math.floor(Math.random() * s.moves.length)]!) });
+      if (now.phase === 'roll') this.send({ t: 'roll', seq, ...extra });
+      else this.send({ t: 'move', seq, ev: moveEvent(now.moves[Math.floor(Math.random() * now.moves.length)]!), ...extra });
     }, 30);
   }
 }

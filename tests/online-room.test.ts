@@ -831,10 +831,11 @@ describe('online room: ranked bots played in the apps (#221)', () => {
     const { room } = rankedRoom(49, '1v1', [1, null]);
     expect(room.hello(tok(1), { ...hello(1), botVersion: BOT_VERSION + 1 })).toBe('protocol');
     expect(room.hello(tok(1), { t: 'hello', protocol: PROTOCOL, token: tok(1), name: 'P1' })).toBe('protocol');
-    // A private room doesn't care: its bots are the server's.
+    // Private rooms too (#226): their bots are the apps' as well.
     const w = world(50);
     const priv = RoomCore.create('PRIVA', { ...OPTS, mode: '1v1' }, w.io);
-    expect(priv.hello(tok(1), { t: 'hello', protocol: PROTOCOL, token: tok(1), name: 'P1' })).toBeNull();
+    expect(priv.hello(tok(1), { t: 'hello', protocol: PROTOCOL, token: tok(1), name: 'P1' })).toBe('protocol');
+    expect(priv.hello(tok(1), hello(1))).toBeNull();
   });
 
   it('billed requests per bot game, before (the server played every bot step) and after (the apps do)', async () => {
@@ -853,5 +854,106 @@ describe('online room: ranked bots played in the apps (#221)', () => {
       expect(after).toBeLessThan(before / 10);
     }
     console.log(['Billed requests per bot game (#221):', ...rows].join('\n  '));
+  });
+});
+
+// ---------- #226: private rooms' bots played in the apps too ----------
+
+/** A private room of `mode` with `people` people (all said hello), started by the host, its bots at `level`. */
+async function privateRoom(seed: number, mode: RoomOptions['mode'], people: number, level: RoomOptions['botLevel'] = 'hard') {
+  const w = world(seed);
+  const logs: Record<string, unknown>[] = [];
+  w.io.log = (e) => logs.push(e);
+  const room = RoomCore.create('PB' + seed, { ...OPTS, mode, botLevel: level }, w.io);
+  for (let i = 1; i <= people; i++) expect(room.hello(tok(i), hello(i))).toBeNull();
+  expect(await room.handle(tok(1), { t: 'start' })).toBeNull();
+  const phones = Array.from({ length: people }, (_, i) => new Phone(tok(i + 1), w));
+  return { w, room, phones, logs };
+}
+
+describe('online room: private rooms\u2019 bots played in the apps (#226)', () => {
+  it('the server has no rule bot left: chooseRuleMove appears nowhere in server/', async () => {
+    // @ts-expect-error: the project has no @types/node; Vitest runs on Node.
+    const { readdirSync, readFileSync } = await import('node:fs');
+    const dir = new URL('../server/src/', import.meta.url);
+    const files = (readdirSync(dir) as string[]).filter((n) => n.endsWith('.ts'));
+    expect(files.length).toBeGreaterThan(5);
+    for (const n of files) expect(readFileSync(new URL(n, dir), 'utf8'), n).not.toMatch(/chooseRuleMove|ai\/choose/);
+  });
+
+  it('2 people + 2 bots: the bots are shown as bots at the host\u2019s level; the apps agree and the server picks none', async () => {
+    const { w, room, phones, logs } = await privateRoom(51, 'ffa', 2, 'hard');
+    const game = (w.inbox.get(tok(1)) ?? []).find((m) => m.t === 'game')!;
+    if (game.t !== 'game') throw new Error('no game');
+    // Shown as bots, at the level the host picked, and the apps play them.
+    expect(game.setup.seats.filter((s) => s.bot).map((s) => s.level)).toEqual(['hard', 'hard']);
+    expect(game.bots?.visible).toBe(true);
+    expect(Object.values(game.bots!.levels)).toEqual(['hard', 'hard']);
+    picks.count = 0;
+    const count = await playRanked(room, w, phones, seeded(1));
+    expect(picks.count).toBe(0);
+    expect(count.mismatches).toBe(0);
+    expect(count.alarms).toBe(0);
+    expect(count.botEvents).toBeGreaterThan(20);
+    expect(logs).toEqual([]);
+    for (const p of phones) expect(p.events).toEqual(room.snapshot.events);
+  });
+
+  it('one person left with the bots (the other left): that person\u2019s app plays them all', async () => {
+    // A private room needs two people to start, so "1 person + bots" is a room whose others have left.
+    const { w, room, phones, logs } = await privateRoom(52, 'ffa', 2, 'normal');
+    expect(await room.handle(tok(2), { t: 'leave' })).toBeNull();
+    picks.count = 0;
+    const count = await playRanked(room, w, [phones[0]!], seeded(2));
+    expect(picks.count).toBe(0);
+    expect(count.alarms).toBe(0);
+    expect(count.botEvents).toBeGreaterThan(20);
+    expect(logs).toEqual([]);
+    expect(phones[0]!.events).toEqual(room.snapshot.events);
+  });
+
+  it('a modified app: its legal run is taken, the other app reports it and follows the server, and it\u2019s logged', async () => {
+    const { w, room, phones, logs } = await privateRoom(53, '2v2', 2, 'normal');
+    phones[1]!.cheat = (s) => (s.moves.length > 1 ? moveEvent(s.moves[s.moves.length - 1]!) : null);
+    const count = await playRanked(room, w, phones, seeded(3));
+    expect(count.mismatches).toBeGreaterThan(0);
+    expect(logs.filter((l) => l.type === 'bot-mismatch').length).toBe(count.mismatches);
+    for (const p of phones) expect(p.events).toEqual(room.snapshot.events);
+  });
+
+  it('a reconnect in the middle of the bots\u2019 run: the app rebuilds the same run and it\u2019s taken', async () => {
+    const { w, room, phones } = await privateRoom(54, 'ffa', 2, 'easy');
+    let p = phones[0]!;
+    const other = phones[1]!;
+    for (let i = 0; i < 400 && !(phones.forEach((q) => q.sync()), p.local().bots.length > 2 && p.myTurn()); i++) {
+      const mover = [p, other].find((q) => q.myTurn());
+      if (mover) await room.handle(mover.token, mover.action(seeded(i)));
+    }
+    const before = p.local().bots;
+    expect(before.length).toBeGreaterThan(2);
+    room.disconnected(p.token);
+    w.inbox.set(p.token, []);
+    p = new Phone(p.token, w);
+    expect(room.hello(p.token, hello(1))).toBeNull();
+    p.sync();
+    expect(p.local().bots).toEqual(before);
+    expect(await room.handle(p.token, p.action(seeded(1)))).toBeNull();
+  });
+
+  it('billed requests per private game with bots, before (a server alarm per bot step) and after', async () => {
+    const rows: string[] = [];
+    for (const [mode, people, label] of [
+      ['ffa', 2, '1v1v1v1, 2 people + 2 bots'],
+      ['ffa', 3, '1v1v1v1, 3 people + 1 bot'],
+      ['2v2', 2, '2v2, 2 people + 2 bots'],
+    ] as const) {
+      const { w, room, phones } = await privateRoom(70, mode, people, 'normal');
+      const c = await playRanked(room, w, phones, seeded(7));
+      const before = c.botEvents + (c.messages - c.mismatches) / 20;
+      const after = c.alarms + c.messages / 20;
+      rows.push(`${label}: ${c.botEvents} bot steps; before ${before.toFixed(1)} billed requests, after ${after.toFixed(1)}`);
+      expect(after).toBeLessThan(before / 5);
+    }
+    console.log(['Billed requests per private game with bots (#226):', ...rows].join('\n  '));
   });
 });

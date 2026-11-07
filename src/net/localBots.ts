@@ -1,4 +1,4 @@
-// Ranked bots, played in the players' apps (#221). Pure, shared by the app (which plays the bots) and the room
+// Bots played in the players' apps: Ranked's (#221) and private rooms' (#226). Pure, shared by the app (which plays the bots) and the room
 // server (which checks what the apps send), and tested in tests/local-bots.test.ts.
 //
 // - The server never picks a bot's move. Every person's app plays the bots at the game's `seed` (move choices
@@ -32,7 +32,16 @@ export const MAX_BOT_EVENTS = 200;
 export interface LocalBots {
   seed: number;
   levels: Partial<Record<Color, BotLevel>>;
+  /**
+   * Private rooms (#226): the bots are shown as bots, at a bot's quick pace and with no clock. Ranked bots (not
+   * set) look like people: a person's pace and clock (#216).
+   */
+  visible?: boolean;
 }
+
+/** A shown bot's pause before each roll and each move, so everyone can follow it. */
+export const BOT_ROLL_MS = 900;
+export const BOT_MOVE_MS = 1100;
 
 /** Random draws (32-bit) for the run of bot turns that starts at event `at`. */
 export interface Draws {
@@ -61,8 +70,9 @@ export function botMove(s: GameState, bots: LocalBots): Move {
 
 /** A bot step takes a person's time (#216): 1.2-2.6 s to roll, 1.5-3.5 s to move. */
 export const humanPace = (phase: GameState['phase'], random: () => number) => Math.round(phase === 'roll' ? 1200 + 1400 * random() : 1500 + 2000 * random());
-/** How long the bot takes over its step at `s`. */
-export const botPace = (s: GameState, bots: LocalBots) => humanPace(s.phase, seeded(mixSeed(bots.seed, 'pace' + positionKey(s))));
+/** How long the bot takes over its step at `s`: a shown bot's quick pause, or a person's time. */
+export const botPace = (s: GameState, bots: LocalBots) =>
+  bots.visible ? (s.phase === 'roll' ? BOT_ROLL_MS : BOT_MOVE_MS) : humanPace(s.phase, seeded(mixSeed(bots.seed, 'pace' + positionKey(s))));
 
 /**
  * One bot step at `s`: a roll with the next draw (`draws[used]`), or the bot's move. Null when the roll has no
