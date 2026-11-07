@@ -175,5 +175,8 @@ const MESSAGES: Partial<Record<string, string>> = {
   'not-friends': 'You can only invite friends.',
   offline: 'They aren’t online right now.',
   full: 'That friends list is full.',
+  // #237
+  limit: 'Too many friend requests for now. Try again later.',
+  'no-account': 'They can’t get friend requests yet.',
   'bad-message': 'The app sent something the server didn’t understand.',
 };

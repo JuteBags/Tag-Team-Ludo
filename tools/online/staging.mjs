@@ -330,7 +330,10 @@ try {
     const guest = await player('Leo', { phone: true });
     // Friends opened once: the guest account and the link, so the room knows each person's account.
     for (const p of [host, guest]) {
-      await openRooms(p, 'friends');
+      // The room menu's Friends row (With friends → Private room → Friends).
+      await openRooms(p);
+      await p.page.locator('.namein').fill(p.name);
+      await tap(p.page, '[data-act=friends]');
       await p.page.waitForFunction(() => /^[A-Z0-9]{6}$/.test(document.querySelector('.sheet.friends .fmine b')?.textContent ?? ''), null, { timeout: 30000 });
       await tap(p.page, '.sheet.friends [data-act=close]');
       await p.page.goto(URL, { waitUntil: 'load' });
