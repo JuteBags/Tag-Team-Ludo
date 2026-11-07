@@ -162,6 +162,11 @@ export async function shareCard(png: string, text: string, url = SITE) {
     await navigator.share({ files: [file], title: 'Tag Team Ludo', text: `${text} ${url}` });
     return;
   }
+  // No file sharing here (most desktop browsers): the text and the game's link, if there's a share menu at all (#237).
+  if (url !== SITE && navigator.share) {
+    await navigator.share({ title: 'Tag Team Ludo', text, url });
+    return;
+  }
   const a = document.createElement('a');
   a.href = png;
   a.download = file.name;

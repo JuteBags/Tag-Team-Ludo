@@ -3,7 +3,8 @@
 // is a room that has already started: the usual game screen with a RoomLink, rated when it ends.
 import { icons } from './art';
 import { RoomLink, roomsUrl } from '../net/client';
-import { GAME_MODES, MODE_LABEL, MODE_NOTE, type AccountReply, type GameMode } from '../net/protocol';
+import { GAME_MODES, type AccountReply, type GameMode } from '../net/protocol';
+import { MODE_NAME, seatPic } from './modePicker';
 import { QueueLink, loadAccount } from '../net/ranked';
 import { PROVISIONAL, SEARCH_HINT_MS, tierOf } from '../net/rating';
 import { requireTerms } from './legal';
@@ -36,15 +37,16 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       <label class="rname"><span>Your name</span><input class="namein" maxlength="${NAME_MAX}" autocomplete="nickname" spellcheck="false" placeholder="Your name"></label>
       <div class="rmodes"></div>
       <p class="oerr" role="alert" hidden></p>
+      <button class="b3 blue disp retry" data-act="retry" hidden>TRY AGAIN</button>
       <p class="rnote">Matched with players near your rank. Leaving a game forfeits: it counts as last place.</p>
     </section>
     <section class="wiz" data-step="search" hidden>
       <h3 class="disp smode"></h3><p class="sub stier"></p>
       <div class="mid"><div class="sp search">
-        <div class="spin" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-        <b class="selapsed">0:00</b>
-        <p class="sline"></p>
-        <button class="shint" data-act="private" hidden><span>Taking too long? Play with friends in a private room.</span></button>
+        <span class="spic" aria-hidden="true"></span>
+        <b class="selapsed" role="timer" aria-label="Searching">0:00</b>
+        <p class="sline" aria-live="polite"></p>
+        <button class="shint" data-act="private" hidden><b>Taking a while?</b><span>Play with friends in a private room</span></button>
       </div></div>
       <button class="b3 blue disp go" data-act="cancel">CANCEL</button>
     </section>`;
@@ -78,9 +80,15 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     $('.rmodes').innerHTML = GAME_MODES.map((m) => {
       const r = account!.ratings[m];
       const t = tierOf(r.rating);
-      return `<button class="rmode" data-mode="${m}" style="--tc:${TIER_COLOR[t.tier]}">
-        <span class="rbadge disp">${t.tier[0]}${t.division ? `<small>${t.division}</small>` : ''}</span>
-        <span class="rtxt"><b class="disp">${MODE_LABEL[m]}</b><small>${MODE_NOTE[m]}</small><em>${tierText(r.rating, r.games)}${r.games ? ` · ${r.wins}/${r.games} won` : ''}</em></span>
+      // Placement shows its progress, never a tier the player doesn't have yet (#232).
+      const placing = r.games < PROVISIONAL;
+      const badge = placing
+        ? `<span class="rbadge place" style="--p:${(100 * r.games) / PROVISIONAL}%" aria-hidden="true"><b>${r.games}</b><small>/${PROVISIONAL}</small></span>`
+        : `<span class="rbadge disp" aria-hidden="true">${t.tier[0]}${t.division ? `<small>${t.division}</small>` : ''}</span>`;
+      const rank = tierText(r.rating, r.games);
+      return `<button class="rmode${placing ? ' placing' : ''}" data-mode="${m}" style="--tc:${placing ? '#cfd8ff' : TIER_COLOR[t.tier]}" aria-label="${MODE_NAME[m]}: ${rank}${r.games ? `, ${r.wins} of ${r.games} won` : ''}. Play">
+        ${badge}
+        <span class="rtxt"><b class="disp">${seatPic(m, 'opposite', 20)}${MODE_NAME[m]}</b><em>${rank}</em>${r.games ? `<small>${r.wins}/${r.games} won</small>` : ''}</span>
         <span class="rplay disp">PLAY</span></button>`;
     }).join('');
   };
@@ -89,13 +97,16 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     if (!roomsUrl()) return error('Online play isn’t set up in this version of the app.');
     // Nothing goes to the server (not even the guest account) until the terms are accepted (#208).
     if (!(await requireTerms(el))) return error('Online play needs your OK to Privacy & Terms.');
+    $<HTMLElement>('.retry').hidden = true;
+    $('.who').textContent = 'Loading your ranks…';
     try {
       account = await loadAccount(myName());
       error('');
       drawModes();
     } catch {
       $('.who').textContent = '';
-      error('Couldn’t reach the ranked server. Check your connection and try again.');
+      error('Couldn’t reach the ranked server. Check your connection.');
+      $<HTMLElement>('.retry').hidden = false;
     }
   };
 
@@ -109,9 +120,12 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     if (!account) return;
     error('');
     show('search');
-    $('.smode').textContent = MODE_LABEL[mode];
+    $('.smode').textContent = MODE_NAME[mode];
+    // Decorative only (SD, #218): the houses glow in turn; nothing here counts who has been found.
+    $('.spic').innerHTML = seatPic(mode, 'opposite', 112);
     $('.stier').textContent = tierText(account.ratings[mode].rating, account.ratings[mode].games);
     $('.sline').textContent = 'Finding players near your rank…';
+    el.querySelector('.sp.search')!.classList.remove('found');
     $<HTMLElement>('.shint').hidden = true;
     started = performance.now();
     timer = setInterval(() => {
@@ -132,6 +146,7 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
         clearInterval(timer);
         queue = null;
         $('.sline').textContent = 'Match found! Joining…';
+        el.querySelector('.sp.search')!.classList.add('found');
         $<HTMLElement>('.shint').hidden = true;
         const l = RoomLink.join(m.code, myName(), m.token);
         link = l;
@@ -161,6 +176,12 @@ export function rankedScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     if (b.dataset.mode) {
       sfx.tick();
       return search(b.dataset.mode as GameMode);
+    }
+    if (b.dataset.act === 'retry') {
+      sfx.tick();
+      error('');
+      void load();
+      return;
     }
     if (b.dataset.act === 'private') {
       // The hint: stop searching and play with friends instead.

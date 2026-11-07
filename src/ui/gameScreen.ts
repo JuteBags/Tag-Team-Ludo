@@ -25,8 +25,9 @@ type Counters = { kills: number; pairs: number; sixes: number; lost: number };
 /** The Undo control (#143): a round icon (48 px to tap) with the undos left under it, "2/2". */
 const UNDO_BUTTON = `<button class="undobtn" data-act="undo" hidden aria-label="Undo your last move"><svg viewBox="0 0 40 40" aria-hidden="true"><circle class="ur-bg" cx="20" cy="20" r="17"/><circle class="ur" cx="20" cy="20" r="17"/><path d="M15 13 L10 18 L15 23 M10 18 H24 a6 6 0 0 1 0 12 H19" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><small></small></button>`;
 import type { RoomLink } from '../net/client';
-import { MODE_LABEL, type ClientMsg } from '../net/protocol';
-import { tierOf } from '../net/rating';
+import type { ClientMsg } from '../net/protocol';
+import { MODE_NAME } from './modePicker';
+import { PROVISIONAL, tierOf } from '../net/rating';
 import { gameLink } from './gameLink';
 
 const SEAT_CLASS: Record<Color, string> = { blue: 'bl', green: 'tl', red: 'tr', yellow: 'br' };
@@ -52,8 +53,9 @@ const flatDie = (n: number) =>
 
 export type Exit = 'home' | 'again' | 'replay' | 'review';
 
-/** "Gold II · 62 pts" for a ranked rating. */
-const tierText = (rating: number) => {
+/** "Gold II · 62 pts" for a ranked rating; "Placement 3/10" during placement (text only, never a tier: #232). */
+const tierText = (rating: number, games = PROVISIONAL) => {
+  if (games < PROVISIONAL) return `Placement ${games}/${PROVISIONAL}`;
   const t = tierOf(rating);
   return `${t.label} · ${t.points} pts`;
 };
@@ -165,7 +167,7 @@ export class GameScreen {
     this.calm = calmAfter(this.el);
     this.el.innerHTML = `
       <div class="gtop"><button class="rbtn" data-act="menu" aria-label="Menu">${icons.menu}</button>
-        <div class="mode"><small>${online ? (online.setup?.ranked ? `RANKED · ${MODE_LABEL[online.setup.mode]}` : `ONLINE · ROOM ${online.code}`) : config.mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}${this.state.singles ? '' : ' · DOUBLES'}</small><b>${people} PLAYERS</b></div><span class="rbtn-space"></span></div>
+        <div class="mode"><small>${online ? (online.setup?.ranked ? `RANKED · ${MODE_NAME[online.setup.mode].toUpperCase()}` : `ONLINE · ROOM ${online.code}`) : config.mode === 'pvp' ? 'WITH FRIENDS' : 'VS COMPUTER'}${this.state.singles ? '' : ' · DOUBLES'}</small><b>${people} PLAYERS</b></div><span class="rbtn-space"></span></div>
       ${this.state.players.map((p) => this.panelHTML(p.color, p.bot)).join('')}
       <div class="gboard"></div>
       <div class="hint"><span class="tw"></span><span><b></b><small></small></span></div>
@@ -545,6 +547,8 @@ export class GameScreen {
         link.send(first.a);
         this.setHint(c, 'Your turn', 'Sending…');
         ev = await next;
+        // The server has it: no longer sending (#234), also when it was the game's last move and no step follows.
+        this.setHint(c, 'Your turn', '');
       } else {
         offer.cancel();
         ev = first.e;
@@ -1201,7 +1205,7 @@ export class GameScreen {
     };
     // Ranked: the new tier and points, and the change.
     const r = this.online?.rated;
-    const rank = r ? `<div class="rated"><span>${MODE_LABEL[r.mode]} · ${tierText(r.after)}</span><b class="${r.after >= r.before ? 'up' : 'down'}">${r.after >= r.before ? '+' : '−'}${Math.abs(r.after - r.before)}</b></div>` : '';
+    const rank = r ? `<div class="rated"><span>${MODE_NAME[r.mode]} · ${tierText(r.after, r.games)}</span><b class="${r.after >= r.before ? 'up' : 'down'}">${r.after >= r.before ? '+' : '−'}${Math.abs(r.after - r.before)}</b></div>` : '';
     const reward = `${rank}<div class="reward"><div class="rg"><i class="coin"></i><b class="disp">+<span class="cnt">0</span></b><small>${lines.map((l) => `${l.label} ${l.gold}`).join(' · ')}</small></div>
       <div class="achs"></div>${goalHTML()}</div>`;
     const card = order.map((o) => {
