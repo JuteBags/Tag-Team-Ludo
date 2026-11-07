@@ -57,7 +57,7 @@ export async function friendsSheet(host: HTMLElement, room?: string): Promise<vo
     sent.hidden = !link.out;
     sent.textContent = link.out ? `${link.out} sent, waiting for an answer` : '';
     const list = [...link.friends].sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
-    ov.querySelector('.flist')!.innerHTML = list.length ? list.map(row).join('') : '<p class="fnone">No friends yet. Swap codes with a friend and add theirs.</p>';
+    ov.querySelector('.flist')!.innerHTML = list.length ? list.map(row).join('') : link.requests.length ? '' : '<p class="fnone">No friends yet. Swap codes with a friend and add theirs.</p>';
   };
   draw();
   const off = link.on((m) => {

@@ -1229,7 +1229,7 @@ export class GameScreen {
     const homeOf = (ps: PlayerState[]) => ps.reduce((a, p) => a + p.tokens.filter((t) => t === FINISHED).length, 0);
     const slot = (c: Color, name: string) => {
       const k = keyOf(c);
-      return `<span class="fslot"${k ? ` data-key="${k}" data-name="${esc(name)}"` : ''}></span>`;
+      return k ? `<span class="fslot" data-key="${k}" data-name="${esc(name)}"></span>` : '';
     };
     const rows = order
       .map((o, i) => {
