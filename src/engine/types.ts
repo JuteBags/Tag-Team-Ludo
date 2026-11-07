@@ -46,7 +46,9 @@ export type GameEvent =
   | { type: 'three-sixes'; color: Color }
   /** `extraTurn`: a capture or a token home rolls again. `lost`: dice left in the tray that nothing could use. */
   | { type: 'moved'; move: Move; extraTurn: boolean; lost: number[] }
-  | { type: 'game-over'; ranking: Color[] };
+  | { type: 'game-over'; ranking: Color[] }
+  /** A side resigned (online: its person left the game): `over` when that ended the game. */
+  | { type: 'resigned'; owner: number; over: boolean };
 
 export interface GameState {
   players: PlayerState[];
@@ -65,6 +67,11 @@ export interface GameState {
   ranking: Color[];
   turnCount: number;
   event: GameEvent | null;
+  /**
+   * Sides (owners) that resigned, in the order they did (online: their person left; RULES.md section K). They
+   * take no more turns, their tokens are off the board, and they rank last. Missing when nobody resigned.
+   */
+  out?: number[];
   /** Doubles are off: classic single-token Ludo (RULES.md section I). Missing in older saved games. */
   singles?: boolean;
 }

@@ -42,11 +42,15 @@ export function newGame(playerCount: 2 | 3 | 4, humans: Color[] = ['blue'], sing
   return createGame(SEATS[playerCount].map((color, owner) => ({ color, owner, bot: !humans.includes(color) })), undefined, singles);
 }
 
+/** A side that resigned takes no more turns. */
+const isOut = (state: Pick<GameState, 'out'>, owner: number) => !!state.out?.includes(owner);
+
 function nextPlayer(state: GameState): number {
   const n = state.players.length;
   for (let k = 1; k <= n; k++) {
     const i = (state.current + k) % n;
-    if (!isDone(state.players[i]!)) return i;
+    const p = state.players[i]!;
+    if (!isDone(p) && !isOut(state, p.owner)) return i;
   }
   return state.current;
 }
@@ -104,10 +108,12 @@ export function move(state: GameState, m: Move): GameState {
   const ranking = [...state.ranking];
   if (isDone(me)) ranking.push(me.color);
 
-  // The game ends when only one person still has tokens out; their unfinished colours rank last.
-  const left = players.filter((p) => !isDone(p));
+  // The game ends when only one person still has tokens out; their unfinished colours rank last. Sides that
+  // resigned don't count (their colours are added at the end, last).
+  const left = players.filter((p) => !isDone(p) && !isOut(state, p.owner));
   if (new Set(left.map((p) => p.owner)).size <= 1) {
     for (const p of left) ranking.push(p.color);
+    ranking.push(...outColors(state));
     return { ...state, players, ranking, phase: 'over', moves: [], event: { type: 'game-over', ranking } };
   }
 
@@ -137,11 +143,38 @@ function unfinishedOrder(a: PlayerState[], b: PlayerState[]): number {
   return home(b) - home(a) || board(b) - board(a) || base(a) - base(b);
 }
 
-/** Finishing order first, then anyone still playing by unfinishedOrder (turn order on a full tie). */
+/** The unfinished colours of sides that resigned, the last to resign first (it held out longest). */
+function outColors(state: GameState): Color[] {
+  return [...(state.out ?? [])].reverse().flatMap((o) => state.players.filter((p) => p.owner === o && !isDone(p) && !state.ranking.includes(p.color)).map((p) => p.color));
+}
+
+/**
+ * Side `owner` resigns (online: its person left the game, RULES.md section K): its tokens not yet home go back
+ * to base, off the board, and it takes no more turns (if it was its turn, the turn passes with its tray). When
+ * only one side is left playing, the game is over and that side wins; resigned sides rank last.
+ */
+export function resign(state: GameState, owner: number): GameState {
+  if (state.phase === 'over') throw new Error('cannot resign: the game is over');
+  if (isOut(state, owner) || !state.players.some((p) => p.owner === owner)) throw new Error(`cannot resign side ${owner}`);
+  const players = state.players.map((p) => (p.owner === owner ? { ...p, tokens: p.tokens.map((t) => (t === FINISHED ? t : BASE)) } : p));
+  const out = [...(state.out ?? []), owner];
+  const after: GameState = { ...state, players, out };
+  const left = players.filter((p) => !isDone(p) && !out.includes(p.owner));
+  if (new Set(left.map((p) => p.owner)).size <= 1) {
+    const ranking = [...state.ranking, ...left.map((p) => p.color)];
+    ranking.push(...outColors({ ...after, ranking }));
+    return { ...after, ranking, phase: 'over', moves: [], rolls: [], event: { type: 'resigned', owner, over: true } };
+  }
+  const event = { type: 'resigned', owner, over: false } as const;
+  return players[state.current]!.owner === owner ? { ...after, ...passTurn(after), event } : { ...after, event };
+}
+
+/** Finishing order first, then anyone still playing by unfinishedOrder (turn order on a full tie); resigned sides last. */
 export function finalRanking(state: GameState): Color[] {
   const of = (c: Color) => [state.players.find((p) => p.color === c)!];
-  const rest = state.players.map((p) => p.color).filter((c) => !state.ranking.includes(c));
-  return [...state.ranking, ...rest.sort((a, b) => unfinishedOrder(of(a), of(b)))];
+  const out = (c: Color) => isOut(state, of(c)[0]!.owner);
+  const rest = state.players.map((p) => p.color).filter((c) => !state.ranking.includes(c) && !out(c));
+  return [...state.ranking.filter((c) => !out(c)), ...rest.sort((a, b) => unfinishedOrder(of(a), of(b))), ...outColors({ ...state, ranking: state.ranking.filter((c) => !out(c)) })];
 }
 
 /**
@@ -155,7 +188,9 @@ export function ownerRanking(state: GameState): number[] {
   // Done means every token home (the last person's colours join `ranking` at game end unfinished).
   const done = (o: number) => mine(o).every(isDone);
   const place = (o: number) => Math.max(...mine(o).map((p) => state.ranking.indexOf(p.color)));
-  return owners.sort((a, b) => Number(done(b)) - Number(done(a)) || (done(a) ? place(a) - place(b) : unfinishedOrder(mine(a), mine(b))));
+  // Sides that resigned rank last: the last to resign first.
+  const outRank = (o: number) => (isOut(state, o) ? state.out!.length - state.out!.indexOf(o) : 0);
+  return owners.sort((a, b) => outRank(a) - outRank(b) || Number(done(b)) - Number(done(a)) || (done(a) ? place(a) - place(b) : unfinishedOrder(mine(a), mine(b))));
 }
 
 export const tokensHome = (state: GameState, color: Color) =>

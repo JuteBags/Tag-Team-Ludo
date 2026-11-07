@@ -11,8 +11,8 @@
 // The CPU: its own pool of workers (livePoolSize: 1 on a phone, 2 on a computer, none with 2 cores or fewer),
 // one call per worker at a time with a turn for the page between calls; nothing new is sent while an
 // Extreme bot thinks (thinking(true)) or the app is hidden.
-import { move, moveEvent, roll, startOf, type GameRecord, type GameState } from '../engine';
-import { LUCK_CHUNK, type MoveReview, type Reviewer } from '../engine/ai/review';
+import { RESIGN, move, moveEvent, resign, roll, startOf, type GameRecord, type GameState } from '../engine';
+import { LUCK_CHUNK, isReviewDecision, type MoveReview, type Reviewer } from '../engine/ai/review';
 import { isMobile, ReviewPool, type LuckPart } from '../engine/ai/review-worker';
 import { peopleOf, reviewDecision } from './reviewRun';
 
@@ -145,7 +145,15 @@ export class LiveReview {
     let i = this.ends.at(-1) ?? 0;
     let s = this.states.at(-1)!;
     while (i < e.length && s.phase !== 'over' && e[i] !== 'x') {
-      if (s.phase === 'roll') {
+      if (e[i] === RESIGN) {
+        // Online, a side left the game (no decision to review).
+        try {
+          s = resign(s, Number(e[i + 1]));
+        } catch {
+          break;
+        }
+        i += 2;
+      } else if (s.phase === 'roll') {
         const face = Number(e[i]);
         if (!(face >= 1 && face <= 6)) break;
         s = roll(s, () => 0, face);
@@ -181,7 +189,7 @@ export class LiveReview {
     const n = this.states.length;
     for (let at = 0; at + 1 < n; at++) {
       const s = this.states[at]!;
-      if (s.phase !== 'move' || s.moves.length < 2 || !this.who.includes(s.players[s.current]!.owner)) continue;
+      if (!isReviewDecision(s, this.who)) continue;
       if (this.verdicts.has(at) || this.running.has(`m${at}`)) continue;
       this.queued.set(`m${at}`, { kind: 'move', at });
     }

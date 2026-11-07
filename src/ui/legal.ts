@@ -9,7 +9,7 @@ import { legalHtml, legalTitle } from './legalText';
 import { saveSetting, settings } from './settings';
 
 /** The texts' version. Raise it (and the "Version N" line in both texts) to ask everyone to accept again. */
-export const LEGAL_VERSION = 1;
+export const LEGAL_VERSION = 2;
 
 export type LegalDoc = 'privacy' | 'terms';
 export const LEGAL_MD: Record<LegalDoc, string> = { privacy: privacyMd, terms: termsMd };
