@@ -128,11 +128,14 @@ export class FriendsLink {
     return key.split('|')[1] === 'bot' ? 'none' : 'loading';
   }
 
-  /** A friend request to a seat. A ranked bot's only looks sent: nothing goes anywhere. */
-  request(key: string) {
+  /**
+   * A friend request to a seat. A ranked bot's only looks sent: nothing goes anywhere. `as`: the state the seat shows
+   * at once ('friend' when it answers their request: the hub takes asking back as a yes), until the hub turns it down.
+   */
+  request(key: string, as: SeatState = 'requested') {
     const [room, a] = key.split('|');
     const was = this.seats.get(key);
-    this.seats.set(key, 'requested');
+    this.seats.set(key, as);
     this.emit({ t: 'status' });
     if (a === 'bot' || !room) return;
     this.lastSent = { key, was };
@@ -145,7 +148,7 @@ export class FriendsLink {
    */
   answer(idOrKey: string, accept: boolean) {
     if (idOrKey.includes('|')) {
-      if (accept) this.request(idOrKey);
+      if (accept) this.request(idOrKey, this.seats.get(idOrKey) === 'incoming' ? 'friend' : 'requested');
       return;
     }
     this.send({ t: 'answer', id: idOrKey, accept });

@@ -336,4 +336,5 @@ const ERRORS: Record<ErrorCode, string> = {
   offline: 'They aren’t online right now.',
   'rate-limited': 'Too many messages: the connection was closed. It reconnects by itself.',
   replaced: 'This game was opened somewhere else.',
+  limit: 'Too many friend requests for now. Try again later.',
 };
