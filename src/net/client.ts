@@ -5,7 +5,14 @@
 // The server's event list only ever grows, so the link keeps every event it has seen and hands them to the
 // game screen one at a time (next()). A `game` message (on every reconnect) fills in anything missed; an `ev`
 // already seen is ignored; an `ev` past a gap forces a reconnect, whose `game` message fills the gap.
-import { PROTOCOL, type ChatFeatures, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ServerMsg, type Turn } from './protocol';
+//
+// Ranked bots (#221, localBots.ts): this link plays them itself, at a person's pace, with the server's draws for
+// the dice, and adds their events to the stream as if the server had sent them. They go to the server with this
+// person's next roll or move. When the server's version of a bot event differs, the link says so, takes the
+// server's, and counts a rewind: the game screen rebuilds from played().
+import { RESIGN, STOP_EVENT, applyEvent, type GameState } from '../engine';
+import { BOT_VERSION, botPace, botStep, drawsUsed, isLocalBot, replayEvents, type Draws, type LocalBots } from './localBots';
+import { PROTOCOL, TURN_MS, type ChatFeatures, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ServerMsg, type Turn } from './protocol';
 
 /**
  * The room server's address: VITE_ROOMS_URL, and only that. Set ROOMS_URL (the CI repository variable, or the
@@ -75,8 +82,26 @@ export class RoomLink {
   /** A fatal error: the room can't be (re)joined. */
   fatal: { code: ErrorCode; message: string } | null = null;
 
+  /** #221: times the server's events replaced some of this app's bot events (the game screen rebuilds then). */
+  rewinds = 0;
+
   private ws: WebSocket | null = null;
   private events: string[] = [];
+  // ---- the bots this app plays (#221) ----
+  private bots: LocalBots | null = null;
+  /** The draws for the bots' current run, and how many its rolls have used. */
+  private draws: Draws | null = null;
+  private used = 0;
+  /** Events the server has; the ones after are this app's bot events, not confirmed yet. */
+  private confirmed = 0;
+  /** The game after every event (the server's and this app's). */
+  private state: GameState | null = null;
+  private botTimer: ReturnType<typeof setTimeout> | undefined;
+  /** What was last asked of the server (more draws, or the run that ended the game), so it's asked once. */
+  private asked = '';
+  /** The server's last turn, and when it came. */
+  private serverTurn: Turn | null = null;
+  private serverTurnAt = 0;
   private consumed = 0;
   private waiting: ((ev: string) => void) | null = null;
   private outbox: ClientMsg[] = [];
@@ -130,7 +155,7 @@ export class RoomLink {
     this.ws = ws;
     ws.onopen = () => {
       this.tries = 0;
-      ws.send(JSON.stringify({ t: 'hello', protocol: PROTOCOL, token: this.token, name: this.name } satisfies ClientMsg));
+      ws.send(JSON.stringify({ t: 'hello', protocol: PROTOCOL, token: this.token, name: this.name, botVersion: BOT_VERSION } satisfies ClientMsg));
       // Actions made while offline go now (the server turns down any that went stale meanwhile).
       for (const m of this.outbox.splice(0)) ws.send(JSON.stringify(m));
       this.setStatus('open');
@@ -197,16 +222,34 @@ export class RoomLink {
         this.setup = m.setup;
         this.members = m.members;
         this.chat = m.chat ?? null;
-        this.setTurn(m.turn);
-        // Anything missed while away; what we have is always the start of the server's list.
-        for (let i = this.events.length; i < m.events.length; i++) this.push(m.events[i]!);
+        this.bots = m.bots ?? null;
+        if (!this.state && !this.events.length) this.state = replayEvents(m.setup.seats, m.setup.first, m.setup.singles, []);
+        this.adopt(m.events);
+        // A game this link couldn't follow (an event it couldn't apply): rebuilt from the whole list.
+        if (!this.state) this.state = replayEvents(m.setup.seats, m.setup.first, m.setup.singles, this.events);
+        if (m.draws) this.setDraws(m.draws);
+        this.setServerTurn(m.turn);
         saveRoom({ code: m.code, token: this.token, name: this.name, at: Date.now(), ...(m.setup.ranked ? { ranked: true } : {}) });
         break;
       case 'ev':
-        if (m.seq < this.events.length) return; // seen already
-        if (m.seq > this.events.length) return this.reconnect(0); // a gap: the reconnect's sync fills it
-        this.push(m.ev);
-        this.setTurn(m.turn);
+        if (m.seq < this.confirmed) return; // seen already
+        if (m.seq > this.confirmed) return this.reconnect(0); // a gap: the reconnect's sync fills it
+        if (m.seq < this.events.length) {
+          // This app played a bot event here already: the server's is the one that counts.
+          if (this.events[m.seq] !== m.ev) {
+            if (m.ev[0] !== RESIGN && m.ev !== STOP_EVENT) this.send({ t: 'mismatch', seq: m.seq, ev: this.events[m.seq]! });
+            this.rewind(m.seq, [...this.events.slice(0, m.seq), m.ev]);
+          }
+        } else this.push(m.ev);
+        this.confirmed = m.seq + 1;
+        if (m.draws) this.setDraws(m.draws);
+        this.setServerTurn(m.turn);
+        break;
+      case 'draws':
+        if (this.draws && m.at === this.draws.at) {
+          this.draws.d.push(...m.d);
+          this.pump();
+        }
         break;
       case 'members':
         this.members = m.members;
@@ -234,6 +277,107 @@ export class RoomLink {
     this.turnAt = performance.now();
   }
 
+  private setServerTurn(t: Turn | null) {
+    this.serverTurn = t;
+    this.serverTurnAt = performance.now();
+    this.showTurn(true);
+  }
+
+  /**
+   * The clock to show. Without bots the server's. A bot's turn shows a person's TURN_MS (#216); after the bots'
+   * run this app played, the next person's clock is what's left of the server's, TURN_MS at most.
+   */
+  private showTurn(fresh = false) {
+    const s = this.state;
+    if (!this.bots || !s || s.phase === 'over') return this.setTurn(this.serverTurn);
+    const color = s.players[s.current]!.color;
+    if (isLocalBot(s, this.bots)) {
+      if (fresh || this.turn?.color !== color) this.setTurn({ color, ms: TURN_MS });
+      return;
+    }
+    if (this.events.length === this.confirmed) return this.setTurn(this.serverTurn);
+    if (this.turn?.color === color && !fresh) return;
+    const left = this.serverTurn?.ms == null ? TURN_MS : this.serverTurn.ms - (performance.now() - this.serverTurnAt);
+    this.setTurn({ color, ms: Math.max(0, Math.min(TURN_MS, left)) });
+  }
+
+  // ---------- the bots this app plays (#221) ----------
+
+  /** The server's whole list (a `game` message): this app's events must start with it. */
+  private adopt(server: string[]) {
+    for (let i = 0; i < server.length; i++) {
+      if (i >= this.events.length) this.push(server[i]!);
+      else if (this.events[i] !== server[i]) return this.rewind(i, server);
+    }
+    this.confirmed = server.length;
+    this.pump();
+  }
+
+  /** The events from `at` on were wrong: `list` replaces them, and the game screen rebuilds. */
+  private rewind(at: number, list: string[]) {
+    clearTimeout(this.botTimer);
+    this.botTimer = undefined;
+    this.events = [...list];
+    this.confirmed = list.length;
+    this.consumed = Math.min(this.consumed, at);
+    this.rewinds++;
+    const st = this.setup;
+    this.state = st ? replayEvents(st.seats, st.first, st.singles, this.events) : null;
+    if (st && this.bots && this.draws) this.used = drawsUsed(st.seats, st.first, st.singles, this.events, this.draws.at, this.bots);
+    // Someone waiting for the next event gets it now.
+    if (this.waiting && this.consumed < this.events.length) {
+      const w = this.waiting;
+      this.waiting = null;
+      w(this.events[this.consumed++]!);
+    }
+    this.pump();
+  }
+
+  private setDraws(dr: Draws) {
+    this.draws = { at: dr.at, d: [...dr.d] };
+    const st = this.setup;
+    this.used = st && this.bots ? drawsUsed(st.seats, st.first, st.singles, this.events, dr.at, this.bots) : 0;
+    this.pump();
+  }
+
+  /** Plays the bots' next step, after a person's pace, when it's a bot's turn here. */
+  private pump() {
+    if (!this.bots || this.botTimer || this.status === 'closed' || !this.state) return;
+    const s = this.state;
+    if (!isLocalBot(s, this.bots)) return this.runEnded();
+    const dr = this.draws;
+    if (!dr || dr.at > this.confirmed) return; // the run's draws come with the event that starts it
+    if (s.phase === 'roll' && dr.d[this.used] === undefined) {
+      // Out of draws (a run with many 6s): ask once for more.
+      const key = `draws:${dr.at}:${dr.d.length}`;
+      if (this.asked !== key) {
+        this.asked = key;
+        this.send({ t: 'draws', at: dr.at });
+      }
+      return;
+    }
+    this.showTurn();
+    this.botTimer = setTimeout(() => {
+      this.botTimer = undefined;
+      if (this.state !== s || this.draws !== dr) return this.pump();
+      const step = botStep(s, this.bots!, dr.d, this.used);
+      if (!step) return this.pump();
+      this.push(step.ev);
+      this.pump();
+    }, botPace(s, this.bots));
+  }
+
+  /** The bots' run ended here. When it ended the game, there's no person to send it with: send it on its own. */
+  private runEnded() {
+    this.showTurn();
+    const s = this.state!;
+    if (s.phase !== 'over' || this.events.length <= this.confirmed) return;
+    const key = `bots:${this.confirmed}`;
+    if (this.asked === key) return;
+    this.asked = key;
+    this.send({ t: 'bots', seq: this.confirmed, bots: this.events.slice(this.confirmed) });
+  }
+
   /** Seconds left on the current turn's clock, or null (a bot's turn, or none). */
   secondsLeft(): number | null {
     if (!this.turn || this.turn.ms === null) return null;
@@ -241,6 +385,16 @@ export class RoomLink {
   }
 
   private push(ev: string) {
+    // The game as it goes, for the bots (a die from the run's draws uses one).
+    const s = this.state;
+    if (s && s.phase !== 'over' && ev !== STOP_EVENT) {
+      if (this.draws && this.events.length >= this.draws.at && s.phase === 'roll' && isLocalBot(s, this.bots)) this.used++;
+      try {
+        this.state = applyEvent(s, ev);
+      } catch {
+        this.state = null; // can't follow: the bots wait for the next sync
+      }
+    }
     this.events.push(ev);
     if (this.waiting) {
       const w = this.waiting;
@@ -289,6 +443,8 @@ export class RoomLink {
   }
 
   send(m: ClientMsg) {
+    // The bots' run this app played goes with the person's roll or move (#221).
+    if ((m.t === 'roll' || m.t === 'move') && this.events.length > this.confirmed) m = { ...m, seq: this.confirmed, bots: this.events.slice(this.confirmed) };
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(m));
     else if (m.t === 'roll' || m.t === 'move') this.outbox.push(m);
   }
@@ -306,6 +462,7 @@ export class RoomLink {
     if (this.status === 'closed') return;
     this.status = 'closed';
     clearTimeout(this.retryTimer);
+    clearTimeout(this.botTimer);
     clearInterval(this.pingTimer);
     clearTimeout(this.pongTimer);
     document.removeEventListener('visibilitychange', this.onVisible);

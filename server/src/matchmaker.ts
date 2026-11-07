@@ -4,6 +4,7 @@
 // person's rating fill whatever places are still empty, looking like players (#216). A group
 // becomes a ranked room (Room.createRanked), and each person gets its code and their own token.
 import { DurableObject } from 'cloudflare:workers';
+import { BOT_VERSION } from '../../src/net/localBots';
 import { PROTOCOL, type ErrorCode, type GameMode, type QueueClientMsg, type QueueServerMsg, type RoomOptions } from '../../src/net/protocol';
 import { botLevelFor, matchWindow } from '../../src/net/rating';
 import { findMatches, type Waiting } from './queue';
@@ -62,7 +63,8 @@ export class Matchmaker extends DurableObject<Env> {
     const a = ws.deserializeAttachment() as Attachment;
     if (msg.t === 'leave') return ws.close(1000, 'left');
     if (msg.t !== 'queue' || a.entry) return this.fail(ws, 'bad-message', 'Unexpected message.');
-    if (msg.protocol !== PROTOCOL) return this.fail(ws, 'protocol', 'This app version can’t play with the server. Please update the app.');
+    // Ranked bots are played in the apps (#221): an app with other bots can't play these games.
+    if (msg.protocol !== PROTOCOL || msg.botVersion !== BOT_VERSION) return this.fail(ws, 'protocol', 'This app version can’t play with the server. Please update the app.');
     const account = await this.env.ACCOUNTS.get(this.env.ACCOUNTS.idFromName('global')).check(msg.account);
     if (!account) return this.fail(ws, 'no-account', 'Your ranked account wasn’t found. Try again.');
     // One search per account: an older one (another tab) gives way.

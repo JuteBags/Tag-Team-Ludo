@@ -5,15 +5,17 @@
 // tie-break drawn from the game's seed exactly as offline (so the review rebuilds every roll's chances from
 // the seed, revealed when the game ends); the face itself is drawn from the server's crypto RNG. Knowing or
 // brute-forcing the 32-bit seed therefore never tells anyone the next face.
-import { STOP_EVENT, applyEvent, ownerRanking, resign, resignEvent, createGame, diceWeights, isDone, mixSeed, move, moveEvent, positionKey, roll, rollEvent, sampleFace, seeded, type Color, type GameState, type Rng, type Seat } from '../../src/engine';
+import { STOP_EVENT, applyEvent, ownerRanking, resign, resignEvent, createGame, diceWeights, isDone, mixSeed, move, moveEvent, positionKey, roll, rollEvent, sampleFace, seeded, type BotLevel, type Color, type GameState, type Rng, type Seat } from '../../src/engine';
 import { chooseRuleMove } from '../../src/engine/ai/choose';
-import { CHAT_EMOJI, CHAT_GAP_MS, CHAT_MAX, GAME_MODES, MAX_NAME, QUICK_CHAT, cleanChat, ONLINE_LEVELS, PROTOCOL, modeSlots, type GameMode, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ChatFeatures, type ServerMsg, type Turn } from '../../src/net/protocol';
+import { BOT_VERSION, DRAWS_PER_BOT, botFace, checkBotEvents, firstLegal, isLocalBot, type Draws, type LocalBots } from '../../src/net/localBots';
+import { CHAT_EMOJI, CHAT_GAP_MS, CHAT_MAX, GAME_MODES, MAX_NAME, QUICK_CHAT, TURN_MS, cleanChat, ONLINE_LEVELS, PROTOCOL, modeSlots, type GameMode, type ClientMsg, type ErrorCode, type GameSetup, type Member, type RoomOptions, type ChatFeatures, type ServerMsg, type Turn } from '../../src/net/protocol';
 
 /** A person's time to roll or move before the server plays that step for them. */
-export const TURN_MS = 30_000;
+export { TURN_MS };
 /**
  * Timeouts in a row that count as leaving: the person forfeits (RULES.md section K). Before that the server
- * plays the timed-out step (a Normal bot's choice), so the game doesn't stall.
+ * plays the timed-out step (a roll, or the person's first legal move in the engine's fixed order: no picker,
+ * #221), so the game doesn't stall.
  */
 export const FORFEIT_TIMEOUTS = 3;
 /** Disconnected this long without coming back counts as leaving: the person forfeits. */
@@ -21,8 +23,14 @@ export const OFFLINE_MS = 60_000;
 /** The pause before each bot roll and bot move, so everyone can follow the bots. */
 export const BOT_ROLL_MS = 900;
 export const BOT_MOVE_MS = 1100;
-/** A ranked bot's step takes a person's time (#216): 1.2-2.6 s to roll, 1.5-3.5 s to move. */
-const humanPace = (phase: GameState['phase'], random: () => number) => Math.round(phase === 'roll' ? 1200 + 1400 * random() : 1500 + 2000 * random());
+/**
+ * Ranked bots are played in the apps (#221): the time a run of bot turns may take, per bot still playing, before
+ * the next person's own TURN_MS starts. If no app has sent the run by then, the server plays it with each bot's
+ * first legal move (it never picks a bot's move).
+ */
+export const BOT_RUN_MS = 25_000;
+/** The most extra draws an app may ask for in one run of bot turns. */
+const MAX_MORE_DRAWS = 5;
 /** Names for ranked bots: people's names, as anyone might choose. */
 export const BOT_NAMES = ['Aarav', 'Diya', 'Kabir', 'Meera', 'Rohan', 'Ananya', 'Ishaan', 'Saanvi', 'Arjun', 'Zoya', 'Vivaan', 'Nisha', 'Reyansh', 'Kiara', 'Leo', 'Maya', 'Omar', 'Lina', 'Sam', 'Ava', 'Noah', 'Mia', 'Ethan', 'Sofia'];
 /** A room nobody touches for this long is deleted (lobby or game). */
@@ -52,6 +60,8 @@ export interface RoomIO {
   random: Rng;
   /** Chat (#212): a reported line, for review (the server's log). Nothing else from chat is kept anywhere. */
   report?(r: ChatReport): void;
+  /** #221: a line for the server's log (an app's bot run that didn't match, or a run the server played itself). */
+  log?(entry: Record<string, unknown>): void;
   /** Ranked: rates the finished game (the accounts store), answering each account's rating before and after. */
   rate?(report: RateReport): Promise<Record<string, RatedPerson>>;
 }
@@ -110,6 +120,10 @@ export interface RoomData {
   lobbyEnds: number;
   /** Ranked: the rating its bots play at, and whether the result has been rated. */
   ranked?: { botRating: number; rated: boolean; results?: Record<string, RatedPerson>; botNames?: Partial<Record<Color, string>> };
+  /** #221: the bots the apps play (their seed is for moves and pace only; the dice stay the server's). */
+  bots?: LocalBots;
+  /** #221: the draws for the run of bot turns waiting at event `at`, and how many its rolls have used. */
+  run?: { at: number; d: number[]; used: number; more: number } | null;
 }
 
 export const cleanName = (s: unknown) =>
@@ -191,8 +205,13 @@ export class RoomCore {
       taken.add(name);
       botNames[seat.color] = name;
     }
-    const data: RoomData = { v: 1, code, options, phase: 'playing', members, seed: Math.floor(io.random() * 4294967296) >>> 0, setup, events: [], deadline: null, botAt: null, touched: now, lobbyEnds: now, ranked: { botRating, rated: false, botNames } };
+    // The bots are played in the apps (#221), at their own seed; the dice seed stays the server's secret.
+    const levels: Partial<Record<Color, BotLevel>> = {};
+    for (const seat of setup.seats) if (seat.bot) levels[seat.color] = seat.level ?? 'normal';
+    const bots: LocalBots | undefined = Object.keys(levels).length ? { seed: Math.floor(io.random() * 4294967296) >>> 0, levels } : undefined;
+    const data: RoomData = { v: 1, code, options, phase: 'playing', members, seed: Math.floor(io.random() * 4294967296) >>> 0, setup, events: [], deadline: null, botAt: null, touched: now, lobbyEnds: now, ranked: { botRating, rated: false, botNames }, ...(bots ? { bots, run: null } : {}) };
     const room = new RoomCore(data, io);
+    room.openRun();
     room.schedule();
     room.commit();
     return room;
@@ -208,6 +227,8 @@ export class RoomCore {
   hello(token: string, msg: Extract<ClientMsg, { t: 'hello' }>): ErrorCode | null {
     if (msg.protocol !== PROTOCOL) return 'protocol';
     const d = this.data;
+    // A game whose bots the apps play: only an app with the same bots can play it (#221).
+    if (d.bots && msg.botVersion !== BOT_VERSION) return 'protocol';
     let m = d.members.find((x) => x.token === token);
     if (!m) {
       if (d.phase !== 'lobby') return 'started';
@@ -267,9 +288,15 @@ export class RoomCore {
         return null;
       case 'roll':
       case 'move': {
-        const s = this.state;
-        if (d.phase !== 'playing' || !s) return 'not-your-turn';
+        if (d.phase !== 'playing' || !this.state) return 'not-your-turn';
         if (msg.seq !== d.events.length) return 'stale';
+        // The bots' run this app played comes first (#221).
+        if (msg.bots?.length) {
+          const err = this.takeBots(me, msg.bots, false);
+          if (err) return err;
+          if (d.phase !== 'playing') return null;
+        }
+        const s = this.state!;
         if (this.controller(s.players[s.current]!.color) !== me) return 'not-your-turn';
         if (msg.t === 'roll') {
           if (s.phase !== 'roll') return 'illegal';
@@ -285,6 +312,27 @@ export class RoomCore {
         this.afterEvent();
         return null;
       }
+      case 'bots':
+        if (d.phase !== 'playing' || !this.state) return 'not-your-turn';
+        if (msg.seq !== d.events.length) return 'stale';
+        if (!Array.isArray(msg.bots) || !msg.bots.length) return 'bad-message';
+        return this.takeBots(me, msg.bots, true);
+      case 'draws': {
+        const run = d.run;
+        // More draws for the run waiting now (a run with many 6s); a few times at most.
+        if (!run || !d.bots || msg.at !== run.at || run.more >= MAX_MORE_DRAWS) return null;
+        run.more++;
+        const extra = this.newDraws(DRAWS_PER_BOT * Object.keys(d.bots.levels).length);
+        run.d.push(...extra);
+        for (const m of d.members) this.io.send(m.token, { t: 'draws', at: run.at, d: extra });
+        this.commit();
+        return null;
+      }
+      case 'mismatch':
+        // Another app played the bots' run differently from what the server took: logged for review (#221).
+        if (Number.isInteger(msg.seq) && msg.seq >= 0 && msg.seq < d.events.length && typeof msg.ev === 'string')
+          this.io.log?.({ type: 'bot-mismatch', room: d.code, member: d.members[me]!.name, account: d.members[me]!.account, seq: msg.seq, server: d.events[msg.seq], app: msg.ev.slice(0, 16) });
+        return null;
       case 'chat':
         this.chat(me, msg);
         return null;
@@ -348,6 +396,7 @@ export class RoomCore {
     const gone = d.members.findIndex((m, i) => m.offlineSince != null && now >= m.offlineSince + OFFLINE_MS && this.canForfeit(i));
     if (gone >= 0) return this.forfeit(gone);
     if (d.botAt !== null && now >= d.botAt) this.botStep();
+    else if (d.deadline !== null && now >= d.deadline && isLocalBot(this.state!, d.bots)) this.fallbackBots();
     else if (d.deadline !== null && now >= d.deadline) {
       const s = this.state!;
       const who = this.controller(s.players[s.current]!.color);
@@ -380,10 +429,104 @@ export class RoomCore {
     this.commit();
   }
 
-  /** The server plays the current colour: a bot's seat. (A person's colour is theirs until they forfeit; then it's out of the game.) */
+  /**
+   * The server plays the current colour: a bot's seat in a private room. Ranked bots are the apps' (#221). (A
+   * person's colour is theirs until they forfeit; then it's out of the game.)
+   */
   private serverPlays(): boolean {
     const s = this.state!;
-    return s.players[s.current]!.bot;
+    return s.players[s.current]!.bot && !isLocalBot(s, this.data.bots);
+  }
+
+  // ---------- bots played in the apps (#221) ----------
+
+  private newDraws(n: number): number[] {
+    return Array.from({ length: n }, () => Math.floor(this.io.random() * 4294967296) >>> 0);
+  }
+
+  /** The bots the apps play that are still in the game (for the run's time). */
+  private botsPlaying(): number {
+    const s = this.state!;
+    return s.players.filter((p) => this.data.bots?.levels[p.color] !== undefined && !isDone(p) && !s.out?.includes(p.owner)).length;
+  }
+
+  /**
+   * The draws for the run of bot turns that starts now, when the bots' turn has come: fresh ones for each run
+   * (a run's spares are thrown away when it ends; draws are never used twice). Returns the new ones, to send.
+   */
+  openRun(): Draws | undefined {
+    const d = this.data;
+    const s = this.state;
+    if (!d.bots) return undefined;
+    if (d.phase !== 'playing' || !s || !isLocalBot(s, d.bots)) {
+      d.run = null;
+      return undefined;
+    }
+    if (d.run && d.run.at === d.events.length) return undefined; // still waiting for this run
+    d.run = { at: d.events.length, d: this.newDraws(DRAWS_PER_BOT * Object.keys(d.bots.levels).length), used: 0, more: 0 };
+    return { at: d.run.at, d: [...d.run.d] };
+  }
+
+  /**
+   * A run of bot events from member `me`'s app: checked (each roll against its draw, each move against the rules)
+   * and played. `whole`: the run must end the bots' turns (a `bots` message); with a roll or move, the person's
+   * own turn follows. A run that doesn't check out is turned down and logged, and the app is sent the game again.
+   */
+  private takeBots(me: number, evs: string[], whole: boolean): ErrorCode | null {
+    const d = this.data;
+    const run = d.run;
+    const s = this.state!;
+    if (!d.bots || !run || run.at !== d.events.length || !isLocalBot(s, d.bots) || !Array.isArray(evs)) return 'illegal';
+    const res = checkBotEvents(s, d.bots, run.d, run.used, evs);
+    if ('error' in res || (whole && isLocalBot(res.states[res.states.length - 1]!, d.bots))) {
+      this.io.log?.({ type: 'bot-run-refused', room: d.code, member: d.members[me]!.name, account: d.members[me]!.account, at: run.at, why: 'error' in res ? res.error : 'the run did not end', events: evs.slice(0, 40) });
+      this.syncTo(d.members[me]!.token);
+      return 'illegal';
+    }
+    run.used = res.used;
+    this.applyBatch(evs, res.states);
+    return null;
+  }
+
+  /**
+   * Nobody sent the bots' run in time (every app offline, or none on this bot version): the server plays it, with
+   * the run's draws and each bot's first legal move. It never picks a move (#221).
+   */
+  private fallbackBots() {
+    const d = this.data;
+    if (!d.run) this.openRun();
+    const run = d.run!;
+    let s = this.state!;
+    const evs: string[] = [];
+    const states: GameState[] = [];
+    while (isLocalBot(s, d.bots) && evs.length < 2000) {
+      if (s.phase === 'roll') {
+        const draw = run.d[run.used] ?? this.newDraws(1)[0]!;
+        run.used++;
+        const face = botFace(s, d.bots!, draw);
+        evs.push(rollEvent(face));
+        s = roll(s, () => 0, face);
+      } else {
+        const m = firstLegal(s);
+        evs.push(moveEvent(m));
+        s = move(s, m);
+      }
+      states.push(s);
+    }
+    this.io.log?.({ type: 'bot-fallback', room: d.code, at: run.at, events: evs.length });
+    this.applyBatch(evs, states);
+  }
+
+  /** Several events at once (a bots' run): each goes to everyone, then the usual after-event step for the last. */
+  private applyBatch(evs: string[], states: GameState[]) {
+    const d = this.data;
+    for (let i = 0; i < evs.length; i++) {
+      this.apply(evs[i]!, states[i]!);
+      if (i === evs.length - 1) break;
+      const seq = d.events.length - 1;
+      for (const m of d.members) this.io.send(m.token, { t: 'ev', seq, ev: evs[i]!, turn: this.turn() });
+    }
+    this.afterEvent();
   }
 
   /** The side member `i` plays (each person plays for one side), or null. */
@@ -496,13 +639,17 @@ export class RoomCore {
     this.apply(rollEvent(after.dice!), after);
   }
 
-  /** The server acts for the current colour: a roll, or the rule bot's move (Normal for a person it stands in for). */
+  /**
+   * The server acts for the current colour: a roll, or a move. A private room's bot plays its rule bot's move; a
+   * person whose clock ran out gets their first legal move, in the engine's fixed order (the owner, #221: the
+   * server picks no one's move).
+   */
   private botStep() {
     const s = this.state!;
     if (s.phase === 'roll') this.rollNow();
     else {
       const p = s.players[s.current]!;
-      const m = chooseRuleMove(s, seeded(mixSeed(this.data.seed!, 'bot' + positionKey(s))), p.bot ? (p.level ?? 'normal') : 'normal');
+      const m = p.bot ? chooseRuleMove(s, seeded(mixSeed(this.data.seed!, 'bot' + positionKey(s))), p.level ?? 'normal') : firstLegal(s);
       this.apply(moveEvent(m), move(s, m));
     }
     this.afterEvent();
@@ -521,6 +668,7 @@ export class RoomCore {
     if (s.phase === 'over' || stopped) {
       d.phase = 'over';
       d.deadline = d.botAt = null;
+      if (d.bots) d.run = null;
       if (stopped) d.events.push(STOP_EVENT);
       d.touched = this.io.now();
       const seq = d.events.length - 1;
@@ -534,9 +682,11 @@ export class RoomCore {
       void this.rateGame();
       return;
     }
+    // The bots' turn has come (#221): their run's draws go with this event.
+    const draws = this.openRun();
     this.schedule();
     const seq = d.events.length - 1;
-    for (const m of d.members) this.io.send(m.token, { t: 'ev', seq, ev: d.events[seq]!, turn: this.turn() });
+    for (const m of d.members) this.io.send(m.token, { t: 'ev', seq, ev: d.events[seq]!, turn: this.turn(), ...(draws ? { draws } : {}) });
     this.commit();
   }
 
@@ -576,7 +726,9 @@ export class RoomCore {
     else if (!pending) {
       // A new step: a fresh clock (a reconnect keeps the one running).
       d.deadline = d.botAt = null;
-      if (this.serverPlays()) d.botAt = now + (d.ranked ? humanPace(this.state.phase, this.io.random) : this.state.phase === 'roll' ? BOT_ROLL_MS : BOT_MOVE_MS);
+      if (this.serverPlays()) d.botAt = now + (this.state.phase === 'roll' ? BOT_ROLL_MS : BOT_MOVE_MS);
+      // The bots' run in the apps (#221): its time, then the next person's.
+      else if (isLocalBot(this.state, d.bots)) d.deadline = now + BOT_RUN_MS * this.botsPlaying() + TURN_MS;
       else d.deadline = now + TURN_MS;
       d.pendingAt = d.events.length;
     }
@@ -623,7 +775,7 @@ export class RoomCore {
     if (you < 0) return;
     if (d.phase === 'lobby') this.io.send(token, { t: 'lobby', code: d.code, options: d.options, members: this.members(), you, endsIn: Math.max(0, d.lobbyEnds - this.io.now()), chat: this.chatFeatures() });
     else {
-      this.io.send(token, { t: 'game', code: d.code, setup: this.publicSetup(), events: [...d.events], members: this.members(), you, turn: this.turn(), chat: this.chatFeatures() });
+      this.io.send(token, { t: 'game', code: d.code, setup: this.publicSetup(), events: [...d.events], members: this.members(), you, turn: this.turn(), chat: this.chatFeatures(), ...(d.bots ? { bots: d.bots } : {}), ...(d.run ? { draws: { at: d.run.at, d: [...d.run.d] } } : {}) });
       if (d.phase === 'over') {
         this.io.send(token, { t: 'over', seed: d.seed!, stopped: d.events[d.events.length - 1] === STOP_EVENT });
         // Ranked: the rating change, for a phone that missed it.

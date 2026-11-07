@@ -7,6 +7,7 @@
 import { ownerRanking } from '../game';
 import { isDone } from '../rules';
 import type { GameState } from '../types';
+import { detExp } from './detmath';
 import { F, FEATURES, stateFeatures } from './features';
 
 /** The turn-in-progress rules: dice in the tray by face (count / 3) and 6s in a row (/ 2). */
@@ -54,7 +55,7 @@ export class LinearRules implements Evaluator {
     let top = -Infinity;
     for (let o = 0; o < people; o++) if (live[o]) top = Math.max(top, s[o]!);
     let sum = 0;
-    for (let o = 0; o < people; o++) sum += s[o] = live[o] ? Math.exp(s[o]! - top) : 0;
+    for (let o = 0; o < people; o++) sum += s[o] = live[o] ? detExp(s[o]! - top) : 0; // detExp: the same bits on every device (#221)
     for (let o = 0; o < people; o++) s[o]! /= sum;
     return s;
   }

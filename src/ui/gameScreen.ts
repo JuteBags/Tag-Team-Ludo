@@ -527,6 +527,9 @@ export class GameScreen {
    * also get the roll button or the move markers; what they pick goes to the server, and the event that comes
    * back (theirs, or the server's own when their clock ran out first) is what gets played.
    */
+  /** The link's rewinds this screen has rebuilt for (#221). */
+  private rewindsSeen = 0;
+
   private async onlineStep(c: Color, link: RoomLink) {
     // Behind the server (after a pause or a slow animation): hurry until caught up.
     this.speed = link.backlog() > 2 ? 6 : 1;
@@ -551,6 +554,11 @@ export class GameScreen {
       ev = await next;
     }
     if (this.disposed) return;
+    // The server replaced bot events this app had played (#221): rebuild from its version (this event included).
+    if (link.rewinds !== this.rewindsSeen) {
+      this.rewindsSeen = link.rewinds;
+      return this.onlineResync(link);
+    }
     // doRoll and doMove write the log; the stop marker is added by showResult (the game isn't over).
     if (ev === STOP_EVENT) {
       this.ended = true;

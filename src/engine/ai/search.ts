@@ -7,6 +7,7 @@
 import { scoreMove } from '../bot';
 import { move, ownerRanking, roll } from '../game';
 import type { GameState, Move, Rng } from '../types';
+import { detExp } from './detmath';
 import type { Evaluator } from './linear';
 import { raceChances } from './race';
 
@@ -129,7 +130,7 @@ export function chooseExtreme(net: Evaluator, state: GameState, rng: Rng, opts?:
   const vals = searchValues(net, state, opts);
   if (temperature > 0) {
     const top = Math.max(...vals.map((x) => x.value));
-    const w = vals.map((x) => Math.exp((x.value - top) / temperature));
+    const w = vals.map((x) => detExp((x.value - top) / temperature));
     let r = rng() * w.reduce((a, b) => a + b, 0);
     for (let i = 0; i < w.length; i++) {
       if ((r -= w[i]!) <= 0) {
