@@ -51,7 +51,11 @@
 - Rolls and kills with feel: dice throws, kill finishers (full, short or off in Settings), banners, sounds and vibration, and the palace: each colour's tokens are welcomed home with a short cutscene.
 - Boards (Classic, Wooden, Dark, plus store boards), colour-blind symbols (● ▲ ■ ◆), fast bots, reduced motion respected, and an update prompt when a newer version is out.
 
-Online play and private rooms are planned for a later update.
+### Online
+- **Four modes:** 1v1v1v1, 1v1, 1(x2) v 1(x2) (two colours each) and 2v2 (teams of two, partners opposite).
+- **With friends → Private room:** create a room and share its 5-character code; friends join on their own phones. Places nobody takes are played by bots.
+- **Ranked PvP:** matched with players near your rating in your league (then the league just below), with a tier and points in each mode (Bronze to Diamond) and 10 placement games. Up to Gold III, computer players of your strength fill empty places when no one is found in 45 seconds; from Gold II up, people only.
+- The server rolls the dice and checks every move. Each roll or move has a 30-second clock, and a dropped connection or a closed app can rejoin the game.
 
 ## Development
 
@@ -64,6 +68,26 @@ npm test           # rules, dice, replay, review and bot tests
 npm run sim        # the long all-bot simulations (~40,000 games: kills, idle rolls, game length; minutes)
 npm run build      # typecheck + production build to dist/
 ```
+
+### Online play (private rooms)
+
+The room server lives in `server/` (a Cloudflare Worker with Durable Objects). To play online locally, run it next to the game:
+
+```bash
+cd server && npm install
+npm run dev        # room server at ws://localhost:8787 (no Cloudflare account needed)
+npm run smoke      # optional: two scripted players play a whole game against it
+```
+
+**The server's address:** set `ROOMS_URL` (the CI repository variable, or your local environment); the build exposes it as `VITE_ROOMS_URL`, the only place the game reads it. Without it, online play is hidden. For the local server above, start the game with `VITE_ROOMS_URL=ws://localhost:8787 npm run dev`. Don't commit a `.env` with an address. Open two browser windows (one private) to be two players.
+
+**The released game and its server.** The website, the APK and the Windows `.exe` all come from one build in `build.yml`, which takes the server's address from the repository variable **`ROOMS_URL`** (Settings → Secrets and variables → Actions → Variables). Without it, online play is hidden and the game is offline only, as before. To turn it on:
+
+1. Deploy the production server from `server/` (a Cloudflare account; the free plan is enough to start): `npx wrangler login`, then `npm run deploy:production`. It prints the address, e.g. `https://tag-team-ludo-rooms.<account>.workers.dev`.
+2. Set `ROOMS_URL` to that address with `wss://` in front: `wss://tag-team-ludo-rooms.<account>.workers.dev`.
+3. Release as usual: the next build connects to it.
+
+The production server accepts the website (`https://jutebags.github.io`), the Android app (`https://localhost`) and the Windows app (a `file://` page, origin `null`): `ALLOWED_ORIGINS` in `server/wrangler.jsonc`. `npm run deploy:staging` deploys a separate test copy that also serves the game itself, for trying changes without touching players.
 
 To open the Android project in Android Studio: `npm run build`, then `npx cap sync android`, then open `android/`.
 

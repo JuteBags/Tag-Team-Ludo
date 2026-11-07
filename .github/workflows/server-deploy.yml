@@ -1,0 +1,87 @@
+# Deploys the room server (server/, a Cloudflare Worker) to the owner's account: staging or production.
+# By hand only (Actions → Server deploy → Run workflow), never on a push or a PR. Production is the owner's call.
+#   staging:    https://tag-team-ludo-rooms-staging.tag-team-ludo.workers.dev (it also serves the game, built to
+#               play against itself)
+#   production: https://tag-team-ludo-rooms.tag-team-ludo.workers.dev (no game files; the apps connect to it)
+# Secrets: CLOUDFLARE_API_TOKEN ("Edit Cloudflare Workers", the owner's account) and CLOUDFLARE_ACCOUNT_ID.
+# `binding: false` deploys without the Workers Rate Limiting binding (#220), if the account turns it down or it
+# ever costs money; the server's own limits (server/src/limits.ts) stay on either way.
+name: Server deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: 'Where to deploy'
+        required: true
+        type: choice
+        options: [staging, production]
+      binding:
+        description: 'With the rate-limit binding (RL_CONNECT, RL_ACCOUNT)'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-deploy-${{ inputs.env }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy ${{ inputs.env }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ inputs.env == 'production' && 'server-production' || 'server-staging' }}
+    env:
+      WORKER: ${{ inputs.env == 'production' && 'tag-team-ludo-rooms' || 'tag-team-ludo-rooms-staging' }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      # Staging serves the game too (wrangler.jsonc env.staging.assets = ../dist), pointed at itself.
+      - name: The game, for staging to serve
+        if: ${{ inputs.env == 'staging' }}
+        env:
+          VITE_ROOMS_URL: wss://tag-team-ludo-rooms-staging.tag-team-ludo.workers.dev
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Without the rate-limit binding
+        if: ${{ !inputs.binding }}
+        working-directory: server
+        run: |
+          node -e '
+            const fs = require("fs");
+            const a = fs.readFileSync("wrangler.jsonc", "utf8");
+            const b = a.replace(/^\s*"ratelimits": \[[\s\S]*?^\s*\],\n/gm, "");
+            if (b === a || b.includes("RL_CONNECT")) throw new Error("the ratelimits blocks were not found");
+            fs.writeFileSync("wrangler.jsonc", b);
+          '
+          echo "Deployed **without** the rate-limit binding (the server's own limits stay on)." >> "$GITHUB_STEP_SUMMARY"
+      - name: Deploy (wrangler)
+        working-directory: server
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npm ci --no-audit --no-fund
+          npx wrangler deploy --env "${{ inputs.env }}" 2>&1 | tee ../deploy.log
+          exit "${PIPESTATUS[0]}"
+      - name: It answers
+        run: |
+          url="https://$WORKER.tag-team-ludo.workers.dev/health"
+          for i in $(seq 30); do body=$(curl -sf --max-time 10 "$url") && break; sleep 5; done
+          {
+            echo "### ${{ inputs.env }}: \`$url\`"
+            echo '```'
+            echo "${body:-no answer}"
+            echo '```'
+            echo "Commit: \`${GITHUB_SHA::7}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test -n "$body"

@@ -8,10 +8,12 @@
 //   roll phase: the die, '1'..'6';
 //   move phase: two characters, the token(s) then the die. A single token is 'a'..'d' (token 0..3); a pair
 //   is 'e'..'j' (tokens 01, 02, 03, 12, 13, 23).
+// 'q' and a side (owner) digit, in any phase: that side resigned (online: its person left the game; game.ts
+// resign). Every event's length: eventLength.
 // 'x' as the last event, in any phase: the game ended before its last place was played out (a vote to stop,
 // no people left, or the person vs Computer finished), with the places as they stood: ownerRanking of the
 // last position, as the result screen does.
-import { createGame, move, ownerRanking, roll, type Seat } from './game';
+import { createGame, move, ownerRanking, resign, roll, type Seat } from './game';
 import { mixSeed, positionKey, seeded } from './rng';
 import { BASE, COLORS, FINISHED, LAST_TRACK, START, TRACK_LEN, squareOf, type Color } from './board';
 import type { GameState, Move } from './types';
@@ -47,6 +49,13 @@ export const rollEvent = (face: number) => String(face);
 /** The game ended early here (only as the last event). */
 export const STOP_EVENT = 'x';
 
+/** A side resigning: 'q' and its owner digit. */
+export const RESIGN = 'q';
+export const resignEvent = (owner: number) => `${RESIGN}${owner}`;
+
+/** How many characters the event at `i` takes when the game is at `s`: a die 1; a move, or a resign, 2. */
+export const eventLength = (events: string, i: number, s: GameState) => (events[i] === RESIGN || s.phase === 'move' ? 2 : 1);
+
 const LEVELS = ['easy', 'normal', 'hard', 'extreme'];
 
 /**
@@ -75,6 +84,27 @@ export function setupError(r: GameRecord): string | null {
   if (r.meta !== undefined && (typeof r.meta !== 'object' || r.meta === null || Array.isArray(r.meta))) return 'meta is not an object';
   if (typeof r.events !== 'string') return 'events are not text';
   return null;
+}
+
+/**
+ * The position after one record event (a die in the roll phase, a move in the move phase), for events that
+ * come one at a time (online play). Throws on an event that doesn't fit; STOP_EVENT is not a position change.
+ */
+export function applyEvent(s: GameState, ev: string): GameState {
+  if (s.phase === 'over') throw new Error('event after the end of the game');
+  if (ev[0] === RESIGN) {
+    const owner = Number(ev.slice(1));
+    if (ev.length !== 2 || !Number.isInteger(owner)) throw new Error(`not a resign: ${ev}`);
+    return resign(s, owner);
+  }
+  if (s.phase === 'roll') {
+    const face = Number(ev);
+    if (ev.length !== 1 || !(face >= 1 && face <= 6)) throw new Error(`not a die: ${ev}`);
+    return roll(s, () => 0, face);
+  }
+  const m = s.moves.filter((x) => tokensCode(x.tokens) + x.roll === ev);
+  if (m.length !== 1) throw new Error(`not a legal move: ${ev}`);
+  return move(s, m[0]!);
 }
 
 /** The game's first position. */
@@ -111,7 +141,10 @@ export function replay(r: GameRecord, opts: { checkDice?: boolean } = {}): Repla
       return { ok: true, states, stopped: true };
     }
     try {
-      if (s.phase === 'roll') {
+      if (e[i] === RESIGN) {
+        s = resign(s, Number(e[i + 1]));
+        i++;
+      } else if (s.phase === 'roll') {
         const face = Number(e[i]);
         if (!(face >= 1 && face <= 6)) return fail(`A die that can't be (at ${i}).`, states);
         if (opts.checkDice && r.seed !== undefined && seededDie(r.seed, s) !== face) return fail(`A die that differs from this game's dice (at ${i}).`, states);
@@ -248,12 +281,14 @@ const quote = (v: string) => '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 
 /**
  * The game as notation (docs/NOTATION.md): the header tags, the legend, then a numbered line per round of
- * turns, with a position line every SNAPSHOT_EVERY rounds. Null if the record doesn't replay.
+ * turns, with a position line every SNAPSHOT_EVERY rounds. Null if the record doesn't replay, or has a side
+ * resigning ('q', online play): the notation has no way to write one yet.
  */
 export function toNotation(r: GameRecord, info: NotationInfo): string | null {
   const rep = replay(r);
   if (!rep.ok) return null;
   const states = rep.states;
+  if (states[states.length - 1]!.out?.length) return null;
   const owners = [...new Set(r.seats.map((x) => x.owner))].sort((a, b) => a - b);
   const name = (o: number) => info.names[o] || NOTATION_NAME[r.seats.find((x) => x.owner === o)!.color];
   // The colour tags in owner order (then colour order): reading them back numbers the owners the same.

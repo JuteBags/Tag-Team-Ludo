@@ -1,0 +1,77 @@
+// The room server (src/index.ts). `npm run dev` runs it on this computer (http://localhost:8787, no account
+// needed); `npm run deploy:staging` puts the staging copy on workers.dev. Durable Object bindings and vars are
+// not inherited by environments, so each environment lists its own.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tag-team-ludo-rooms-dev",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "durable_objects": {
+        "bindings": [
+          { "name": "ROOMS", "class_name": "Room" },
+          { "name": "MATCH", "class_name": "Matchmaker" },
+          { "name": "ACCOUNTS", "class_name": "Accounts" },
+          { "name": "FRIENDS", "class_name": "Friends" }
+        ]
+      },
+  // SQLite-backed Durable Objects: the only kind on the free plan.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Room"] },
+    // Ranked: the queue (one per mode) and the accounts store.
+    { "tag": "v2", "new_sqlite_classes": ["Matchmaker", "Accounts"] },
+    // Friends (#209): codes, names and friends lists, and who's online.
+    { "tag": "v3", "new_sqlite_classes": ["Friends"] }
+  ],
+  // #220: the Workers Rate Limiting binding, per IP (src/limits.ts has our own limits, always on). Turn it off
+  // with the var RATE_LIMIT_BINDING "0" if it ever costs money. Bindings aren't inherited: each environment lists them.
+  "ratelimits": [
+    { "name": "RL_CONNECT", "namespace_id": "2201", "simple": { "limit": 60, "period": 60 } },
+    { "name": "RL_ACCOUNT", "namespace_id": "2202", "simple": { "limit": 10, "period": 60 } }
+  ],
+  "vars": { "ALLOWED_ORIGINS": "*" },
+  "observability": { "enabled": true },
+  "env": {
+    "staging": {
+      "name": "tag-team-ludo-rooms-staging",
+      // The game itself too (the root `npm run build` output), so one link is enough to play: requests that
+      // aren't a file (/ws, /health) go to the Worker.
+      "assets": { "directory": "../dist" },
+      "durable_objects": {
+        "bindings": [
+          { "name": "ROOMS", "class_name": "Room" },
+          { "name": "MATCH", "class_name": "Matchmaker" },
+          { "name": "ACCOUNTS", "class_name": "Accounts" },
+          { "name": "FRIENDS", "class_name": "Friends" }
+        ]
+      },
+      // #220: the Workers Rate Limiting binding, per IP (src/limits.ts has our own limits, always on). Turn it off
+      // with the var RATE_LIMIT_BINDING "0" if it ever costs money. Bindings aren't inherited: each environment lists them.
+      "ratelimits": [
+        { "name": "RL_CONNECT", "namespace_id": "2201", "simple": { "limit": 60, "period": 60 } },
+        { "name": "RL_ACCOUNT", "namespace_id": "2202", "simple": { "limit": 10, "period": 60 } }
+      ],
+      "vars": { "ALLOWED_ORIGINS": "http://localhost:5173,https://localhost,capacitor://localhost,https://jutebags.github.io" }
+    },
+    // The server the released game uses: the website (GitHub Pages), the Android app (https://localhost) and the
+    // Windows app (a file:// page, whose Origin header is "null"). Its address goes into the repository variable
+    // ROOMS_URL (build.yml). It serves no game files.
+    "production": {
+      "name": "tag-team-ludo-rooms",
+      "durable_objects": {
+        "bindings": [
+          { "name": "ROOMS", "class_name": "Room" },
+          { "name": "MATCH", "class_name": "Matchmaker" },
+          { "name": "ACCOUNTS", "class_name": "Accounts" },
+          { "name": "FRIENDS", "class_name": "Friends" }
+        ]
+      },
+      // #220: the Workers Rate Limiting binding, per IP (src/limits.ts has our own limits, always on). Turn it off
+      // with the var RATE_LIMIT_BINDING "0" if it ever costs money. Bindings aren't inherited: each environment lists them.
+      "ratelimits": [
+        { "name": "RL_CONNECT", "namespace_id": "2201", "simple": { "limit": 60, "period": 60 } },
+        { "name": "RL_ACCOUNT", "namespace_id": "2202", "simple": { "limit": 10, "period": 60 } }
+      ],
+      "vars": { "ALLOWED_ORIGINS": "https://jutebags.github.io,https://localhost,capacitor://localhost,null" }
+    }
+  }
+}

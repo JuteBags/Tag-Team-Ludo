@@ -2,7 +2,7 @@
 // moves reviewed earlier aren't redone. A review from another label version is redone, but kept to show
 // (greyed, "Older review · updating…") until the new one is finished. reviewQueue.ts decides when it runs.
 import { replay, type GameRecord, type GameState } from '../engine';
-import { markSixRuns, REVIEW_VERSION, reviewMoves, type MoveReview, type Reviewer, type RollLuck } from '../engine/ai/review';
+import { isReviewDecision, markSixRuns, REVIEW_VERSION, reviewMoves, type MoveReview, type Reviewer, type RollLuck } from '../engine/ai/review';
 import { workerLuck, workerReviewer } from '../engine/ai/review-worker';
 import { KEY_LABELS } from './reviewText';
 import { keyOf, saveReview, type StoredReview } from './store';
@@ -80,7 +80,7 @@ export const peopleOf = (rec: GameRecord) => [...new Set(rec.seats.filter((s) =>
 
 /** How many of `who`'s decisions a review covers (real choices only), for the progress bar. */
 export function decisionsToReview(rec: GameRecord, states: GameState[], who = peopleOf(rec)): number {
-  return states.filter((s, i) => i + 1 < states.length && s.phase === 'move' && who.includes(s.players[s.current]!.owner) && s.moves.length > 1).length;
+  return states.filter((s, i) => i + 1 < states.length && isReviewDecision(s, who)).length;
 }
 
 /**

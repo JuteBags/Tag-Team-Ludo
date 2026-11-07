@@ -10,10 +10,18 @@ import { puzzleBadge } from './puzzleDay';
 import { applyLook } from './themes';
 import { offerUpdate } from './update';
 import { offerCheckIn } from './checkin';
+import { hasAcceptedTerms, offerTerms } from './legal';
+import { settings } from './settings';
 import { decodeRecord, type GameRecord } from '../engine';
 import { linkPayload } from './replay';
 import { bootReviews, setGame } from './reviewQueue';
 import { prefetchAtIdle, screens, setScreen, show } from './lazy';
+import { roomsUrl, type RoomLink } from '../net/client';
+import { hasAccount, startFriends } from '../net/friends';
+import { watchInvites } from './friendsSheet';
+
+/** Ranked PvP (#216): on. Turn it off here to hide it from the home screen. */
+const RANKED = true;
 
 const W = 390;
 const H = 844;
@@ -38,10 +46,14 @@ export function mountApp(root: HTMLElement) {
     setGame('none');
     const [saved, log] = await Promise.all([loadGame(), loadPuzzleLog()]);
     if (game) return; // a game started while the save was loading
-    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle());
+    const screen = homeScreen(count, (n) => (count = n), setup, saved, () => saved && play(saved.config, saved), () => void show(stage, screens.store, (m) => m.storeScreen(() => void home()), () => void home()), (rec) => void watch(rec, () => void home()), (rec) => void review(rec, () => void home()), puzzleBadge(log === 'error' ? null : log), () => void puzzle(), roomsUrl() ? { room: (rejoin) => void online(rejoin), ...(RANKED ? { ranked: () => void ranked() } : {}) } : undefined);
     setScreen(stage, screen);
-    // On the home screen only, never during a game: a newer version on the site, then today's check-in.
-    void offerUpdate(screen).then(() => offerCheckIn(screen));
+    // On the home screen only, never during a game: the Privacy note and Terms of use until they're answered
+    // (accepted or Not now; #208: first launch, and again when they change), then a newer version on the site,
+    // then today's check-in.
+    void offerTerms(screen)
+      .then(() => offerUpdate(screen))
+      .then(() => offerCheckIn(screen));
   };
   // Home -> setup (houses, roll for order, pick houses) -> game. Play again keeps the same houses.
   const setup = (mode: Mode, houses: 1 | 2 = 1) =>
@@ -65,6 +77,26 @@ export function mountApp(root: HTMLElement) {
   const review = async (rec: GameRecord, back: () => void, keep = true, pov?: number) => {
     const stored = await storedReview(rec, keep);
     await show(stage, screens.review, (m) => m.reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p), keep, at, caption, p), keep, pov), back);
+  };
+  /** With friends, online: the private-room screens, then the room's game (the server plays it; this screen shows it). */
+  const online = async (rejoin = false, join?: string) => {
+    if (game && stage.contains(game.el)) return; // never pulled out of a game by an invite
+    await show(stage, screens.online, (m) => m.onlineScreen(playOnline, () => void home(), rejoin, join), () => void home());
+  };
+  /** Ranked PvP: your ranks and the search, then the matched game. */
+  const ranked = async () => {
+    await show(stage, screens.ranked, (m) => m.rankedScreen(playOnline, () => void home(), () => void online()), () => void home());
+  };
+  const playOnline = (link: RoomLink, cfg: GameConfig) => {
+    if (game && stage.contains(game.el)) game.dispose();
+    const toResult = () => setScreen(stage, g.el);
+    // Play again: a new room (the old one is over), or a new ranked search.
+    const again = link.setup?.ranked ? () => void ranked() : () => void online();
+    const g = new GameScreen(cfg, (to) => (to === 'home' ? void home() : to === 'replay' ? g.finalRecord && void watch(g.finalRecord, toResult) : to === 'review' ? g.finalRecord && void review(g.finalRecord, toResult) : again()), undefined, undefined, link);
+    game = g;
+    setScreen(stage, g.el);
+    setGame('light');
+    if (import.meta.env.DEV) (window as unknown as { __ludo: GameScreen }).__ludo = g;
   };
   // Set while a game starts, so a double tap on Start or Play again can't open two games.
   let starting = false;
@@ -90,7 +122,8 @@ export function mountApp(root: HTMLElement) {
   // Back: an open sheet closes; in a game it pauses and resumes; in setup it goes a step back; on the
   // home screen the update prompt or the check-in card closes, and after that the app closes.
   handleBack(() => {
-    const sheet = stage.querySelector('.sheet');
+    // The top one: a text opened over Settings (#208) closes before Settings.
+    const sheet = [...stage.querySelectorAll('.sheet')].at(-1);
     if (sheet) {
       sheet.remove();
       return true;
@@ -131,6 +164,10 @@ export function mountApp(root: HTMLElement) {
   if (!openLink()) void home();
   // The newest unreviewed past games are reviewed while the app is open (#96).
   void bootReviews();
+  // Friends (#209): an invite opens the friend's room. The link starts by itself only for a device that already
+  // has a guest account and accepted the terms; otherwise it starts the first time Friends is opened.
+  watchInvites(stage, (room) => void online(false, room));
+  if (roomsUrl() && hasAccount() && hasAcceptedTerms()) void startFriends(settings.myName?.trim() || 'Player').catch(() => {});
   // The lazily loaded screens, fetched at idle so a web session that started online also works offline (#98).
   prefetchAtIdle();
 }

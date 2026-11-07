@@ -83,6 +83,41 @@ Approved 2026-10-30; pair rules revised 2026-10-30 (issue #1); rolling the whole
 50. When your move ends your turn (or the game, or your last token home), there's a short moment (1.5 s) to undo before anyone rolls. Settings can turn that wait off.
 51. The game's record keeps only the moves that stood, so the replay and the review judge the moves you finally played.
 
+## K. Online: the four modes, private rooms and Ranked PvP
+
+52. Online games come in four modes, in private rooms and in Ranked alike:
+    - **1v1v1v1**: four players, one colour each, every one for themselves.
+    - **1v1**: two players, one colour each, in opposite corners.
+    - **1(x2) v 1(x2)**: two players with two colours each (section H), opposite or side by side.
+    - **2v2**: two teams of two people. Each person plays one colour; partners sit opposite and are one side (rule 39): they never capture or block each other, and a team is done when both its colours are home.
+53. The server rolls every die and checks every move; all the rules above apply unchanged, with the same dice as offline (rule 31). Who plays first is drawn at random. Computer players' moves are worked out in the players' apps, all the same way, with the server's dice; the server checks each of their moves.
+54. Each roll and each move has a **30-second clock**. When it runs out, the server plays that one step for the person (a roll, or their first legal move in the game's fixed order), so the game doesn't stall. A reconnect doesn't restart anyone's clock.
+55. A person who loses the connection or closes the app can rejoin the same game within a minute; while they're away their clock keeps running.
+56. **Leaving forfeits** (no bot takes over): tapping **Leave game**, being disconnected for **60 seconds**, or letting the clock run out **3 times in a row**. The person's side resigns: its tokens not yet home leave the board and it takes no more turns, ranked last (the first to leave ranks lowest).
+    - **1v1** and **1(x2) v 1(x2)**: the other player wins at once.
+    - **2v2**: the team forfeits together, and the other team wins. A person whose own colour is already home can leave without forfeiting.
+    - **1v1v1v1**: the others play on; when only one is left, they win.
+    - Bots that filled empty places from the start stay in the game. When every side with a person in it has finished or left, the game ends there (rule 34), without waiting for the bots.
+57. Online games always play on to the last place: there is no keep-playing vote (rule 41).
+58. There is no undo online (section J): a move the server has taken can't be taken back.
+
+**Private rooms** (With friends → Private room)
+
+59. **Create a room** picks the mode, doubles on or off, and how the bots play (Easy, Normal or Hard). The room gets a 5-character code; friends join with **Join a room** on their own phones. People take the mode's places in the order they join (the host first: Blue).
+60. The host starts the game once at least 2 people are in; places nobody took are played by bots. The lobby waits at most **2 minutes**: then the game starts by itself with whoever is in, or, if nobody joined the host, the room closes.
+61. A room you're in can be rejoined from With friends (**Back to room**).
+
+**Ranked PvP**
+
+62. Ranked has its own rating in each mode (Elo). Everyone starts at 1000. A guest account is made on the phone's first Ranked visit and kept on that phone. Your first **10 games** in a mode are placement games: the rating moves faster (K 40, then 24) and shows as "Placement 3/10" until they're done.
+63. People see a **tier and points**: Bronze (below 1000), Silver (1000-1299), Gold (1300-1599), Platinum (1600-1899) and Diamond (1900 and up). Each tier below Diamond has divisions III, II and I of 100 rating each; the points are the rating within the division (0-99). Diamond counts its points up from 1900.
+64. **Matchmaking** stays in your league, with people whose rating is within 100 of yours; that window widens by 10 for every second you wait. After **20 seconds** it may also take people from the **league just below** yours, never further and never above.
+65. **Up to Gold III** (a rating under 1400): if no one is found in **45 seconds**, computer players of your strength fill the places still empty, and the game counts like any other. **From Gold II up**, games are people only. Cancel is always there while you search, and after a while a hint offers a private room with friends instead.
+66. In 2v2 with four people, teams are made fair: the best and the weakest player are partners.
+67. **Rating change** (Elo): with two sides (1v1, 1(x2) v 1(x2), 2v2), a win or loss against the other side's average rating; both partners in 2v2 get the same change. In 1v1v1v1, each pair of players is one game won by the better place, averaged over the three. A person's first 10 games in a mode move their rating faster (K 40, then 24).
+68. **Leaving a ranked game is a forfeit** (rule 56): it counts as last place.
+69. Chat in Ranked is quick phrases and emoji only.
+
 ## Known risks (accepted for v1, revisit after playtests)
 
 - A pair parked on a normal square holds back enemy singles until they land on it exactly, and a locked pair can sit stuck through a run of odd rolls.

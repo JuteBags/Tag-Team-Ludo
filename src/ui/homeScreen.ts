@@ -4,10 +4,10 @@ import { BoardView } from './boardView';
 import { dieMarkup } from './dice';
 import { settings } from './settings';
 import type { Mode } from './setup';
-import { settingsSheet, statsSheet, symbolRow } from './sheets';
+import { settingsSheet, statsSheet } from './sheets';
 import { giveUpNote, givingUpLoses, levelOf, loadStats, type SavedGame } from './store';
-import { setSymbols } from './themes';
 import type { PuzzleBadge } from './puzzleDay';
+import { loadRoom } from '../net/client';
 
 /** "just now", "12 min ago", "3 h ago", "2 days ago": when a saved game was last played. */
 function ago(t: number): string {
@@ -31,9 +31,13 @@ const HERO: PlayerState[] = [
   { color: 'yellow', owner: 3, bot: true, tokens: [29, -1, -1, -1] },
 ];
 
-export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, onPlay: (mode: Mode) => void, saved: SavedGame | null, onContinue: () => void, onStore: () => void, onReplay: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void, puzzle?: PuzzleBadge, onPuzzle?: () => void): HTMLElement {
+export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, onPlay: (mode: Mode) => void, saved: SavedGame | null, onContinue: () => void, onStore: () => void, onReplay: (rec: GameRecord) => void, onReview?: (rec: GameRecord) => void, puzzle?: PuzzleBadge, onPuzzle?: () => void, online?: { room: (rejoin: boolean) => void; ranked?: () => void }): HTMLElement {
   const el = document.createElement('div');
-  el.className = `screen home${saved ? ' has-save' : ''}`;
+  el.className = `screen home${saved ? ' has-save' : ''}${online?.ranked ? ' has-ranked' : ''}`;
+  /** An online game this device is in (it can be rejoined): a private room (With friends), or a ranked game. */
+  const saved0 = loadRoom();
+  const room = saved0 && !saved0.ranked ? saved0 : null;
+  const rankedGame = saved0?.ranked ? saved0 : null;
   const dots = (n: number) => COLORS.slice(0, n).map((c) => `<i style="background:${PALETTE[c].m}"></i>`).join('');
   const people = saved ? saved.config.names.length : 0;
   // Continue says how far you've got: your tokens home in the saved game.
@@ -54,33 +58,56 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
     <div class="seg"><span class="lbl">Players</span>${([2, 3, 4] as const).map((n) => `<button class="o${n === count ? ' on' : ''}" data-n="${n}"><span class="dots">${dots(n)}</span>${n} Players</button>`).join('')}</div>
     <div class="modes">
       <button class="mcard pvc" data-mode="pvc"><span class="ci">${icons.robot}</span><b class="disp">VS COMPUTER</b><small>You against bots</small></button>
-      <button class="mcard pvp" data-mode="pvp"><span class="ci">${icons.friends}</span><b class="disp">WITH FRIENDS</b><small>Pass the phone</small></button>
+      <button class="mcard pvp" data-mode="pvp"><span class="ci">${icons.friends}</span><b class="disp">WITH FRIENDS</b><small>${room ? `Back to room ${room.code}` : online ? 'This phone or online' : 'Pass the phone'}</small></button>
     </div>
+    ${online?.ranked ? `<button class="onrow" data-act="ranked"><span class="gl">${icons.globe}</span><span><b class="disp">${rankedGame ? 'BACK TO RANKED GAME' : 'RANKED PVP'}</b><small>${rankedGame ? 'Your game goes on: jump back in' : 'Matched with players at your level'}</small></span><em class="chev" aria-hidden="true">${icons.next}</em></button>` : ''}
     ${puzzle && onPuzzle
       ? `<button class="storerow half" data-act="store" aria-label="Store, ${settings.gold} gold"><span class="sp3">${pawnSVG('blue')}${pawnSVG('red')}${pawnSVG('yellow')}</span><span><b class="disp">STORE</b><em class="gp"><i class="coin"></i>${settings.gold}</em></span></button>
     <button class="pzrow${puzzle.done ? ' done' : ''}" data-act="puzzle" aria-label="Daily puzzle, ${puzzle.done ? 'done today' : BAND[puzzle.band]}, ${puzzle.streak} ${puzzle.streak === 1 ? 'day' : 'days'} in a row"><span class="pi">${puzzle.done ? PUZZLE_DONE : PUZZLE_ICON}</span><span><b class="disp">PUZZLE</b><small>${puzzle.done ? 'Done' : BAND[puzzle.band]}${puzzle.streak ? ` · ★ ${puzzle.streak}` : ''}</small></span></button>`
       : `<button class="storerow" data-act="store"><span class="sp3">${pawnSVG('blue')}${pawnSVG('red')}${pawnSVG('yellow')}</span><span><b class="disp">STORE</b><small>Pawns, dice and boards</small></span><em class="gp"><i class="coin"></i>${settings.gold}</em></button>`}
-    <button class="cbrow" data-act="symbols" role="switch" aria-checked="${settings.symbols}"><span>Colour-blind symbols</span>${symbolRow()}<em class="swl">${settings.symbols ? 'On' : 'Off'}</em><i class="sw"></i></button>
-    <div class="foot">Both modes play offline · Online play and private rooms coming soon · v${__APP_VERSION__}<small>Avatars: Fun Emoji by Davis Uche, CC BY 4.0</small></div>`;
+    <div class="foot">vs Computer and With friends play offline · v${__APP_VERSION__}<small>Avatars: Fun Emoji by Davis Uche, CC BY 4.0</small></div>`;
   el.querySelector('.tilt')!.appendChild(new BoardView(HERO, 286).el);
+  // With friends: on this phone (pass and play), or a private room online, each on their own phone.
+  const friends = () => {
+    const ov = document.createElement('div');
+    ov.className = 'menu-ov friends-ov';
+    ov.innerHTML = `<div class="box"><h2>With friends</h2>
+      ${room ? `<button class="fopt back" data-act="rejoin"><span class="ci">${icons.play}</span><span><b class="disp">BACK TO ROOM ${room.code}</b><small>Your online game goes on</small></span></button>` : ''}
+      <button class="fopt" data-act="local"><span class="ci">${icons.friends}</span><span><b class="disp">ON THIS PHONE</b><small>Take turns, pass the phone</small></span></button>
+      <button class="fopt room" data-act="room"><span class="ci">${icons.globe}</span><span><b class="disp">PRIVATE ROOM</b><small>Online: each on their own phone</small></span></button>
+      <button class="later" data-act="later">Back</button></div>`;
+    ov.addEventListener('click', (e) => {
+      const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+      if (act === 'later' || e.target === ov) return ov.remove();
+      if (!act) return;
+      ov.remove();
+      if (act === 'local') void start('pvp');
+      else online?.room(act === 'rejoin');
+    });
+    el.appendChild(ov);
+  };
   // A new game replaces the saved one. When that counts as a loss, ask first.
+  const start = async (mode: Mode) => {
+    if (!saved || !givingUpLoses(saved)) return onPlay(mode);
+    const note = giveUpNote(await loadStats(), levelOf(saved.state));
+    const ov = document.createElement('div');
+    ov.className = 'menu-ov giveup-ov';
+    ov.innerHTML = `<div class="box"><h2>New game?</h2><p class="sub">Starting a new game gives up your saved game vs Computer. ${note}</p>
+      <button class="b3 green disp" data-act="later">KEEP MY GAME</button><button class="b3 blue disp" data-act="new">NEW GAME</button></div>`;
+    ov.addEventListener('click', (e) => {
+      const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+      if (act === 'new') {
+        ov.remove();
+        onPlay(mode);
+      } else if (act === 'later' || e.target === ov) ov.remove();
+    });
+    el.appendChild(ov);
+  };
   el.querySelectorAll<HTMLElement>('.mcard').forEach((b) =>
-    b.addEventListener('click', async () => {
+    b.addEventListener('click', () => {
       const mode = b.dataset.mode as Mode;
-      if (!saved || !givingUpLoses(saved)) return onPlay(mode);
-      const note = giveUpNote(await loadStats(), levelOf(saved.state));
-      const ov = document.createElement('div');
-      ov.className = 'menu-ov giveup-ov';
-      ov.innerHTML = `<div class="box"><h2>New game?</h2><p class="sub">Starting a new game gives up your saved game vs Computer. ${note}</p>
-        <button class="b3 green disp" data-act="later">KEEP MY GAME</button><button class="b3 blue disp" data-act="new">NEW GAME</button></div>`;
-      ov.addEventListener('click', (e) => {
-        const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
-        if (act === 'new') {
-          ov.remove();
-          onPlay(mode);
-        } else if (act === 'later' || e.target === ov) ov.remove();
-      });
-      el.appendChild(ov);
+      if (mode === 'pvp' && online) friends();
+      else void start(mode);
     }),
   );
   el.querySelectorAll<HTMLButtonElement>('.seg .o').forEach((b) =>
@@ -89,20 +116,12 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
       onCount(Number(b.dataset.n) as 2 | 3 | 4);
     }),
   );
-  // The colour-blind switch is right on the home screen, so it's easy to find.
-  const cb = el.querySelector<HTMLElement>('.cbrow')!;
-  const sync = () => {
-    cb.setAttribute('aria-checked', String(settings.symbols));
-    cb.querySelector('.swl')!.textContent = settings.symbols ? 'On' : 'Off';
-  };
-  cb.addEventListener('click', () => {
-    setSymbols(!settings.symbols);
-    sync();
-  });
   el.querySelector('[data-act=continue]')?.addEventListener('click', onContinue);
   el.querySelector('[data-act=store]')!.addEventListener('click', onStore);
   el.querySelector('[data-act=puzzle]')?.addEventListener('click', () => onPuzzle?.());
+  el.querySelector('[data-act=ranked]')?.addEventListener('click', () => (rankedGame ? online?.room(true) : online?.ranked?.()));
   el.querySelector('[data-act=stats]')!.addEventListener('click', () => void statsSheet(el, onReplay, onReview));
-  el.querySelector('[data-act=settings]')!.addEventListener('click', () => settingsSheet(el, sync));
+  // Colour-blind symbols live in Settings; nothing on this screen depends on them.
+  el.querySelector('[data-act=settings]')!.addEventListener('click', () => settingsSheet(el, () => undefined));
   return el;
 }
