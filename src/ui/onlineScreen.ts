@@ -137,7 +137,8 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     const code = link.code;
     $('.code').textContent = code;
     $('.codebtn').setAttribute('aria-label', `Room code ${code.split('').join(' ')}. Tap to copy`);
-    const net = link.status === 'open' ? '' : link.status === 'retrying' || !o ? 'Connecting…' : 'Connection lost. Reconnecting…';
+    // Before the room is known it's still connecting; after, a drop is a reconnect (the seats stay as they were).
+    const net = link.status === 'open' ? '' : !o ? (link.status === 'retrying' ? 'Connecting… (trying again)' : 'Connecting…') : 'Connection lost. Reconnecting…';
     el.querySelector('.wiz[data-step=lobby]')!.classList.toggle('offline', !!net && !!o);
     if (!o) {
       $('.lsub').textContent = net || 'Connecting…';
