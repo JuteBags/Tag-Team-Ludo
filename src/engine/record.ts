@@ -379,3 +379,18 @@ export function toNotation(r: GameRecord, info: NotationInfo): string | null {
   }
   return [...head, NOTATION_LEGEND, '', ...lines, ''].join('\n');
 }
+
+/** Any JSON value as a compact URL-safe string (deflated, base64url), like encodeRecord (#229: a shared review). */
+export async function packJson(v: unknown): Promise<string> {
+  return b64url(await pipe(new TextEncoder().encode(JSON.stringify(v)), new CompressionStream('deflate-raw')));
+}
+
+/** The value back from `packJson`, or null for anything that doesn't unpack (untrusted input; `limit` caps it). */
+export async function unpackJson(s: string, limit = MAX_JSON * 4): Promise<unknown> {
+  if (!/^[A-Za-z0-9_-]+$/.test(s)) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(await pipe(unb64url(s), new DecompressionStream('deflate-raw'), limit)));
+  } catch {
+    return null;
+  }
+}
