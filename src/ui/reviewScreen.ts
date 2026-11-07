@@ -247,11 +247,12 @@ export function reviewScreen(rec: GameRecord, _stored: StoredReview | undefined,
       q('.rvprog span'),
       p.finished ? [`${povDone} moves reviewed`, reviewedText(p.when)].filter(Boolean).join(' · ') : `${d.stale ? 'Updating' : 'Reviewing'}… ${povDone} of ${povTotal}${eta ? ` · ${eta}` : ''}`,
     );
+    // The fill is scaled, not resized (#98): its 0.3 s glide runs on the compositor, with no layout or paint per frame.
     const bar = q<HTMLElement>('.rvprog .bar i');
-    const width = `${povTotal ? (100 * povDone) / povTotal : 100}%`;
-    if (drawn.get(bar) !== width) {
-      drawn.set(bar, width);
-      bar.style.width = width;
+    const fill = `scaleX(${povTotal ? povDone / povTotal : 1})`;
+    if (drawn.get(bar) !== fill) {
+      drawn.set(bar, fill);
+      bar.style.transform = fill;
     }
     q('.rvprog').classList.toggle('done', p.finished);
     q('.rvleave').hidden = p.finished;

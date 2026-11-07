@@ -10,6 +10,7 @@
 // plates the rest angle turns away (backface-hidden), and the time left. .github/workflows/perf-screens.yml
 // runs it on main and on the PR.
 import { createHash } from 'node:crypto';
+import { inflateSync } from 'node:zlib';
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -24,6 +25,52 @@ const games = [
   ['4p', 'game-4p-seed24.link.txt'],
   ['4p, Easy person', 'game-4p-easy-seed24.link.txt'],
 ];
+
+/** An 8-bit RGB(A), non-interlaced PNG's pixels (what Chrome's screenshots are). */
+function decode(path) {
+  const b = readFileSync(path);
+  let p = 8, w = 0, h = 0, ct = 0;
+  const idat = [];
+  while (p < b.length) {
+    const len = b.readUInt32BE(p), type = b.toString('ascii', p + 4, p + 8), data = b.subarray(p + 8, p + 8 + len);
+    if (type === 'IHDR') { w = data.readUInt32BE(0); h = data.readUInt32BE(4); ct = data[9]; }
+    if (type === 'IDAT') idat.push(data);
+    p += 12 + len;
+  }
+  const bpp = ct === 6 ? 4 : 3;
+  const raw = inflateSync(Buffer.concat(idat));
+  const out = Buffer.alloc(w * h * bpp);
+  const stride = w * bpp;
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (stride + 1)];
+    for (let x = 0; x < stride; x++) {
+      const v = raw[y * (stride + 1) + 1 + x];
+      const a = x >= bpp ? out[y * stride + x - bpp] : 0;
+      const up = y ? out[(y - 1) * stride + x] : 0;
+      const c = y && x >= bpp ? out[(y - 1) * stride + x - bpp] : 0;
+      let r = v;
+      if (f === 1) r = v + a; else if (f === 2) r = v + up; else if (f === 3) r = v + ((a + up) >> 1);
+      else if (f === 4) { const pp = a + up - c, pa = Math.abs(pp - a), pb = Math.abs(pp - up), pc = Math.abs(pp - c); r = v + (pa <= pb && pa <= pc ? a : pb <= pc ? up : c); }
+      out[y * stride + x] = r & 255;
+    }
+  }
+  return { w, h, bpp, px: out };
+}
+
+/**
+ * The largest difference in any colour channel (0-255) between two screenshots of the same size. Up to SAME_WITHIN
+ * counts as the same: a layer composited on the GPU (will-change) can round a blend by a few levels, which no one
+ * can see (#98: the bar's scaleX). Anything bigger, or a different size, is a real difference.
+ */
+const SAME_WITHIN = 8;
+function maxDiff(a, b) {
+  const x = decode(a);
+  const y = decode(b);
+  if (x.w !== y.w || x.h !== y.h) return 255;
+  let m = 0;
+  for (let i = 0; i < x.w * x.h; i++) for (let k = 0; k < 3; k++) m = Math.max(m, Math.abs(x.px[i * x.bpp + k] - y.px[i * y.bpp + k]));
+  return m;
+}
 
 if (args[0] === '--compare') {
   const [, baseDir, headDir] = args;
@@ -49,9 +96,20 @@ if (args[0] === '--compare') {
         break;
       }
     const shots = Object.keys(b.shots);
-    const diffShots = shots.filter((k) => b.shots[k] !== h.shots[k]).concat(Object.keys(h.shots).filter((k) => !(k in b.shots)));
+    // A screenshot's file, from its key ("<label> <page>").
+    const file = (dir, key) => join(dir, `${name.replace(/\W+/g, '-')}-${key.slice(0, key.lastIndexOf(' ')).replace(/\W+/g, '-')}-${key.slice(key.lastIndexOf(' ') + 1)}.png`);
+    const near = [];
+    const diffShots = shots
+      .filter((k) => {
+        if (b.shots[k] === h.shots[k]) return false;
+        const d = k in h.shots ? maxDiff(file(baseDir, k), file(headDir, k)) : 255;
+        if (d <= SAME_WITHIN) near.push(`${k} (${d}/255)`);
+        return d > SAME_WITHIN;
+      })
+      .concat(Object.keys(h.shots).filter((k) => !(k in b.shots)));
+    if (near.length) console.log(`${name}: the same within ${SAME_WITHIN}/255: ${near.join(', ')}`);
     if (firstDiff >= 0 || diffShots.length) bad++;
-    md(`| ${name} | ${b.snapshots.length} / ${h.snapshots.length} | ${firstDiff < 0 ? 'yes' : `no: first at snapshot ${firstDiff}`} | ${shots.length} / ${Object.keys(h.shots).length} | ${diffShots.length ? `no: ${diffShots.join(', ')}` : 'yes'} |`);
+    md(`| ${name} | ${b.snapshots.length} / ${h.snapshots.length} | ${firstDiff < 0 ? 'yes' : `no: first at snapshot ${firstDiff}`} | ${shots.length} / ${Object.keys(h.shots).length} | ${diffShots.length ? `no: ${diffShots.join(', ')}` : near.length ? `yes (${near.length} within ${SAME_WITHIN}/255)` : 'yes'} |`);
     if (firstDiff >= 0) {
       const x = b.snapshots[firstDiff] ?? '';
       const y = h.snapshots[firstDiff] ?? '';
@@ -96,6 +154,8 @@ try {
         c.querySelectorAll('.die3 > .c').forEach((e) => {
           if (/rotateY\(180deg\)|rotateY\(-90deg\)|rotateX\(-90deg\)/.test(e.getAttribute('style') ?? '')) e.remove();
         });
+        // The progress bar's fill: a width on one build, a scaleX on the other (#98); its pixels are in the screenshots.
+        c.querySelectorAll('.rvprog .bar i').forEach((e) => e.removeAttribute('style'));
         // The time left changes with the clock.
         const p = c.querySelector('.rvprog span');
         if (p) p.textContent = (p.textContent ?? '').replace(/ · (Almost done|About [^·]* left)$/, '');
@@ -156,6 +216,19 @@ try {
     await page.click('[data-act=review]');
     await page.waitForTimeout(3000);
     if (held) await shoot('running');
+    // The progress bar at 40% and 100% (#98: a width transition or a scaleX one, whichever this build has), as
+    // a crop of the progress row: for the before/after look, not compared byte for byte.
+    if (held && name === '2p')
+      for (const f of [0.4, 1]) {
+        await page.evaluate((x) => {
+          const i = document.querySelector('.rvprog .bar i');
+          if (getComputedStyle(i).transitionProperty.includes('transform')) i.style.transform = `scaleX(${x})`;
+          else i.style.width = `${100 * x}%`;
+        }, f);
+        await page.waitForTimeout(600);
+        const box = await page.$('.rvprog');
+        if (box) writeFileSync(join(outDir, `bar-${Math.round(100 * f)}.png`), await box.screenshot({ animations: 'disabled' }));
+      }
     else console.log(`${name}: the engine module wasn't held (already loaded): no running-state screenshot`);
     release();
     await finished();
