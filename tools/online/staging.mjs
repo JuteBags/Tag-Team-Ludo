@@ -342,6 +342,9 @@ try {
       const shown = await botText(a);
       await shots('game', a);
       report('ranked: up to Gold III, a bot fills after the timeout, looking like a person', started && s >= 40 && !shown, `game after ${s} s; names ${JSON.stringify(names)}; "BOT" shown ${shown}`);
+      // #221: the app plays the bot, and its runs go with this player's moves: the game only moves on if the server takes them.
+      const r = started ? await play([a], { until: (n) => n >= 25, maxMs: 6 * 60000 }) : { steps: 0, stopped: false, ms: 0 };
+      report('ranked: the bot is played in the app, and the server takes its moves', r.stopped || (r.over?.length ?? 0) > 0, `${r.steps} of the player's steps in ${Math.round(r.ms / 1000)} s${r.over?.length ? ' (game over)' : ''}`);
       await close(a);
     } else if (test === 'ranked-nobots') {
       const a = await ranked('Asha', 1500, true);
