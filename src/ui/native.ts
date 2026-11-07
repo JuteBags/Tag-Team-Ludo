@@ -62,6 +62,15 @@ export function keepAwake(on: boolean) {
  */
 export function onAppLink(f: (url: string) => void) {
   if (!Capacitor.isNativePlatform()) return;
-  void App.getLaunchUrl().then((l) => l?.url && f(l.url)).catch(() => undefined);
-  void App.addListener('appUrlOpen', (e) => f(e.url));
+  // A cold start reports its link twice (the launch URL and appUrlOpen): the same link within a few seconds is once.
+  let last = '';
+  let at = 0;
+  const once = (url: string) => {
+    if (url === last && Date.now() - at < 5000) return;
+    last = url;
+    at = Date.now();
+    f(url);
+  };
+  void App.getLaunchUrl().then((l) => l?.url && once(l.url)).catch(() => undefined);
+  void App.addListener('appUrlOpen', (e) => once(e.url));
 }

@@ -19,7 +19,8 @@ run() {
   local name="$1" how="$2" want="$3"
   shift 3
   adb logcat -c
-  adb shell am start -W "$@" > "$OUT/$name.start.txt" 2>&1
+  # adb hands one command line to the device's shell: quote each argument for it (an intent URI has ; and #).
+  adb shell "am start -W $(printf "'%s' " "$@")" > "$OUT/$name.start.txt" 2>&1
   # The WebView and the game load, then the link is followed.
   local ok=no
   for i in $(seq 1 45); do
