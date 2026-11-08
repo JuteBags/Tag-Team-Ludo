@@ -1,7 +1,7 @@
 // With friends, online: private rooms. Create a room (the mode, doubles, how the bots play) or join one with its
 // code, then wait in the lobby until the host starts; slots nobody takes are played by the server's bots. The
 // game itself is the usual game screen, driven by the room (gameScreen.ts with a RoomLink).
-import { copyText } from './clipboard';
+import { copyWithFeedback } from './clipboard';
 import type { Color } from '../engine';
 import { PROFILES, avatarSVG, cssVars, icons } from './art';
 import { RoomLink, loadRoom, roomsUrl } from '../net/client';
@@ -97,7 +97,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     <section class="wiz" data-step="lobby">
       <h3 class="disp">Private room</h3><p class="sub lsub"></p>
       <div class="mid"><div class="sp">
-        <div class="codecard"><button class="codebtn" data-act="copy"><small>ROOM CODE</small><b class="code disp"></b><em class="copied">Tap to copy</em></button><button class="rbtn shbtn" data-act="share" aria-label="Share the code">${icons.share}</button></div>
+        <div class="codecard"><button class="codebtn" data-act="copy"><small>ROOM CODE</small><b class="code disp"></b><em class="copied" aria-live="polite">Tap to copy</em></button><button class="rbtn cpbtn" data-act="copy" aria-label="Copy the code">${icons.copy}</button><button class="rbtn shbtn" data-act="share" aria-label="Share the code">${icons.share}</button></div>
         <div class="lchips"></div>
         <div class="seats"></div>
         <p class="lnote"></p>
@@ -283,22 +283,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     } else if (act === 'start') {
       link?.send({ t: 'start' });
     } else if (act === 'copy' && link?.code) {
-      const label = b.querySelector('.copied')!;
-      void copyText(link.code).then((ok) => {
-        if (!ok) return;
-        label.textContent = 'Copied';
-        setTimeout(() => (label.textContent = 'Tap to copy'), 1600);
-      });
+      copyWithFeedback(link.code, el.querySelector('.cpbtn'), el.querySelector('.codebtn .copied'), 'Tap to copy', icons);
     } else if (act === 'share' && link?.code) {
       const text = `Join my Tag Team Ludo room: ${link.code}`;
       const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
-      const done = () => {
-        const s = el.querySelector('.codebtn .copied')!;
-        s.textContent = 'Copied';
-        setTimeout(() => (s.textContent = 'Tap to copy'), 1600);
-      };
       if (nav.share) void nav.share({ text }).catch(() => undefined);
-      else void copyText(link.code).then((ok) => ok && done());
+      else copyWithFeedback(link.code, el.querySelector('.cpbtn'), el.querySelector('.codebtn .copied'), 'Tap to copy', icons);
     }
   });
   codeIn.addEventListener('input', () => {
