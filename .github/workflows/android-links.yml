@@ -1,0 +1,76 @@
+# Room and friend links in the Android app (#238), on an emulator (API 34, x86_64): a debug APK of this branch,
+# pointed at our STAGING server (never production), opened by
+#   1. the room link (https://jutebags.github.io/Tag-Team-Ludo/play/#join=…), the app not running (a cold start);
+#   2. the web page's "Open in the app" intent:// link (the code in the query), the app not running;
+#   3. a friend link while the app runs (appUrlOpen).
+# Each must reach the app's link handling (its console lines in logcat: "[ludo-link] …"): Join with the code for a
+# room link, the friend prompt's path for a friend link. Screenshots and logcat are artifacts.
+# By hand, or on a PR when the label android-links is added (an emulator run takes ~15 min).
+name: Android links
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  # By the label too: another label on the PR (pvp-staging…) starts a skipped run here, which mustn't cancel this one.
+  group: android-links-${{ github.event.pull_request.number || github.ref }}-${{ github.event.label.name || 'dispatch' }}
+  cancel-in-progress: true
+
+jobs:
+  emulator:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'android-links' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VITE_ROOMS_URL: wss://tag-team-ludo-rooms-staging.tag-team-ludo.workers.dev
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci --no-audit --no-fund
+      - name: A debug APK pointed at staging
+        run: |
+          npm run build
+          npx cap sync android
+          cd android && bash ./gradlew --no-daemon assembleDebug
+          ls -l app/build/outputs/apk/debug/
+      - name: KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Open the links in the app
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash tools/android/links-check.sh android/app/build/outputs/apk/debug/app-debug.apk links-out
+      - name: The result
+        if: always()
+        run: |
+          {
+            echo "### Android links (#238), against staging"
+            echo
+            cat links-out/summary.md 2>/dev/null || echo "no summary"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test -f links-out/pass
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-links
+          path: links-out/

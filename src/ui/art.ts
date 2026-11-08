@@ -40,6 +40,10 @@ export const icons = {
   robot: `<svg viewBox="0 0 48 48"><path d="M24 4v6" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="4.5" r="3.2" fill="#ffd23f"/><rect x="8" y="10" width="32" height="26" rx="9" fill="#fff"/><rect x="12" y="15" width="24" height="14" rx="6" fill="#0f2f78"/><circle cx="19" cy="22" r="3.2" fill="#5ff2ff"/><circle cx="29" cy="22" r="3.2" fill="#5ff2ff"/><rect x="4" y="18" width="4" height="10" rx="2" fill="#fff"/><rect x="40" y="18" width="4" height="10" rx="2" fill="#fff"/><rect x="15" y="38" width="18" height="6" rx="3" fill="#fff" opacity=".85"/></svg>`,
   gear: `<svg viewBox="0 0 24 24"><path d="M12 2.5l1.6 2.3 2.8-.5.6 2.8 2.5 1.3-1.1 2.6 1.1 2.6-2.5 1.3-.6 2.8-2.8-.5L12 21.5l-1.6-2.3-2.8.5-.6-2.8-2.5-1.3 1.1-2.6-1.1-2.6 2.5-1.3.6-2.8 2.8.5z" fill="#fff"/><circle cx="12" cy="12" r="3.6" fill="#2459d6"/></svg>`,
   stats: `<svg viewBox="0 0 24 24"><rect x="4" y="12" width="4" height="8" rx="1.2" fill="#fff"/><rect x="10" y="7" width="4" height="13" rx="1.2" fill="#ffd23f"/><rect x="16" y="3.5" width="4" height="16.5" rx="1.2" fill="#fff"/></svg>`,
+  /** #237: two sheets, the front one outlined: copy. */
+  copy: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11.5" height="12.5" rx="2.6"/><path d="M15.5 8.5V5.6A2.6 2.6 0 0 0 12.9 3H6.6A2.6 2.6 0 0 0 4 5.6v8.3a2.6 2.6 0 0 0 2.6 2.6h1.9"/></svg>`,
+  /** A tick (copied). */
+  tick: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`,
   share: `<svg viewBox="0 0 24 24"><circle cx="18" cy="5.5" r="3" fill="#fff"/><circle cx="6" cy="12" r="3" fill="#fff"/><circle cx="18" cy="18.5" r="3" fill="#fff"/><path d="M8.6 10.6l6.8-3.6M8.6 13.4l6.8 3.6" stroke="#fff" stroke-width="2.2"/></svg>`,
   play: `<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z" fill="#1ea53a" stroke="#1ea53a" stroke-width="2" stroke-linejoin="round"/></svg>`,
 };

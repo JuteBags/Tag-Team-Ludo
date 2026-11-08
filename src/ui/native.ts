@@ -53,3 +53,24 @@ export function keepAwake(on: boolean) {
     lock = null;
   }
 }
+
+// ---------- links into the app (#238) ----------
+
+/**
+ * Calls `f` with each https link the app is opened by: the one it was launched with (a cold start) and any that
+ * arrive while it runs (Android's appUrlOpen). Nothing on the web.
+ */
+export function onAppLink(f: (url: string) => void) {
+  if (!Capacitor.isNativePlatform()) return;
+  // A cold start reports its link twice (the launch URL and appUrlOpen): the same link within a few seconds is once.
+  let last = '';
+  let at = 0;
+  const once = (url: string) => {
+    if (url === last && Date.now() - at < 5000) return;
+    last = url;
+    at = Date.now();
+    f(url);
+  };
+  void App.getLaunchUrl().then((l) => l?.url && once(l.url)).catch(() => undefined);
+  void App.addListener('appUrlOpen', (e) => once(e.url));
+}

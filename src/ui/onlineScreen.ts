@@ -1,16 +1,19 @@
 // With friends, online: private rooms. Create a room (the mode, doubles, how the bots play) or join one with its
 // code, then wait in the lobby until the host starts; slots nobody takes are played by the server's bots. The
 // game itself is the usual game screen, driven by the room (gameScreen.ts with a RoomLink).
+import { copyWithFeedback } from './clipboard';
 import type { Color } from '../engine';
 import { PROFILES, avatarSVG, cssVars, icons } from './art';
 import { RoomLink, loadRoom, roomsUrl } from '../net/client';
 import { friendsSheet } from './friendsSheet';
 import { requireTerms } from './legal';
-import { modePicker } from './modePicker';
+import { MODE_NAME, modePicker, seatPic } from './modePicker';
 import { CODE_LEN, MODE_LABEL, ONLINE_LEVELS, isCode, modeSlots, type GameSetup, type OnlineBotLevel, type RoomOptions } from '../net/protocol';
 import { saveSetting, settings } from './settings';
 import { NAME_MAX, cleanName, type GameConfig } from './setup';
 import { sfx } from './sfx';
+import { roomLinkUrl } from './replay';
+import { SITE } from './shareCard';
 
 type Step = 'menu' | 'create' | 'join' | 'lobby';
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
@@ -81,6 +84,7 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
         <i data-slot="modes"></i>
         <div class="row2 q"><span class="lbl">Doubles (pair moves)?</span>${tg('singles', [['false', 'On'], ['true', 'Off']], String(opts.singles))}</div>
         <div class="row2 q"><span class="lbl">How good are the bots?</span>${tg('level', ONLINE_LEVELS.map((l) => [l, cap(l)]), opts.botLevel)}<small class="qh lvlh">${LEVEL_NOTE[opts.botLevel]}</small></div>
+        <p class="oerr" role="alert" hidden></p>
       </div></div>
       <button class="b3 green disp go" data-act="create">CREATE ROOM</button>
     </section>
@@ -93,13 +97,14 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       <button class="b3 green disp go" data-act="join" disabled>JOIN</button>
     </section>
     <section class="wiz" data-step="lobby">
-      <h3 class="disp">Room <span class="code"></span></h3><p class="sub lsub"></p>
+      <h3 class="disp">Private room</h3><p class="sub lsub"></p>
       <div class="mid"><div class="sp">
-        <button class="sharecode" data-act="share">${icons.share}<span>Share the code</span></button>
-        <button class="sharecode" data-act="invite-friends">${icons.friends}<span>Invite friends</span></button>
+        <div class="codecard"><button class="codebtn" data-act="copy"><small>ROOM CODE</small><b class="code disp"></b><em class="copied" aria-live="polite">Tap to copy</em></button><button class="rbtn cpbtn" data-act="copy" aria-label="Copy the code">${icons.copy}</button><button class="rbtn shbtn" data-act="share" aria-label="Share the code">${icons.share}</button></div>
+        <div class="lchips"></div>
         <div class="seats"></div>
         <p class="lnote"></p>
         <p class="lclock" aria-live="off"></p>
+        <button class="sharecode inv" data-act="invite-friends">${icons.friends}<span>Invite friends</span></button>
       </div></div>
       <button class="b3 green disp go" data-act="start" disabled>START GAME</button>
     </section>`;
@@ -132,31 +137,39 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   const drawLobby = () => {
     if (!link) return;
     const o = link.options;
-    $('.code').textContent = link.code;
+    const code = link.code;
+    $('.code').textContent = code;
+    $('.codebtn').setAttribute('aria-label', `Room code ${code.split('').join(' ')}. Tap to copy`);
+    // Before the room is known it's still connecting; after, a drop is a reconnect (the seats stay as they were).
+    const net = link.status === 'open' ? '' : !o ? (link.status === 'retrying' ? 'Connecting… (trying again)' : 'Connecting…') : 'Connection lost. Reconnecting…';
+    el.querySelector('.wiz[data-step=lobby]')!.classList.toggle('offline', !!net && !!o);
     if (!o) {
-      $('.lsub').textContent = link.status === 'retrying' ? 'Connecting… (trying again)' : 'Connecting…';
+      $('.lsub').textContent = net || 'Connecting…';
       $('.seats').innerHTML = '';
+      $('.lchips').innerHTML = '';
       return;
     }
     const n = link.members.length;
     const host = link.you === 0;
     const slots = modeSlots(o.mode, o.pairing);
     const total = slots.length;
-    $('.lsub').textContent = link.status === 'open' ? `${MODE_LABEL[o.mode]} · ${n} of ${total} here · ${o.singles ? 'no doubles' : 'doubles'} · ${cap(o.botLevel)} bots` : 'Connection lost. Reconnecting…';
-    $('.seats').innerHTML = slots
-      .map((slot, i) => {
-        const m = link!.members[i];
-        const c = slot.colors[0]!;
-        const who = m ? `${m.name}${i === link!.you ? ' (you)' : ''}` : 'Waiting…';
-        const tag = [o.mode === '2v2' ? TEAM[slot.side] : '', m ? (m.host ? 'HOST' : !m.online ? 'OFFLINE' : '') : 'BOT IF EMPTY'].filter(Boolean).join(' · ');
-        const faces = slot.colors.map((x) => `<span class="ra" style="${cssVars(x)}">${avatarSVG(x)}</span>`).join('');
-        return `<div class="seat${m ? '' : ' empty'}${slot.colors.length > 1 ? ' two' : ''}" style="${cssVars(c)}">${faces}<b>${who}</b>${tag ? `<em>${tag}</em>` : ''}</div>`;
-      })
-      .join('');
+    $('.lsub').textContent = net || `${n} of ${total} here`;
+    $('.lchips').innerHTML = `<span class="lchip mode">${seatPic(o.mode, o.pairing, 22)}<span class="lname">${MODE_NAME[o.mode]}</span></span><span class="lchip">${o.singles ? 'No doubles' : 'Doubles'}</span><span class="lchip">${cap(o.botLevel)} bots</span>`;
+    const seat = (i: number) => {
+      const slot = slots[i]!;
+      const m = link!.members[i];
+      const you = i === link!.you;
+      const tag = [o.mode === '2v2' ? TEAM[slot.side] : '', m ? (you ? 'YOU' : m.host ? 'HOST' : !m.online ? 'OFFLINE' : '') : ''].filter(Boolean).join(' · ');
+      const faces = slot.colors.map((x) => `<span class="ra" style="${cssVars(x)}">${avatarSVG(x)}</span>`).join('');
+      const name = document.createElement('b');
+      name.textContent = m ? m.name : 'Open';
+      return `<div class="seat${m ? '' : ' empty'}${m && !m.online ? ' away' : ''}${slot.colors.length > 1 ? ' two' : ''}" style="${cssVars(slot.colors[0]!)}">${faces}${name.outerHTML}${tag ? `<em>${tag}</em>` : ''}</div>`;
+    };
+    $('.seats').innerHTML = slots.map((_, i) => seat(i)).join('');
     const start = $<HTMLButtonElement>('[data-act=start]');
     start.disabled = !host || n < 2 || link.status !== 'open';
     start.textContent = host ? (n < 2 ? 'WAITING FOR FRIENDS' : n < total ? `START WITH ${total - n} BOT${total - n > 1 ? 'S' : ''}` : 'START GAME') : 'WAITING FOR THE HOST';
-    $('.lnote').textContent = host ? 'Share the code. Start when everyone is in; empty colours get bots.' : 'The host starts the game when everyone is in.';
+    $('.lnote').textContent = n < total ? `Open seats play as ${cap(o.botLevel)} bots` : '';
     tick();
   };
 
@@ -176,7 +189,13 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
    * never asks again; the sheet shows only if they weren't accepted, or a newer version came out. Declined: no
    * connection.
    */
-  const connect = (make: () => RoomLink) => void requireTerms(el).then((ok) => ok && attach(make()));
+  // Where the connection was asked for: a room that can't be joined or made (a bad, full, started or expired
+  // code; the server down) says so there, with what was typed kept (#232), not on another screen.
+  let from: Step = 'menu';
+  const connect = (make: () => RoomLink) => {
+    from = step;
+    void requireTerms(el).then((ok) => ok && attach(make()));
+  };
   const attach = (l: RoomLink) => {
     off?.();
     link = l;
@@ -191,8 +210,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
         link = null;
         off?.();
         off = null;
-        show(step === 'lobby' ? 'menu' : step);
+        show(from === 'join' || from === 'create' ? from : 'menu');
         error(l.fatal.message);
+        if (from === 'join') {
+          codeIn.focus();
+          codeIn.select();
+        }
         return;
       }
       if (m.t === 'error') sfx.tick();
@@ -211,6 +234,30 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
 
   // ---------- actions ----------
   const keepName = () => saveSetting('myName', nameIn.value.trim() ? myName() : '');
+  /** #238: a room link's code waiting for a name, and joining it from Join (where its errors show). */
+  let linked = '';
+  /**
+   * The menu while a room link waits for the name (ludo-uiux, #241): the room in the title, JOIN <code> as the one
+   * green button, nothing else to tap. '' puts the usual menu back.
+   */
+  const linkView = (code: string) => {
+    linked = code;
+    const menu = $('.wiz[data-step=menu]');
+    menu.querySelector('h3')!.innerHTML = code ? `Join room <b class="disp">${code}</b>` : 'Private room';
+    menu.querySelector('.sub')!.textContent = code ? 'Your name first, so they know who’s joining.' : 'Friends play on their own phones';
+    const go = menu.querySelector<HTMLElement>('[data-act=to-join]')!;
+    go.textContent = code ? `JOIN ${code}` : 'JOIN A ROOM';
+    go.classList.toggle('green', !!code);
+    go.classList.toggle('blue', !code);
+    for (const q of ['[data-act=to-create]', '.frbtn', '.rejoin']) {
+      const b = menu.querySelector<HTMLElement>(q);
+      if (b) b.style.display = code ? 'none' : '';
+    }
+  };
+  const joinLinked = (code: string) => {
+    show('join');
+    connect(() => RoomLink.join(code, myName()));
+  };
   el.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLElement>('[data-act]');
     const tb = (e.target as Element).closest<HTMLButtonElement>('.tg button');
@@ -231,6 +278,11 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     const act = b.dataset.act;
     if (act !== 'back') sfx.tick();
     if (act === 'back') {
+      // Back from a room link waiting for the name: the link is dropped, the usual menu.
+      if (step === 'menu' && linked) {
+        linkView('');
+        return;
+      }
       if (step === 'menu') {
         leaveRoom();
         return onBack();
@@ -248,6 +300,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     } else if (act === 'to-create') {
       keepName();
       show('create');
+    } else if (act === 'to-join' && linked) {
+      // The room link waiting for a name (#238).
+      keepName();
+      const code = linked;
+      linkView('');
+      joinLinked(code);
     } else if (act === 'to-join') {
       keepName();
       show('join');
@@ -261,16 +319,15 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
       if (r) connect(() => RoomLink.join(r.code, r.name, r.token));
     } else if (act === 'start') {
       link?.send({ t: 'start' });
+    } else if (act === 'copy' && link?.code) {
+      copyWithFeedback(link.code, el.querySelector('.cpbtn'), el.querySelector('.codebtn .copied'), 'Tap to copy', icons);
     } else if (act === 'share' && link?.code) {
-      const text = `Join my Tag Team Ludo room: ${link.code}`;
+      // #238: the room link, which opens the game (or the app) and joins.
+      const url = roomLinkUrl(link.code, SITE);
+      const text = `Join my Tag Team Ludo room ${link.code}: ${url}`;
       const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
-      const done = () => {
-        const s = b.querySelector('span')!;
-        s.textContent = 'Code copied!';
-        setTimeout(() => (s.textContent = 'Share the code'), 1600);
-      };
       if (nav.share) void nav.share({ text }).catch(() => undefined);
-      else void navigator.clipboard?.writeText(link.code).then(done, () => undefined);
+      else copyWithFeedback(url, el.querySelector('.cpbtn'), el.querySelector('.codebtn .copied'), 'Tap to copy', icons);
     }
   });
   codeIn.addEventListener('input', () => {
@@ -287,6 +344,17 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   show('menu');
   if (rejoin && saved && configured) connect(() => RoomLink.join(saved.code, saved.name, saved.token));
   // An invite from a friend (#209): straight into their room.
-  else if (join && configured) connect(() => RoomLink.join(join, myName()));
+  // A room link (#238) shows the code on Join, so a full, started or unknown room says so there. Without a saved name
+  // it stops at the name first (ludo-uiux): JOIN A ROOM then joins that room straight away.
+  else if (join && configured) {
+    codeIn.value = join;
+    console.info(`[ludo-link] join step ${join}`);
+    $<HTMLButtonElement>('[data-act=join]').disabled = !isCode(join);
+    if (settings.myName?.trim()) joinLinked(join);
+    else {
+      linkView(join);
+      setTimeout(() => nameIn.focus(), 50);
+    }
+  }
   return el;
 }

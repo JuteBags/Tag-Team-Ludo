@@ -5,7 +5,8 @@
 //   node tools/online/staging.mjs <test> [chrome path] [--url http://localhost:5173/] [--out staging-out]
 //   tests: mode:<ffa|1v1|duo|2v2> | modes (all four) | rejoin | leave | disconnect | timeouts | chat, friends,
 //          ranked-pair, ranked-botfill, ranked-nobots, ranked-lower (our server; ranked-* need TEST_HOOKS=1),
-//          abuse (our server: floods from one client are cut off while a game plays on, #220)
+//          abuse (our server: floods from one client are cut off while a game plays on, #220),
+//          share (our server: a game shared as a short link opens in another browser, #229)
 // RESULT_PREFIX (env) is put before each result's name (e.g. "local · ").
 // .github/workflows/pvp-staging.yml runs each test as its own job, with the dev server pointed at the server by
 // VITE_ROOMS_URL. Writes <out>/<test>.json (pass or fail and the details), screenshots, and a summary line.
@@ -138,6 +139,21 @@ const report = (name0, pass, detail) => {
 };
 /** The test's name as a file name. */
 const slug = test.replace(/\W+/g, '-');
+/**
+ * #237: accepts the first friend request this player gets (waiting up to 20 s for one), through the app's friends
+ * link (the dev build's module, the same one the app uses); whether one came.
+ */
+const acceptFirst = (p) =>
+  p.page
+    .evaluate(async () => {
+      const { friendsLink } = await import('/src/net/friends.ts');
+      const f = friendsLink();
+      for (let i = 0; i < 200 && !f?.requests.length; i++) await new Promise((r) => setTimeout(r, 100));
+      if (!f?.requests.length) return false;
+      f.answer(f.requests[0].id, true);
+      return true;
+    })
+    .catch(() => false);
 /** Screenshots of both phones (whatever they show now). */
 const shots = async (label, ...ps) => {
   for (const p of ps) await p.page.screenshot({ path: `${OUT}/${slug}-${label}-${p.name}.png` }).catch(() => {});
@@ -155,6 +171,18 @@ try {
       // #234: behind the result, nobody's hint is still "Sending…" (the last move was confirmed).
       const pending = await Promise.all([host, guest].map((p) => p.page.evaluate(() => document.querySelector('.hint small')?.textContent ?? '')));
       report(`mode ${mode}: no hint left at "Sending…" at the end`, pending.every((t) => !t.includes('Sending')), `hints: ${JSON.stringify(pending)}`);
+      // #237: the result's Share sends the image and the game's link together: the short link on our own server, the
+      // long one where the server has no shares (or the upload fails).
+      await host.page.evaluate(() => {
+        window.__shared = null;
+        navigator.canShare = () => true;
+        navigator.share = async (d) => { window.__shared = { text: d.text, files: (d.files ?? []).length }; };
+      });
+      await tap(host.page, '.result [data-act=share]');
+      const shared = await host.page.waitForFunction(() => window.__shared, null, { timeout: 20000 }).then((h) => h.jsonValue()).catch(() => null);
+      const ours = /localhost|127\.0\.0\.1/.test(process.env.VITE_ROOMS_URL ?? '');
+      const link = /play\/#(g=[A-Z0-9]{12}|game=)/.exec(shared?.text ?? '')?.[0] ?? '';
+      report(`mode ${mode}: the result's Share sends the image and the game link`, !!shared && shared.files === 1 && (ours ? link.startsWith('play/#g=') : !!link), `files ${shared?.files}; link ${link || 'none'}; text: ${(shared?.text ?? '').slice(0, 90)}`);
       await close(host, guest);
     }
   } else if (test === 'rejoin') {
@@ -258,6 +286,121 @@ try {
     await shot(host, '10-result-after-forfeit');
     report('frames', true, 'frame-*.png in the artifact');
     await close(host, guest);
+  } else if (test === 'links') {
+    // #238: room and friend links on the web. A room link joins the room; a bad one says so on Join. A friend link
+    // asks "Add <name>?" and sends a request; a code no one has says so.
+    const host = await player('Asha', { phone: true });
+    const code = await create(host, '1v1');
+    const guest = await player('Leo', { phone: true });
+    await guest.page.goto(`${URL}#join=${code}`, { waitUntil: 'load' });
+    // No saved name: the link stops at the name (ludo-uiux), and JOIN A ROOM then joins that room.
+    const atName = await guest.page
+      .waitForFunction((c) => {
+        const menu = document.querySelector('.wiz[data-step=menu]');
+        const go = menu?.querySelector('[data-act=to-join]');
+        const create = menu?.querySelector('[data-act=to-create]');
+        return document.activeElement?.classList.contains('namein') && !menu.hidden && menu.querySelector('h3')?.textContent?.includes(c) && go?.textContent?.includes(c) && create && getComputedStyle(create).display === 'none';
+      }, code, { timeout: 30000 })
+      .then(() => true)
+      .catch(() => false);
+    await shots('room-link-name', guest);
+    await guest.page.locator('.namein').fill('Leo');
+    await tap(guest.page, '[data-act=to-join]');
+    const joined = await guest.page.waitForFunction((c) => document.querySelector('.wiz[data-step=lobby] .code')?.textContent?.trim() === c, code, { timeout: 30000 }).then(() => true).catch(() => false);
+    const named = await host.page.waitForFunction(() => /Leo/.test(document.querySelector('.wiz[data-step=lobby]')?.textContent ?? ''), null, { timeout: 15000 }).then(() => true).catch(() => false);
+    const cleaned = await guest.page.evaluate(() => location.hash === '');
+    await shots('room-link', guest, host);
+    report('links: a room link (no saved name: the name first) joins the room, used once', atName && joined && named && cleaned, `stopped at the name ${atName}; guest in room ${code} ${joined}; host sees Leo ${named}; address cleaned ${cleaned}`);
+    const mia = await player('Mia', { phone: true });
+    await mia.page.goto(`${URL}#join=ZZZZZ`, { waitUntil: 'load' });
+    await mia.page.locator('.namein').fill('Mia');
+    await tap(mia.page, '[data-act=to-join]');
+    const badRoom = await mia.page
+      .waitForFunction(() => {
+        const join = document.querySelector('.wiz[data-step=join]');
+        const e = document.querySelector('.wiz[data-step=join] .oerr');
+        return !!join && !join.hidden && !!e && !e.hidden && (e.textContent ?? '').trim().length > 0 && document.querySelector('.codein')?.value === 'ZZZZZ';
+      }, null, { timeout: 30000 })
+      .then(() => true)
+      .catch(() => false);
+    await shots('bad-room-link', mia);
+    report('links: an unknown room says so on Join, with the code kept', badRoom, `error on Join ${badRoom}`);
+    await close(host, guest, mia);
+    // A friend link: Omar's friend code, opened by Zoya.
+    const omar = await player('Omar', { phone: true });
+    await openRooms(omar);
+    await omar.page.locator('.namein').fill('Omar');
+    await tap(omar.page, '[data-act=friends]');
+    await omar.page.waitForFunction(() => /^[A-Z0-9]{6}$/.test(document.querySelector('.sheet.friends .fmine b')?.textContent ?? ''), null, { timeout: 30000 });
+    const fcode = (await omar.page.textContent('.sheet.friends .fmine b')).trim();
+    const zoya = await player('Zoya', { phone: true });
+    await zoya.page.goto(`${URL}#friend=${fcode}`, { waitUntil: 'load' });
+    const prompt = await zoya.page.locator('.friendlink-ov').waitFor({ timeout: 30000 }).then(() => zoya.page.textContent('.friendlink-ov')).catch(() => '');
+    await shots('friend-link', zoya);
+    await tap(zoya.page, '.friendlink-ov [data-act=add]');
+    const got = await omar.page
+      .evaluate(async () => {
+        const f = (await import('/src/net/friends.ts')).friendsLink();
+        for (let i = 0; i < 200 && !f?.requests.length; i++) await new Promise((r) => setTimeout(r, 100));
+        return f?.requests.map((r) => r.name) ?? [];
+      })
+      .catch(() => []);
+    const notFriendsYet = await zoya.page.evaluate(async () => (await import('/src/net/friends.ts')).friendsLink()?.friends.length ?? -1);
+    report('links: a friend link asks, then sends a request (not an instant friend)', (prompt ?? '').includes('Omar') && got.length === 1 && notFriendsYet === 0, `prompt "${(prompt ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)}"; Omar's requests ${JSON.stringify(got)}; Zoya's friends ${notFriendsYet}`);
+    await zoya.page.goto(`${URL}#friend=ZZZZZZ`, { waitUntil: 'load' });
+    const badFriend = await zoya.page.waitForFunction(() => /No one has/.test(document.querySelector('.friendlink-ov')?.textContent ?? ''), null, { timeout: 30000 }).then(() => true).catch(() => false);
+    report('links: a friend code no one has says so', badFriend, `says so ${badFriend}`);
+    await close(omar, zoya);
+  } else if (test === 'friends-after-game') {
+    // #237: two people who aren't friends finish a private room; A adds B from the game (by seat: the app never sees
+    // B's account), B accepts the request, and both see each other in Friends. Through the friends link (the dev
+    // build's module), until the result row's Add friend and the Requests list have their buttons.
+    const host = await player('Asha', { phone: true });
+    const guest = await player('Leo', { phone: true });
+    // Friends opened once: the guest account and the link, so the room knows each person's account.
+    for (const p of [host, guest]) {
+      // The room menu's Friends row (With friends → Private room → Friends).
+      await openRooms(p);
+      await p.page.locator('.namein').fill(p.name);
+      await tap(p.page, '[data-act=friends]');
+      await p.page.waitForFunction(() => /^[A-Z0-9]{6}$/.test(document.querySelector('.sheet.friends .fmine b')?.textContent ?? ''), null, { timeout: 30000 });
+      await tap(p.page, '.sheet.friends [data-act=close]');
+      await p.page.goto(URL, { waitUntil: 'load' });
+      await home(p.page);
+    }
+    const code = await create(host, '1v1');
+    await join(guest, code);
+    await start(host, guest);
+    const r = await play([host, guest]);
+    await shots('result', host, guest);
+    // The host: the guest's key from the game, the room's standing, then the request.
+    const before = await host.page.evaluate(async () => {
+      const { friendsLink } = await import('/src/net/friends.ts');
+      const link = window.__ludo.online;
+      const color = Object.keys(link.setup.control).find((c) => link.setup.control[c] !== link.you);
+      const key = link.addable(color);
+      const mine = link.addable(Object.keys(link.setup.control).find((c) => link.setup.control[c] === link.you));
+      const f = friendsLink();
+      f.loadRoom(link.code);
+      for (let i = 0; i < 100 && f.stateOf(key) === 'loading'; i++) await new Promise((res) => setTimeout(res, 100));
+      const was = f.stateOf(key);
+      f.request(key);
+      window.__key = key;
+      return { key, mine, was };
+    });
+    const accepted = await acceptFirst(guest);
+    const friendsOf = (p) => p.page.evaluate(async () => (await import('/src/net/friends.ts')).friendsLink().friends.map((x) => x.name));
+    await host.page.waitForTimeout(1500);
+    const hostFriends = await friendsOf(host);
+    const guestFriends = await friendsOf(guest);
+    const after = await host.page.evaluate(async () => {
+      const f = (await import('/src/net/friends.ts')).friendsLink();
+      f.loadRoom(window.__ludo.online.code);
+      await new Promise((res) => setTimeout(res, 1500));
+      return f.stateOf(window.__key);
+    });
+    report('friends after a game: add by seat, accept, both are friends', r.over?.length === 2 && !!before.key && before.mine === null && before.was === 'none' && accepted && hostFriends.includes('Leo') && guestFriends.includes('Asha') && after === 'friend', `game over ${r.over?.length === 2}; key ${before.key} (own: ${before.mine}); before ${before.was}; accepted ${accepted}; host's friends ${JSON.stringify(hostFriends)}; guest's ${JSON.stringify(guestFriends)}; after ${after}`);
+    await close(host, guest);
   } else if (test === 'friends') {
     // Friends (#209): add by code, see each other online, invite into a private room, join from the invite.
     const host = await player('Asha', { phone: true });
@@ -274,6 +417,8 @@ try {
     await openFriends(guest);
     await guest.page.locator('.sheet.friends .fadd input').fill(hostCode.toLowerCase());
     await guest.page.evaluate(() => document.querySelector('.sheet.friends .fadd').requestSubmit());
+    // #237: adding sends a request; the host accepts it (through the link, until the Requests list has its buttons).
+    await acceptFirst(host);
     const guestSees = await sees(guest, 'Asha');
     const hostSees = await sees(host, 'Leo');
     await shots('list', guest);
@@ -477,6 +622,64 @@ try {
     report('a flood of new accounts is turned away', a.accountsRefused >= 10, `${a.accountsRefused} of 30 refused`);
     report('the game in progress plays on meanwhile', r.stopped && r.steps >= 30, `${r.steps} more steps in ${s} s`);
     await close(host, guest);
+  } else if (test === 'share') {
+    // #229: a game shared as a short link (kept on our server), opened in another browser; and the long link when
+    // the terms weren't accepted. Our server (wrangler dev) and the dev build (its modules load in the page).
+    /** Opens a replay of a short game (made in the page with the engine), ready to share. */
+    const openReplay = async (p) => {
+      await p.page.evaluate(async () => {
+        const e = await import('/src/engine/index.ts');
+        const seats = [{ color: 'blue', owner: 0, bot: false }, { color: 'green', owner: 1, bot: true, level: 'normal' }];
+        let s = e.createGame(seats, 'blue', false);
+        const rng = e.seeded(5);
+        let ev = '';
+        for (let i = 0; i < 80 && s.phase !== 'over'; i++) {
+          if (s.phase === 'roll') { s = e.roll(s, rng); ev += e.rollEvent(s.dice); }
+          else { const m = s.moves[0]; ev += e.moveEvent(m); s = e.move(s, m); }
+        }
+        const rec = { v: 1, seats, first: 'blue', meta: { mode: 'pvc', names: ['Asha', 'Bot'] }, events: ev };
+        location.hash = '#game=' + (await e.encodeRecord(rec));
+      });
+      await p.page.locator('.screen.replay [data-act=share]').waitFor({ timeout: 20000 });
+    };
+    /** Taps SHARE GAME and returns the link it shares (the share menu stubbed to catch it). */
+    const shareFrom = async (p) => {
+      await p.page.evaluate(() => { window.__shared = null; navigator.share = async (d) => { window.__shared = d.url; }; });
+      await tap(p.page, '.screen.replay [data-act=share]');
+      await p.page.waitForFunction(() => !!window.__shared, null, { timeout: 20000 });
+      return p.page.evaluate(() => window.__shared);
+    };
+    const a = await player('Asha', { phone: true });
+    await openReplay(a);
+    const url = await shareFrom(a);
+    const code = /#g=([A-Z0-9]{12})$/.exec(url)?.[1] ?? null;
+    report('share: a short link with a random code', !!code && url.length < 80, url);
+    // Someone else opens it: the replay, then the review.
+    const b = await player('Leo', { phone: true });
+    let seen = false;
+    let reviewed = false;
+    if (code) {
+      await b.page.goto(`${URL}#g=${code}`, { waitUntil: 'load' });
+      seen = await b.page.locator('.screen.replay [data-act=share]').waitFor({ timeout: 30000 }).then(() => true).catch(() => false);
+      await shots('opened', b);
+      if (seen) {
+        await tap(b.page, '.screen.replay [data-act=review]');
+        reviewed = await b.page.locator('.screen.review').waitFor({ timeout: 30000 }).then(() => true).catch(() => false);
+        await b.page.waitForTimeout(3000);
+        await shots('review', b);
+      }
+    }
+    report('share: the link opens the replay and the review in another browser', seen && reviewed, `replay ${seen}; review ${reviewed}`);
+    // An unknown code: the broken-link screen, not a crash.
+    await b.page.goto(`${URL}#g=ABCDEFGHJKLM`, { waitUntil: 'load' });
+    const broken = await b.page.locator('.screen.replay.broken').waitFor({ timeout: 30000 }).then(() => true).catch(() => false);
+    report('share: an unknown code shows "This link is broken"', broken, `broken screen ${broken}`);
+    // Terms not accepted: nothing goes to the server, the long link.
+    const c = await player('Mia', { phone: true, decline: true });
+    await openReplay(c);
+    const long = await shareFrom(c);
+    report('share: without the terms accepted, the long link (nothing uploaded)', long.includes('#game='), `${long.slice(0, 60)}… (${long.length} characters)`);
+    await close(a, b, c);
   } else if (test === 'timeouts') {
     const { host, guest } = await pair('1v1');
     await play([host, guest], { until: (n) => n >= 20 });

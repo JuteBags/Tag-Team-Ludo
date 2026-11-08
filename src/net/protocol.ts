@@ -116,7 +116,8 @@ export interface Turn {
 
 export type ClientMsg =
   /** First on every connection: who this is. `token` is the device's secret id for this room, kept across reconnects. */
-  | { t: 'hello'; protocol: number; token: string; name: string; botVersion?: number }
+  /** `account` (#237): the guest account, when the app has one, so friends can be requested by seat after the game. */
+  | { t: 'hello'; protocol: number; token: string; name: string; botVersion?: number; account?: AccountKey }
   /** The host starts the game (bots take the empty seats). */
   | { t: 'start' }
   /**
@@ -222,7 +223,8 @@ export type ErrorCode =
   | 'not-friends' // friends: invite or reply to someone who isn't a friend
   | 'offline' // friends: they aren't online to invite
   | 'rate-limited' // #220: too many messages on this connection (it's closed; the app reconnects)
-  | 'replaced'; // #220: the same person opened this room (or friends) on another connection; this one is closed
+  | 'replaced' // #220: the same person opened this room (or friends) on another connection; this one is closed
+  | 'limit' // #237: too many friend requests for now (per hour, waiting, or the same person again within a day)
 
 // ---------- chat (#212) ----------
 // Quick phrases and emoji for everyone; free text in private rooms only. The server relays each line to the room
@@ -267,9 +269,32 @@ export interface Friend {
   online: boolean;
 }
 
+/**
+ * A friend request to you (#237): an opaque id (never an account id), who sent it and when. Answer it with
+ * `answer`. Requests replace instant friends: `add` by code sends one too.
+ */
+export interface FriendRequest {
+  id: string;
+  name: string;
+  at: number;
+}
+
+/** Where you stand with the person who played a colour in a room you were in (#237). */
+export type SeatState = 'unavailable' | 'none' | 'requested' | 'incoming' | 'friend';
+
 export type FriendClientMsg =
-  | { t: 'hello'; protocol: number; account: AccountKey; name: string }
+  /** `requests` (#237): this app knows friend requests; without it (4.0.0) the hub keeps the old instant add. */
+  | { t: 'hello'; protocol: number; account: AccountKey; name: string; requests?: boolean }
+  /** A friend request by friend code (#237: a request, no longer an instant add). */
   | { t: 'add'; code: string }
+  /** #237: a friend request to whoever played `color` in room `room` (you must have been in that room too). */
+  | { t: 'request'; room: string; color: Color }
+  /** #237: accept or decline request `id`. */
+  | { t: 'answer'; id: string; accept: boolean }
+  /** #237: your standing with each person in room `code` (answered with `room`). */
+  | { t: 'room'; code: string }
+  /** #238: the display name behind friend code `code` (a friend link's prompt). */
+  | { t: 'who'; code: string }
   | { t: 'remove'; id: string }
   /** Invite friend `to` into private room `room`. */
   | { t: 'invite'; to: string; room: string }
@@ -279,7 +304,15 @@ export type FriendClientMsg =
 
 export type FriendServerMsg =
   /** After hello: your friend code and your friends. */
-  | { t: 'me'; code: string; friends: Friend[] }
+  | { t: 'me'; code: string; friends: Friend[]; requests?: FriendRequest[]; out?: number }
+  /** #237: a new friend request to you (`from.id` is the request's id). */
+  | { t: 'request'; from: FriendRequest }
+  /** #237: your requests changed: the ones to you (newest first) and how many of yours wait for an answer. */
+  | { t: 'requests'; requests: FriendRequest[]; out: number }
+  /** #237: your standing with the people in room `code`, by colour (your own colours aren't listed). */
+  | { t: 'room'; code: string; states: Partial<Record<Color, SeatState>> }
+  /** #238: the name behind friend code `code` (null: no one has it; `self`: it's your own). */
+  | { t: 'who'; code: string; name: string | null; self?: true }
   /** A friend came online, went offline, or was added (`gone`: removed). */
   | { t: 'friend'; friend: Friend; gone?: true }
   /** `from` invites you into private room `room`. */

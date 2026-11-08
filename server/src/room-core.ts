@@ -215,6 +215,21 @@ export class RoomCore {
     return room;
   }
 
+  /**
+   * #237: the account behind each colour, for a friend request by seat, asked for by account `me`: null unless `me`
+   * played in this room (so it can't be used to look accounts up). A bot, or a person without an account, is null.
+   */
+  seatAccounts(me: string): Partial<Record<Color, string | null>> | null {
+    const d = this.data;
+    if (!d.setup || !d.members.some((m) => m.account === me)) return null;
+    const out: Partial<Record<Color, string | null>> = {};
+    for (const seat of d.setup.seats) {
+      const who = d.setup.control[seat.color] ?? -1;
+      out[seat.color] = who >= 0 ? (d.members[who]?.account ?? null) : null;
+    }
+    return out;
+  }
+
   get snapshot(): Readonly<RoomData> {
     return this.data;
   }
@@ -222,7 +237,8 @@ export class RoomCore {
   // ---------- connections ----------
 
   /** A connection said hello. Returns an error to close it with, or null when it's in the room. */
-  hello(token: string, msg: Extract<ClientMsg, { t: 'hello' }>): ErrorCode | null {
+  /** `account`: the guest account the hello carried, already checked by the accounts store (#237), if any. */
+  hello(token: string, msg: Extract<ClientMsg, { t: 'hello' }>, account?: string): ErrorCode | null {
     if (msg.protocol !== PROTOCOL) return 'protocol';
     const d = this.data;
     // The apps play every game's bots (#221, #226): only an app with the same bots can play.
@@ -234,6 +250,8 @@ export class RoomCore {
       m = { token, name: cleanName(msg.name), left: false, timeouts: 0 };
       d.members.push(m);
     } else if (d.phase === 'lobby') m.name = cleanName(msg.name);
+    // A private room learns its people's accounts from their hello (#237); a ranked one has them from the queue.
+    if (account && !m.account) m.account = account;
     // Back before their time ran out. Someone who left the game stays out: they can only watch.
     m.offlineSince = null;
     this.online.add(token);

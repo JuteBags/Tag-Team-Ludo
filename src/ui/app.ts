@@ -2,7 +2,8 @@
 import { globalDefs } from './art';
 import { GameScreen } from './gameScreen';
 import { homeScreen } from './homeScreen';
-import { handleBack } from './native';
+import { handleBack, onAppLink } from './native';
+import { androidWeb, openHere } from './appLink';
 import type { GameConfig, Mode } from './setup';
 import { setupScreen } from './setupScreen';
 import { giveUpSaved, loadGame, loadPuzzleLog, loadReview, type SavedGame } from './store';
@@ -13,12 +14,14 @@ import { offerCheckIn } from './checkin';
 import { hasAcceptedTerms, offerTerms } from './legal';
 import { settings } from './settings';
 import { decodeRecord, type GameRecord } from '../engine';
-import { linkPayload } from './replay';
+import { framesOf, linkAction, linkCode, linkPayload, sharedReview, type LinkAction } from './replay';
+import { fetchShare } from '../net/shares';
+import type { StoredReview } from './store';
 import { bootReviews, setGame } from './reviewQueue';
 import { prefetchAtIdle, screens, setScreen, show } from './lazy';
 import { roomsUrl, type RoomLink } from '../net/client';
 import { hasAccount, startFriends } from '../net/friends';
-import { watchInvites } from './friendsSheet';
+import { friendLinkPrompt, watchInvites, watchRequests } from './friendsSheet';
 
 /** Ranked PvP (#216): on. Turn it off here to hide it from the home screen. */
 const RANKED = true;
@@ -69,14 +72,15 @@ export function mountApp(root: HTMLElement) {
   // `keep`: the game is one of the past games, so its review is stored (not for a game from a link).
   const storedReview = async (rec: GameRecord, keep: boolean) =>
     keep ? await loadReview(rec) : undefined;
-  const watch = async (rec: GameRecord, back: () => void, keep = true, startAt?: number, startCaption?: string, pov?: number) => {
-    const stored = await storedReview(rec, keep);
-    await show(stage, screens.replay, (m) => m.safeReplayScreen(rec, back, { startAt, startCaption, pov, keep, review: stored, onReview: (p) => void review(rec, back, keep, p) }), back);
+  // `given`: a review that came with the game (a short link's, #229), shown as if it were stored.
+  const watch = async (rec: GameRecord, back: () => void, keep = true, startAt?: number, startCaption?: string, pov?: number, given?: StoredReview) => {
+    const stored = given ?? (await storedReview(rec, keep));
+    await show(stage, screens.replay, (m) => m.safeReplayScreen(rec, back, { startAt, startCaption, pov, keep, review: stored, onReview: (p) => void review(rec, back, keep, p, given) }), back);
   };
   /** The game review of `rec` (it runs in the review queue); a tapped move opens the replay there, from the same side. */
-  const review = async (rec: GameRecord, back: () => void, keep = true, pov?: number) => {
-    const stored = await storedReview(rec, keep);
-    await show(stage, screens.review, (m) => m.reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p), keep, at, caption, p), keep, pov), back);
+  const review = async (rec: GameRecord, back: () => void, keep = true, pov?: number, given?: StoredReview) => {
+    const stored = given ?? (await storedReview(rec, keep));
+    await show(stage, screens.review, (m) => m.reviewScreen(rec, stored, back, (at, caption, p) => void watch(rec, () => void review(rec, back, keep, p, given), keep, at, caption, p, given), keep, pov), back);
   };
   /** With friends, online: the private-room screens, then the room's game (the server plays it; this screen shows it). */
   const online = async (rejoin = false, join?: string) => {
@@ -144,10 +148,30 @@ export function mountApp(root: HTMLElement) {
   });
   // A shared game's link (web): straight into its replay, or a friendly screen if it can't be opened. Also
   // for a link pasted into a tab that already has the game open.
+  /** A room or friend link (#238): the room's Join, or the friend prompt; on Android's browser, the app first if wanted. */
+  const followLink = async (action: LinkAction) => {
+    // One line in the console (logcat in the app): the Android CI job checks for it (android-links.yml).
+    console.info(`[ludo-link] follow ${JSON.stringify(action)}`);
+    if (androidWeb() && !(await openHere(stage, action))) return;
+    if ('join' in action) await online(false, action.join);
+    else {
+      if (!stage.querySelector('.screen.home')) await home();
+      await friendLinkPrompt(stage, action.friend);
+    }
+  };
   const openLink = () => {
+    // A room or friend link (#238): it's used once (the address is cleaned), and never pulls anyone out of a game.
+    const action = linkAction(location.hash);
+    if (action) {
+      history.replaceState(null, '', location.pathname + location.search);
+      if (game && stage.contains(game.el)) return true;
+      void followLink(action);
+      return true;
+    }
     const payload = linkPayload(location.hash);
+    const code = linkCode(location.hash);
     const bench = location.hash === '#bench';
-    if (payload === null && !bench) return false;
+    if (payload === null && code === null && !bench) return false;
     // A game in progress stops here; it was saved at the start of its turn, so Continue picks it up.
     if (game && stage.contains(game.el)) game.dispose();
     game = null;
@@ -157,16 +181,33 @@ export function mountApp(root: HTMLElement) {
     };
     // The hidden Extreme speed test (#62), for timing a real phone.
     if (bench) void show(stage, screens.bench, (m) => m.benchScreen(leave), leave);
+    // A short link (#229): the game (and the sharer's review, if it checks out) from our server.
+    else if (code)
+      void fetchShare(code).then((got) =>
+        got ? void watch(got.rec, leave, false, undefined, undefined, undefined, sharedReview(got.summary, framesOf(got.rec).frames.length)) : void show(stage, screens.replay, (m) => m.safeReplayScreen(null, leave), leave),
+      );
     else void decodeRecord(payload!).then((rec) => (rec ? void watch(rec, leave, false) : void show(stage, screens.replay, (m) => m.safeReplayScreen(null, leave), leave)));
     return true;
   };
   addEventListener('hashchange', () => void openLink());
+  // The Android app opened by a room or friend link (#238): the same as the link on the web.
+  onAppLink((url) => {
+    console.info(`[ludo-link] opened by ${url}`);
+    try {
+      const u = new URL(url);
+      const a = linkAction(u.hash, u.search);
+      if (a) location.hash = 'join' in a ? `#join=${a.join}` : `#friend=${a.friend}`;
+    } catch {
+      // Not a link we know.
+    }
+  });
   if (!openLink()) void home();
   // The newest unreviewed past games are reviewed while the app is open (#96).
   void bootReviews();
   // Friends (#209): an invite opens the friend's room. The link starts by itself only for a device that already
   // has a guest account and accepted the terms; otherwise it starts the first time Friends is opened.
   watchInvites(stage, (room) => void online(false, room));
+  watchRequests(stage);
   if (roomsUrl() && hasAccount() && hasAcceptedTerms()) void startFriends(settings.myName?.trim() || 'Player').catch(() => {});
   // The lazily loaded screens, fetched at idle so a web session that started online also works offline (#98).
   prefetchAtIdle();

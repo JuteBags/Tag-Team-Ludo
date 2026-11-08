@@ -8,6 +8,8 @@ import { settingsSheet, statsSheet } from './sheets';
 import { giveUpNote, givingUpLoses, levelOf, loadStats, type SavedGame } from './store';
 import type { PuzzleBadge } from './puzzleDay';
 import { loadRoom } from '../net/client';
+import { friendsLink, onFriendsStart } from '../net/friends';
+import { friendsSheet } from './friendsSheet';
 
 /** "just now", "12 min ago", "3 h ago", "2 days ago": when a saved game was last played. */
 function ago(t: number): string {
@@ -60,7 +62,8 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
       <button class="mcard pvc" data-mode="pvc"><span class="ci">${icons.robot}</span><b class="disp">VS COMPUTER</b><small>You against bots</small></button>
       <button class="mcard pvp" data-mode="pvp"><span class="ci">${icons.friends}</span><b class="disp">WITH FRIENDS</b><small>${room ? `Back to room ${room.code}` : online ? 'This phone or online' : 'Pass the phone'}</small></button>
     </div>
-    ${online?.ranked ? `<button class="onrow" data-act="ranked"><span class="gl">${icons.globe}</span><span><b class="disp">${rankedGame ? 'BACK TO RANKED GAME' : 'RANKED PVP'}</b><small>${rankedGame ? 'Your game goes on: jump back in' : 'Matched with players at your level'}</small></span><em class="chev" aria-hidden="true">${icons.next}</em></button>` : ''}
+    ${online?.ranked ? `<button class="onrow" data-act="ranked"><span class="gl">${icons.globe}</span><span><b class="disp">${rankedGame ? 'BACK TO RANKED' : 'RANKED PVP'}</b><small>${rankedGame ? 'Your game goes on' : 'Players at your level'}</small></span><em class="chev" aria-hidden="true">${icons.next}</em></button>
+      <button class="fhome" data-act="friends" aria-label="Friends"><span class="ci">${icons.friends}</span><b class="disp">FRIENDS</b><em class="fbadge" aria-hidden="true" hidden></em></button>` : ''}
     ${puzzle && onPuzzle
       ? `<button class="storerow half" data-act="store" aria-label="Store, ${settings.gold} gold"><span class="sp3">${pawnSVG('blue')}${pawnSVG('red')}${pawnSVG('yellow')}</span><span><b class="disp">STORE</b><em class="gp"><i class="coin"></i>${settings.gold}</em></span></button>
     <button class="pzrow${puzzle.done ? ' done' : ''}" data-act="puzzle" aria-label="Daily puzzle, ${puzzle.done ? 'done today' : BAND[puzzle.band]}, ${puzzle.streak} ${puzzle.streak === 1 ? 'day' : 'days'} in a row"><span class="pi">${puzzle.done ? PUZZLE_DONE : PUZZLE_ICON}</span><span><b class="disp">PUZZLE</b><small>${puzzle.done ? 'Done' : BAND[puzzle.band]}${puzzle.streak ? ` · ★ ${puzzle.streak}` : ''}</small></span></button>`
@@ -120,6 +123,35 @@ export function homeScreen(count: 2 | 3 | 4, onCount: (n: 2 | 3 | 4) => void, on
   el.querySelector('[data-act=store]')!.addEventListener('click', onStore);
   el.querySelector('[data-act=puzzle]')?.addEventListener('click', () => onPuzzle?.());
   el.querySelector('[data-act=ranked]')?.addEventListener('click', () => (rankedGame ? online?.room(true) : online?.ranked?.()));
+  // Friends (#237): the sheet, and a badge with how many friends are online (once the friends link is up).
+  const fbtn = el.querySelector<HTMLElement>('[data-act=friends]');
+  if (fbtn) {
+    fbtn.addEventListener('click', () => void friendsSheet(el));
+    const badge = fbtn.querySelector<HTMLElement>('.fbadge')!;
+    const count = () => {
+      const l = friendsLink();
+      const up = l?.status === 'open';
+      // Requests waiting for you come first (pink), else how many friends are online (green).
+      const asks = up ? l!.requests.length : 0;
+      const n = up ? l!.friends.filter((f) => f.online).length : 0;
+      badge.hidden = !asks && !n;
+      badge.classList.toggle('ask', !!asks);
+      badge.textContent = String(asks || n);
+      fbtn.setAttribute('aria-label', asks ? `Friends, ${asks} ${asks === 1 ? 'request' : 'requests'}` : n ? `Friends, ${n} online` : 'Friends');
+    };
+    let offLink = () => {};
+    const offStart = onFriendsStart((l) => {
+      offLink();
+      offLink = l.on(() => {
+        // The home screen was left: stop listening.
+        if (!el.isConnected) {
+          offLink();
+          offStart();
+        } else count();
+      });
+      count();
+    });
+  }
   el.querySelector('[data-act=stats]')!.addEventListener('click', () => void statsSheet(el, onReplay, onReview));
   // Colour-blind symbols live in Settings; nothing on this screen depends on them.
   el.querySelector('[data-act=settings]')!.addEventListener('click', () => settingsSheet(el, () => undefined));

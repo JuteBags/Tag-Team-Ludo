@@ -39,7 +39,8 @@ Tag Team Ludo is made to collect as little as possible. Here is everything we to
 - **Everything stays on your device:** your settings, gold, skins, achievements, past games, reviews, puzzle streaks and the names you type for friends. It's stored in the app's own storage (or your browser's, on the website). We never receive it.
 - **Ads and analytics:** to keep the game free, the game may show ads or use analytics services. When it does, this note will list what they collect and who runs them, and the app will ask you to accept the updated version.
 - **The update check:** the app asks our website whether a newer version exists (a plain file download). That request carries nothing about you; the hosting service (GitHub Pages) may keep its usual short-lived server logs, such as your IP address.
-- **Sharing a game:** a game is shared only when you tap Share. A shared game carries the moves and dice, and colours in place of people's names.
+- **Sharing a game:** a game is shared only when you tap Share. When online play is set up and you've accepted this document, the game (and its review) is kept on our game server and the link carries only a short code; otherwise the whole game rides in the link itself. Anyone with the link can see the game. We keep a shared game for a year after it was last opened.
+- Games you share, and online games, may be used to calibrate the accuracy and luck measures. A shared game shows bots' names and colours in place of people's names.
 - **Clearing it:** uninstalling the app, or clearing the site's data in your browser, deletes everything.
 
 ### Playing online (private rooms and Ranked)
@@ -52,7 +53,7 @@ Online play needs a small amount of data on our game server:
 
 **We don't sell it.** We use it to run online play: matching players, keeping ratings and keeping games fair.
 
-- **Deleting your online data:** ask us (see Contact) and we'll delete your guest account, name, ratings, friend code and friends list. Deleting the app alone doesn't remove the server copy.
+- **Deleting your online data:** ask us (see Contact) and we'll delete your guest account, name, ratings, friend code and friends list (and a game you shared, if you send us its link). Deleting the app alone doesn't remove the server copy.
 
 ### Chat
 In an online game you can send quick phrases, emoji and, in private rooms, short messages. Our server only passes each message on to the players in that game: **it doesn't store chat**. If you tap **Report** on a message, that one message, who sent it, who reported it and the room's code go to our server's log, so we can review it.
