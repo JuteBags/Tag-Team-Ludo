@@ -159,6 +159,13 @@ export class FriendsCore {
         this.io.send(conn, { t: 'room', code: msg.code, states });
         return null;
       }
+      case 'who': {
+        // #238: the name behind a friend code, for a friend link's prompt (the code's owner shared it).
+        const code = String(msg.code ?? '').toUpperCase();
+        const them = isFriendCode(code) ? this.store.idOfCode(code) : null;
+        this.io.send(conn, { t: 'who', code, name: them && them !== me ? (this.store.nameOf(them) ?? 'Player') : null, ...(them === me ? { self: true } : {}) });
+        return null;
+      }
       case 'remove': {
         if (!this.store.friendsOf(me).includes(msg.id)) return null;
         this.store.unlink(me, msg.id);

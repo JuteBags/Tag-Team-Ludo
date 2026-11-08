@@ -99,6 +99,39 @@ export function framesOf(rec: GameRecord): { frames: Frame[]; error?: string; st
   return { frames, error: r.ok ? undefined : r.error, stopped: r.ok && r.stopped };
 }
 
+// ---------- room and friend links (#238) ----------
+
+/** A room link: opens the game and joins room `code`. Plain https, so chat apps make it clickable. */
+export const roomLinkUrl = (code: string, site: string) => `${site}play/#join=${code}`;
+/** A friend link: opens the game and offers to send `code`'s owner a friend request. */
+export const friendLinkUrl = (code: string, site: string) => `${site}play/#friend=${code}`;
+
+export type LinkAction = { join: string } | { friend: string };
+
+/**
+ * A room or friend link's action, from the fragment (`#join=ABCDE`, `#friend=ABC234`) or, when the Android app is
+ * opened by the web page's "Open in the app" (an intent can't carry a fragment), from the query (`?join=`).
+ */
+export function linkAction(hash: string, search = ''): LinkAction | null {
+  const q = new URLSearchParams(search);
+  const join = /^#join=([A-Za-z0-9]{5})$/.exec(hash)?.[1] ?? q.get('join');
+  if (join && /^[A-Za-z0-9]{5}$/.test(join)) return { join: join.toUpperCase() };
+  const friend = /^#friend=([A-Za-z0-9]{6})$/.exec(hash)?.[1] ?? q.get('friend');
+  if (friend && /^[A-Za-z0-9]{6}$/.test(friend)) return { friend: friend.toUpperCase() };
+  return null;
+}
+
+/**
+ * The Android "Open in the app" link for an action: an intent for the app (com.jutebags.ludo, whose intent filter
+ * takes https links to the game), falling back to the game on the web when the app isn't installed.
+ */
+export function intentUrl(action: LinkAction, site: string): string {
+  const u = new URL(`${site}play/`);
+  const [k, v] = 'join' in action ? ['join', action.join] : ['friend', action.friend];
+  const fallback = 'join' in action ? roomLinkUrl(action.join, site) : friendLinkUrl(action.friend, site);
+  return `intent://${u.host}${u.pathname}?${k}=${v}#Intent;scheme=https;package=com.jutebags.ludo;S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
+}
+
 // ---------- a shared game's review (#229) ----------
 
 /** The review as it's shared: everything the replay and the review screen show, not the older version kept with it. */

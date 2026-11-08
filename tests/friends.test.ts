@@ -221,6 +221,21 @@ describe('friend requests (#237)', () => {
   });
 });
 
+describe('friend links (#238)', () => {
+  it('who: the name behind a friend code for the prompt; no one for an unknown code; your own is marked', async () => {
+    const h = hub();
+    h.hello('a1', 'A', 'Asha');
+    h.hello('b1', 'B', 'Leo');
+    const codeA = h.me('a1').code;
+    expect(await h.core.handle('b1', { t: 'who', code: codeA.toLowerCase() })).toBeNull();
+    expect(h.last('b1')).toEqual({ t: 'who', code: codeA, name: 'Asha' });
+    await h.core.handle('b1', { t: 'who', code: 'ZZZZZZ' });
+    expect(h.last('b1')).toEqual({ t: 'who', code: 'ZZZZZZ', name: null });
+    await h.core.handle('a1', { t: 'who', code: codeA });
+    expect(h.last('a1')).toEqual({ t: 'who', code: codeA, name: null, self: true });
+  });
+});
+
 describe('friends with 4.0.0 apps (#237: no requests there)', () => {
   it('4.0.0 adds by code instantly, as before, and never gets request messages it can’t show', async () => {
     const h = hub();

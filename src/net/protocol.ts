@@ -293,6 +293,8 @@ export type FriendClientMsg =
   | { t: 'answer'; id: string; accept: boolean }
   /** #237: your standing with each person in room `code` (answered with `room`). */
   | { t: 'room'; code: string }
+  /** #238: the display name behind friend code `code` (a friend link's prompt). */
+  | { t: 'who'; code: string }
   | { t: 'remove'; id: string }
   /** Invite friend `to` into private room `room`. */
   | { t: 'invite'; to: string; room: string }
@@ -309,6 +311,8 @@ export type FriendServerMsg =
   | { t: 'requests'; requests: FriendRequest[]; out: number }
   /** #237: your standing with the people in room `code`, by colour (your own colours aren't listed). */
   | { t: 'room'; code: string; states: Partial<Record<Color, SeatState>> }
+  /** #238: the name behind friend code `code` (null: no one has it; `self`: it's your own). */
+  | { t: 'who'; code: string; name: string | null; self?: true }
   /** A friend came online, went offline, or was added (`gone`: removed). */
   | { t: 'friend'; friend: Friend; gone?: true }
   /** `from` invites you into private room `room`. */

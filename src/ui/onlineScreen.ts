@@ -12,6 +12,8 @@ import { CODE_LEN, MODE_LABEL, ONLINE_LEVELS, isCode, modeSlots, type GameSetup,
 import { saveSetting, settings } from './settings';
 import { NAME_MAX, cleanName, type GameConfig } from './setup';
 import { sfx } from './sfx';
+import { roomLinkUrl } from './replay';
+import { SITE } from './shareCard';
 
 type Step = 'menu' | 'create' | 'join' | 'lobby';
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
@@ -232,6 +234,30 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
 
   // ---------- actions ----------
   const keepName = () => saveSetting('myName', nameIn.value.trim() ? myName() : '');
+  /** #238: a room link's code waiting for a name, and joining it from Join (where its errors show). */
+  let linked = '';
+  /**
+   * The menu while a room link waits for the name (ludo-uiux, #241): the room in the title, JOIN <code> as the one
+   * green button, nothing else to tap. '' puts the usual menu back.
+   */
+  const linkView = (code: string) => {
+    linked = code;
+    const menu = $('.wiz[data-step=menu]');
+    menu.querySelector('h3')!.innerHTML = code ? `Join room <b class="disp">${code}</b>` : 'Private room';
+    menu.querySelector('.sub')!.textContent = code ? 'Your name first, so they know who’s joining.' : 'Friends play on their own phones';
+    const go = menu.querySelector<HTMLElement>('[data-act=to-join]')!;
+    go.textContent = code ? `JOIN ${code}` : 'JOIN A ROOM';
+    go.classList.toggle('green', !!code);
+    go.classList.toggle('blue', !code);
+    for (const q of ['[data-act=to-create]', '.frbtn', '.rejoin']) {
+      const b = menu.querySelector<HTMLElement>(q);
+      if (b) b.style.display = code ? 'none' : '';
+    }
+  };
+  const joinLinked = (code: string) => {
+    show('join');
+    connect(() => RoomLink.join(code, myName()));
+  };
   el.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLElement>('[data-act]');
     const tb = (e.target as Element).closest<HTMLButtonElement>('.tg button');
@@ -252,6 +278,11 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     const act = b.dataset.act;
     if (act !== 'back') sfx.tick();
     if (act === 'back') {
+      // Back from a room link waiting for the name: the link is dropped, the usual menu.
+      if (step === 'menu' && linked) {
+        linkView('');
+        return;
+      }
       if (step === 'menu') {
         leaveRoom();
         return onBack();
@@ -269,6 +300,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     } else if (act === 'to-create') {
       keepName();
       show('create');
+    } else if (act === 'to-join' && linked) {
+      // The room link waiting for a name (#238).
+      keepName();
+      const code = linked;
+      linkView('');
+      joinLinked(code);
     } else if (act === 'to-join') {
       keepName();
       show('join');
@@ -285,10 +322,12 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
     } else if (act === 'copy' && link?.code) {
       copyWithFeedback(link.code, el.querySelector('.cpbtn'), el.querySelector('.codebtn .copied'), 'Tap to copy', icons);
     } else if (act === 'share' && link?.code) {
-      const text = `Join my Tag Team Ludo room: ${link.code}`;
+      // #238: the room link, which opens the game (or the app) and joins.
+      const url = roomLinkUrl(link.code, SITE);
+      const text = `Join my Tag Team Ludo room ${link.code}: ${url}`;
       const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
       if (nav.share) void nav.share({ text }).catch(() => undefined);
-      else copyWithFeedback(link.code, el.querySelector('.cpbtn'), el.querySelector('.codebtn .copied'), 'Tap to copy', icons);
+      else copyWithFeedback(url, el.querySelector('.cpbtn'), el.querySelector('.codebtn .copied'), 'Tap to copy', icons);
     }
   });
   codeIn.addEventListener('input', () => {
@@ -305,6 +344,17 @@ export function onlineScreen(onGame: (link: RoomLink, cfg: GameConfig) => void, 
   show('menu');
   if (rejoin && saved && configured) connect(() => RoomLink.join(saved.code, saved.name, saved.token));
   // An invite from a friend (#209): straight into their room.
-  else if (join && configured) connect(() => RoomLink.join(join, myName()));
+  // A room link (#238) shows the code on Join, so a full, started or unknown room says so there. Without a saved name
+  // it stops at the name first (ludo-uiux): JOIN A ROOM then joins that room straight away.
+  else if (join && configured) {
+    codeIn.value = join;
+    console.info(`[ludo-link] join step ${join}`);
+    $<HTMLButtonElement>('[data-act=join]').disabled = !isCode(join);
+    if (settings.myName?.trim()) joinLinked(join);
+    else {
+      linkView(join);
+      setTimeout(() => nameIn.focus(), 50);
+    }
+  }
   return el;
 }

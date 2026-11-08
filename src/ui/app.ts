@@ -2,7 +2,8 @@
 import { globalDefs } from './art';
 import { GameScreen } from './gameScreen';
 import { homeScreen } from './homeScreen';
-import { handleBack } from './native';
+import { handleBack, onAppLink } from './native';
+import { androidWeb, openHere } from './appLink';
 import type { GameConfig, Mode } from './setup';
 import { setupScreen } from './setupScreen';
 import { giveUpSaved, loadGame, loadPuzzleLog, loadReview, type SavedGame } from './store';
@@ -13,14 +14,14 @@ import { offerCheckIn } from './checkin';
 import { hasAcceptedTerms, offerTerms } from './legal';
 import { settings } from './settings';
 import { decodeRecord, type GameRecord } from '../engine';
-import { framesOf, linkCode, linkPayload, sharedReview } from './replay';
+import { framesOf, linkAction, linkCode, linkPayload, sharedReview, type LinkAction } from './replay';
 import { fetchShare } from '../net/shares';
 import type { StoredReview } from './store';
 import { bootReviews, setGame } from './reviewQueue';
 import { prefetchAtIdle, screens, setScreen, show } from './lazy';
 import { roomsUrl, type RoomLink } from '../net/client';
 import { hasAccount, startFriends } from '../net/friends';
-import { watchInvites, watchRequests } from './friendsSheet';
+import { friendLinkPrompt, watchInvites, watchRequests } from './friendsSheet';
 
 /** Ranked PvP (#216): on. Turn it off here to hide it from the home screen. */
 const RANKED = true;
@@ -147,7 +148,26 @@ export function mountApp(root: HTMLElement) {
   });
   // A shared game's link (web): straight into its replay, or a friendly screen if it can't be opened. Also
   // for a link pasted into a tab that already has the game open.
+  /** A room or friend link (#238): the room's Join, or the friend prompt; on Android's browser, the app first if wanted. */
+  const followLink = async (action: LinkAction) => {
+    // One line in the console (logcat in the app): the Android CI job checks for it (android-links.yml).
+    console.info(`[ludo-link] follow ${JSON.stringify(action)}`);
+    if (androidWeb() && !(await openHere(stage, action))) return;
+    if ('join' in action) await online(false, action.join);
+    else {
+      if (!stage.querySelector('.screen.home')) await home();
+      await friendLinkPrompt(stage, action.friend);
+    }
+  };
   const openLink = () => {
+    // A room or friend link (#238): it's used once (the address is cleaned), and never pulls anyone out of a game.
+    const action = linkAction(location.hash);
+    if (action) {
+      history.replaceState(null, '', location.pathname + location.search);
+      if (game && stage.contains(game.el)) return true;
+      void followLink(action);
+      return true;
+    }
     const payload = linkPayload(location.hash);
     const code = linkCode(location.hash);
     const bench = location.hash === '#bench';
@@ -170,6 +190,17 @@ export function mountApp(root: HTMLElement) {
     return true;
   };
   addEventListener('hashchange', () => void openLink());
+  // The Android app opened by a room or friend link (#238): the same as the link on the web.
+  onAppLink((url) => {
+    console.info(`[ludo-link] opened by ${url}`);
+    try {
+      const u = new URL(url);
+      const a = linkAction(u.hash, u.search);
+      if (a) location.hash = 'join' in a ? `#join=${a.join}` : `#friend=${a.friend}`;
+    } catch {
+      // Not a link we know.
+    }
+  });
   if (!openLink()) void home();
   // The newest unreviewed past games are reviewed while the app is open (#96).
   void bootReviews();

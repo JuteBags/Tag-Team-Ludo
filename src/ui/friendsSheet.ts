@@ -8,6 +8,8 @@ import type { Friend, FriendRequest } from '../net/protocol';
 import { requireTerms } from './legal';
 import { settings } from './settings';
 import { sfx } from './sfx';
+import { friendLinkUrl } from './replay';
+import { SITE } from './shareCard';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const myName = () => settings.myName?.trim() || 'Player';
@@ -79,9 +81,11 @@ export async function friendsSheet(host: HTMLElement, room?: string): Promise<vo
     }
     if (t.closest('[data-act=sharecode]') && link.code) {
       const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
-      const text = `Add me as a friend in Tag Team Ludo. My friend code: ${link.code}`;
+      // #238: the friend link, which opens the game (or the app) and asks to send you a request.
+      const url = friendLinkUrl(link.code, SITE);
+      const text = `Add me as a friend on Tag Team Ludo: ${url}`;
       if (nav.share) void nav.share({ text }).catch(() => undefined);
-      else copyWithFeedback(link.code, ov.querySelector('.fmine .cpbtn'), ov.querySelector('.fcode small'), 'Tap to copy', icons);
+      else copyWithFeedback(url, ov.querySelector('.fmine .cpbtn'), ov.querySelector('.fcode small'), 'Tap to copy', icons);
       return;
     }
     const acc = t.closest<HTMLElement>('[data-accept]')?.dataset.accept;
@@ -149,6 +153,41 @@ export function watchInvites(stage: HTMLElement, onJoin: (room: string) => void)
 
 /** Whether the friends link is up (for showing who's online without asking anything). */
 export const friendsOn = () => !!friendsLink();
+
+/**
+ * A friend link (#238): the terms if they aren't accepted yet, the friends link, then "Add <name> as a friend?". Add
+ * sends a friend request (#237), never an instant friend; Not now does nothing. A code no one has says so.
+ */
+export async function friendLinkPrompt(stage: HTMLElement, code: string) {
+  if (!(await requireTerms(stage))) return;
+  let link: FriendsLink;
+  try {
+    link = await startFriends(myName());
+  } catch {
+    return;
+  }
+  for (let i = 0; i < 100 && link.status !== 'open'; i++) await new Promise((r) => setTimeout(r, 100));
+  const who = await link.who(code);
+  stage.querySelector('.friendlink-ov')?.remove();
+  const ov = document.createElement('div');
+  ov.className = 'menu-ov friendlink-ov';
+  const ok = !!who?.name;
+  ov.innerHTML = ok
+    ? `<div class="box"><h2>Add <b>${esc(who!.name!)}</b> as a friend?</h2><p class="sub">They'll get a request to accept.</p>
+        <button class="b3 green disp" data-act="add">ADD</button><button class="later" data-act="later">Not now</button></div>`
+    : `<div class="box"><h2>Friend link</h2><p class="sub">${who?.self ? 'That’s your own friend link.' : `No one has the code <b class="disp">${esc(code)}</b>. Check the link with your friend.`}</p>
+        <button class="later" data-act="later">OK</button></div>`;
+  ov.addEventListener('click', (e) => {
+    const act = (e.target as Element).closest<HTMLElement>('[data-act]')?.dataset.act;
+    if (act !== 'add' && act !== 'later') return;
+    ov.remove();
+    if (act === 'add') {
+      sfx.tick();
+      link.add(code);
+    }
+  });
+  stage.appendChild(ov);
+}
 
 /**
  * #237: a friend request while the app is open: a small card at the top ("Riya wants to be friends", Accept or
